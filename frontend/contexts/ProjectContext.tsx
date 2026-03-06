@@ -74,6 +74,7 @@ export interface PendingRetakeUpdate {
 const ProjectContext = createContext<ProjectContextType | null>(null)
 
 const STORAGE_KEY = 'ltx-projects'
+const PROJECT_SCHEMA_VERSION = 1
 
 // Migrate old projects that don't have timelines
 function migrateProject(project: Project): Project {
@@ -150,6 +151,25 @@ function loadProjectsFromStorage(): Project[] {
   return []
 }
 
+function normalizeProjectForRuntime(project: Project): Project {
+  // Keep migrations idempotent and safe for both disk and legacy localStorage payloads.
+  const withTimelines = migrateProject(project)
+  const recovered = recoverAssetUrls(withTimelines)
+  return { ...recovered, projectSchemaVersion: PROJECT_SCHEMA_VERSION }
+}
+
+function toProject(value: unknown): Project | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  if (typeof record.id !== 'string') return null
+  if (typeof record.name !== 'string') return null
+  if (typeof record.createdAt !== 'number') return null
+  if (typeof record.updatedAt !== 'number') return null
+  if (!Array.isArray(record.assets)) return null
+  if (!Array.isArray(record.timelines)) return null
+  return record as unknown as Project
+}
+
 export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const [currentView, setCurrentView] = useState<ViewType>('home')
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null)
@@ -159,25 +179,84 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const [genSpaceAudioUrl, setGenSpaceAudioUrl] = useState<string | null>(null)
   const [genSpaceRetakeSource, setGenSpaceRetakeSource] = useState<GenSpaceRetakeSource | null>(null)
   const [pendingRetakeUpdate, setPendingRetakeUpdate] = useState<PendingRetakeUpdate | null>(null)
-  // Initialize with data from localStorage
-  const [projects, setProjects] = useState<Project[]>(() => loadProjectsFromStorage())
+  // Initialize from legacy localStorage to avoid a blank app on first paint.
+  // We hydrate from disk immediately after mount.
+  const [projects, setProjects] = useState<Project[]>(() => loadProjectsFromStorage().map(normalizeProjectForRuntime))
   const isInitializedRef = useRef(false)
+  const hasHydratedFromDiskRef = useRef(false)
+  const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   // Mark as initialized after first render
   useEffect(() => {
     isInitializedRef.current = true
   }, [])
   
-  // Save projects to localStorage when changed (but not on initial load)
+  // Hydrate projects from disk, and migrate legacy localStorage -> disk if needed.
   useEffect(() => {
-    // Skip saving on initial render to avoid overwriting with stale data
+    let cancelled = false
+
+    const hydrate = async () => {
+      try {
+        const raw = await window.electronAPI.loadAllProjects()
+        if (cancelled) return
+
+        const diskProjects = raw.map(toProject).filter((p): p is Project => p !== null).map(normalizeProjectForRuntime)
+
+        if (diskProjects.length > 0) {
+          setProjects(diskProjects)
+          hasHydratedFromDiskRef.current = true
+          // Best-effort cleanup: once disk is authoritative, legacy localStorage should not fight it.
+          try { localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
+          return
+        }
+
+        // No disk projects yet — migrate from legacy localStorage if present.
+        const legacy = loadProjectsFromStorage().map(normalizeProjectForRuntime)
+        if (legacy.length > 0) {
+          await window.electronAPI.replaceAllProjects(legacy as unknown[])
+          if (cancelled) return
+          setProjects(legacy)
+          hasHydratedFromDiskRef.current = true
+          try { localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
+          logger.info(`[projects] Migrated ${legacy.length} projects from localStorage to disk`)
+          return
+        }
+
+        hasHydratedFromDiskRef.current = true
+      } catch (e) {
+        logger.error(`[projects] Failed to hydrate projects from disk: ${e}`)
+        // Keep legacy/local state; do not mark hydration so we avoid writing over disk on transient errors.
+      }
+    }
+
+    void hydrate()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Persist projects to disk (debounced). This replaces the legacy localStorage persistence.
+  useEffect(() => {
     if (!isInitializedRef.current) return
-    
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(projects))
-      logger.info(`Projects saved: ${projects.length}`)
-    } catch (e) {
-      logger.error(`Failed to save projects: ${e}`)
+    if (!hasHydratedFromDiskRef.current) return
+
+    if (saveDebounceRef.current) {
+      clearTimeout(saveDebounceRef.current)
+    }
+
+    saveDebounceRef.current = setTimeout(() => {
+      const payload = projects.map(normalizeProjectForRuntime)
+      window.electronAPI.replaceAllProjects(payload as unknown[]).catch((e: unknown) => {
+        logger.error(`[projects] Failed to save projects to disk: ${e}`)
+      })
+    }, 750)
+
+    return () => {
+      if (saveDebounceRef.current) {
+        clearTimeout(saveDebounceRef.current)
+        saveDebounceRef.current = null
+      }
     }
   }, [projects])
   
@@ -186,6 +265,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const createProject = useCallback((name: string, assetSavePath?: string): Project => {
     const defaultTimeline = createDefaultTimeline('Timeline 1')
     const newProject: Project = {
+      projectSchemaVersion: PROJECT_SCHEMA_VERSION,
       id: `project-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name,
       createdAt: Date.now(),
@@ -201,6 +281,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   
   const deleteProject = useCallback((id: string) => {
     setProjects(prev => prev.filter(p => p.id !== id))
+    window.electronAPI.deleteProjectFile(id).catch(() => {})
     if (currentProjectId === id) {
       setCurrentProjectId(null)
       setCurrentView('home')

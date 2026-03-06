@@ -87,6 +87,7 @@ export function VideoEditor() {
   kbLayoutRef.current = kbLayout
   const isKbEditorOpenRef = useRef(isKbEditorOpen)
   isKbEditorOpenRef.current = isKbEditorOpen
+  const [downloadsPath, setDownloadsPath] = useState<string>('')
   
   // Generation hook for regenerating shots
   const {
@@ -105,6 +106,36 @@ export function VideoEditor() {
   
   // Get the active timeline from context
   const activeTimeline = currentProjectId ? getActiveTimeline(currentProjectId) : null
+
+  useEffect(() => {
+    let cancelled = false
+    window.electronAPI.getDownloadsPath()
+      .then((p) => {
+        if (!cancelled) setDownloadsPath(p)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const getDefaultAssetPath = useCallback(() => {
+    if (!downloadsPath || !currentProject) return ''
+    const sep = downloadsPath.includes('\\') ? '\\' : '/'
+    return `${downloadsPath}${sep}Ltx Desktop Assets${sep}${currentProject.name}`
+  }, [downloadsPath, currentProject])
+
+  const handleOpenProjectFolder = useCallback(async () => {
+    if (!currentProject) return
+    const basePath = currentProject.assetSavePath || getDefaultAssetPath()
+    if (!basePath) return
+    try {
+      await window.electronAPI.ensureDirectory(basePath)
+      await window.electronAPI.showItemInFolder(basePath)
+    } catch {
+      // ignore to avoid breaking editing flow
+    }
+  }, [currentProject, getDefaultAssetPath])
   
   // Local working copies of clips and tracks (for responsive editing without saving on every frame)
   const [clips, setClips] = useState<TimelineClip[]>((activeTimeline?.clips || []).map(migrateClip))
@@ -1677,7 +1708,8 @@ export function VideoEditor() {
     setShowICLoraPanel: _setShowICLoraPanel, setIcLoraSourceClipId: _setIcLoraSourceClipId, // IC-LORA HIDDEN
     setActiveTool, setLastTrimTool, setShowProjectSettings,
     handleAddTimeline, handleDuplicateTimeline, handleResetLayout,
-  }), [selectedClip, selectedClipIds, clips, tracks, subtitles, snapEnabled, showEffectsBrowser, showSourceMonitor, showPropertiesPanel, _showICLoraPanel, sourceAsset, activeTool, activeTimeline, timelines, handleInsertEdit, handleOverwriteEdit, kbLayout])
+    openProjectFolder: handleOpenProjectFolder,
+  }), [selectedClip, selectedClipIds, clips, tracks, subtitles, snapEnabled, showEffectsBrowser, showSourceMonitor, showPropertiesPanel, _showICLoraPanel, sourceAsset, activeTool, activeTimeline, timelines, handleInsertEdit, handleOverwriteEdit, kbLayout, handleOpenProjectFolder])
 
 
   // --- Render ---

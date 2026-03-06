@@ -399,6 +399,7 @@ export interface Timeline {
 }
 
 export interface Project {
+  projectSchemaVersion?: number
   id: string
   name: string
   createdAt: number

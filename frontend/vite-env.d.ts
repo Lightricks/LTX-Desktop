@@ -33,6 +33,11 @@ interface Window {
     getResourcePath: () => Promise<string | null>
     getDownloadsPath: () => Promise<string>
     ensureDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>
+    getProjectsDir: () => Promise<string>
+    loadAllProjects: () => Promise<unknown[]>
+    saveProject: (project: unknown) => Promise<{ ok: true }>
+    replaceAllProjects: (projects: unknown[]) => Promise<{ ok: true }>
+    deleteProjectFile: (projectId: string) => Promise<{ ok: true }>
     showSaveDialog: (options: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<string | null>
     saveFile: (filePath: string, data: string, encoding?: string) => Promise<{ success: boolean; path?: string; error?: string }>
     saveBinaryFile: (filePath: string, data: ArrayBuffer) => Promise<{ success: boolean; path?: string; error?: string }>

@@ -59,6 +59,7 @@ export interface MenuDepsParams {
   handleAddTimeline: () => void
   handleDuplicateTimeline: (id: string) => void
   handleResetLayout: () => void
+  openProjectFolder: () => void
 }
 
 export function buildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
@@ -205,6 +206,8 @@ export function buildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
         { id: 'zoom-out', label: 'Zoom Out', shortcut: getShortcutLabel(p.kbLayout, 'timeline.zoomOut'), action: () => p.setZoom(z => Math.max(z / 1.25, 0.1)) },
         { id: 'sep-2', label: '', separator: true },
         { id: 'reset-layout', label: 'Reset Layout', action: () => p.handleResetLayout() },
+        { id: 'sep-3', label: '', separator: true },
+        { id: 'open-project-folder', label: 'Open Project Folder', action: () => p.openProjectFolder() },
       ],
     },
 
