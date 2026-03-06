@@ -47,6 +47,32 @@ export interface Asset {
   colorLabel?: string // Color label for organization (e.g. 'violet', 'blue', 'green', 'yellow', 'red', 'rose', 'orange', 'mango')
 }
 
+// Shot-based workflow: high-level scene units built from generations.
+export interface ShotVariant {
+  id: string
+  assetId?: string
+  title?: string
+  note?: string
+  createdAt: number
+  // Snapshot of key generation params to make it easier to compare variants.
+  generationParams?: GenerationParams
+}
+
+export interface Shot {
+  id: string
+  name: string
+  order: number
+  createdAt: number
+  updatedAt: number
+  prompt?: string
+  referenceAssetId?: string
+  audioCueAssetId?: string
+  durationSeconds?: number
+  notes?: string
+  variants: ShotVariant[]
+  canonicalVariantId?: string
+}
+
 export interface Track {
   id: string
   name: string
@@ -409,6 +435,7 @@ export interface Project {
   timelines: Timeline[]
   activeTimelineId?: string
   assetSavePath?: string // Folder where generated assets are saved (default: Downloads/Ltx Desktop Assets/{name})
+  shots?: Shot[]
 }
 
 export type ViewType = 'home' | 'project' | 'playground'

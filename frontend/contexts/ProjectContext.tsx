@@ -155,7 +155,11 @@ function normalizeProjectForRuntime(project: Project): Project {
   // Keep migrations idempotent and safe for both disk and legacy localStorage payloads.
   const withTimelines = migrateProject(project)
   const recovered = recoverAssetUrls(withTimelines)
-  return { ...recovered, projectSchemaVersion: PROJECT_SCHEMA_VERSION }
+  return {
+    ...recovered,
+    projectSchemaVersion: PROJECT_SCHEMA_VERSION,
+    shots: recovered.shots ?? [],
+  }
 }
 
 function toProject(value: unknown): Project | null {
