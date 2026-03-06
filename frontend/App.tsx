@@ -22,7 +22,15 @@ type RequiredModelsGateState = 'checking' | 'missing' | 'ready'
 function AppContent() {
   const { currentView } = useProjects()
   const { status, processStatus, isLoading: backendLoading, error: backendError } = useBackend()
-  const { settings, saveLtxApiKey, saveFalApiKey, forceApiGenerations, isLoaded, runtimePolicyLoaded } = useAppSettings()
+  const {
+    settings,
+    saveLtxApiKey,
+    saveFalApiKey,
+    forceApiGenerations,
+    isLoaded,
+    runtimePolicyLoaded,
+    devOfflineModeEnabled,
+  } = useAppSettings()
 
   const [pythonReady, setPythonReady] = useState<boolean | null>(null)
   const [backendStarted, setBackendStarted] = useState(false)
@@ -48,6 +56,10 @@ function AppContent() {
   const isBackendRestarting = processStatus === 'restarting'
   const isBackendDead = processStatus === 'dead'
   const waitingForRuntimePolicy = processStatus === 'alive' && !runtimePolicyLoaded
+  const allowOfflineMode = import.meta.env.DEV
+  const isOfflineMode =
+    allowOfflineMode &&
+    (devOfflineModeEnabled || (!status.connected && (processStatus === 'dead' || backendError !== null)))
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -254,13 +266,17 @@ function AppContent() {
     </div>
   ) : null
 
-  const showGlobalControls = currentView !== 'home' && status.connected && setupState !== 'loading' && !setupState.needsSetup
-  const shouldBlockUntilSettingsLoaded = forceApiGenerations && !isLoaded
+  const showGlobalControls =
+    currentView !== 'home' &&
+    setupState !== 'loading' &&
+    (!setupState.needsSetup || isOfflineMode)
+  const shouldBlockUntilSettingsLoaded = forceApiGenerations && !isLoaded && !isOfflineMode && processStatus === 'alive'
   const shouldShowForcedFirstRunUpsell = isForcedFirstRun && isLoaded && !settings.hasLtxApiKey
   const shouldShowGlobalForcedUpsell = forceApiGenerations && setupState !== 'loading' && !setupState.needsSetup && isLoaded && !settings.hasLtxApiKey
   const shouldBlockForLtxKey = shouldShowForcedFirstRunUpsell || shouldShowGlobalForcedUpsell
 
   useEffect(() => {
+    if (isOfflineMode) return
     if (shouldBlockForLtxKey && apiGatewayRequest === null) {
       setApiGatewayRequest({
         requiredKeys: ['ltx'],
@@ -270,7 +286,7 @@ function AppContent() {
         includeOptionalMissing: true,
       })
     }
-  }, [shouldBlockForLtxKey, apiGatewayRequest])
+  }, [isOfflineMode, shouldBlockForLtxKey, apiGatewayRequest])
 
   const shouldShowGateway = apiGatewayRequest !== null
 
@@ -339,7 +355,7 @@ function AppContent() {
     return <PythonSetup onReady={() => setPythonReady(true)} />
   }
 
-  if (isBackendDead) {
+  if (isBackendDead && !isOfflineMode) {
     return (
       <div className="h-screen bg-background flex items-center justify-center p-6">
         <div className="w-full max-w-5xl rounded-xl border border-zinc-700 bg-zinc-900/80 p-6 shadow-2xl">
@@ -381,7 +397,7 @@ function AppContent() {
     )
   }
 
-  if (backendError && !status.connected) {
+  if (backendError && !status.connected && !isOfflineMode) {
     return (
       <div className="h-screen bg-background flex items-center justify-center">
         <div className="text-center max-w-md">
@@ -394,7 +410,7 @@ function AppContent() {
     )
   }
 
-  if (setupState.needsLicense) {
+  if (setupState.needsLicense && !isOfflineMode) {
     const licenseOnly = forceApiGenerations || !setupState.needsSetup
     return (
       <LaunchGate
@@ -415,11 +431,11 @@ function AppContent() {
     )
   }
 
-  if (setupState.needsSetup && !forceApiGenerations) {
+  if (setupState.needsSetup && !forceApiGenerations && !isOfflineMode) {
     return <LaunchGate showLicenseStep={false} onComplete={handleFirstRunComplete} />
   }
 
-  if (requiredModelsGate === 'missing') {
+  if (requiredModelsGate === 'missing' && !isOfflineMode) {
     return <LaunchGate showLicenseStep={false} onComplete={handleMissingModelsComplete} />
   }
 
@@ -439,6 +455,38 @@ function AppContent() {
   return (
     <div className="relative h-screen w-screen">
       {renderView()}
+
+      {isOfflineMode && (
+        <div className="fixed top-3 left-1/2 z-[70] w-[min(900px,calc(100vw-24px))] -translate-x-1/2">
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-100 shadow-lg backdrop-blur">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-5 w-5 text-amber-400" />
+              <div className="min-w-0">
+                <div className="text-sm font-medium">Бэкенд недоступен — режим просмотра</div>
+                <div className="mt-0.5 text-xs text-amber-200/80">
+                  Функции генерации отключены. Можно изучать интерфейс, проекты и видеоредактор.
+                </div>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={() => setIsLogViewerOpen(true)}
+                className="h-8 w-8 flex items-center justify-center rounded-md text-amber-200/80 hover:text-amber-100 hover:bg-amber-500/10 transition-colors"
+                title="Логи бэкенда"
+              >
+                <FileText className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="h-8 w-8 flex items-center justify-center rounded-md text-amber-200/80 hover:text-amber-100 hover:bg-amber-500/10 transition-colors"
+                title="Настройки"
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showGlobalControls && (
         <div className="fixed top-[18px] right-3 z-50 flex items-center gap-1">

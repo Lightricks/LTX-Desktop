@@ -56,9 +56,12 @@ interface AppSettingsContextValue {
   saveGeminiApiKey: (value: string) => Promise<void>
   forceApiGenerations: boolean
   shouldVideoGenerateWithLtxApi: boolean
+  devOfflineModeEnabled: boolean
+  setDevOfflineModeEnabled: (value: boolean) => void
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
+const DEV_OFFLINE_MODE_KEY = 'ltx-dev-offline-mode'
 
 function toBackendProcessStatus(value: unknown): BackendProcessStatus | null {
   if (!value || typeof value !== 'object') {
@@ -98,6 +101,21 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [backendUrl, setBackendUrl] = useState<string | null>(null)
   const [forceApiGenerations, setForceApiGenerations] = useState(true)
   const [backendProcessStatus, setBackendProcessStatus] = useState<BackendProcessStatus | null>(null)
+  const [devOfflineModeEnabled, setDevOfflineModeEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(DEV_OFFLINE_MODE_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DEV_OFFLINE_MODE_KEY, devOfflineModeEnabled ? '1' : '0')
+    } catch {
+      // ignore
+    }
+  }, [devOfflineModeEnabled])
 
   useEffect(() => {
     window.electronAPI.getBackendUrl().then(setBackendUrl).catch(() => setBackendUrl(null))
@@ -290,8 +308,22 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       saveGeminiApiKey,
       forceApiGenerations,
       shouldVideoGenerateWithLtxApi,
+      devOfflineModeEnabled,
+      setDevOfflineModeEnabled,
     }),
-    [forceApiGenerations, isLoaded, refreshSettings, runtimePolicyLoaded, saveFalApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, updateSettings],
+    [
+      devOfflineModeEnabled,
+      forceApiGenerations,
+      isLoaded,
+      refreshSettings,
+      runtimePolicyLoaded,
+      saveFalApiKey,
+      saveGeminiApiKey,
+      saveLtxApiKey,
+      settings,
+      shouldVideoGenerateWithLtxApi,
+      updateSettings,
+    ],
   )
 
   return <AppSettingsContext.Provider value={contextValue}>{children}</AppSettingsContext.Provider>

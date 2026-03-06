@@ -5,9 +5,21 @@ import { Button } from '../components/ui/button'
 import { GenSpace } from './GenSpace'
 import { VideoEditor } from './VideoEditor'
 import type { ProjectTab } from '../types/project'
+import { useBackend } from '../hooks/use-backend'
+import { useEffect } from 'react'
+import { useAppSettings } from '../contexts/AppSettingsContext'
 
 export function Project() {
   const { currentProject, currentTab, setCurrentTab, goHome } = useProjects()
+  const { processStatus } = useBackend()
+  const { devOfflineModeEnabled } = useAppSettings()
+  const isOfflineMode = (import.meta.env.DEV && devOfflineModeEnabled) || processStatus !== 'alive'
+
+  useEffect(() => {
+    if (!isOfflineMode) return
+    if (currentTab !== 'gen-space') return
+    setCurrentTab('video-editor')
+  }, [currentTab, isOfflineMode, setCurrentTab])
   
   if (!currentProject) {
     return (
@@ -49,12 +61,19 @@ export function Project() {
           {tabs.map(tab => (
             <button
               key={tab.id}
-              onClick={() => setCurrentTab(tab.id)}
+              onClick={() => {
+                if (tab.id === 'gen-space' && isOfflineMode) return
+                setCurrentTab(tab.id)
+              }}
+              disabled={tab.id === 'gen-space' && isOfflineMode}
               className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 currentTab === tab.id
                   ? 'bg-zinc-800 text-white'
-                  : 'text-zinc-400 hover:text-white'
+                  : tab.id === 'gen-space' && isOfflineMode
+                    ? 'text-zinc-600 cursor-not-allowed'
+                    : 'text-zinc-400 hover:text-white'
               }`}
+              title={tab.id === 'gen-space' && isOfflineMode ? 'Требуется бэкенд (offline режим)' : undefined}
             >
               {tab.icon}
               {tab.label}
@@ -69,7 +88,18 @@ export function Project() {
       {/* Main Content - both views stay mounted to preserve state */}
       <main className="flex-1 overflow-hidden relative">
         <div className={`absolute inset-0 ${currentTab === 'gen-space' ? '' : 'invisible pointer-events-none'}`}>
-          <GenSpace />
+          {isOfflineMode ? (
+            <div className="h-full w-full flex items-center justify-center">
+              <div className="max-w-md text-center px-6">
+                <h2 className="text-lg font-semibold text-white">Gen Space недоступен</h2>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Для генерации нужен локальный бэкенд. В режиме просмотра можно пользоваться видеоредактором.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <GenSpace />
+          )}
         </div>
         <div className={`absolute inset-0 ${currentTab === 'video-editor' ? '' : 'invisible pointer-events-none'}`}>
           <VideoEditor />

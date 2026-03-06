@@ -20,7 +20,16 @@ interface SettingsModalProps {
 type TabId = 'general' | 'apiKeys' | 'inference' | 'promptEnhancer' | 'about'
 
 export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
-  const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, forceApiGenerations } = useAppSettings()
+  const {
+    settings,
+    updateSettings,
+    saveLtxApiKey,
+    saveFalApiKey,
+    saveGeminiApiKey,
+    forceApiGenerations,
+    devOfflineModeEnabled,
+    setDevOfflineModeEnabled,
+  } = useAppSettings()
   const onSettingsChange = (next: AppSettings) => updateSettings(next)
   const [activeTab, setActiveTab] = useState<TabId>('general')
   const [ltxApiKeyInput, setLtxApiKeyInput] = useState('')
@@ -79,6 +88,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   // Fetch text encoder status when modal opens
   useEffect(() => {
     if (!isOpen) return
+    if (import.meta.env.DEV && devOfflineModeEnabled) return
 
     const fetchStatus = async () => {
       try {
@@ -97,7 +107,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     // Poll while downloading
     const interval = setInterval(fetchStatus, 2000)
     return () => clearInterval(interval)
-  }, [isOpen, isDownloading])
+  }, [devOfflineModeEnabled, isOpen, isDownloading])
 
   // Handle text encoder download
   const handleDownloadTextEncoder = async () => {
@@ -320,6 +330,38 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
         <div className="px-6 py-5 space-y-6 h-[60vh] overflow-y-auto">
           {activeTab === 'general' && (
             <>
+              {import.meta.env.DEV && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-400" />
+                    <h3 className="text-sm font-semibold text-white">Offline mode (dev)</h3>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">Dev</span>
+                  </div>
+
+                  <div className="flex items-start justify-between gap-4 bg-zinc-800/50 rounded-lg px-4 py-3 border border-zinc-700/50">
+                    <div className="flex-1">
+                      <label className="text-sm font-medium text-white">Enable UI preview mode</label>
+                      <p className="text-xs text-zinc-500 leading-relaxed mt-1">
+                        Disables generation features and lets you explore the app UI without a running backend.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setDevOfflineModeEnabled(!devOfflineModeEnabled)}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        devOfflineModeEnabled ? 'bg-amber-500' : 'bg-zinc-700'
+                      }`}
+                      title={devOfflineModeEnabled ? 'Offline mode enabled' : 'Offline mode disabled'}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          devOfflineModeEnabled ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {!forceApiGenerations && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">

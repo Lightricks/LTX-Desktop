@@ -36,7 +36,7 @@ const DEFAULT_SETTINGS: GenerationSettings = {
 
 export function Playground() {
   const { goHome } = useProjects()
-  const { forceApiGenerations, shouldVideoGenerateWithLtxApi } = useAppSettings()
+  const { forceApiGenerations, shouldVideoGenerateWithLtxApi, devOfflineModeEnabled } = useAppSettings()
   const [mode, setMode] = useState<GenerationMode>('text-to-video')
   const [prompt, setPrompt] = useState('')
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
@@ -44,6 +44,7 @@ export function Playground() {
   const [settings, setSettings] = useState<GenerationSettings>(() => ({ ...DEFAULT_SETTINGS }))
 
   const { status, processStatus } = useBackend()
+  const isOfflineMode = import.meta.env.DEV && devOfflineModeEnabled
 
   useEffect(() => {
     if (!shouldVideoGenerateWithLtxApi || mode === 'text-to-image') return
@@ -169,7 +170,7 @@ export function Playground() {
   const isRetakeMode = mode === 'retake'
   const isVideoMode = mode === 'text-to-video' || mode === 'image-to-video'
   const isBusy = isRetakeMode ? isRetaking : isGenerating
-  const canGenerate = processStatus === 'alive' && !isBusy && (
+  const canGenerate = !isOfflineMode && processStatus === 'alive' && !isBusy && (
     isRetakeMode
       ? retakeInput.ready && !!retakeInput.videoPath
       : !!prompt.trim()
