@@ -30,7 +30,7 @@ interface GenerationState {
 }
 
 interface UseGenerationReturn extends GenerationState {
-  generate: (prompt: string, imagePath: string | null, settings: GenerationSettings, audioPath?: string | null) => Promise<void>
+  generate: (prompt: string, imagePath: string | null, settings: GenerationSettings, audioPath?: string | null, lastFramePath?: string | null) => Promise<void>
   generateImage: (prompt: string, settings: GenerationSettings) => Promise<void>
   cancel: () => void
   reset: () => void
@@ -49,6 +49,7 @@ const IMAGE_ASPECT_RATIO_VALUE: Record<string, number> = {
   '9:16': 9 / 16,
   '4:3': 4 / 3,
   '3:4': 3 / 4,
+  '4:5': 4 / 5,
   '21:9': 21 / 9,
 }
 
@@ -213,6 +214,7 @@ export function useGeneration(): UseGenerationReturn {
     imagePath: string | null,
     settings: GenerationSettings,
     audioPath?: string | null,
+    lastFramePath?: string | null,
   ) => {
     const statusMsg = settings.model === 'pro'
       ? 'Loading Pro model & generating...'
@@ -247,6 +249,9 @@ export function useGeneration(): UseGenerationReturn {
       }
       if (audioPath) {
         params.audioPath = audioPath
+      }
+      if (lastFramePath) {
+        params.lastFramePath = lastFramePath
       }
 
       const response = await fetch(`${backendUrl}/api/queue/submit`, {

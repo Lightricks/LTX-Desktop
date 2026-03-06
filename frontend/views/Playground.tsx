@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
-import { Sparkles, Trash2, Square, ImageIcon, ArrowLeft, Scissors } from 'lucide-react'
+import { Sparkles, Trash2, Square, ImageIcon, ArrowLeft, Scissors, Wand2 } from 'lucide-react'
 import { logger } from '../lib/logger'
 import { ImageUploader } from '../components/ImageUploader'
 import { AudioUploader } from '../components/AudioUploader'
 import { VideoPlayer } from '../components/VideoPlayer'
 import { ImageResult } from '../components/ImageResult'
+import { FrameSlot } from '../components/FrameSlot'
 import { SettingsPanel, type GenerationSettings } from '../components/SettingsPanel'
 import { ModeTabs, type GenerationMode } from '../components/ModeTabs'
 import { LtxLogo } from '../components/LtxLogo'
@@ -42,6 +43,11 @@ export function Playground() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [selectedAudio, setSelectedAudio] = useState<string | null>(null)
   const [settings, setSettings] = useState<GenerationSettings>(() => ({ ...DEFAULT_SETTINGS }))
+  const [firstFrameUrl, setFirstFrameUrl] = useState<string | null>(null)
+  const [firstFramePath, setFirstFramePath] = useState<string | null>(null)
+  const [lastFrameUrl, setLastFrameUrl] = useState<string | null>(null)
+  const [lastFramePath, setLastFramePath] = useState<string | null>(null)
+  const [isEnhancing, setIsEnhancing] = useState(false)
 
   const { status, processStatus } = useBackend()
 
@@ -103,6 +109,27 @@ export function Playground() {
   // Ref to store generated image URL for "Create video" flow
   const generatedImageRef = useRef<string | null>(null)
 
+  const handleEnhancePrompt = async () => {
+    if (!prompt.trim() || isEnhancing) return
+    setIsEnhancing(true)
+    try {
+      const backendUrl = await window.electronAPI.getBackendUrl()
+      const res = await fetch(`${backendUrl}/api/enhance-prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, mode }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.enhancedPrompt) setPrompt(data.enhancedPrompt)
+      }
+    } catch (err) {
+      logger.error(`Failed to enhance prompt: ${err}`)
+    } finally {
+      setIsEnhancing(false)
+    }
+  }
+
   const handleGenerate = () => {
     if (mode === 'retake') {
       if (!retakeInput.videoPath || retakeInput.duration < 2) return
@@ -118,18 +145,16 @@ export function Playground() {
 
     if (mode === 'text-to-image') {
       if (!prompt.trim()) return
-      // Text-to-image behavior remains tied to raw forceApiGenerations in useGeneration.
       generateImage(prompt, settings)
     } else {
       const effectiveVideoSettings = shouldVideoGenerateWithLtxApi
         ? sanitizeForcedApiVideoSettings(settings)
         : settings
-      // Auto-detect: if image is loaded → I2V, otherwise → T2V
       if (!prompt.trim()) return
-      const imagePath = selectedImage ? fileUrlToPath(selectedImage) : null
+      const imagePath = selectedImage ? fileUrlToPath(selectedImage) : (firstFramePath || null)
       const audioPath = selectedAudio ? fileUrlToPath(selectedAudio) : null
       if (audioPath) effectiveVideoSettings.model = 'pro'
-      generate(prompt, imagePath, effectiveVideoSettings, audioPath)
+      generate(prompt, imagePath, effectiveVideoSettings, audioPath, lastFramePath)
     }
   }
   
@@ -150,6 +175,10 @@ export function Playground() {
     setPrompt('')
     setSelectedImage(null)
     setSelectedAudio(null)
+    setFirstFrameUrl(null)
+    setFirstFramePath(null)
+    setLastFrameUrl(null)
+    setLastFramePath(null)
     const baseDefaults = { ...DEFAULT_SETTINGS }
     const shouldSanitizeVideoSettings = shouldVideoGenerateWithLtxApi && mode !== 'text-to-image'
     setSettings(shouldSanitizeVideoSettings ? sanitizeForcedApiVideoSettings(baseDefaults) : baseDefaults)
@@ -242,17 +271,45 @@ export function Playground() {
               />
             )}
 
+            {/* First / Last Frame Slots */}
+            {isVideoMode && !isRetakeMode && (
+              <div className="grid grid-cols-2 gap-3">
+                <FrameSlot
+                  label="First Frame"
+                  imageUrl={firstFrameUrl}
+                  onImageSet={(url, path) => { setFirstFrameUrl(url); setFirstFramePath(path) }}
+                  disabled={isBusy}
+                />
+                <FrameSlot
+                  label="Last Frame"
+                  imageUrl={lastFrameUrl}
+                  onImageSet={(url, path) => { setLastFrameUrl(url); setLastFramePath(path) }}
+                  disabled={isBusy}
+                />
+              </div>
+            )}
+
             {/* Prompt Input */}
-            <Textarea
-              label="Prompt"
-              placeholder="Write a prompt..."
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              helperText="Longer, detailed prompts lead to better, more accurate results."
-              charCount={prompt.length}
-              maxChars={5000}
-              disabled={isBusy}
-            />
+            <div className="relative">
+              <Textarea
+                label="Prompt"
+                placeholder="Write a prompt..."
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                helperText="Longer, detailed prompts lead to better, more accurate results."
+                charCount={prompt.length}
+                maxChars={5000}
+                disabled={isBusy}
+              />
+              <button
+                onClick={handleEnhancePrompt}
+                disabled={!prompt.trim() || isEnhancing || isBusy}
+                className="absolute top-7 right-2 p-1.5 rounded-md text-zinc-500 hover:text-amber-400 hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Enhance prompt with AI"
+              >
+                <Wand2 className={`h-4 w-4 ${isEnhancing ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
 
             {/* Settings */}
             {!isRetakeMode && (

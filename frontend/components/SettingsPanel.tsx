@@ -81,12 +81,13 @@ export function SettingsPanel({
             onChange={(e) => handleChange('imageAspectRatio', e.target.value)}
             disabled={disabled}
           >
-            <option value="1:1">1:1 (Square)</option>
-            <option value="16:9">16:9 (Landscape)</option>
-            <option value="9:16">9:16 (Portrait)</option>
-            <option value="4:3">4:3 (Standard)</option>
-            <option value="3:4">3:4 (Portrait Standard)</option>
-            <option value="21:9">21:9 (Cinematic)</option>
+            <option value="1:1">1:1 — Square</option>
+            <option value="16:9">16:9 — YouTube</option>
+            <option value="9:16">9:16 — TikTok / Reels</option>
+            <option value="4:3">4:3 — Standard</option>
+            <option value="3:4">3:4 — Portrait</option>
+            <option value="4:5">4:5 — Instagram Post</option>
+            <option value="21:9">21:9 — Cinematic</option>
           </Select>
 
           <Select
@@ -99,6 +100,27 @@ export function SettingsPanel({
             <option value={8}>Balanced</option>
             <option value={12}>High</option>
           </Select>
+        </div>
+
+        {/* Variations Slider */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-medium text-zinc-400">Variations</label>
+            <span className="text-xs text-zinc-500">{settings.variations || 1}</span>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={12}
+            value={settings.variations || 1}
+            onChange={(e) => handleChange('variations', parseInt(e.target.value))}
+            disabled={disabled}
+            className="w-full h-1.5 bg-zinc-700 rounded-full appearance-none cursor-pointer accent-blue-500"
+          />
+          <div className="flex justify-between text-[10px] text-zinc-600">
+            <span>1</span>
+            <span>12</span>
+          </div>
         </div>
       </div>
     )
@@ -179,11 +201,11 @@ export function SettingsPanel({
         disabled={disabled}
       >
         {hasAudio ? (
-          <option value="16:9">16:9 Landscape</option>
+          <option value="16:9">16:9 — YouTube / Landscape</option>
         ) : (
           <>
-            <option value="16:9">16:9 Landscape</option>
-            <option value="9:16">9:16 Portrait</option>
+            <option value="16:9">16:9 — YouTube / Landscape</option>
+            <option value="9:16">9:16 — TikTok / Reels / Shorts</option>
           </>
         )}
       </Select>
