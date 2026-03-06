@@ -30,8 +30,8 @@ LTX Desktop is an open-source desktop app for generating videos with LTX models 
 
 | Platform / hardware | Generation mode | Notes |
 | --- | --- | --- |
-| Windows + CUDA GPU with **≥32GB VRAM** | Local generation | Downloads model weights locally |
-| Windows (no CUDA, <32GB VRAM, or unknown VRAM) | API-only | **LTX API key required** |
+| Windows + CUDA GPU with **≥1GB VRAM** | Local generation | Downloads model weights locally |
+| Windows (no CUDA or unknown VRAM) | API-only | **LTX API key required** |
 | macOS (Apple Silicon builds) | API-only | **LTX API key required** |
 | Linux | Not officially supported | No official builds |
 
@@ -42,7 +42,7 @@ In API-only mode, available resolutions/durations may be limited to what the API
 ### Windows (local generation)
 
 - Windows 10/11 (x64)
-- NVIDIA GPU with CUDA support and **≥32GB VRAM** (more is better)
+- NVIDIA GPU with CUDA support and **≥1GB VRAM** (more is better)
 - 16GB+ RAM (32GB recommended)
 - Plenty of free disk space for model weights and outputs
 
