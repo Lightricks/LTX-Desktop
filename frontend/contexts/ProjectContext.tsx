@@ -42,6 +42,12 @@ interface ProjectContextType {
   openProject: (id: string) => void
   goHome: () => void
   openPlayground: () => void
+  openGallery: () => void
+  openCharacters: () => void
+  openStyles: () => void
+  openReferences: () => void
+  openWildcards: () => void
+  openPromptLibrary: () => void
   
   // Cross-view communication (editor → gen space)
   genSpaceEditImageUrl: string | null
@@ -481,6 +487,30 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const openPlayground = useCallback(() => {
     setCurrentView('playground')
   }, [])
+
+  const openGallery = useCallback(() => {
+    setCurrentView('gallery')
+  }, [])
+
+  const openCharacters = useCallback(() => {
+    setCurrentView('characters')
+  }, [])
+
+  const openStyles = useCallback(() => {
+    setCurrentView('styles')
+  }, [])
+
+  const openReferences = useCallback(() => {
+    setCurrentView('references')
+  }, [])
+
+  const openWildcards = useCallback(() => {
+    setCurrentView('wildcards')
+  }, [])
+
+  const openPromptLibrary = useCallback(() => {
+    setCurrentView('prompt-library')
+  }, [])
   
   return (
     <ProjectContext.Provider value={{
@@ -513,6 +543,12 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       openProject,
       goHome,
       openPlayground,
+      openGallery,
+      openCharacters,
+      openStyles,
+      openReferences,
+      openWildcards,
+      openPromptLibrary,
       genSpaceEditImageUrl,
       setGenSpaceEditImageUrl,
       genSpaceEditMode,

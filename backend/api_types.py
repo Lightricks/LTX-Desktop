@@ -261,6 +261,32 @@ class QueueSubmitResponse(BaseModel):
 
 
 # ============================================================
+# Gallery Models
+# ============================================================
+
+GalleryAssetType = Literal["image", "video"]
+
+
+class GalleryAsset(BaseModel):
+    id: str
+    filename: str
+    path: str
+    url: str
+    type: GalleryAssetType
+    size_bytes: int
+    created_at: str
+    model_name: str | None = None
+
+
+class GalleryListResponse(BaseModel):
+    items: list[GalleryAsset]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+
+
+# ============================================================
 # Request Models
 # ============================================================
 
@@ -351,3 +377,190 @@ class IcLoraGenerateRequest(BaseModel):
     cfg_guidance_scale: float = 1.0
     negative_prompt: str = ""
     images: list[IcLoraImageInput] = Field(default_factory=_default_ic_lora_images)
+
+
+# ============================================================
+# Receive Job (from Palette)
+# ============================================================
+
+
+class ReceiveJobSettings(BaseModel):
+    resolution: str = "512p"
+    duration: str = "2"
+    fps: str = "24"
+    aspect_ratio: Literal["16:9", "9:16"] = "16:9"
+
+
+class ReceiveJobRequest(BaseModel):
+    prompt: NonEmptyPrompt
+    model: str = "ltx-fast"
+    settings: ReceiveJobSettings = Field(default_factory=ReceiveJobSettings)
+    character_id: str | None = None
+    first_frame_url: str | None = None
+    last_frame_url: str | None = None
+    priority: int = 0
+
+
+class ReceiveJobResponse(BaseModel):
+    id: str
+    status: str
+
+
+# ============================================================
+# Contact Sheet
+# ============================================================
+
+
+class GenerateContactSheetRequest(BaseModel):
+    reference_image_path: str
+    subject_description: NonEmptyPrompt
+    style: str = ""
+
+
+class GenerateContactSheetResponse(BaseModel):
+    job_ids: list[str]
+
+
+# ============================================================
+# Style Guide Grid
+# ============================================================
+
+
+class GenerateStyleGuideRequest(BaseModel):
+    style_name: NonEmptyPrompt
+    style_description: str = ""
+    reference_image_path: str | None = None
+
+
+class GenerateStyleGuideResponse(BaseModel):
+    job_ids: list[str]
+
+
+# ============================================================
+# Library Models (Characters, Styles, References)
+# ============================================================
+
+LibraryReferenceCategory = Literal["people", "places", "props", "other"]
+
+
+class CharacterCreate(BaseModel):
+    name: str
+    role: str = ""
+    description: str = ""
+    reference_image_paths: list[str] = Field(default_factory=list)
+
+
+class CharacterUpdate(BaseModel):
+    name: str | None = None
+    role: str | None = None
+    description: str | None = None
+    reference_image_paths: list[str] | None = None
+
+
+class CharacterResponse(BaseModel):
+    id: str
+    name: str
+    role: str
+    description: str
+    reference_image_paths: list[str]
+    created_at: str
+
+
+class CharacterListResponse(BaseModel):
+    characters: list[CharacterResponse]
+
+
+class StyleCreate(BaseModel):
+    name: str
+    description: str = ""
+    reference_image_path: str = ""
+
+
+class StyleResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+    reference_image_path: str
+    created_at: str
+
+
+class StyleListResponse(BaseModel):
+    styles: list[StyleResponse]
+
+
+class ReferenceCreate(BaseModel):
+    name: str
+    category: LibraryReferenceCategory
+    image_path: str = ""
+
+
+class ReferenceResponse(BaseModel):
+    id: str
+    name: str
+    category: LibraryReferenceCategory
+    image_path: str
+    created_at: str
+
+
+class ReferenceListResponse(BaseModel):
+    references: list[ReferenceResponse]
+
+
+# ============================================================
+# Prompt Library Models
+# ============================================================
+
+
+class SavedPromptResponse(BaseModel):
+    id: str
+    text: str
+    tags: list[str]
+    category: str
+    used_count: int
+    created_at: str
+    last_used_at: str | None
+
+
+class PromptListResponse(BaseModel):
+    prompts: list[SavedPromptResponse]
+
+
+class SavePromptRequest(BaseModel):
+    text: NonEmptyPrompt
+    tags: list[str] = Field(default_factory=list)
+    category: str = ""
+
+
+class IncrementUsageResponse(BaseModel):
+    status: str
+    used_count: int
+
+
+class WildcardResponse(BaseModel):
+    id: str
+    name: str
+    values: list[str]
+    created_at: str
+
+
+class WildcardListResponse(BaseModel):
+    wildcards: list[WildcardResponse]
+
+
+class CreateWildcardRequest(BaseModel):
+    name: str = Field(min_length=1)
+    values: list[str] = Field(min_length=1)
+
+
+class UpdateWildcardRequest(BaseModel):
+    values: list[str] = Field(min_length=1)
+
+
+class ExpandWildcardsRequest(BaseModel):
+    prompt: NonEmptyPrompt
+    mode: Literal["all", "random"] = "random"
+    count: int = Field(default=1, ge=1, le=1000)
+
+
+class ExpandWildcardsResponse(BaseModel):
+    expanded: list[str]

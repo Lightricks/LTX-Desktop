@@ -22,6 +22,12 @@ from _routes.queue import router as queue_router
 from _routes.runtime_policy import router as runtime_policy_router
 from _routes.settings import router as settings_router
 from _routes.sync import router as sync_router
+from _routes.receive_job import router as receive_job_router
+from _routes.contact_sheet import router as contact_sheet_router
+from _routes.style_guide import router as style_guide_router
+from _routes.gallery import router as gallery_router
+from _routes.library import router as library_router
+from _routes.prompts import router as prompts_router
 from logging_policy import log_http_error, log_unhandled_exception
 from state import init_state_service
 
@@ -82,5 +88,11 @@ def create_app(
     app.include_router(runtime_policy_router)
     app.include_router(queue_router)
     app.include_router(sync_router)
+    app.include_router(receive_job_router)
+    app.include_router(contact_sheet_router)
+    app.include_router(style_guide_router)
+    app.include_router(gallery_router)
+    app.include_router(library_router)
+    app.include_router(prompts_router)
 
     return app

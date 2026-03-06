@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Folder, FolderOpen, MoreVertical, Trash2, Pencil, Sparkles } from 'lucide-react'
+import { Plus, Folder, FolderOpen, MoreVertical, Trash2, Pencil, Sparkles, Image, UserCircle, Palette, ImageIcon, Braces, BookOpen } from 'lucide-react'
 import { useProjects } from '../contexts/ProjectContext'
 import { LtxLogo } from '../components/LtxLogo'
 import { Button } from '../components/ui/button'
@@ -113,7 +113,7 @@ function ProjectCard({ project, onOpen, onDelete, onRename, onSetAssetFolder }: 
 }
 
 export function Home() {
-  const { projects, createProject, deleteProject, renameProject, updateProject, openProject, openPlayground } = useProjects()
+  const { projects, createProject, deleteProject, renameProject, updateProject, openProject, openPlayground, openGallery, openCharacters, openStyles, openReferences, openWildcards, openPromptLibrary } = useProjects()
   const [isCreating, setIsCreating] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectAssetPath, setNewProjectAssetPath] = useState('')
@@ -180,17 +180,18 @@ export function Home() {
           <LtxLogo className="h-6 w-auto text-white" />
         </div>
         
-        <nav className="flex-1 px-3">
+        <nav className="flex-1 px-3 overflow-y-auto">
           <button className="w-full px-3 py-2 rounded-lg bg-zinc-800 text-white text-left text-sm font-medium flex items-center gap-2">
             <Folder className="h-4 w-4" />
             Home
           </button>
-          
+
+          {/* CREATE */}
           <div className="mt-6">
             <h4 className="px-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
-              Quick Actions
+              Create
             </h4>
-            <button 
+            <button
               onClick={openPlayground}
               className="w-full px-3 py-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white text-left text-sm flex items-center gap-2 transition-colors"
             >
@@ -198,24 +199,79 @@ export function Home() {
               Playground
             </button>
           </div>
-          
-          {projects.length > 0 && (
-            <div className="mt-6">
-              <h4 className="px-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
-                Recent Projects
-              </h4>
-              {projects.slice(0, 5).map(project => (
-                <button
-                  key={project.id}
-                  onClick={() => openProject(project.id)}
-                  className="w-full px-3 py-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white text-left text-sm flex items-center gap-2 transition-colors truncate"
-                >
-                  <Folder className="h-4 w-4 flex-shrink-0" />
-                  <span className="truncate">{project.name}</span>
-                </button>
-              ))}
-            </div>
-          )}
+
+          {/* EDIT */}
+          <div className="mt-5">
+            <h4 className="px-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+              Edit
+            </h4>
+            {projects.slice(0, 5).map(project => (
+              <button
+                key={project.id}
+                onClick={() => openProject(project.id)}
+                className="w-full px-3 py-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white text-left text-sm flex items-center gap-2 transition-colors truncate"
+              >
+                <Folder className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">{project.name}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* LIBRARY */}
+          <div className="mt-5">
+            <h4 className="px-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+              Library
+            </h4>
+            <button
+              onClick={openGallery}
+              className="w-full px-3 py-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white text-left text-sm flex items-center gap-2 transition-colors"
+            >
+              <Image className="h-4 w-4" />
+              Gallery
+            </button>
+            <button
+              onClick={openCharacters}
+              className="w-full px-3 py-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white text-left text-sm flex items-center gap-2 transition-colors"
+            >
+              <UserCircle className="h-4 w-4" />
+              Characters
+            </button>
+            <button
+              onClick={openStyles}
+              className="w-full px-3 py-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white text-left text-sm flex items-center gap-2 transition-colors"
+            >
+              <Palette className="h-4 w-4" />
+              Styles
+            </button>
+            <button
+              onClick={openReferences}
+              className="w-full px-3 py-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white text-left text-sm flex items-center gap-2 transition-colors"
+            >
+              <ImageIcon className="h-4 w-4" />
+              References
+            </button>
+          </div>
+
+          {/* TOOLS */}
+          <div className="mt-5">
+            <h4 className="px-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+              Tools
+            </h4>
+            <button
+              onClick={openWildcards}
+              className="w-full px-3 py-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white text-left text-sm flex items-center gap-2 transition-colors"
+            >
+              <Braces className="h-4 w-4" />
+              Wildcards
+            </button>
+            <button
+              onClick={openPromptLibrary}
+              className="w-full px-3 py-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white text-left text-sm flex items-center gap-2 transition-colors"
+            >
+              <BookOpen className="h-4 w-4" />
+              Prompt Library
+            </button>
+          </div>
         </nav>
         
         <div className="p-4 border-t border-zinc-800">

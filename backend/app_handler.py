@@ -21,8 +21,14 @@ from handlers import (
     TextHandler,
     VideoGenerationHandler,
 )
+from handlers.gallery_handler import GalleryHandler
+from handlers.library_handler import LibraryHandler
 from runtime_config.runtime_config import RuntimeConfig
+from handlers.contact_sheet_handler import ContactSheetHandler
 from handlers.enhance_prompt_handler import EnhancePromptHandler
+from handlers.prompt_handler import PromptHandler
+from handlers.receive_job_handler import ReceiveJobHandler
+from handlers.style_guide_handler import StyleGuideHandler
 from handlers.sync_handler import SyncHandler
 from services.interfaces import (
     A2VPipeline,
@@ -233,10 +239,31 @@ class AppHandler:
             palette_sync_client=palette_sync_client,
         )
 
+        self.gallery = GalleryHandler(outputs_dir=config.outputs_dir)
+
         self.downloads.cleanup_downloading_dir()
 
         from state.job_queue import JobQueue
         self.job_queue = JobQueue(persistence_path=config.settings_file.parent / "job_queue.json")
+
+        from state.library_store import LibraryStore
+        library_store = LibraryStore(config.settings_file.parent / "library")
+        self.library = LibraryHandler(store=library_store)
+
+        self.prompts = PromptHandler(
+            state=self.state,
+            lock=self._lock,
+            store_path=config.settings_file.parent / "prompt_store.json",
+        )
+
+        self.receive_job_handler = ReceiveJobHandler(
+            state=self.state,
+            http=http,
+            job_queue=self.job_queue,
+        )
+
+        self.contact_sheet = ContactSheetHandler(job_queue=self.job_queue)
+        self.style_guide = StyleGuideHandler(job_queue=self.job_queue)
 
         self.models.refresh_available_files()
 

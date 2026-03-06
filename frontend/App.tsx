@@ -9,6 +9,12 @@ import { logger } from './lib/logger'
 import { Home } from './views/Home'
 import { Project } from './views/Project'
 import { Playground } from './views/Playground'
+import { Gallery } from './views/Gallery'
+import { Characters } from './views/Characters'
+import { Styles } from './views/Styles'
+import { References } from './views/References'
+import { Wildcards } from './views/Wildcards'
+import { PromptLibrary } from './views/PromptLibrary'
 import { LaunchGate } from './components/FirstRunSetup'
 import { PythonSetup } from './components/PythonSetup'
 import { SettingsModal, type SettingsTabId } from './components/SettingsModal'
@@ -431,6 +437,18 @@ function AppContent() {
         return <Project />
       case 'playground':
         return <Playground />
+      case 'gallery':
+        return <Gallery />
+      case 'characters':
+        return <Characters />
+      case 'styles':
+        return <Styles />
+      case 'references':
+        return <References />
+      case 'wildcards':
+        return <Wildcards />
+      case 'prompt-library':
+        return <PromptLibrary />
       default:
         return <Home />
     }
