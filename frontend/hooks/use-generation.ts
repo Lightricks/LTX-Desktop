@@ -133,12 +133,14 @@ export function useGeneration(): UseGenerationReturn {
         const data: { jobs: QueueJob[] } = await res.json()
         const jobs: QueueJob[] = data.jobs
 
-        // Determine if any job is still running / queued
-        const hasRunning = jobs.some(j => j.status === 'queued' || j.status === 'running')
-
         // Derive progress from the most-recently active job
         const activeId = activeJobIdRef.current
         const activeJob = activeId ? jobs.find(j => j.id === activeId) : null
+
+        // Only consider *our* active job as running — stale/other jobs shouldn't block the UI
+        const hasRunning = activeJob
+          ? (activeJob.status === 'queued' || activeJob.status === 'running')
+          : false
 
         setState(prev => {
           const next = { ...prev, jobs }
