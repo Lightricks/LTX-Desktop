@@ -484,7 +484,10 @@ export function LaunchGate({
                   />
                   <button
                     onClick={async () => {
-                      // Would open folder dialog in real implementation
+                      const dir = await window.electronAPI?.showOpenDirectoryDialog({ title: 'Select Model Installation Folder' })
+                      if (dir) {
+                        setInstallPath(dir)
+                      }
                     }}
                     style={{
                       padding: '10px 28px',
