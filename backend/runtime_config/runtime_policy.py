@@ -13,7 +13,7 @@ def decide_force_api_generations(system: str, cuda_available: bool, vram_gb: int
             return True
         if vram_gb is None:
             return True
-        return vram_gb < 31
+        return vram_gb < 20
 
     # Fail closed for non-target platforms unless explicitly relaxed.
     return True

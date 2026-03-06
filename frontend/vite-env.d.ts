@@ -24,7 +24,7 @@ interface Window {
     fetchLicenseText: () => Promise<string>
     getNoticesText: () => Promise<string>
     openLtxApiKeyPage: () => Promise<boolean>
-    openFalApiKeyPage: () => Promise<boolean>
+    openReplicateApiKeyPage: () => Promise<boolean>
     openParentFolderOfFile: (filePath: string) => Promise<void>
     showItemInFolder: (filePath: string) => Promise<void>
     getLogs: () => Promise<LogsResponse>

@@ -19,7 +19,9 @@ class TestGetSettings:
         assert data["loadOnStartup"] is False
         assert data["hasLtxApiKey"] is False
         assert data["userPrefersLtxApiVideoGenerations"] is False
-        assert data["hasFalApiKey"] is False
+        assert data["hasReplicateApiKey"] is False
+        assert data["imageModel"] == "z-image-turbo"
+        assert data["videoModel"] == "ltx-fast"
         assert data["useLocalTextEncoder"] is False
         assert data["fastModel"] == {"useUpscaler": True}
         assert data["proModel"] == {"steps": 20, "useUpscaler": True}
@@ -30,7 +32,7 @@ class TestGetSettings:
         assert data["seedLocked"] is False
         assert data["lockedSeed"] == 42
         assert "ltxApiKey" not in data
-        assert "falApiKey" not in data
+        assert "replicateApiKey" not in data
         assert "geminiApiKey" not in data
 
     def test_reflects_changed_settings(self, client, test_state):
@@ -107,13 +109,13 @@ class TestPostSettings:
             json={
                 "ltxApiKey": "ltx-key-abc",
                 "geminiApiKey": "gemini-key-xyz",
-                "falApiKey": "fal-key-123",
+                "replicateApiKey": "rep-key-123",
             },
         )
         assert r.status_code == 200
         assert test_state.state.app_settings.ltx_api_key == "ltx-key-abc"
         assert test_state.state.app_settings.gemini_api_key == "gemini-key-xyz"
-        assert test_state.state.app_settings.fal_api_key == "fal-key-123"
+        assert test_state.state.app_settings.replicate_api_key == "rep-key-123"
 
     def test_update_user_prefers_api_video_generations(self, client, test_state):
         r = client.post("/api/settings", json={"userPrefersLtxApiVideoGenerations": True})
@@ -122,11 +124,11 @@ class TestPostSettings:
 
     def test_empty_string_does_not_erase_key(self, client, test_state):
         test_state.state.app_settings.ltx_api_key = "real-key"
-        test_state.state.app_settings.fal_api_key = "fal-key"
-        r = client.post("/api/settings", json={"ltxApiKey": "", "falApiKey": ""})
+        test_state.state.app_settings.replicate_api_key = "rep-key"
+        r = client.post("/api/settings", json={"ltxApiKey": "", "replicateApiKey": ""})
         assert r.status_code == 200
         assert test_state.state.app_settings.ltx_api_key == "real-key"
-        assert test_state.state.app_settings.fal_api_key == "fal-key"
+        assert test_state.state.app_settings.replicate_api_key == "rep-key"
 
     def test_omitted_key_does_not_erase_key(self, client, test_state):
         test_state.state.app_settings.ltx_api_key = "real-key"
@@ -137,6 +139,16 @@ class TestPostSettings:
     def test_unknown_field_rejected(self, client):
         r = client.post("/api/settings", json={"unknownSetting": True})
         assert r.status_code == 422
+
+
+class TestVideoModel:
+    def test_video_model_roundtrips(self, client, test_state):
+        resp = client.post("/api/settings", json={"videoModel": "seedance-1.5-pro"})
+        assert resp.status_code == 200
+        assert test_state.state.app_settings.video_model == "seedance-1.5-pro"
+
+        get_resp = client.get("/api/settings")
+        assert get_resp.json()["videoModel"] == "seedance-1.5-pro"
 
 
 class TestSettingsPersistence:
@@ -151,7 +163,8 @@ class TestSettingsPersistence:
             text_encoder=fake_services.text_encoder,
             task_runner=fake_services.task_runner,
             ltx_api_client=fake_services.ltx_api_client,
-            zit_api_client=fake_services.zit_api_client,
+            image_api_client=fake_services.image_api_client,
+            video_api_client=fake_services.video_api_client,
             fast_video_pipeline_class=type(fake_services.fast_video_pipeline),
             image_generation_pipeline_class=type(fake_services.image_generation_pipeline),
             ic_lora_pipeline_class=type(fake_services.ic_lora_pipeline),

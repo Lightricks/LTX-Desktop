@@ -237,6 +237,29 @@ class ErrorResponse(BaseModel):
     message: str | None = None
 
 
+class QueueJobResponse(BaseModel):
+    id: str
+    type: str
+    model: str
+    params: dict[str, object] = {}
+    status: str
+    slot: str
+    progress: int
+    phase: str
+    result_paths: list[str] = []
+    error: str | None = None
+    created_at: str = ""
+
+
+class QueueStatusResponse(BaseModel):
+    jobs: list[QueueJobResponse]
+
+
+class QueueSubmitResponse(BaseModel):
+    id: str
+    status: str
+
+
 # ============================================================
 # Request Models
 # ============================================================
@@ -262,6 +285,12 @@ class GenerateImageRequest(BaseModel):
     height: int = 1024
     numSteps: int = 4
     numImages: int = 1
+
+
+class QueueSubmitRequest(BaseModel):
+    type: Literal["video", "image"]
+    model: str
+    params: dict[str, object] = {}
 
 
 class ModelDownloadRequest(BaseModel):

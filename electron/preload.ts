@@ -30,7 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Open specific app pages / folders
   openLtxApiKeyPage: (): Promise<boolean> => ipcRenderer.invoke('open-ltx-api-key-page'),
-  openFalApiKeyPage: (): Promise<boolean> => ipcRenderer.invoke('open-fal-api-key-page'),
+  openReplicateApiKeyPage: (): Promise<boolean> => ipcRenderer.invoke('open-replicate-api-key-page'),
   openParentFolderOfFile: (filePath: string): Promise<void> => ipcRenderer.invoke('open-parent-folder-of-file', filePath),
   
   // Reveal a specific file in the OS file manager (Explorer/Finder)

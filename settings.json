@@ -3,7 +3,9 @@
   "use_torch_compile": false,
   "load_on_startup": false,
   "ltx_api_key": "",
-  "fal_api_key": "",
+  "replicate_api_key": "",
+  "image_model": "z-image-turbo",
+  "video_model": "ltx-fast",
   "fast_model": {
     "steps": 8,
     "use_upscaler": true

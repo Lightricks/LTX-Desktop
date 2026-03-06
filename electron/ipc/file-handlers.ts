@@ -70,9 +70,9 @@ export function registerFileHandlers(): void {
     return true
   })
 
-  ipcMain.handle('open-fal-api-key-page', async () => {
+  ipcMain.handle('open-replicate-api-key-page', async () => {
     const { shell } = await import('electron')
-    await shell.openExternal('https://fal.ai/dashboard/keys')
+    await shell.openExternal('https://replicate.com/account/api-tokens')
     return true
   })
 

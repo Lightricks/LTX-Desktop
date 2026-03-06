@@ -17,6 +17,7 @@ from _routes.image_gen import router as image_gen_router
 from _routes.models import router as models_router
 from _routes.suggest_gap_prompt import router as suggest_gap_prompt_router
 from _routes.retake import router as retake_router
+from _routes.queue import router as queue_router
 from _routes.runtime_policy import router as runtime_policy_router
 from _routes.settings import router as settings_router
 from logging_policy import log_http_error, log_unhandled_exception
@@ -76,5 +77,6 @@ def create_app(
     app.include_router(retake_router)
     app.include_router(ic_lora_router)
     app.include_router(runtime_policy_router)
+    app.include_router(queue_router)
 
     return app

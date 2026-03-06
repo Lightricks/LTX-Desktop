@@ -25,8 +25,9 @@ from runtime_config.runtime_config import RuntimeConfig
 from services.interfaces import (
     A2VPipeline,
     FastVideoPipeline,
-    ZitAPIClient,
+    ImageAPIClient,
     ImageGenerationPipeline,
+    VideoAPIClient,
     GpuCleaner,
     GpuInfo,
     HTTPClient,
@@ -57,7 +58,8 @@ class AppHandler:
         text_encoder: TextEncoder,
         task_runner: TaskRunner,
         ltx_api_client: LTXAPIClient,
-        zit_api_client: ZitAPIClient,
+        image_api_client: ImageAPIClient,
+        video_api_client: VideoAPIClient,
         fast_video_pipeline_class: type[FastVideoPipeline],
         image_generation_pipeline_class: type[ImageGenerationPipeline],
         ic_lora_pipeline_class: type[IcLoraPipeline],
@@ -75,7 +77,8 @@ class AppHandler:
         self.video_processor = video_processor
         self.task_runner = task_runner
         self.ltx_api_client = ltx_api_client
-        self.zit_api_client = zit_api_client
+        self.image_api_client = image_api_client
+        self.video_api_client = video_api_client
         self.fast_video_pipeline_class = fast_video_pipeline_class
         self.image_generation_pipeline_class = image_generation_pipeline_class
         self.ic_lora_pipeline_class = ic_lora_pipeline_class
@@ -170,7 +173,7 @@ class AppHandler:
             pipelines_handler=self.pipelines,
             outputs_dir=config.outputs_dir,
             config=config,
-            zit_api_client=zit_api_client,
+            image_api_client=image_api_client,
         )
 
         self.health = HealthHandler(
@@ -215,7 +218,20 @@ class AppHandler:
         )
 
         self.downloads.cleanup_downloading_dir()
+
+        from state.job_queue import JobQueue
+        self.job_queue = JobQueue(persistence_path=config.settings_file.parent / "job_queue.json")
+
         self.models.refresh_available_files()
+
+    def determine_slot(self, model: str) -> str:
+        """Determine whether a job should use the gpu or api slot."""
+        always_api_models = {"seedance-1.5-pro", "nano-banana-2"}
+        if model in always_api_models:
+            return "api"
+        if self.config.force_api_generations:
+            return "api"
+        return "gpu"
 
 
 @dataclass
@@ -228,7 +244,8 @@ class ServiceBundle:
     text_encoder: TextEncoder
     task_runner: TaskRunner
     ltx_api_client: LTXAPIClient
-    zit_api_client: ZitAPIClient
+    image_api_client: ImageAPIClient
+    video_api_client: VideoAPIClient
     fast_video_pipeline_class: type[FastVideoPipeline]
     image_generation_pipeline_class: type[ImageGenerationPipeline]
     ic_lora_pipeline_class: type[IcLoraPipeline]
@@ -240,7 +257,8 @@ class ServiceBundle:
 def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
     """Build real runtime services with lazy heavy imports isolated from tests."""
     from services.fast_video_pipeline.ltx_fast_video_pipeline import LTXFastVideoPipeline
-    from services.zit_api_client.zit_api_client_impl import ZitAPIClientImpl
+    from services.image_api_client.replicate_client_impl import ReplicateImageClientImpl
+    from services.video_api_client.replicate_video_client_impl import ReplicateVideoClientImpl
     from services.gpu_cleaner.torch_cleaner import TorchCleaner
     from services.gpu_info.gpu_info_impl import GpuInfoImpl
     from services.http_client.http_client_impl import HTTPClientImpl
@@ -270,7 +288,8 @@ def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
         ),
         task_runner=ThreadingRunner(),
         ltx_api_client=LTXAPIClientImpl(http=http, ltx_api_base_url=config.ltx_api_base_url),
-        zit_api_client=ZitAPIClientImpl(http=http),
+        image_api_client=ReplicateImageClientImpl(http=http),
+        video_api_client=ReplicateVideoClientImpl(http=http),
         fast_video_pipeline_class=LTXFastVideoPipeline,
         image_generation_pipeline_class=ZitImageGenerationPipeline,
         ic_lora_pipeline_class=LTXIcLoraPipeline,
@@ -298,7 +317,8 @@ def build_initial_state(
         text_encoder=bundle.text_encoder,
         task_runner=bundle.task_runner,
         ltx_api_client=bundle.ltx_api_client,
-        zit_api_client=bundle.zit_api_client,
+        image_api_client=bundle.image_api_client,
+        video_api_client=bundle.video_api_client,
         fast_video_pipeline_class=bundle.fast_video_pipeline_class,
         image_generation_pipeline_class=bundle.image_generation_pipeline_class,
         ic_lora_pipeline_class=bundle.ic_lora_pipeline_class,

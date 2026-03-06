@@ -254,12 +254,12 @@ class FakeLTXAPIClient:
         return self.retake_result
 
 
-class FakeZitAPIClient:
+class FakeImageAPIClient:
     def __init__(self) -> None:
         self.configured = True
         self.text_to_image_calls: list[dict[str, Any]] = []
         self.raise_on_text_to_image: Exception | None = None
-        self.text_to_image_result = b"fake-zit-api-image"
+        self.text_to_image_result = b"fake-api-image"
 
     def is_configured(self) -> bool:
         return self.configured
@@ -268,6 +268,7 @@ class FakeZitAPIClient:
         self,
         *,
         api_key: str,
+        model: str,
         prompt: str,
         width: int,
         height: int,
@@ -277,6 +278,7 @@ class FakeZitAPIClient:
         self.text_to_image_calls.append(
             {
                 "api_key": api_key,
+                "model": model,
                 "prompt": prompt,
                 "width": width,
                 "height": height,
@@ -287,6 +289,37 @@ class FakeZitAPIClient:
         if self.raise_on_text_to_image is not None:
             raise self.raise_on_text_to_image
         return self.text_to_image_result
+
+
+class FakeVideoAPIClient:
+    def __init__(self) -> None:
+        self.text_to_video_calls: list[dict[str, Any]] = []
+        self.raise_on_text_to_video: Exception | None = None
+        self.text_to_video_result = b"fake-seedance-video"
+
+    def generate_text_to_video(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        prompt: str,
+        duration: int,
+        resolution: str,
+        aspect_ratio: str,
+        generate_audio: bool,
+    ) -> bytes:
+        self.text_to_video_calls.append({
+            "api_key": api_key,
+            "model": model,
+            "prompt": prompt,
+            "duration": duration,
+            "resolution": resolution,
+            "aspect_ratio": aspect_ratio,
+            "generate_audio": generate_audio,
+        })
+        if self.raise_on_text_to_video is not None:
+            raise self.raise_on_text_to_video
+        return self.text_to_video_result
 
 
 class FakeModelDownloader:
@@ -753,7 +786,8 @@ class FakeServices:
     text_encoder: FakeTextEncoder = field(default_factory=FakeTextEncoder)
     task_runner: FakeTaskRunner = field(default_factory=FakeTaskRunner)
     ltx_api_client: FakeLTXAPIClient = field(default_factory=FakeLTXAPIClient)
-    zit_api_client: FakeZitAPIClient = field(default_factory=FakeZitAPIClient)
+    image_api_client: FakeImageAPIClient = field(default_factory=FakeImageAPIClient)
+    video_api_client: FakeVideoAPIClient = field(default_factory=FakeVideoAPIClient)
     fast_video_pipeline: FakeFastVideoPipeline = field(default_factory=FakeFastVideoPipeline)
     image_generation_pipeline: FakeImageGenerationPipeline = field(default_factory=FakeImageGenerationPipeline)
     ic_lora_pipeline: FakeIcLoraPipeline = field(default_factory=FakeIcLoraPipeline)

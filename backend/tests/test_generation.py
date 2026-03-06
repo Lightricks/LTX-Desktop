@@ -1091,9 +1091,9 @@ class TestGenerateImage:
 
 
 class TestForcedApiGenerateImage:
-    def test_generate_image_routes_to_zit_api(self, client, test_state, fake_services):
+    def test_generate_image_routes_to_api(self, client, test_state, fake_services):
         test_state.config.force_api_generations = True
-        test_state.state.app_settings.fal_api_key = "fal-key"
+        test_state.state.app_settings.replicate_api_key = "rep-key"
 
         r = client.post(
             "/api/generate-image",
@@ -1104,22 +1104,35 @@ class TestForcedApiGenerateImage:
         data = r.json()
         assert data["status"] == "complete"
         assert len(data["image_paths"]) == 2
-        assert len(fake_services.zit_api_client.text_to_image_calls) == 2
+        assert len(fake_services.image_api_client.text_to_image_calls) == 2
         assert len(fake_services.image_generation_pipeline.generate_calls) == 0
 
-    def test_generate_image_missing_fal_key(self, client, test_state, fake_services):
+    def test_generate_image_passes_model(self, client, test_state, fake_services):
         test_state.config.force_api_generations = True
-        test_state.state.app_settings.fal_api_key = ""
+        test_state.state.app_settings.replicate_api_key = "rep-key"
+        test_state.state.app_settings.image_model = "nano-banana-2"
+
+        r = client.post(
+            "/api/generate-image",
+            json={"prompt": "A cat", "width": 1024, "height": 1024, "numSteps": 4, "numImages": 1},
+        )
+
+        assert r.status_code == 200
+        assert fake_services.image_api_client.text_to_image_calls[0]["model"] == "nano-banana-2"
+
+    def test_generate_image_missing_replicate_key(self, client, test_state, fake_services):
+        test_state.config.force_api_generations = True
+        test_state.state.app_settings.replicate_api_key = ""
 
         r = client.post("/api/generate-image", json={"prompt": "A cat"})
 
         assert r.status_code == 500
-        assert r.json()["error"] == "FAL_API_KEY_NOT_CONFIGURED"
+        assert r.json()["error"] == "REPLICATE_API_KEY_NOT_CONFIGURED"
 
     def test_generate_image_cancelled(self, client, test_state, fake_services):
         test_state.config.force_api_generations = True
-        test_state.state.app_settings.fal_api_key = "fal-key"
-        fake_services.zit_api_client.raise_on_text_to_image = RuntimeError("cancelled")
+        test_state.state.app_settings.replicate_api_key = "rep-key"
+        fake_services.image_api_client.raise_on_text_to_image = RuntimeError("cancelled")
 
         r = client.post("/api/generate-image", json={"prompt": "A cat"})
 

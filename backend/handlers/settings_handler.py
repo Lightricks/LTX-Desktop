@@ -63,7 +63,7 @@ class SettingsHandler(StateHandlerBase):
     def update_settings(self, patch: UpdateSettingsRequest) -> tuple[AppSettings, AppSettings, set[str]]:
         patch_payload = strip_none_values(ensure_json_object(patch.model_dump(by_alias=False, exclude_unset=True)))
 
-        for key_field in ("ltx_api_key", "gemini_api_key", "fal_api_key"):
+        for key_field in ("ltx_api_key", "gemini_api_key", "replicate_api_key"):
             if key_field in patch_payload and patch_payload[key_field] == "":
                 del patch_payload[key_field]
 

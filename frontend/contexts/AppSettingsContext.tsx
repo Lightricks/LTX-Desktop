@@ -14,7 +14,9 @@ export interface AppSettings {
   loadOnStartup: boolean
   hasLtxApiKey: boolean
   userPrefersLtxApiVideoGenerations: boolean
-  hasFalApiKey: boolean
+  hasReplicateApiKey: boolean
+  imageModel: string
+  videoModel: string
   hasGeminiApiKey: boolean
   useLocalTextEncoder: boolean
   fastModel: FastModelSettings
@@ -31,7 +33,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   loadOnStartup: true,
   hasLtxApiKey: false,
   userPrefersLtxApiVideoGenerations: false,
-  hasFalApiKey: false,
+  hasReplicateApiKey: false,
+  imageModel: 'z-image-turbo',
+  videoModel: 'ltx-fast',
   hasGeminiApiKey: false,
   useLocalTextEncoder: false,
   fastModel: { useUpscaler: true },
@@ -52,7 +56,7 @@ interface AppSettingsContextValue {
   updateSettings: (patch: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)) => void
   refreshSettings: () => Promise<void>
   saveLtxApiKey: (value: string) => Promise<void>
-  saveFalApiKey: (value: string) => Promise<void>
+  saveReplicateApiKey: (value: string) => Promise<void>
   saveGeminiApiKey: (value: string) => Promise<void>
   forceApiGenerations: boolean
   shouldVideoGenerateWithLtxApi: boolean
@@ -78,7 +82,9 @@ function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
     loadOnStartup: data.loadOnStartup ?? DEFAULT_APP_SETTINGS.loadOnStartup,
     hasLtxApiKey: data.hasLtxApiKey ?? DEFAULT_APP_SETTINGS.hasLtxApiKey,
     userPrefersLtxApiVideoGenerations: data.userPrefersLtxApiVideoGenerations ?? DEFAULT_APP_SETTINGS.userPrefersLtxApiVideoGenerations,
-    hasFalApiKey: data.hasFalApiKey ?? DEFAULT_APP_SETTINGS.hasFalApiKey,
+    hasReplicateApiKey: data.hasReplicateApiKey ?? DEFAULT_APP_SETTINGS.hasReplicateApiKey,
+    imageModel: data.imageModel ?? DEFAULT_APP_SETTINGS.imageModel,
+    videoModel: data.videoModel ?? DEFAULT_APP_SETTINGS.videoModel,
     hasGeminiApiKey: data.hasGeminiApiKey ?? DEFAULT_APP_SETTINGS.hasGeminiApiKey,
     useLocalTextEncoder: data.useLocalTextEncoder ?? DEFAULT_APP_SETTINGS.useLocalTextEncoder,
     fastModel: data.fastModel ?? DEFAULT_APP_SETTINGS.fastModel,
@@ -212,7 +218,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     if (!backendUrl || !isLoaded || backendProcessStatus !== 'alive') return
     const syncTimer = setTimeout(async () => {
       try {
-        const { hasLtxApiKey: _a, hasFalApiKey: _b, hasGeminiApiKey: _c, ...syncPayload } = settings
+        const { hasLtxApiKey: _a, hasReplicateApiKey: _b, hasGeminiApiKey: _c, ...syncPayload } = settings
         await fetch(`${backendUrl}/api/settings`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -261,16 +267,16 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     await refreshSettings()
   }, [backendUrl, refreshSettings])
 
-  const saveFalApiKey = useCallback(async (value: string) => {
+  const saveReplicateApiKey = useCallback(async (value: string) => {
     if (!backendUrl) return
     const response = await fetch(`${backendUrl}/api/settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ falApiKey: value }),
+      body: JSON.stringify({ replicateApiKey: value }),
     })
     if (!response.ok) {
       const detail = await response.text()
-      throw new Error(detail || 'Failed to save FAL API key.')
+      throw new Error(detail || 'Failed to save Replicate API key.')
     }
     await refreshSettings()
   }, [backendUrl, refreshSettings])
@@ -286,12 +292,12 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       updateSettings,
       refreshSettings,
       saveLtxApiKey,
-      saveFalApiKey,
+      saveReplicateApiKey,
       saveGeminiApiKey,
       forceApiGenerations,
       shouldVideoGenerateWithLtxApi,
     }),
-    [forceApiGenerations, isLoaded, refreshSettings, runtimePolicyLoaded, saveFalApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, updateSettings],
+    [forceApiGenerations, isLoaded, refreshSettings, runtimePolicyLoaded, saveReplicateApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, updateSettings],
   )
 
   return <AppSettingsContext.Provider value={contextValue}>{children}</AppSettingsContext.Provider>

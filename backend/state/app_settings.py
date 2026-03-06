@@ -64,7 +64,9 @@ class AppSettings(SettingsBaseModel):
     load_on_startup: bool = False
     ltx_api_key: str = ""
     user_prefers_ltx_api_video_generations: bool = False
-    fal_api_key: str = ""
+    replicate_api_key: str = ""
+    image_model: str = "z-image-turbo"
+    video_model: str = "ltx-fast"
     use_local_text_encoder: bool = False
     fast_model: FastModelSettings = Field(default_factory=FastModelSettings)
     pro_model: ProModelSettings = Field(default_factory=ProModelSettings)
@@ -135,7 +137,9 @@ class SettingsResponse(SettingsBaseModel):
     load_on_startup: bool = False
     has_ltx_api_key: bool = False
     user_prefers_ltx_api_video_generations: bool = False
-    has_fal_api_key: bool = False
+    has_replicate_api_key: bool = False
+    image_model: str = "z-image-turbo"
+    video_model: str = "ltx-fast"
     use_local_text_encoder: bool = False
     fast_model: FastModelSettings = Field(default_factory=FastModelSettings)
     pro_model: ProModelSettings = Field(default_factory=ProModelSettings)
@@ -150,10 +154,10 @@ class SettingsResponse(SettingsBaseModel):
 def to_settings_response(settings: AppSettings) -> SettingsResponse:
     data = settings.model_dump(by_alias=False)
     ltx_key = data.pop("ltx_api_key", "")
-    fal_key = data.pop("fal_api_key", "")
+    replicate_key = data.pop("replicate_api_key", "")
     gemini_key = data.pop("gemini_api_key", "")
     data["has_ltx_api_key"] = bool(ltx_key)
-    data["has_fal_api_key"] = bool(fal_key)
+    data["has_replicate_api_key"] = bool(replicate_key)
     data["has_gemini_api_key"] = bool(gemini_key)
     return SettingsResponse.model_validate(data)
 

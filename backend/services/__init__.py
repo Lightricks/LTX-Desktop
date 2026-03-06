@@ -2,7 +2,7 @@
 
 from services.interfaces import (
     FastVideoPipeline,
-    ZitAPIClient,
+    ImageAPIClient,
     ImageGenerationPipeline,
     GpuCleaner,
     GpuInfo,
@@ -31,7 +31,7 @@ __all__ = [
     "TextEncoder",
     "VideoPipelineModelType",
     "FastVideoPipeline",
-    "ZitAPIClient",
+    "ImageAPIClient",
     "ImageGenerationPipeline",
     "IcLoraPipeline",
     "IcLoraModelDownloader",

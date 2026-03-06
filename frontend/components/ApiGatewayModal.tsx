@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { KeyRound, X, Zap } from 'lucide-react'
 import { ApiKeyHelperRow, LtxApiKeyInput } from './LtxApiKeyInput'
 
-export type ApiKeyType = 'ltx' | 'fal'
+export type ApiKeyType = 'ltx' | 'replicate'
 
 export interface ApiGatewaySection {
   keyType: ApiKeyType
@@ -32,7 +32,7 @@ const KEY_TYPE_META: Record<ApiKeyType, { icon: typeof Zap; iconClass: string; c
     iconClass: 'text-blue-400',
     chipClass: 'bg-amber-500/10 text-amber-300',
   },
-  fal: {
+  replicate: {
     icon: KeyRound,
     iconClass: 'text-cyan-400',
     chipClass: 'bg-zinc-800 text-zinc-400',
@@ -47,15 +47,15 @@ export function ApiGatewayModal({
   sections,
   blocking = false,
 }: ApiGatewayModalProps) {
-  const [values, setValues] = useState<Record<ApiKeyType, string>>({ ltx: '', fal: '' })
-  const [isSaving, setIsSaving] = useState<Record<ApiKeyType, boolean>>({ ltx: false, fal: false })
-  const [errors, setErrors] = useState<Record<ApiKeyType, string | null>>({ ltx: null, fal: null })
+  const [values, setValues] = useState<Record<ApiKeyType, string>>({ ltx: '', replicate: '' })
+  const [isSaving, setIsSaving] = useState<Record<ApiKeyType, boolean>>({ ltx: false, replicate: false })
+  const [errors, setErrors] = useState<Record<ApiKeyType, string | null>>({ ltx: null, replicate: null })
 
   useEffect(() => {
     if (!isOpen) return
-    setValues({ ltx: '', fal: '' })
-    setIsSaving({ ltx: false, fal: false })
-    setErrors({ ltx: null, fal: null })
+    setValues({ ltx: '', replicate: '' })
+    setIsSaving({ ltx: false, replicate: false })
+    setErrors({ ltx: null, replicate: null })
   }, [isOpen])
 
   const allRequiredConfigured = useMemo(() => {
