@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Loader2, CheckCircle2, Download, Clock, ChevronDown, AlertCircle } from 'lucide-react'
+import { backendFetch } from '../lib/backend'
 import { logger } from '../lib/logger'
 
 interface ModelInfo {
@@ -42,21 +43,13 @@ export function ModelStatusDropdown({ className = '' }: ModelStatusDropdownProps
   const [isOpen, setIsOpen] = useState(false)
   const [modelsStatus, setModelsStatus] = useState<ModelsStatus | null>(null)
   const [downloadProgress, setDownloadProgress] = useState<ModelDownloadProgress | null>(null)
-  const [backendUrl, setBackendUrl] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
-
-  // Fetch backend URL once on mount
-  useEffect(() => {
-    window.electronAPI.getBackendUrl().then(setBackendUrl)
-  }, [])
 
   // Fetch models status periodically
   useEffect(() => {
-    if (!backendUrl) return
-
     const fetchModelsStatus = async () => {
       try {
-        const response = await fetch(`${backendUrl}/api/models/status`)
+        const response = await backendFetch('/api/models/status')
         if (response.ok) {
           setModelsStatus(await response.json())
         }
@@ -68,15 +61,15 @@ export function ModelStatusDropdown({ className = '' }: ModelStatusDropdownProps
     fetchModelsStatus()
     const interval = setInterval(fetchModelsStatus, 5000)
     return () => clearInterval(interval)
-  }, [backendUrl])
+  }, [])
 
   // Poll download progress when downloading
   useEffect(() => {
-    if (!isOpen || !backendUrl) return
+    if (!isOpen) return
 
     const pollProgress = async () => {
       try {
-        const response = await fetch(`${backendUrl}/api/models/download/progress`)
+        const response = await backendFetch('/api/models/download/progress')
         if (response.ok) {
           setDownloadProgress(await response.json())
         }
@@ -88,7 +81,7 @@ export function ModelStatusDropdown({ className = '' }: ModelStatusDropdownProps
     pollProgress()
     const interval = setInterval(pollProgress, 1000)
     return () => clearInterval(interval)
-  }, [isOpen, backendUrl])
+  }, [isOpen])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -135,9 +128,8 @@ export function ModelStatusDropdown({ className = '' }: ModelStatusDropdownProps
   }
 
   const startDownload = async () => {
-    if (!backendUrl) return
     try {
-      await fetch(`${backendUrl}/api/models/download`, {
+      await backendFetch('/api/models/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),

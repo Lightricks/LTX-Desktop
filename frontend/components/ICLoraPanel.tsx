@@ -3,6 +3,7 @@ import {
   X, Play, Pause, Upload, Loader2, Film, Sparkles,
   FolderOpen, ChevronDown, RefreshCw, Settings, Download, Check, AlertCircle,
 } from 'lucide-react'
+import { backendFetch } from '../lib/backend'
 import { logger } from '../lib/logger'
 
 interface ICLoraModel {
@@ -136,8 +137,7 @@ export function ICLoraPanel({
   // Fetch available models
   const fetchModels = useCallback(async () => {
     try {
-      const backendUrl = await window.electronAPI.getBackendUrl()
-      const resp = await fetch(`${backendUrl}/api/ic-lora/list-models`)
+      const resp = await backendFetch('/api/ic-lora/list-models')
       if (resp.ok) {
         const data = await resp.json()
         setModels(data.models || [])
@@ -155,8 +155,7 @@ export function ICLoraPanel({
     if (!inputVideoPath || isExtracting) return
     setIsExtracting(true)
     try {
-      const backendUrl = await window.electronAPI.getBackendUrl()
-      const resp = await fetch(`${backendUrl}/api/ic-lora/extract-conditioning`, {
+      const resp = await backendFetch('/api/ic-lora/extract-conditioning', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -254,8 +253,7 @@ export function ICLoraPanel({
     if (downloadingModels[modelDef.id] === 'downloading') return
     setDownloadingModels(prev => ({ ...prev, [modelDef.id]: 'downloading' }))
     try {
-      const backendUrl = await window.electronAPI.getBackendUrl()
-      const resp = await fetch(`${backendUrl}/api/ic-lora/download-model`, {
+      const resp = await backendFetch('/api/ic-lora/download-model', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: modelDef.id }),
@@ -302,9 +300,8 @@ export function ICLoraPanel({
     setOutputVideoPath(null)
 
     try {
-      const backendUrl = await window.electronAPI.getBackendUrl()
       setGenerationStatus('Generating video with IC-LoRA...')
-      const resp = await fetch(`${backendUrl}/api/ic-lora/generate`, {
+      const resp = await backendFetch('/api/ic-lora/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

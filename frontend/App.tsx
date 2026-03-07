@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, AlertCircle, Settings, FileText } from 'lucide-react'
+import { backendFetch } from './lib/backend'
 import { ProjectProvider, useProjects } from './contexts/ProjectContext'
 import { KeyboardShortcutsProvider } from './contexts/KeyboardShortcutsContext'
 import { AppSettingsProvider, useAppSettings } from './contexts/AppSettingsContext'
@@ -177,8 +178,7 @@ function AppContent() {
     isForcedFirstRun && isLoaded && settings.hasLtxApiKey && !isFinalizingFirstRun && !firstRunFinalizeError
 
   const areRequiredModelsDownloaded = useCallback(async () => {
-    const backendUrl = await window.electronAPI.getBackendUrl()
-    const response = await fetch(`${backendUrl}/api/models/status`)
+    const response = await backendFetch('/api/models/status')
     if (!response.ok) {
       throw new Error(`Model status fetch failed with status ${response.status}`)
     }

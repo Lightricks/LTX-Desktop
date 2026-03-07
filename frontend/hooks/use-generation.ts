@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import type { GenerationSettings } from '../components/SettingsPanel'
+import { backendFetch } from '../lib/backend'
 import { useAppSettings } from '../contexts/AppSettingsContext'
 
 interface GenerationState {
@@ -127,9 +128,6 @@ export function useGeneration(): UseGenerationReturn {
     let shouldApplyPollingUpdates = true
 
     try {
-      // Get backend URL from Electron
-      const backendUrl = await window.electronAPI.getBackendUrl()
-
       // Prepare JSON body
       const body: Record<string, unknown> = {
         prompt,
@@ -157,11 +155,11 @@ export function useGeneration(): UseGenerationReturn {
       const pollProgress = async () => {
         if (!shouldApplyPollingUpdates) return
         try {
-          const res = await fetch(`${backendUrl}/api/generation/progress`)
+          const res = await backendFetch('/api/generation/progress')
           if (res.ok) {
             const data: GenerationProgress = await res.json()
             if (!shouldApplyPollingUpdates) return
-            
+
             let displayProgress = data.progress
             let statusMessage = getPhaseMessage(data.phase)
             
@@ -199,7 +197,7 @@ export function useGeneration(): UseGenerationReturn {
       progressInterval = setInterval(pollProgress, 500)
 
       // Start generation (HTTP POST - synchronous, returns when done)
-      const response = await fetch(`${backendUrl}/api/generate`, {
+      const response = await backendFetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -267,11 +265,8 @@ export function useGeneration(): UseGenerationReturn {
     
     // Also tell the backend to cancel
     try {
-      const backendUrl = await window.electronAPI.getBackendUrl()
-      await fetch(`${backendUrl}/api/generate/cancel`, {
-        method: 'POST',
-      })
-    } catch (e) {
+      await backendFetch('/api/generate/cancel', { method: 'POST' })
+    } catch {
       // Ignore errors from cancel request
     }
     
@@ -288,8 +283,7 @@ export function useGeneration(): UseGenerationReturn {
   ) => {
     if (forceApiGenerations) {
       try {
-        const backendUrl = await window.electronAPI.getBackendUrl()
-        const response = await fetch(`${backendUrl}/api/settings`)
+        const response = await backendFetch('/api/settings')
         if (response.ok) {
           const payload = await response.json()
           if (!payload?.hasFalApiKey) {
@@ -336,8 +330,6 @@ export function useGeneration(): UseGenerationReturn {
     abortControllerRef.current = new AbortController()
 
     try {
-      const backendUrl = await window.electronAPI.getBackendUrl()
-
       // Skip prompt enhancement for T2I - use original prompt directly
       const finalPrompt = prompt
 
@@ -347,7 +339,7 @@ export function useGeneration(): UseGenerationReturn {
       // Poll for progress
       const pollProgress = async () => {
         try {
-          const res = await fetch(`${backendUrl}/api/generation/progress`)
+          const res = await backendFetch('/api/generation/progress')
           if (res.ok) {
             const data = await res.json()
             const currentImage = data.currentStep || 0
@@ -373,7 +365,7 @@ export function useGeneration(): UseGenerationReturn {
       
       const progressInterval = setInterval(pollProgress, 500)
 
-      const response = await fetch(`${backendUrl}/api/generate-image`, {
+      const response = await backendFetch('/api/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

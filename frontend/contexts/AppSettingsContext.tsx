@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { backendFetch, resetBackendCredentials } from '../lib/backend'
 
 export interface InferenceSettings {
   steps: number
@@ -95,23 +96,18 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS)
   const [isLoaded, setIsLoaded] = useState(false)
   const [runtimePolicyLoaded, setRuntimePolicyLoaded] = useState(false)
-  const [backendUrl, setBackendUrl] = useState<string | null>(null)
   const [forceApiGenerations, setForceApiGenerations] = useState(true)
   const [backendProcessStatus, setBackendProcessStatus] = useState<BackendProcessStatus | null>(null)
 
   useEffect(() => {
-    window.electronAPI.getBackendUrl().then(setBackendUrl).catch(() => setBackendUrl(null))
-  }, [])
-
-  useEffect(() => {
-    if (!backendUrl || backendProcessStatus !== 'alive') return
+    if (backendProcessStatus !== 'alive') return
 
     let cancelled = false
     setRuntimePolicyLoaded(false)
 
     const fetchRuntimePolicy = async () => {
       try {
-        const response = await fetch(`${backendUrl}/api/runtime-policy`)
+        const response = await backendFetch('/api/runtime-policy')
         if (!response.ok) {
           throw new Error(`Runtime policy fetch failed with status ${response.status}`)
         }
@@ -141,7 +137,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [backendProcessStatus, backendUrl])
+  }, [backendProcessStatus])
 
   useEffect(() => {
     let cancelled = false
@@ -150,6 +146,9 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       const nextStatus = toBackendProcessStatus(value)
       if (!nextStatus || cancelled) {
         return
+      }
+      if (nextStatus === 'alive') {
+        resetBackendCredentials()
       }
       setBackendProcessStatus(nextStatus)
     }
@@ -173,18 +172,17 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const refreshSettings = useCallback(async () => {
-    if (!backendUrl) return
-    const response = await fetch(`${backendUrl}/api/settings`)
+    const response = await backendFetch('/api/settings')
     if (!response.ok) {
       throw new Error(`Settings fetch failed with status ${response.status}`)
     }
     const data = await response.json()
     setSettings(normalizeAppSettings(data))
     setIsLoaded(true)
-  }, [backendUrl])
+  }, [])
 
   useEffect(() => {
-    if (!backendUrl || isLoaded || backendProcessStatus !== 'alive') return
+    if (isLoaded || backendProcessStatus !== 'alive') return
 
     let cancelled = false
     let retryTimer: ReturnType<typeof setTimeout> | null = null
@@ -206,14 +204,14 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       cancelled = true
       if (retryTimer) clearTimeout(retryTimer)
     }
-  }, [backendProcessStatus, backendUrl, isLoaded, refreshSettings])
+  }, [backendProcessStatus, isLoaded, refreshSettings])
 
   useEffect(() => {
-    if (!backendUrl || !isLoaded || backendProcessStatus !== 'alive') return
+    if (!isLoaded || backendProcessStatus !== 'alive') return
     const syncTimer = setTimeout(async () => {
       try {
         const { hasLtxApiKey: _a, hasFalApiKey: _b, hasGeminiApiKey: _c, ...syncPayload } = settings
-        await fetch(`${backendUrl}/api/settings`, {
+        await backendFetch('/api/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(syncPayload),
@@ -223,7 +221,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       }
     }, 150)
     return () => clearTimeout(syncTimer)
-  }, [backendProcessStatus, backendUrl, isLoaded, settings])
+  }, [backendProcessStatus, isLoaded, settings])
 
   const updateSettings = useCallback((patch: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)) => {
     if (typeof patch === 'function') {
@@ -234,8 +232,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const saveLtxApiKey = useCallback(async (value: string) => {
-    if (!backendUrl) return
-    const response = await fetch(`${backendUrl}/api/settings`, {
+    const response = await backendFetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ltxApiKey: value }),
@@ -245,11 +242,10 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       throw new Error(detail || 'Failed to save LTX API key.')
     }
     await refreshSettings()
-  }, [backendUrl, refreshSettings])
+  }, [refreshSettings])
 
   const saveGeminiApiKey = useCallback(async (value: string) => {
-    if (!backendUrl) return
-    const response = await fetch(`${backendUrl}/api/settings`, {
+    const response = await backendFetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ geminiApiKey: value }),
@@ -259,11 +255,10 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       throw new Error(detail || 'Failed to save Gemini API key.')
     }
     await refreshSettings()
-  }, [backendUrl, refreshSettings])
+  }, [refreshSettings])
 
   const saveFalApiKey = useCallback(async (value: string) => {
-    if (!backendUrl) return
-    const response = await fetch(`${backendUrl}/api/settings`, {
+    const response = await backendFetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ falApiKey: value }),
@@ -273,7 +268,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       throw new Error(detail || 'Failed to save FAL API key.')
     }
     await refreshSettings()
-  }, [backendUrl, refreshSettings])
+  }, [refreshSettings])
 
   const shouldVideoGenerateWithLtxApi =
     forceApiGenerations || (settings.userPrefersLtxApiVideoGenerations && settings.hasLtxApiKey)

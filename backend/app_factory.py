@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import base64
+import hmac
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.responses import Response as StarletteResponse
 
 from _routes._errors import HTTPError
 from _routes.generation import router as generation_router
@@ -36,6 +40,7 @@ def create_app(
     handler: "AppHandler",
     allowed_origins: list[str] | None = None,
     title: str = "LTX-2 Video Generation Server",
+    auth_token: str = "",
 ) -> FastAPI:
     """Create a configured FastAPI app bound to the provided handler."""
     init_state_service(handler)
@@ -47,6 +52,37 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def _auth_middleware(  # pyright: ignore[reportUnusedFunction]
+        request: Request,
+        call_next: Callable[[Request], Awaitable[StarletteResponse]],
+    ) -> StarletteResponse:
+        if not auth_token:
+            return await call_next(request)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        def _token_matches(candidate: str) -> bool:
+            return hmac.compare_digest(candidate, auth_token)
+
+        # WebSocket: check query param
+        if request.headers.get("upgrade", "").lower() == "websocket":
+            if _token_matches(request.query_params.get("token", "")):
+                return await call_next(request)
+            return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        # HTTP: Bearer or Basic auth
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer ") and _token_matches(auth_header[7:]):
+            return await call_next(request)
+        if auth_header.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(auth_header[6:]).decode()
+                _, _, password = decoded.partition(":")
+                if _token_matches(password):
+                    return await call_next(request)
+            except Exception:
+                pass
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
     async def _route_http_error_handler(request: Request, exc: Exception) -> JSONResponse:
         if isinstance(exc, HTTPError):

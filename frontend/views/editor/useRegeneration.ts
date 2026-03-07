@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import type { Asset, TimelineClip } from '../../types/project'
 import type { GenerationSettings } from '../../components/SettingsPanel'
 import { copyToAssetFolder } from '../../lib/asset-copy'
+import { backendFetch } from '../../lib/backend'
 import { fileUrlToPath } from '../../lib/url-to-path'
 import { sanitizeForcedApiVideoSettings } from '../../lib/api-video-options'
 import { logger } from '../../lib/logger'
@@ -204,8 +205,7 @@ export function useRegeneration(params: UseRegenerationParams) {
 
         if (framePath) {
           // Ask Gemini to describe the frame
-          const backendUrl = await window.electronAPI.getBackendUrl()
-          const resp = await fetch(`${backendUrl}/api/suggest-gap-prompt`, {
+          const resp = await backendFetch('/api/suggest-gap-prompt', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

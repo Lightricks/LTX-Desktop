@@ -2,6 +2,7 @@ import { AlertCircle, Check, Download, Film, Info, KeyRound, Settings, Sliders, 
 import React, { useEffect, useRef, useState } from 'react'
 import { Button } from './ui/button'
 import { useAppSettings, type AppSettings } from '../contexts/AppSettingsContext'
+import { backendFetch } from '../lib/backend'
 import { logger } from '../lib/logger'
 import { ApiKeyHelperRow, LtxApiKeyInput, LtxApiKeyHelperRow } from './LtxApiKeyInput'
 
@@ -82,8 +83,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
 
     const fetchStatus = async () => {
       try {
-        const backendUrl = await window.electronAPI.getBackendUrl()
-        const response = await fetch(`${backendUrl}/api/models/status`)
+        const response = await backendFetch('/api/models/status')
         if (response.ok) {
           const data = await response.json()
           setTextEncoderStatus(data.text_encoder_status)
@@ -104,8 +104,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     setIsDownloading(true)
     setDownloadError(null)
     try {
-      const backendUrl = await window.electronAPI.getBackendUrl()
-      const response = await fetch(`${backendUrl}/api/text-encoder/download`, { method: 'POST' })
+      const response = await backendFetch('/api/text-encoder/download', { method: 'POST' })
       const data = await response.json()
 
       if (data.status === 'already_downloaded') {
@@ -114,7 +113,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       // Poll for completion
       const pollInterval = setInterval(async () => {
         try {
-          const statusRes = await fetch(`${backendUrl}/api/models/status`)
+          const statusRes = await backendFetch('/api/models/status')
           if (statusRes.ok) {
             const statusData = await statusRes.json()
             setTextEncoderStatus(statusData.text_encoder_status)

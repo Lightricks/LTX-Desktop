@@ -3,8 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 // Expose protected methods to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Get the backend URL
-  getBackendUrl: (): Promise<string> => ipcRenderer.invoke('get-backend-url'),
+  // Get the backend URL and auth token
+  getBackend: (): Promise<{ url: string; token: string }> => ipcRenderer.invoke('get-backend'),
   
   // Get the path where models are stored
   getModelsPath: (): Promise<string> => ipcRenderer.invoke('get-models-path'),
@@ -136,7 +136,7 @@ interface BackendHealthStatus {
 declare global {
   interface Window {
     electronAPI: {
-      getBackendUrl: () => Promise<string>
+      getBackend: () => Promise<{ url: string; token: string }>
       getModelsPath: () => Promise<string>
       readLocalFile: (filePath: string) => Promise<{ data: string; mimeType: string }>
       checkGpu: () => Promise<{ available: boolean; name?: string; vram?: number }>

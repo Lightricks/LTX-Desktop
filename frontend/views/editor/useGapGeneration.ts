@@ -3,6 +3,7 @@ import type { TimelineClip, Track, SubtitleClip, Asset } from '../../types/proje
 import { DEFAULT_COLOR_CORRECTION } from '../../types/project'
 import type { GenerationSettings } from '../../components/SettingsPanel'
 import { copyToAssetFolder } from '../../lib/asset-copy'
+import { backendFetch } from '../../lib/backend'
 import { fileUrlToPath } from '../../lib/url-to-path'
 
 export interface UseGapGenerationParams {
@@ -453,8 +454,7 @@ export function useGapGeneration({
         }
       }
       
-      const backendUrl = await window.electronAPI.getBackendUrl()
-      const response = await fetch(`${backendUrl}/api/suggest-gap-prompt`, {
+      const response = await backendFetch('/api/suggest-gap-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

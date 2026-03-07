@@ -2,8 +2,6 @@ import { app } from 'electron'
 import path from 'path'
 import os from 'os'
 
-export const PYTHON_PORT = 8000
-export const BACKEND_BASE_URL = `http://localhost:${PYTHON_PORT}`
 export const isDev = !app.isPackaged
 
 // Get directory - works in both CJS and ESM contexts

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { backendFetch, backendWsUrl, resetBackendCredentials } from '../lib/backend'
 import { logger } from '../lib/logger'
 
 interface BackendStatus {
@@ -65,9 +66,8 @@ export function useBackend(): UseBackendReturn {
 
   const checkHealth = useCallback(async (): Promise<boolean> => {
     try {
-      const backendUrl = await window.electronAPI.getBackendUrl()
-      logger.info(`Checking backend health at: ${backendUrl}`)
-      const response = await fetch(`${backendUrl}/health`)
+      logger.info('Checking backend health...')
+      const response = await backendFetch('/health')
 
       if (response.ok) {
         const data = await response.json()
@@ -92,8 +92,7 @@ export function useBackend(): UseBackendReturn {
 
   const fetchModels = useCallback(async () => {
     try {
-      const backendUrl = await window.electronAPI.getBackendUrl()
-      const response = await fetch(`${backendUrl}/api/models`)
+      const response = await backendFetch('/api/models')
 
       if (response.ok) {
         const data = await response.json()
@@ -106,10 +105,8 @@ export function useBackend(): UseBackendReturn {
 
   const downloadModel = useCallback(async (modelId: string) => {
     try {
-      const backendUrl = await window.electronAPI.getBackendUrl()
-
       // Connect to WebSocket for download progress
-      const wsUrl = backendUrl.replace('http://', 'ws://') + `/ws/download/${modelId}`
+      const wsUrl = await backendWsUrl(`/ws/download/${modelId}`)
       const ws = new WebSocket(wsUrl)
 
       ws.onmessage = (event) => {
@@ -130,7 +127,7 @@ export function useBackend(): UseBackendReturn {
       }
 
       // Trigger download
-      await fetch(`${backendUrl}/api/models/${modelId}/download`, {
+      await backendFetch(`/api/models/${modelId}/download`, {
         method: 'POST',
       })
     } catch (err) {
@@ -142,6 +139,8 @@ export function useBackend(): UseBackendReturn {
     setProcessStatus(payload.status)
 
     if (payload.status === 'alive') {
+      // Reset cached credentials so the new port/token are fetched
+      resetBackendCredentials()
       const healthy = await checkHealth()
       if (healthy) {
         await fetchModels()
