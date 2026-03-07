@@ -213,7 +213,7 @@ export function registerFileHandlers(): void {
 
   ipcMain.handle('ensure-directory', async (_event, dirPath: string) => {
     try {
-      validatePath(dirPath, getAllowedRoots())
+      approvePath(dirPath)
       if (!fs.existsSync(dirPath)) {
         fs.mkdirSync(dirPath, { recursive: true })
       }
