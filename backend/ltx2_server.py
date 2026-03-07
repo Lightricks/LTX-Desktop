@@ -153,7 +153,7 @@ MODELS_DIR = APP_DATA_DIR / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 PROJECT_ROOT = Path(__file__).parent.parent
-OUTPUTS_DIR = Path(__file__).parent / "outputs"
+OUTPUTS_DIR = APP_DATA_DIR / "outputs"
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 logger.info(f"Models directory: {MODELS_DIR}")
