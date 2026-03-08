@@ -3,9 +3,20 @@ import path from 'path'
 import os from 'os'
 import { getProjectAssetsPath } from './app-state'
 
-export const PYTHON_PORT = parseInt(process.env.LTX_PORT || '8000', 10)
-export const BACKEND_BASE_URL = `http://localhost:${PYTHON_PORT}`
+let pythonPort = parseInt(process.env.LTX_PORT || '8000', 10)
 export const isDev = !app.isPackaged
+
+export function getPythonPort(): number {
+  return pythonPort
+}
+
+export function setPythonPort(port: number): void {
+  pythonPort = port
+}
+
+export function getBackendBaseUrl(): string {
+  return `http://localhost:${pythonPort}`
+}
 
 // Get directory - works in both CJS and ESM contexts
 export function getCurrentDir(): string {

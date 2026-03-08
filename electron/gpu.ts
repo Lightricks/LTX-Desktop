@@ -1,5 +1,5 @@
 import { execSync } from 'child_process'
-import { BACKEND_BASE_URL } from './config'
+import { getBackendBaseUrl } from './config'
 import { logger } from './logger'
 import { getPythonPath } from './python-backend'
 
@@ -7,7 +7,7 @@ import { getPythonPath } from './python-backend'
 export async function checkGPU(): Promise<{ available: boolean; name?: string; vram?: number }> {
   try {
     // Try to get GPU info from the backend API first (more reliable)
-    const response = await fetch(`${BACKEND_BASE_URL}/api/gpu-info`, {
+    const response = await fetch(`${getBackendBaseUrl()}/api/gpu-info`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     })

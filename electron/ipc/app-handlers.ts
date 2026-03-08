@@ -1,7 +1,7 @@
 import { app, ipcMain } from 'electron'
 import path from 'path'
 import fs from 'fs'
-import { BACKEND_BASE_URL } from '../config'
+import { getBackendBaseUrl } from '../config'
 import { checkGPU } from '../gpu'
 import { isPythonReady, downloadPythonEmbed } from '../python-setup'
 import { getBackendHealthStatus, startPythonBackend } from '../python-backend'
@@ -69,7 +69,7 @@ function markLicenseAccepted(settingsPath: string): void {
 
 export function registerAppHandlers(): void {
   ipcMain.handle('get-backend-url', () => {
-    return BACKEND_BASE_URL
+    return getBackendBaseUrl()
   })
 
   ipcMain.handle('get-models-path', () => {

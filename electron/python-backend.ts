@@ -1,8 +1,9 @@
 import { ChildProcess, spawn } from 'child_process'
 import fs from 'fs'
+import net from 'net'
 import path from 'path'
 import { getAppDataDir } from './app-paths'
-import { BACKEND_BASE_URL, getCurrentDir, isDev, PYTHON_PORT } from './config'
+import { getBackendBaseUrl, getCurrentDir, getPythonPort, isDev, setPythonPort } from './config'
 import { logger, writeLog } from './logger'
 import { getPythonDir } from './python-setup'
 import { getMainWindow } from './window'
@@ -53,11 +54,41 @@ function isPortConflictOutput(output: string): boolean {
   )
 }
 
+async function canBindToPort(port: number): Promise<boolean> {
+  return await new Promise((resolve) => {
+    const server = net.createServer()
+
+    server.once('error', () => {
+      resolve(false)
+    })
+
+    server.once('listening', () => {
+      server.close(() => resolve(true))
+    })
+
+    server.listen(port, '127.0.0.1')
+  })
+}
+
+async function selectAvailableBackendPort(startPort: number, maxOffsets = 25): Promise<number> {
+  for (let offset = 0; offset <= maxOffsets; offset += 1) {
+    const candidate = startPort + offset
+    if (candidate > 65535) {
+      break
+    }
+    if (await canBindToPort(candidate)) {
+      return candidate
+    }
+  }
+
+  return startPort
+}
+
 async function probeBackendHealth(timeoutMs = 1500): Promise<boolean> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const response = await fetch(`${BACKEND_BASE_URL}/health`, {
+    const response = await fetch(`${getBackendBaseUrl()}/health`, {
       signal: controller.signal,
     })
     return response.ok
@@ -72,7 +103,7 @@ async function requestAdoptedBackendShutdown(timeoutMs = 2000): Promise<boolean>
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const response = await fetch(`${BACKEND_BASE_URL}/api/system/shutdown`, {
+    const response = await fetch(`${getBackendBaseUrl()}/api/system/shutdown`, {
       method: 'POST',
       signal: controller.signal,
     })
@@ -201,12 +232,20 @@ export async function startPythonBackend(): Promise<void> {
 
   isIntentionalShutdown = false
 
+  const preferredPort = getPythonPort()
+  const selectedPort = await selectAvailableBackendPort(preferredPort)
+  if (selectedPort !== preferredPort) {
+    logger.warn(`Backend port ${preferredPort} unavailable, switching to ${selectedPort}`)
+    setPythonPort(selectedPort)
+  }
+  logger.info(`Backend base URL: ${getBackendBaseUrl()}`)
+
   startPromise = new Promise((resolve, reject) => {
     const pythonPath = getPythonPath()
     const backendPath = getBackendPath()
     const mainPy = path.join(backendPath, 'ltx2_server.py')
 
-    logger.info(`Starting Python backend: ${pythonPath} ${mainPy}`)
+    logger.info(`Starting Python backend: ${pythonPath} ${mainPy} (port=${getPythonPort()})`)
 
     // Windows embedded Python's ._pth file suppresses normal sys.path setup —
     // the script's directory isn't added, so sibling packages (e.g. state/)
@@ -225,7 +264,7 @@ export async function startPythonBackend(): Promise<void> {
         ...process.env,
         PYTHONUNBUFFERED: '1',
         PYTHONNOUSERSITE: '1',
-        LTX_PORT: String(PYTHON_PORT),
+        LTX_PORT: String(getPythonPort()),
         LTX_APP_DATA_DIR: getAppDataDir(),
         PYTORCH_ENABLE_MPS_FALLBACK: '1',
         // Set PYTHONHOME for bundled Python on macOS so it finds its stdlib
@@ -239,6 +278,18 @@ export async function startPythonBackend(): Promise<void> {
     let started = false
     let startupSettled = false
     let sawPortConflict = false
+    const recentStartupOutput: string[] = []
+
+    const pushStartupOutput = (stream: 'stdout' | 'stderr', line: string) => {
+      const trimmed = line.trim()
+      if (!trimmed) {
+        return
+      }
+      recentStartupOutput.push(`[${stream}] ${trimmed}`)
+      if (recentStartupOutput.length > 60) {
+        recentStartupOutput.shift()
+      }
+    }
 
     const settleResolve = () => {
       if (startupSettled) return
@@ -272,6 +323,7 @@ export async function startPythonBackend(): Promise<void> {
       for (const line of output.split('\n')) {
         const trimmed = line.trimEnd()
         if (trimmed) writeLog('INFO', 'Backend', trimmed)
+        pushStartupOutput('stdout', line)
       }
       checkStarted(output)
     })
@@ -282,6 +334,7 @@ export async function startPythonBackend(): Promise<void> {
       for (const line of output.split('\n')) {
         const trimmed = line.trimEnd()
         if (trimmed) writeLog('ERROR', 'Backend', trimmed)
+        pushStartupOutput('stderr', line)
       }
       checkStarted(output)
     })
@@ -320,7 +373,9 @@ export async function startPythonBackend(): Promise<void> {
 
         backendOwnership = null
         publishBackendHealthStatus({ status: 'dead', exitCode: code })
-        settleReject(new Error(`Python backend exited during startup with code ${code}`))
+        const recentOutput = recentStartupOutput.slice(-12).join(' | ')
+        const detail = recentOutput ? `; recent output: ${recentOutput}` : ''
+        settleReject(new Error(`Python backend exited during startup with code ${code}${detail}`))
         return
       }
 

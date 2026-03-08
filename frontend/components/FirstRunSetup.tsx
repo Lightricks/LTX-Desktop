@@ -165,6 +165,17 @@ export function LaunchGate({
             setDownloadError(progress.error || 'Download failed.')
           } else if (progress.status === 'complete') {
             setTimeout(() => setCurrentStep('complete'), 600)
+          } else if (progress.status === 'idle') {
+            // No download is running — models may already be present
+            try {
+              const statusResp = await fetch(`${backendUrl}/api/models/status`)
+              if (statusResp.ok) {
+                const statusData = await statusResp.json()
+                if (statusData.all_downloaded) {
+                  setTimeout(() => setCurrentStep('complete'), 600)
+                }
+              }
+            } catch { /* ignore transient fetch errors */ }
           }
         }
       } catch (e) {
@@ -193,6 +204,21 @@ export function LaunchGate({
         } catch (e) {
           logger.error(`Failed to save API key: ${e}`)
         }
+      }
+
+      // Check if all required models are already downloaded
+      try {
+        const statusResp = await fetch(`${backendUrl}/api/models/status`)
+        if (statusResp.ok) {
+          const statusData = await statusResp.json()
+          if (statusData.all_downloaded) {
+            logger.info('All required models already downloaded, skipping download step')
+            setTimeout(() => setCurrentStep('complete'), 600)
+            return
+          }
+        }
+      } catch (e) {
+        logger.error(`Failed to check model status: ${e}`)
       }
 
       // Start download - skip text encoder if API key is provided
