@@ -18,12 +18,23 @@ Ok "uv   $(uv --version)"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectDir = Split-Path -Parent $ScriptDir
 
-# ── npm install ─────────────────────────────────────────────────────
+# ── pnpm install ────────────────────────────────────────────────────
+if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+    Write-Host "pnpm not found — installing via corepack..."
+    corepack enable
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "corepack failed, trying npm install..."
+        npm install -g pnpm@10.30.3
+        if ($LASTEXITCODE -ne 0) { Fail "Could not install pnpm" }
+    }
+    Ok "pnpm installed"
+}
+
 Write-Host "`nInstalling Node dependencies..."
 Set-Location $ProjectDir
-npm install
-if ($LASTEXITCODE -ne 0) { Fail "npm install failed" }
-Ok "npm install complete"
+pnpm install
+if ($LASTEXITCODE -ne 0) { Fail "pnpm install failed" }
+Ok "pnpm install complete"
 
 # ── uv sync ─────────────────────────────────────────────────────────
 Write-Host "`nSetting up Python backend venv..."
@@ -52,6 +63,6 @@ if (Get-Command ffmpeg -ErrorAction SilentlyContinue) {
 
 Write-Host ""
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-Write-Host "  Setup complete! Run the app with:  npm run dev" -ForegroundColor Cyan
-Write-Host "  Debug mode (with debugpy):         npm run dev:debug" -ForegroundColor Cyan
+Write-Host "  Setup complete! Run the app with:  pnpm dev" -ForegroundColor Cyan
+Write-Host "  Debug mode (with debugpy):         pnpm dev:debug" -ForegroundColor Cyan
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan

@@ -46,7 +46,10 @@ function isPortConflictOutput(output: string): boolean {
   return (
     normalizedOutput.includes('address already in use') ||
     normalizedOutput.includes('eaddrinuse') ||
-    normalizedOutput.includes('errno 48')
+    normalizedOutput.includes('errno 48') ||
+    normalizedOutput.includes('winerror 10013') ||
+    normalizedOutput.includes('errno 10013') ||
+    normalizedOutput.includes('errno 10048')
   )
 }
 

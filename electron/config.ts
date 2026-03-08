@@ -3,7 +3,7 @@ import path from 'path'
 import os from 'os'
 import { getProjectAssetsPath } from './app-state'
 
-export const PYTHON_PORT = 8000
+export const PYTHON_PORT = parseInt(process.env.LTX_PORT || '8000', 10)
 export const BACKEND_BASE_URL = `http://localhost:${PYTHON_PORT}`
 export const isDev = !app.isPackaged
 
