@@ -53,7 +53,7 @@ export interface ParsedTimeline {
   audioTrackCount: number
   mediaRefs: ParsedMediaRef[]
   clips: ParsedClip[]
-  format: 'fcp7xml' | 'fcpxml' | 'unknown'
+  format: 'fcp7xml' | 'fcpxml' | 'edl' | 'unknown'
 }
 
 // ─── Helper: decode pathurl to local file path ─────────────────────────────
@@ -884,67 +884,261 @@ function parseFcpXml(doc: Document): ParsedTimeline | null {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CMX 3600 EDL Parser (DaVinci Resolve, Premiere Pro, Avid)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Parse a timecode string "HH:MM:SS:FF" into seconds at the given fps.
+ * Handles both drop-frame (;) and non-drop-frame (:) separators.
+ */
+function parseTimecode(tc: string, fps: number): number {
+  // Normalize separator: accept ; or :
+  const parts = tc.trim().replace(/;/g, ':').split(':')
+  if (parts.length !== 4) return 0
+  const [hh, mm, ss, ff] = parts.map(Number)
+  return hh * 3600 + mm * 60 + ss + ff / fps
+}
+
+function parseEdl(content: string, filename: string): ParsedTimeline | null {
+  const lines = content.split(/\r?\n/)
+
+  // Parse header
+  let title = filename.replace(/\.edl$/i, '')
+  let dropFrame = false
+
+  for (const line of lines) {
+    const titleMatch = line.match(/^TITLE:\s*(.+)/i)
+    if (titleMatch) {
+      title = titleMatch[1].trim()
+      continue
+    }
+    const fcmMatch = line.match(/^FCM:\s*(.+)/i)
+    if (fcmMatch) {
+      dropFrame = fcmMatch[1].trim().toUpperCase().includes('DROP')
+      continue
+    }
+  }
+
+  // Default to 24fps for non-drop, 29.97 for drop-frame
+  const fps = dropFrame ? 29.97 : 24
+
+  // Parse edit events
+  // CMX 3600 format:
+  // NNN  REEL  TRACK  TRANS  SRC_IN  SRC_OUT  REC_IN  REC_OUT
+  // Followed by optional comment lines starting with *
+  const editRegex = /^(\d{3})\s+(\S+)\s+([VBAB12]+\d*)\s+([CDWK]\S*)\s+(\d{2}[;:][\d;:]+)\s+(\d{2}[;:][\d;:]+)\s+(\d{2}[;:][\d;:]+)\s+(\d{2}[;:][\d;:]+)/
+
+  interface EdlEvent {
+    editNumber: number
+    reel: string
+    trackType: string
+    transition: string
+    srcIn: string
+    srcOut: string
+    recIn: string
+    recOut: string
+    clipName: string
+    speed?: number  // from M2 lines
+    comments: string[]
+  }
+
+  const events: EdlEvent[] = []
+  let currentEvent: EdlEvent | null = null
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+
+    // Edit decision line
+    const editMatch = trimmed.match(editRegex)
+    if (editMatch) {
+      currentEvent = {
+        editNumber: parseInt(editMatch[1]),
+        reel: editMatch[2],
+        trackType: editMatch[3],
+        transition: editMatch[4],
+        srcIn: editMatch[5],
+        srcOut: editMatch[6],
+        recIn: editMatch[7],
+        recOut: editMatch[8],
+        clipName: '',
+        comments: [],
+      }
+      events.push(currentEvent)
+      continue
+    }
+
+    // M2 (motion/speed) line: M2  REEL  SPEED  SRC_IN
+    const m2Match = trimmed.match(/^M2\s+(\S+)\s+([-\d.]+)\s+/)
+    if (m2Match && currentEvent) {
+      const speedVal = parseFloat(m2Match[2])
+      if (speedVal !== 0) {
+        // M2 speed is in fps — positive = forward, negative = reverse
+        // Speed multiplier = M2_fps / timeline_fps
+        currentEvent.speed = Math.abs(speedVal) / fps
+      }
+      continue
+    }
+
+    // Comment lines
+    if (trimmed.startsWith('*') && currentEvent) {
+      currentEvent.comments.push(trimmed)
+
+      // FROM CLIP NAME: (DaVinci Resolve, Premiere Pro)
+      const clipNameMatch = trimmed.match(/\*\s*FROM CLIP NAME:\s*(.+)/i)
+      if (clipNameMatch) {
+        currentEvent.clipName = clipNameMatch[1].trim()
+      }
+
+      // SOURCE FILE: (alternative clip name format)
+      const srcFileMatch = trimmed.match(/\*\s*SOURCE FILE:\s*(.+)/i)
+      if (srcFileMatch && !currentEvent.clipName) {
+        currentEvent.clipName = srcFileMatch[1].trim()
+      }
+    }
+  }
+
+  if (events.length === 0) return null
+
+  // Build media refs and clips
+  const mediaRefs = new Map<string, ParsedMediaRef>()
+  const clips: ParsedClip[] = []
+
+  for (const evt of events) {
+    // Skip BL (black) reels
+    if (evt.reel === 'BL' || evt.reel === 'AX' && !evt.clipName) continue
+
+    // Use clip name as the key (or reel + edit number as fallback)
+    const clipName = evt.clipName || `${evt.reel}_${evt.editNumber}`
+    const mediaRefId = clipName
+
+    // Create media ref if not already present
+    if (!mediaRefs.has(mediaRefId)) {
+      const type = detectMediaType(clipName)
+      mediaRefs.set(mediaRefId, {
+        id: mediaRefId,
+        name: clipName,
+        pathUrl: clipName, // EDL doesn't include full paths
+        resolvedPath: '',  // Must be relinked by user
+        duration: 0,
+        type,
+        found: false,
+      })
+    }
+
+    const recIn = parseTimecode(evt.recIn, fps)
+    const recOut = parseTimecode(evt.recOut, fps)
+    const srcIn = parseTimecode(evt.srcIn, fps)
+    const srcOut = parseTimecode(evt.srcOut, fps)
+
+    // Determine track type
+    const isAudio = evt.trackType.startsWith('A') || evt.trackType === 'B'
+    const isVideoAndAudio = evt.trackType === 'B'
+
+    clips.push({
+      name: clipName,
+      mediaRefId,
+      trackIndex: 0,
+      trackType: isAudio && !isVideoAndAudio ? 'audio' : 'video',
+      startTime: recIn,
+      duration: recOut - recIn,
+      sourceIn: srcIn,
+      sourceOut: srcOut,
+      speed: evt.speed && evt.speed !== 1 ? evt.speed : undefined,
+    })
+  }
+
+  const totalDuration = Math.max(...clips.map(c => c.startTime + c.duration), 0)
+
+  return {
+    name: title,
+    fps,
+    duration: totalDuration,
+    videoTrackCount: 1,
+    audioTrackCount: 0,
+    mediaRefs: Array.from(mediaRefs.values()),
+    clips,
+    format: 'edl',
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Public API
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type ImportFormat = 'fcp7xml' | 'fcpxml' | 'aaf' | 'unknown'
+export type ImportFormat = 'fcp7xml' | 'fcpxml' | 'edl' | 'aaf' | 'unknown'
 
 export function detectFormat(content: string, filename: string): ImportFormat {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
-  
+
   if (ext === 'aaf') return 'aaf'
-  
+  if (ext === 'edl') return 'edl'
+
   // Check XML content
   if (content.includes('<xmeml') || content.includes('<!DOCTYPE xmeml')) return 'fcp7xml'
   if (content.includes('<fcpxml')) return 'fcpxml'
-  
+
   if (ext === 'fcpxml') return 'fcpxml'
   if (ext === 'xml') return 'fcp7xml' // default XML to FCP7
-  
+
+  // Detect EDL by content (TITLE: header or FCM: line)
+  if (/^TITLE:/m.test(content) || /^FCM:/m.test(content)) return 'edl'
+
   return 'unknown'
 }
 
-export function parseTimelineXml(content: string, filename: string): ParsedTimeline | null {
+/**
+ * Parse a timeline file. Supports FCP 7 XML, FCPXML, and CMX 3600 EDL.
+ */
+export function parseTimeline(content: string, filename: string): ParsedTimeline | null {
   const format = detectFormat(content, filename)
-  
+
   if (format === 'aaf') {
     throw new Error(
-      'AAF files cannot be imported directly. Please export your timeline as FCP 7 XML (.xml) from your editing software:\n\n' +
+      'AAF files cannot be imported directly. Please export your timeline as FCP 7 XML (.xml) or EDL from your editing software:\n\n' +
       '- Premiere Pro: File → Export → Final Cut Pro XML\n' +
-      '- DaVinci Resolve: File → Export Timeline → FCP 7 XML\n' +
+      '- DaVinci Resolve: File → Export Timeline → FCP 7 XML or EDL\n' +
       '- Avid Media Composer: File → Export → FCP 7 XML'
     )
   }
-  
+
+  if (format === 'edl') {
+    const result = parseEdl(content, filename)
+    if (result) return result
+    throw new Error('Could not parse EDL file. The file does not contain valid CMX 3600 edit decisions.')
+  }
+
   // Parse XML
   const parser = new DOMParser()
   const doc = parser.parseFromString(content, 'text/xml')
-  
+
   // Check for parse errors
   const parseError = doc.querySelector('parsererror')
   if (parseError) {
     throw new Error('Invalid XML file: ' + (parseError.textContent?.slice(0, 200) || 'Parse error'))
   }
-  
+
   if (format === 'fcpxml') {
     const result = parseFcpXml(doc)
     if (result) return result
   }
-  
+
   if (format === 'fcp7xml' || format === 'unknown') {
     const result = parseFcp7Xml(doc)
     if (result) return result
   }
-  
+
   // Try both parsers
   const fcpxml = parseFcpXml(doc)
   if (fcpxml) return fcpxml
-  
+
   const fcp7 = parseFcp7Xml(doc)
   if (fcp7) return fcp7
-  
-  throw new Error('Could not parse timeline. The file format is not recognized as FCP 7 XML or FCPXML.')
+
+  throw new Error('Could not parse timeline. The file format is not recognized as FCP 7 XML, FCPXML, or EDL.')
 }
+
+/** @deprecated Use parseTimeline instead */
+export const parseTimelineXml = parseTimeline
 
 /**
  * Export the current timeline as FCP 7 XML

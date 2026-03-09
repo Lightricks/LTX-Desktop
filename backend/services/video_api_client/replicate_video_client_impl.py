@@ -33,6 +33,7 @@ class ReplicateVideoClientImpl:
         resolution: str,
         aspect_ratio: str,
         generate_audio: bool,
+        last_frame: str | None = None,
     ) -> bytes:
         replicate_model = _MODEL_ROUTES.get(model)
         if replicate_model is None:
@@ -48,6 +49,8 @@ class ReplicateVideoClientImpl:
             "generate_audio": generate_audio,
             "seed": seed,
         }
+        if last_frame is not None:
+            input_payload["last_frame"] = last_frame
 
         prediction = self._create_prediction(
             api_key=api_key,

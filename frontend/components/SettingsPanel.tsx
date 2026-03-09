@@ -8,7 +8,7 @@ import {
 } from '../lib/api-video-options'
 
 export interface GenerationSettings {
-  model: 'fast' | 'pro'
+  model: 'fast' | 'pro' | 'seedance-1.5-pro'
   duration: number
   videoResolution: string
   fps: number
@@ -20,6 +20,11 @@ export interface GenerationSettings {
   imageAspectRatio: string
   imageSteps: number
   variations?: number  // Number of image variations to generate
+  strength?: number  // Edit strength for img2img (0.0-1.0)
+  loraPath?: string | null
+  loraWeight?: number
+  loraTriggerPhrase?: string | null
+  loraTriggerMode?: 'prepend' | 'append' | 'off'
 }
 
 interface SettingsPanelProps {
@@ -29,6 +34,7 @@ interface SettingsPanelProps {
   mode?: GenerationMode
   forceApiGenerations?: boolean
   hasAudio?: boolean
+  hasReplicateApiKey?: boolean
 }
 
 export function SettingsPanel({
@@ -38,6 +44,7 @@ export function SettingsPanel({
   mode = 'text-to-video',
   forceApiGenerations = false,
   hasAudio = false,
+  hasReplicateApiKey = false,
 }: SettingsPanelProps) {
   const isImageMode = mode === 'text-to-image'
   const LOCAL_MAX_DURATION: Record<string, number> = { '540p': 20, '720p': 10, '1080p': 5 }
@@ -122,6 +129,156 @@ export function SettingsPanel({
             <span>12</span>
           </div>
         </div>
+
+        {/* LoRA */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-zinc-400">LoRA</label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={async () => {
+                try {
+                  const files = await window.electronAPI.showOpenFileDialog({
+                    title: 'Select LoRA (.safetensors) or config (.json)',
+                    filters: [
+                      { name: 'LoRA Files', extensions: ['safetensors', 'json'] },
+                      { name: 'SafeTensors', extensions: ['safetensors'] },
+                      { name: 'Config JSON', extensions: ['json'] },
+                    ],
+                  })
+                  if (!files || files.length === 0) return
+                  const filePath = files[0]
+                  const ext = filePath.split('.').pop()?.toLowerCase()
+
+                  if (ext === 'json') {
+                    // User selected a config JSON — extract trigger phrase
+                    try {
+                      const { data } = await window.electronAPI.readLocalFile(filePath)
+                      const json = JSON.parse(atob(data))
+                      const trigger = json.default_caption || json.trigger_phrase || json.instance_prompt || ''
+                      if (trigger) {
+                        onSettingsChange({ ...settings, loraTriggerPhrase: trigger })
+                      }
+                    } catch { /* ignore parse errors */ }
+                  } else {
+                    // User selected a safetensors file
+                    onSettingsChange({ ...settings, loraPath: filePath })
+                  }
+                } catch { /* cancelled */ }
+              }}
+              className="flex-1 px-3 py-1.5 text-xs text-left bg-zinc-800 border border-zinc-700 rounded-lg hover:border-zinc-500 truncate disabled:opacity-50"
+            >
+              {settings.loraPath
+                ? settings.loraPath.split(/[/\\]/).pop()
+                : 'None — click to browse'}
+            </button>
+            {settings.loraPath && (
+              <button
+                type="button"
+                onClick={() => onSettingsChange({ ...settings, loraPath: null, loraWeight: 1.0, loraTriggerPhrase: null })}
+                className="px-2 py-1.5 text-xs text-zinc-400 hover:text-red-400 bg-zinc-800 border border-zinc-700 rounded-lg"
+                title="Remove LoRA"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          {settings.loraPath && (
+            <>
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-zinc-500">Weight</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min={0}
+                    max={2}
+                    step={0.05}
+                    value={settings.loraWeight ?? 1.0}
+                    onChange={(e) => onSettingsChange({ ...settings, loraWeight: parseFloat(e.target.value) })}
+                    disabled={disabled}
+                    className="w-24 h-1.5 bg-zinc-700 rounded-full appearance-none cursor-pointer accent-blue-500"
+                  />
+                  <span className="text-xs text-zinc-500 w-8 text-right">{(settings.loraWeight ?? 1.0).toFixed(2)}</span>
+                </div>
+              </div>
+              {/* Trigger Phrase */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-zinc-500">Trigger Phrase</label>
+                  {!settings.loraTriggerPhrase && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const files = await window.electronAPI.showOpenFileDialog({
+                            title: 'Select LoRA config (.json)',
+                            filters: [{ name: 'Config JSON', extensions: ['json'] }],
+                          })
+                          if (!files || files.length === 0) return
+                          const { data } = await window.electronAPI.readLocalFile(files[0])
+                          const json = JSON.parse(atob(data))
+                          const trigger = json.default_caption || json.trigger_phrase || json.instance_prompt || ''
+                          if (trigger) {
+                            onSettingsChange({ ...settings, loraTriggerPhrase: trigger, loraTriggerMode: settings.loraTriggerMode || 'prepend' })
+                          }
+                        } catch { /* cancelled or parse error */ }
+                      }}
+                      disabled={disabled}
+                      className="text-[10px] text-blue-400 hover:text-blue-300"
+                    >
+                      Load from config
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={settings.loraTriggerPhrase || ''}
+                    onChange={(e) => onSettingsChange({ ...settings, loraTriggerPhrase: e.target.value || null })}
+                    placeholder="e.g. in the style of xyz"
+                    disabled={disabled}
+                    className="flex-1 px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 disabled:opacity-50"
+                  />
+                  {settings.loraTriggerPhrase && (
+                    <button
+                      type="button"
+                      onClick={() => onSettingsChange({ ...settings, loraTriggerPhrase: null, loraTriggerMode: 'off' })}
+                      className="text-zinc-500 hover:text-red-400 text-xs"
+                      title="Clear trigger phrase"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                {settings.loraTriggerPhrase && (
+                  <div className="flex items-center gap-1.5 mt-1">
+                    {(['prepend', 'append', 'off'] as const).map((mode) => {
+                      const active = (settings.loraTriggerMode || 'prepend') === mode
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => onSettingsChange({ ...settings, loraTriggerMode: mode })}
+                          disabled={disabled}
+                          className={`px-2 py-0.5 text-[10px] rounded-md border transition-colors ${
+                            active
+                              ? mode === 'off'
+                                ? 'bg-zinc-700 border-zinc-600 text-zinc-300'
+                                : 'bg-blue-600/20 border-blue-500/40 text-blue-400'
+                              : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-600 hover:text-zinc-400 hover:border-zinc-600'
+                          } disabled:opacity-50`}
+                        >
+                          {mode === 'prepend' ? 'Prepend' : mode === 'append' ? 'Append' : 'Off'}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     )
   }
@@ -130,26 +287,25 @@ export function SettingsPanel({
   return (
     <div className="space-y-4">
       {/* Model Selection */}
-      {!forceApiGenerations ? (
-        <Select
-          label="Model"
-          value={settings.model}
-          onChange={(e) => handleChange('model', e.target.value)}
-          disabled={disabled}
-        >
+      <Select
+        label="Model"
+        value={settings.model}
+        onChange={(e) => handleChange('model', e.target.value)}
+        disabled={disabled}
+      >
+        {!forceApiGenerations && (
           <option value="fast">LTX 2.3 Fast</option>
-        </Select>
-      ) : (
-        <Select
-          label="Model"
-          value={settings.model}
-          onChange={(e) => handleChange('model', e.target.value)}
-          disabled={disabled}
-        >
-          <option value="fast" disabled={hasAudio}>LTX-2.3 Fast (API)</option>
-          <option value="pro">LTX-2.3 Pro (API)</option>
-        </Select>
-      )}
+        )}
+        {forceApiGenerations && (
+          <>
+            <option value="fast" disabled={hasAudio}>LTX-2.3 Fast (API)</option>
+            <option value="pro">LTX-2.3 Pro (API)</option>
+          </>
+        )}
+        <option value="seedance-1.5-pro" disabled={!hasReplicateApiKey}>
+          Seedance 1.5 Pro (Cloud){!hasReplicateApiKey ? ' — needs API key' : ''}
+        </option>
+      </Select>
 
       {/* Duration, Resolution, FPS Row */}
       <div className="grid grid-cols-3 gap-3">

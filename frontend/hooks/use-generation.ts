@@ -23,6 +23,8 @@ interface GenerationState {
   isGenerating: boolean
   progress: number
   statusMessage: string
+  elapsedSeconds: number
+  estimatedSeconds: number | null
   videoUrl: string | null
   videoPath: string | null  // Original file path for upscaling
   imageUrl: string | null
@@ -30,6 +32,48 @@ interface GenerationState {
   error: string | null
   jobs: QueueJob[]
   lastModel: string | null
+}
+
+// Estimated generation times (seconds) based on benchmark data
+// LTX local: RTX 4090, FFN chunk=8, TeaCache=0.03
+// Seedance: Replicate API cloud timings
+const VIDEO_TIME_ESTIMATES: Record<string, Record<string, Record<string, number>>> = {
+  'ltx-fast': {
+    '512p': { '2': 40, '3': 50, '4': 55, '5': 65, '6': 65, '7': 65, '8': 65, '10': 275 },
+    '720p': { '2': 40, '3': 60, '5': 90 },
+  },
+  'seedance-1.5-pro': {
+    '720p': { '5': 60, '10': 120 },
+  },
+}
+
+function getEstimatedSeconds(job: QueueJob): number | null {
+  const params = job.params
+  const resolution = (params.resolution as string) || '512p'
+  const duration = String(params.duration || '2')
+  const model = (params.model as string) || job.model || 'ltx-fast'
+
+  // Try model-specific estimates first, then fall back to ltx-fast
+  const modelEstimates = VIDEO_TIME_ESTIMATES[model] || VIDEO_TIME_ESTIMATES['ltx-fast']
+  if (!modelEstimates) return null
+  const byDuration = modelEstimates[resolution]
+  if (!byDuration) return null
+
+  // Find exact match or interpolate from nearest lower
+  if (byDuration[duration]) return byDuration[duration]
+  const durations = Object.keys(byDuration).map(Number).sort((a, b) => a - b)
+  const dur = Number(duration)
+  // Find bracketing values for simple interpolation
+  let lower = durations[0], upper = durations[durations.length - 1]
+  for (const d of durations) {
+    if (d <= dur) lower = d
+    if (d >= dur && upper === durations[durations.length - 1]) upper = d
+  }
+  if (dur <= lower) return byDuration[String(lower)]
+  if (dur >= upper) return byDuration[String(upper)]
+  // Linear interpolation
+  const ratio = (dur - lower) / (upper - lower)
+  return Math.round(byDuration[String(lower)] + ratio * (byDuration[String(upper)] - byDuration[String(lower)]))
 }
 
 interface UseGenerationReturn extends GenerationState {
@@ -132,6 +176,8 @@ export function useGeneration(): UseGenerationReturn {
     isGenerating: false,
     progress: 0,
     statusMessage: '',
+    elapsedSeconds: 0,
+    estimatedSeconds: null,
     videoUrl: null,
     videoPath: null,
     imageUrl: null,
@@ -144,6 +190,7 @@ export function useGeneration(): UseGenerationReturn {
   // Track the most recently submitted job ID for cancel
   const activeJobIdRef = useRef<string | null>(null)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const startedAtRef = useRef<number | null>(null)
 
   // Start polling the queue status. Cleans up automatically when no active jobs remain.
   const startPolling = useCallback(() => {
@@ -173,6 +220,19 @@ export function useGeneration(): UseGenerationReturn {
             next.progress = activeJob.progress
             next.statusMessage = getPhaseMessage(activeJob.phase)
 
+            // Track elapsed time from when the job started running
+            if (activeJob.status === 'running' && !startedAtRef.current) {
+              startedAtRef.current = Date.now()
+            }
+            if (startedAtRef.current) {
+              next.elapsedSeconds = Math.floor((Date.now() - startedAtRef.current) / 1000)
+            }
+
+            // Compute estimated total time for video jobs
+            if (activeJob.type === 'video' && next.estimatedSeconds === null) {
+              next.estimatedSeconds = getEstimatedSeconds(activeJob)
+            }
+
             if (activeJob.status === 'complete') {
               next.isGenerating = hasRunning
               next.progress = 100
@@ -192,14 +252,17 @@ export function useGeneration(): UseGenerationReturn {
 
               // Clear active job so we don't keep overwriting state
               activeJobIdRef.current = null
+              startedAtRef.current = null
             } else if (activeJob.status === 'error') {
               next.isGenerating = hasRunning
               next.error = activeJob.error || 'Generation failed'
               activeJobIdRef.current = null
+              startedAtRef.current = null
             } else if (activeJob.status === 'cancelled') {
               next.isGenerating = hasRunning
               next.statusMessage = 'Cancelled'
               activeJobIdRef.current = null
+              startedAtRef.current = null
             }
           } else {
             next.isGenerating = hasRunning
@@ -261,11 +324,14 @@ export function useGeneration(): UseGenerationReturn {
         ? 'Generating video with Seedance...'
         : 'Generating video...'
 
+    startedAtRef.current = null
     setState(prev => ({
       ...prev,
       isGenerating: true,
       progress: 0,
       statusMessage: statusMsg,
+      elapsedSeconds: 0,
+      estimatedSeconds: null,
       videoUrl: null,
       videoPath: null,
       imageUrl: null,
@@ -382,11 +448,14 @@ export function useGeneration(): UseGenerationReturn {
 
     const numImages = settings.variations || 1
 
+    startedAtRef.current = null
     setState(prev => ({
       ...prev,
       isGenerating: true,
       progress: 0,
       statusMessage: numImages > 1 ? `Generating ${numImages} images...` : 'Generating image...',
+      elapsedSeconds: 0,
+      estimatedSeconds: null,
       videoUrl: null,
       videoPath: null,
       imageUrl: null,
@@ -444,11 +513,14 @@ export function useGeneration(): UseGenerationReturn {
     settings: GenerationSettings,
     strength: number = 0.65,
   ) => {
+    startedAtRef.current = null
     setState(prev => ({
       ...prev,
       isGenerating: true,
       progress: 0,
       statusMessage: 'Editing image...',
+      elapsedSeconds: 0,
+      estimatedSeconds: null,
       videoUrl: null,
       videoPath: null,
       imageUrl: null,
@@ -513,10 +585,13 @@ export function useGeneration(): UseGenerationReturn {
   }, [])
 
   const reset = useCallback(() => {
+    startedAtRef.current = null
     setState({
       isGenerating: false,
       progress: 0,
       statusMessage: '',
+      elapsedSeconds: 0,
+      estimatedSeconds: null,
       videoUrl: null,
       videoPath: null,
       imageUrl: null,

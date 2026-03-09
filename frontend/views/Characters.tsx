@@ -10,7 +10,7 @@ interface Character {
   name: string
   role: string
   description: string
-  reference_images: string[]
+  reference_image_paths: string[]
   created_at: string
 }
 
@@ -63,7 +63,7 @@ export function Characters() {
     setFormName(char.name)
     setFormRole(char.role)
     setFormDescription(char.description)
-    setFormImages([...char.reference_images])
+    setFormImages([...char.reference_image_paths])
     setIsModalOpen(true)
   }
 
@@ -76,7 +76,7 @@ export function Characters() {
         name: formName.trim(),
         role: formRole.trim(),
         description: formDescription.trim(),
-        reference_images: formImages,
+        reference_image_paths: formImages,
       }
       if (editingCharacter) {
         const res = await fetch(`${backendUrl}/api/library/characters/${editingCharacter.id}`, {
@@ -184,9 +184,9 @@ export function Characters() {
               >
                 {/* Reference images */}
                 <div className="aspect-video bg-zinc-800 flex items-center justify-center overflow-hidden">
-                  {char.reference_images.length > 0 ? (
+                  {char.reference_image_paths.length > 0 ? (
                     <div className="grid grid-cols-2 w-full h-full">
-                      {char.reference_images.slice(0, 4).map((img, i) => (
+                      {char.reference_image_paths.slice(0, 4).map((img, i) => (
                         <img
                           key={i}
                           src={img}
@@ -203,7 +203,7 @@ export function Characters() {
                 <div className="p-3">
                   <h3 className="text-sm font-semibold text-white">{char.name}</h3>
                   {char.role && (
-                    <span className="inline-block mt-1 text-[10px] bg-purple-500/20 text-purple-400 rounded px-1.5 py-0.5 font-medium">
+                    <span className="inline-block mt-1 text-[10px] bg-blue-500/20 text-blue-400 rounded px-1.5 py-0.5 font-medium">
                       {char.role}
                     </span>
                   )}

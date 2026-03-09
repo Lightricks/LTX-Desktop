@@ -22,6 +22,27 @@ class EnhancePromptProvider(Protocol):
         ...
 
 
+class CreditDeductor(Protocol):
+    def deduct_credits(
+        self, generation_type: str, count: int,
+        metadata: dict[str, object] | None,
+    ) -> dict[str, object]:
+        ...
+
+
+def _credit_type_for_job(job: QueueJob) -> str | None:
+    """Map a completed API job to its Palette credit type. Returns None for local GPU jobs."""
+    model = job.model.lower()
+    if "seedance" in model:
+        return "video_seedance"
+    if job.type == "image":
+        return "image"
+    has_image = bool(job.params.get("imagePath"))
+    if has_image:
+        return "video_i2v"
+    return "video_t2v"
+
+
 class QueueWorker:
     def __init__(
         self,
@@ -32,6 +53,7 @@ class QueueWorker:
         gpu_cleaner: GpuCleaner | None = None,
         on_batch_complete: Callable[[str, list[QueueJob]], None] | None = None,
         enhance_handler: EnhancePromptProvider | None = None,
+        credit_deductor: CreditDeductor | None = None,
     ) -> None:
         self._queue = queue
         self._gpu_executor = gpu_executor
@@ -42,6 +64,7 @@ class QueueWorker:
         self._lock = threading.Lock()
         self._on_batch_complete = on_batch_complete
         self._enhance_handler = enhance_handler
+        self._credit_deductor = credit_deductor
         self._notified_batches: set[str] = set()
 
     def tick(self) -> None:
@@ -52,6 +75,11 @@ class QueueWorker:
         """
         # First, fail any jobs whose dependencies have errored/cancelled
         self._fail_orphaned_dependents()
+
+        # Recover from stuck busy flags — if slot is busy but no job is actually
+        # running for that slot, reset the flag.  This handles cases where a job
+        # was cancelled externally while the executor thread was still working.
+        self._recover_stuck_slots()
 
         gpu_job: QueueJob | None = None
         api_job: QueueJob | None = None
@@ -78,6 +106,27 @@ class QueueWorker:
             t.start()
 
         self._check_batch_completions()
+
+    def _recover_stuck_slots(self) -> None:
+        """Reset busy flags when no job is actually running for that slot.
+
+        This handles the case where a job is cancelled via the API while the
+        executor thread is mid-work.  The thread eventually finishes (or the
+        process was restarted), but _gpu_busy / _api_busy stayed True.
+        """
+        has_running_gpu = any(
+            j.status == "running" and j.slot == "gpu" for j in self._queue.all_jobs()
+        )
+        has_running_api = any(
+            j.status == "running" and j.slot == "api" for j in self._queue.all_jobs()
+        )
+        with self._lock:
+            if self._gpu_busy and not has_running_gpu:
+                logger.info("Recovering stuck GPU slot — no running GPU jobs found")
+                self._gpu_busy = False
+            if self._api_busy and not has_running_api:
+                logger.info("Recovering stuck API slot — no running API jobs found")
+                self._api_busy = False
 
     def _next_ready_job(self, slot: str) -> QueueJob | None:
         for job in self._queue.queued_jobs_for_slot(slot):
@@ -132,6 +181,17 @@ class QueueWorker:
         try:
             result_paths = executor.execute(job)
             self._queue.update_job(job.id, status="complete", progress=100, phase="complete", result_paths=result_paths)
+            # Deduct credits for API-slot jobs (local GPU jobs are free)
+            if slot == "api" and self._credit_deductor is not None:
+                credit_type = _credit_type_for_job(job)
+                if credit_type:
+                    try:
+                        self._credit_deductor.deduct_credits(
+                            credit_type, 1,
+                            {"model": job.model, "job_id": job.id},
+                        )
+                    except Exception as exc:
+                        logger.warning("Credit deduction failed for job %s: %s", job.id, exc)
         except Exception as exc:
             logger.error("Job %s failed: %s", job.id, exc)
             self._queue.update_job(job.id, status="error", error=str(exc))

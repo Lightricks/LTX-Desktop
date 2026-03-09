@@ -68,6 +68,7 @@ class LTXAPIClientImpl:
         fps: float,
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
+        last_frame_uri: str | None = None,
     ) -> bytes:
         payload: dict[str, JSONValue] = {
             "prompt": prompt,
@@ -80,6 +81,8 @@ class LTXAPIClientImpl:
         mapped_camera_motion = self._map_camera_motion(camera_motion)
         if mapped_camera_motion is not None:
             payload["camera_motion"] = mapped_camera_motion
+        if last_frame_uri is not None:
+            payload["last_frame_uri"] = last_frame_uri
         response = self._http.post(
             f"{self._base_url}/v1/text-to-video",
             headers=self._json_headers(api_key),
@@ -100,6 +103,7 @@ class LTXAPIClientImpl:
         fps: float,
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
+        last_frame_uri: str | None = None,
     ) -> bytes:
         payload: dict[str, JSONValue] = {
             "prompt": prompt,
@@ -113,6 +117,8 @@ class LTXAPIClientImpl:
         mapped_camera_motion = self._map_camera_motion(camera_motion)
         if mapped_camera_motion is not None:
             payload["camera_motion"] = mapped_camera_motion
+        if last_frame_uri is not None:
+            payload["last_frame_uri"] = last_frame_uri
         response = self._http.post(
             f"{self._base_url}/v1/image-to-video",
             headers=self._json_headers(api_key),

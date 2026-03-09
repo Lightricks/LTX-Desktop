@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open specific app pages / folders
   openLtxApiKeyPage: (): Promise<boolean> => ipcRenderer.invoke('open-ltx-api-key-page'),
   openReplicateApiKeyPage: (): Promise<boolean> => ipcRenderer.invoke('open-replicate-api-key-page'),
+  openPaletteLoginPage: (): Promise<boolean> => ipcRenderer.invoke('open-palette-login-page'),
+  openPaletteApiKeyPage: (): Promise<boolean> => ipcRenderer.invoke('open-palette-api-key-page'),
   openParentFolderOfFile: (filePath: string): Promise<void> => ipcRenderer.invoke('open-parent-folder-of-file', filePath),
   
   // Reveal a specific file in the OS file manager (Explorer/Finder)
@@ -117,6 +119,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendAnalyticsEvent: (eventName: string, extraDetails?: Record<string, unknown> | null): Promise<void> =>
     ipcRenderer.invoke('send-analytics-event', eventName, extraDetails),
 
+  // Deep link auth callback (from directorsdesktop:// protocol)
+  onPaletteAuthCallback: (cb: (data: { token: string }) => void) => {
+    const listener = (_: unknown, data: { token: string }) => cb(data)
+    ipcRenderer.on('palette-auth-callback', listener)
+    return () => {
+      ipcRenderer.removeListener('palette-auth-callback', listener)
+    }
+  },
+
   // Platform info
   platform: process.platform,
 })
@@ -182,6 +193,7 @@ declare global {
       getAnalyticsState: () => Promise<{ analyticsEnabled: boolean; installationId: string }>
       setAnalyticsEnabled: (enabled: boolean) => Promise<void>
       sendAnalyticsEvent: (eventName: string, extraDetails?: Record<string, unknown> | null) => Promise<void>
+      onPaletteAuthCallback: (cb: (data: { token: string }) => void) => (() => void)
       platform: string
     }
   }

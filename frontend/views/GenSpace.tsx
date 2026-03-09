@@ -702,9 +702,9 @@ function PromptBar({
           />
           <button
             onClick={onEnhancePrompt}
-            disabled={!prompt.trim() || isEnhancing || isGenerating}
+            disabled={isEnhancing || isGenerating}
             className="absolute top-2 right-1 p-1.5 rounded-md text-zinc-500 hover:text-amber-400 hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Enhance prompt with AI"
+            title={prompt.trim() ? "Enhance prompt with AI" : "Generate a random prompt"}
           >
             <Wand2 className={`h-3.5 w-3.5 ${isEnhancing ? 'animate-spin' : ''}`} />
           </button>
@@ -1034,7 +1034,7 @@ const DEFAULT_VIDEO_SETTINGS = {
 
 export function GenSpace() {
   const { currentProject, currentProjectId, addAsset, addTakeToAsset, deleteAsset, toggleFavorite, genSpaceEditImageUrl, setGenSpaceEditImageUrl, setGenSpaceEditMode, genSpaceAudioUrl, setGenSpaceAudioUrl, genSpaceRetakeSource, setGenSpaceRetakeSource, setPendingRetakeUpdate } = useProjects()
-  const { shouldVideoGenerateWithLtxApi, forceApiGenerations, settings: appSettings } = useAppSettings()
+  const { shouldVideoGenerateWithLtxApi, forceApiGenerations, settings: appSettings, credits } = useAppSettings()
   const [mode, setMode] = useState<'image' | 'video' | 'retake'>('video')
   const [prompt, setPrompt] = useState('')
   const [inputImage, setInputImage] = useState<string | null>(null)
@@ -1077,6 +1077,8 @@ export function GenSpace() {
     isGenerating,
     progress,
     statusMessage,
+    elapsedSeconds,
+    estimatedSeconds,
     videoUrl,
     videoPath,
     imageUrls,
@@ -1328,14 +1330,19 @@ export function GenSpace() {
   }, [imageUrls, currentProjectId, isGenerating])
   
   const handleEnhancePrompt = async () => {
-    if (!prompt.trim() || isEnhancing) return
+    if (isEnhancing) return
     setIsEnhancing(true)
     try {
       const backendUrl = await window.electronAPI.getBackendUrl()
       const res = await fetch(`${backendUrl}/api/enhance-prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, mode: mode === 'image' ? 'text-to-image' : 'text-to-video' }),
+        body: JSON.stringify({
+          prompt,
+          mode: mode === 'image' ? 'text-to-image' : 'text-to-video',
+          model: settings.model,
+          imagePath: inputImage ? inputImage.replace(/^file:\/\/\/?/, '').replace(/\//g, '\\') : null,
+        }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -1492,7 +1499,16 @@ export function GenSpace() {
   const canSubmit = isRetakeMode
     ? retakeInput.ready && !!retakeInput.videoPath && !isRetaking
     : !!prompt.trim()
-  const promptButtonLabel = isRetakeMode ? 'Retake' : (editSourceImage ? 'Edit' : 'Generate')
+  const estimatedCostCents = (() => {
+    if (!credits.pricing || isRetakeMode) return null
+    if (mode === 'image') return credits.pricing.image
+    if (editSourceImage) return credits.pricing.image_edit
+    if (settings.model === 'seedance-1.5-pro' || settings.model === 'seedance') return credits.pricing.video_seedance
+    if (inputImage) return credits.pricing.video_i2v
+    return credits.pricing.video_t2v
+  })()
+  const costSuffix = estimatedCostCents ? ` ($${(estimatedCostCents / 100).toFixed(2)})` : ''
+  const promptButtonLabel = isRetakeMode ? 'Retake' : (editSourceImage ? 'Edit' : `Generate${costSuffix}`)
   const promptButtonIcon = isRetakeMode
     ? <Scissors className="h-3.5 w-3.5" />
     : <Sparkles className={`h-3.5 w-3.5 ${isGenerating ? 'animate-pulse' : ''}`} />
@@ -1648,10 +1664,13 @@ export function GenSpace() {
                     </div>
                     <p className="text-sm text-zinc-400">{statusMessage || 'Generating...'}</p>
                     <div className="w-32 h-1 bg-zinc-700 rounded-full mt-2 overflow-hidden">
-                      <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${Math.max(progress, 2)}%` }} />
+                      <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${estimatedSeconds && elapsedSeconds ? Math.min((elapsedSeconds / estimatedSeconds) * 100, 95) : Math.max(progress, 2)}%` }} />
                     </div>
                     <p className="text-xs text-zinc-500 mt-1">
-                      {progress > 0 ? `${Math.round(progress)}%` : 'Starting...'}
+                      {elapsedSeconds > 0
+                        ? `${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, '0')}${estimatedSeconds && estimatedSeconds > elapsedSeconds ? ` / ~${Math.floor(estimatedSeconds / 60)}:${String(Math.floor(estimatedSeconds % 60)).padStart(2, '0')}` : ''}`
+                        : progress > 0 ? `${Math.round(progress)}%` : 'Starting...'
+                      }
                     </p>
                   </div>
                 </div>

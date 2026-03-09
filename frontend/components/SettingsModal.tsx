@@ -20,7 +20,7 @@ interface SettingsModalProps {
 type TabId = 'general' | 'apiKeys' | 'inference' | 'promptEnhancer' | 'about'
 
 export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
-  const { settings, updateSettings, saveLtxApiKey, saveReplicateApiKey, saveGeminiApiKey, savePaletteApiKey, forceApiGenerations } = useAppSettings()
+  const { settings, updateSettings, saveLtxApiKey, saveReplicateApiKey, saveGeminiApiKey, refreshSettings, forceApiGenerations } = useAppSettings()
   const onSettingsChange = (next: AppSettings) => updateSettings(next)
   const [activeTab, setActiveTab] = useState<TabId>('general')
   const [ltxApiKeyInput, setLtxApiKeyInput] = useState('')
@@ -31,8 +31,13 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('')
   const geminiApiKeyInputRef = useRef<HTMLInputElement>(null)
   const [paletteApiKeyInput, setPaletteApiKeyInput] = useState('')
-  const [paletteStatus, setPaletteStatus] = useState<{ connected: boolean; user: { email: string; name: string } | null } | null>(null)
+  const [paletteStatus, setPaletteStatus] = useState<{ connected: boolean; user: { email: string; name: string } | null; error?: string } | null>(null)
   const [paletteCredits, setPaletteCredits] = useState<number | null>(null)
+  const [paletteLoginEmail, setPaletteLoginEmail] = useState('')
+  const [paletteLoginPassword, setPaletteLoginPassword] = useState('')
+  const [paletteLoginError, setPaletteLoginError] = useState<string | null>(null)
+  const [paletteLoginLoading, setPaletteLoginLoading] = useState(false)
+  const [paletteAuthMode, setPaletteAuthMode] = useState<'login' | 'apikey'>('login')
   const [textEncoderStatus, setTextEncoderStatus] = useState<TextEncoderStatus | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
@@ -71,7 +76,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
         if (statusRes.ok) setPaletteStatus(await statusRes.json())
         if (creditsRes.ok) {
           const data = await creditsRes.json()
-          setPaletteCredits(data.balance ?? null)
+          setPaletteCredits(data.balance_cents ?? data.balance ?? null)
         }
       } catch { /* ignore */ }
     }
@@ -973,54 +978,27 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   Connect to Director's Palette to sync your gallery, characters, and library between web and desktop.
                 </p>
 
-                <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
-                  <div className="flex gap-2">
-                    <input
-                      type="password"
-                      value={paletteApiKeyInput}
-                      onChange={(e) => setPaletteApiKeyInput(e.target.value)}
-                      placeholder={settings.hasPaletteApiKey ? 'Enter new key to replace...' : 'Enter your Palette API key...'}
-                      onKeyDown={(e) => e.stopPropagation()}
-                      className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                    />
-                    <button
-                      onClick={() => {
-                        const trimmed = paletteApiKeyInput.trim()
-                        if (!trimmed) return
-                        void savePaletteApiKey(trimmed)
-                        setPaletteApiKeyInput('')
-                      }}
-                      disabled={!paletteApiKeyInput.trim()}
-                      className="px-3 py-2 bg-amber-600 text-white text-sm rounded-lg hover:bg-amber-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                    >
-                      Save Key
-                    </button>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
-                      paletteStatus?.connected
-                        ? 'bg-green-500/10 text-green-400'
-                        : settings.hasPaletteApiKey
-                          ? 'bg-amber-500/10 text-amber-400'
-                          : 'bg-zinc-800 text-zinc-500'
-                    }`}>
-                      {paletteStatus?.connected ? (
-                        <>
-                          <Check className="h-3 w-3" />
-                          Connected{paletteStatus.user ? ` as ${paletteStatus.user.email}` : ''}
-                        </>
-                      ) : settings.hasPaletteApiKey ? (
-                        <>
-                          <AlertCircle className="h-3 w-3" />
-                          Not connected
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="h-3 w-3" />
-                          Optional
-                        </>
-                      )}
+                {paletteStatus?.connected ? (
+                  <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 bg-green-500/10 text-green-400">
+                        <Check className="h-3 w-3" />
+                        Connected{paletteStatus.user ? ` as ${paletteStatus.user.email}` : ''}
+                      </div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const backendUrl = await window.electronAPI.getBackendUrl()
+                            await fetch(`${backendUrl}/api/sync/disconnect`, { method: 'POST' })
+                            setPaletteStatus(null)
+                            setPaletteCredits(null)
+                            void refreshSettings()
+                          } catch { /* ignore */ }
+                        }}
+                        className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+                      >
+                        Disconnect
+                      </button>
                     </div>
                     {paletteCredits !== null && (
                       <span className="text-xs text-zinc-400">
@@ -1028,7 +1006,155 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                       </span>
                     )}
                   </div>
-                </div>
+                ) : (
+                  <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
+                    {/* Auth mode tabs */}
+                    <div className="flex items-center bg-zinc-900 rounded-lg border border-zinc-800 p-0.5 w-fit">
+                      <button
+                        onClick={() => { setPaletteAuthMode('login'); setPaletteLoginError(null) }}
+                        className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                          paletteAuthMode === 'login' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        Login with Email
+                      </button>
+                      <button
+                        onClick={() => { setPaletteAuthMode('apikey'); setPaletteLoginError(null) }}
+                        className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                          paletteAuthMode === 'apikey' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        API Key
+                      </button>
+                    </div>
+
+                    {paletteAuthMode === 'login' ? (
+                      <div className="space-y-2">
+                        <input
+                          type="email"
+                          value={paletteLoginEmail}
+                          onChange={(e) => setPaletteLoginEmail(e.target.value)}
+                          placeholder="Email address"
+                          onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') document.getElementById('palette-password')?.focus() }}
+                          className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                        />
+                        <input
+                          id="palette-password"
+                          type="password"
+                          value={paletteLoginPassword}
+                          onChange={(e) => setPaletteLoginPassword(e.target.value)}
+                          placeholder="Password"
+                          onKeyDown={(e) => {
+                            e.stopPropagation()
+                            if (e.key === 'Enter' && paletteLoginEmail.trim() && paletteLoginPassword) {
+                              (e.target as HTMLInputElement).closest('div')?.querySelector('button')?.click()
+                            }
+                          }}
+                          className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                        />
+                        <button
+                          onClick={async () => {
+                            const email = paletteLoginEmail.trim()
+                            const password = paletteLoginPassword
+                            if (!email || !password) return
+                            setPaletteLoginLoading(true)
+                            setPaletteLoginError(null)
+                            try {
+                              const backendUrl = await window.electronAPI.getBackendUrl()
+                              const res = await fetch(`${backendUrl}/api/sync/login`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ email, password }),
+                              })
+                              const data = await res.json()
+                              if (data.connected) {
+                                setPaletteStatus(data)
+                                setPaletteLoginEmail('')
+                                setPaletteLoginPassword('')
+                                void refreshSettings()
+                              } else {
+                                setPaletteLoginError(data.error || 'Login failed')
+                              }
+                            } catch (err) {
+                              setPaletteLoginError(err instanceof Error ? err.message : 'Login failed')
+                            } finally {
+                              setPaletteLoginLoading(false)
+                            }
+                          }}
+                          disabled={!paletteLoginEmail.trim() || !paletteLoginPassword || paletteLoginLoading}
+                          className="w-full px-3 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {paletteLoginLoading ? 'Signing in...' : 'Sign In'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <input
+                          type="password"
+                          value={paletteApiKeyInput}
+                          onChange={(e) => setPaletteApiKeyInput(e.target.value)}
+                          placeholder="Enter your Palette API key (dp_...)..."
+                          onKeyDown={(e) => e.stopPropagation()}
+                          className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                        />
+                        <button
+                          onClick={async () => {
+                            const trimmed = paletteApiKeyInput.trim()
+                            if (!trimmed) return
+                            setPaletteLoginLoading(true)
+                            setPaletteLoginError(null)
+                            try {
+                              const backendUrl = await window.electronAPI.getBackendUrl()
+                              const res = await fetch(`${backendUrl}/api/sync/connect`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ token: trimmed }),
+                              })
+                              const data = await res.json()
+                              if (data.connected) {
+                                setPaletteStatus(data)
+                                setPaletteApiKeyInput('')
+                                void refreshSettings()
+                              } else {
+                                setPaletteLoginError(data.error || 'Connection failed')
+                              }
+                            } catch (err) {
+                              setPaletteLoginError(err instanceof Error ? err.message : 'Connection failed')
+                            } finally {
+                              setPaletteLoginLoading(false)
+                            }
+                          }}
+                          disabled={!paletteApiKeyInput.trim() || paletteLoginLoading}
+                          className="px-3 py-2 bg-amber-600 text-white text-sm rounded-lg hover:bg-amber-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                        >
+                          {paletteLoginLoading ? 'Connecting...' : 'Connect'}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Status / Error */}
+                    {paletteLoginError && (
+                      <div className="text-xs px-2 py-1.5 rounded bg-red-500/10 text-red-400 flex items-start gap-1.5">
+                        <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                        <span>{paletteLoginError}</span>
+                      </div>
+                    )}
+
+                    {!paletteLoginError && paletteStatus && !paletteStatus.connected && paletteStatus.error && (
+                      <div className="text-xs px-2 py-1.5 rounded bg-amber-500/10 text-amber-400 flex items-start gap-1.5">
+                        <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                        <span>{paletteStatus.error}</span>
+                      </div>
+                    )}
+
+                    {!paletteLoginError && !paletteStatus?.connected && !settings.hasPaletteApiKey && (
+                      <div className="text-xs px-2 py-1 rounded bg-zinc-800 text-zinc-500 inline-flex items-center gap-1.5">
+                        <AlertCircle className="h-3 w-3" />
+                        Optional
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </>
           )}

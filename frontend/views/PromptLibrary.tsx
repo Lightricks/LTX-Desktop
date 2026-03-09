@@ -11,8 +11,8 @@ interface SavedPrompt {
   id: string
   text: string
   tags: string[]
-  use_count: number
-  last_used: string
+  used_count: number
+  last_used_at: string | null
   created_at: string
 }
 
@@ -104,10 +104,10 @@ export function PromptLibrary() {
     }
     switch (sortMode) {
       case 'most-used':
-        result.sort((a, b) => b.use_count - a.use_count)
+        result.sort((a, b) => b.used_count - a.used_count)
         break
       case 'recent':
-        result.sort((a, b) => new Date(b.last_used).getTime() - new Date(a.last_used).getTime())
+        result.sort((a, b) => new Date(b.last_used_at ?? '').getTime() - new Date(a.last_used_at ?? '').getTime())
         break
       case 'alphabetical':
         result.sort((a, b) => a.text.localeCompare(b.text))
@@ -238,8 +238,8 @@ export function PromptLibrary() {
                       </span>
                     ))}
                     <div className="ml-auto flex items-center gap-3 text-[10px] text-zinc-500">
-                      <span>Used {prompt.use_count}x</span>
-                      <span>Last: {formatDate(prompt.last_used)}</span>
+                      <span>Used {prompt.used_count}x</span>
+                      <span>Last: {prompt.last_used_at ? formatDate(prompt.last_used_at) : 'Never'}</span>
                     </div>
                   </div>
                 </div>

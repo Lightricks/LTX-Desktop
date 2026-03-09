@@ -6,7 +6,7 @@ import {
   ChevronDown, ChevronRight, Upload
 } from 'lucide-react'
 import type { ParsedTimeline, ParsedMediaRef } from '../lib/timeline-import'
-import { parseTimelineXml } from '../lib/timeline-import'
+import { parseTimeline } from '../lib/timeline-import'
 
 interface ImportTimelineModalProps {
   isOpen: boolean
@@ -87,7 +87,7 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
 
     try {
       const content = await file.text()
-      const timeline = parseTimelineXml(content, filename)
+      const timeline = parseTimeline(content, filename)
 
       if (!timeline) {
         throw new Error('Could not parse timeline from file')
@@ -237,7 +237,7 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
             <div>
               <h2 className="text-base font-semibold text-white">Import Timeline</h2>
               <p className="text-[11px] text-zinc-500">
-                Premiere Pro XML, DaVinci Resolve XML, Final Cut Pro XML/FCPXML
+                Premiere Pro XML, DaVinci Resolve XML/EDL, Final Cut Pro XML/FCPXML
               </p>
             </div>
           </div>
@@ -259,13 +259,13 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
                   <FileText className="h-7 w-7 text-zinc-500 group-hover:text-blue-400 transition-colors" />
                 </div>
                 <p className="text-sm text-zinc-300 font-medium mb-1">Click to select timeline file</p>
-                <p className="text-xs text-zinc-600">Supports .xml (FCP 7 XML), .fcpxml</p>
+                <p className="text-xs text-zinc-600">Supports .xml (FCP 7 XML), .fcpxml, .edl (CMX 3600)</p>
               </div>
 
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".xml,.fcpxml,.aaf"
+                accept=".xml,.fcpxml,.edl,.aaf"
                 onChange={handleFileSelected}
                 className="hidden"
               />
@@ -274,7 +274,7 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
                 <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">How to export from your NLE:</h4>
                 <div className="space-y-1.5 text-[11px] text-zinc-500">
                   <p><span className="text-blue-400 font-medium">Premiere Pro:</span> File → Export → Final Cut Pro XML</p>
-                  <p><span className="text-orange-400 font-medium">DaVinci Resolve:</span> File → Export Timeline → FCP 7 XML (.xml)</p>
+                  <p><span className="text-orange-400 font-medium">DaVinci Resolve:</span> File → Export Timeline → EDL (.edl) or FCP 7 XML (.xml)</p>
                   <p><span className="text-blue-400 font-medium">Final Cut Pro:</span> File → Export XML</p>
                   <p className="text-zinc-600 pt-1 border-t border-zinc-700/50 mt-2">
                     AAF files are binary and cannot be imported directly. Please export as XML instead.
@@ -334,7 +334,7 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
                     <div className="flex justify-between">
                       <span className="text-zinc-500">Format:</span>
                       <span className="text-zinc-300">
-                        {parsedTimeline.format === 'fcp7xml' ? 'FCP 7 XML' : parsedTimeline.format === 'fcpxml' ? 'FCPXML' : parsedTimeline.format}
+                        {parsedTimeline.format === 'fcp7xml' ? 'FCP 7 XML' : parsedTimeline.format === 'fcpxml' ? 'FCPXML' : parsedTimeline.format === 'edl' ? 'CMX 3600 EDL' : parsedTimeline.format}
                       </span>
                     </div>
                     <div className="flex justify-between">

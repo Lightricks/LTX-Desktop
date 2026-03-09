@@ -32,11 +32,12 @@ class TestSyncCredits:
         resp = client.get("/api/sync/credits")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["balance"] == 5000
+        assert data["balance_cents"] == 5000
+        assert "pricing" in data
 
     def test_credits_when_disconnected(self, client):
         resp = client.get("/api/sync/credits")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["balance"] is None
+        assert data["balance_cents"] is None
         assert data["connected"] is False

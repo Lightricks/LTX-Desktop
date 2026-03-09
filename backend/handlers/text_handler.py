@@ -97,6 +97,11 @@ class TextHandler(StateHandlerBase):
     def resolve_gemma_root(self) -> str | None:
         if not self.should_use_local_encoding():
             return None
+        settings = self.state.app_settings.model_copy(deep=True)
+        if settings.use_abliterated_text_encoder:
+            abliterated_dir = self._config.model_path("text_encoder_abliterated")
+            if abliterated_dir.exists() and any(abliterated_dir.iterdir()):
+                return str(abliterated_dir)
         text_encoder_dir = self._config.model_path("text_encoder")
         return str(text_encoder_dir)
 

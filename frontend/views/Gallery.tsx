@@ -10,11 +10,12 @@ type FilterType = 'all' | 'images' | 'videos'
 interface GalleryItem {
   id: string
   filename: string
+  path: string
   type: 'image' | 'video'
   url: string
   thumbnail?: string
-  model?: string
-  file_size?: number
+  model_name?: string
+  size_bytes?: number
   created_at: string
 }
 
@@ -23,6 +24,7 @@ interface GalleryResponse {
   total: number
   page: number
   per_page: number
+  total_pages: number
 }
 
 function formatFileSize(bytes?: number): string {
@@ -33,7 +35,9 @@ function formatFileSize(bytes?: number): string {
 }
 
 function formatDate(dateStr: string): string {
-  const date = new Date(dateStr)
+  const secs = parseFloat(dateStr)
+  const date = isNaN(secs) ? new Date(dateStr) : new Date(secs * 1000)
+  if (isNaN(date.getTime())) return ''
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -50,15 +54,26 @@ export function Gallery() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [previewItem, setPreviewItem] = useState<GalleryItem | null>(null)
+  const [backendUrl, setBackendUrl] = useState<string>('')
 
   const perPage = 50
+
+  useEffect(() => {
+    window.electronAPI.getBackendUrl().then(setBackendUrl).catch(() => {})
+  }, [])
+
+  // Resolve a gallery item URL to an absolute URL
+  const resolveUrl = useCallback((url: string) => {
+    if (url.startsWith('http') || url.startsWith('file:')) return url
+    return `${backendUrl}${url}`
+  }, [backendUrl])
 
   const fetchGallery = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const backendUrl = await window.electronAPI.getBackendUrl()
-      const res = await fetch(`${backendUrl}/api/gallery/local?page=${page}&per_page=${perPage}&type=${filter}`)
+      const url = backendUrl || await window.electronAPI.getBackendUrl()
+      const res = await fetch(`${url}/api/gallery/local?page=${page}&per_page=${perPage}&type=${filter}`)
       if (!res.ok) throw new Error(`Failed to fetch gallery: ${res.status}`)
       const data = (await res.json()) as GalleryResponse
       setItems(data.items)
@@ -71,7 +86,7 @@ export function Gallery() {
     } finally {
       setLoading(false)
     }
-  }, [page, filter])
+  }, [backendUrl, page, filter])
 
   useEffect(() => {
     void fetchGallery()
@@ -178,7 +193,7 @@ export function Gallery() {
                   <div className="aspect-video bg-zinc-800 flex items-center justify-center overflow-hidden">
                     {item.thumbnail || item.type === 'image' ? (
                       <img
-                        src={item.thumbnail || item.url}
+                        src={resolveUrl(item.thumbnail || item.url)}
                         alt={item.filename}
                         className="w-full h-full object-cover"
                       />
@@ -197,12 +212,12 @@ export function Gallery() {
                   <div className="p-2.5">
                     <p className="text-xs text-white font-medium truncate">{item.filename}</p>
                     <div className="flex items-center gap-2 mt-1.5">
-                      {item.model && (
+                      {item.model_name && (
                         <span className="text-[10px] bg-blue-500/20 text-blue-400 rounded px-1.5 py-0.5 font-medium">
-                          {item.model}
+                          {item.model_name}
                         </span>
                       )}
-                      <span className="text-[10px] text-zinc-500">{formatFileSize(item.file_size)}</span>
+                      <span className="text-[10px] text-zinc-500">{formatFileSize(item.size_bytes)}</span>
                       <span className="text-[10px] text-zinc-500">{formatDate(item.created_at)}</span>
                     </div>
                   </div>
@@ -266,14 +281,14 @@ export function Gallery() {
             </button>
             {previewItem.type === 'video' ? (
               <video
-                src={previewItem.url}
+                src={resolveUrl(previewItem.url)}
                 controls
                 autoPlay
                 className="w-full max-h-[80vh] rounded-lg"
               />
             ) : (
               <img
-                src={previewItem.url}
+                src={resolveUrl(previewItem.url)}
                 alt={previewItem.filename}
                 className="w-full max-h-[80vh] object-contain rounded-lg"
               />
@@ -282,8 +297,8 @@ export function Gallery() {
               <div>
                 <p className="text-sm text-white font-medium">{previewItem.filename}</p>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  {formatFileSize(previewItem.file_size)} &middot; {formatDate(previewItem.created_at)}
-                  {previewItem.model && ` \u00B7 ${previewItem.model}`}
+                  {formatFileSize(previewItem.size_bytes)} &middot; {formatDate(previewItem.created_at)}
+                  {previewItem.model_name && ` \u00B7 ${previewItem.model_name}`}
                 </p>
               </div>
               <Button
@@ -291,8 +306,8 @@ export function Gallery() {
                 size="sm"
                 className="border-zinc-700"
                 onClick={() => {
-                  if (previewItem.url) {
-                    void window.electronAPI.showItemInFolder(previewItem.url)
+                  if (previewItem.path) {
+                    void window.electronAPI.showItemInFolder(previewItem.path)
                   }
                 }}
               >

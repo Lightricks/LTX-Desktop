@@ -11,8 +11,10 @@ router = APIRouter(tags=["enhance"])
 
 
 class EnhancePromptRequest(BaseModel):
-    prompt: str
+    prompt: str = ""
     mode: str = "text-to-video"
+    model: str = "ltx-fast"
+    imagePath: str | None = None
 
 
 @router.post("/api/enhance-prompt")
@@ -20,4 +22,6 @@ def enhance_prompt(
     req: EnhancePromptRequest,
     handler: AppHandler = Depends(get_state_service),
 ):
-    return handler.enhance_prompt.enhance(req.prompt, req.mode)
+    return handler.enhance_prompt.enhance(
+        req.prompt, req.mode, req.model, image_path=req.imagePath,
+    )

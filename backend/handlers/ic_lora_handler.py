@@ -5,10 +5,10 @@ from __future__ import annotations
 import base64
 import logging
 import uuid
-from datetime import datetime
 from pathlib import Path
 from threading import RLock
 
+from server_utils.output_naming import make_output_path
 from api_types import (
     IcLoraDownloadRequest,
     IcLoraDownloadResponse,
@@ -160,7 +160,7 @@ class IcLoraHandler(StateHandlerBase):
 
             height = round(req.height / 64) * 64
             width = round(req.width / 64) * 64
-            output_path = self._outputs_dir / f"ic_lora_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.mp4"
+            output_path = make_output_path(self._outputs_dir, model="ic-lora", prompt=req.prompt, ext="mp4")
 
             ic_state.pipeline.generate(
                 prompt=req.prompt,

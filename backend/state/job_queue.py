@@ -114,7 +114,7 @@ class JobQueue:
         self._save()
 
     def cancel_job(self, job_id: str) -> None:
-        self.update_job(job_id, status="cancelled")
+        self.update_job(job_id, status="cancelled", phase="cancelled")
 
     def jobs_for_batch(self, batch_id: str) -> list[QueueJob]:
         return sorted(

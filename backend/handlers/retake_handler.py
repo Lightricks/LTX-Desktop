@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
 from pathlib import Path
 from threading import RLock
 import time
@@ -15,6 +14,7 @@ from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
 from handlers.text_handler import TextHandler
 from runtime_config.runtime_config import RuntimeConfig
+from server_utils.output_naming import make_output_path
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError
 from services.interfaces import LTXAPIClient
 from state.app_state_types import AppState
@@ -103,7 +103,7 @@ class RetakeHandler(StateHandlerBase):
             raise HTTPError(exc.status_code, exc.detail) from exc
 
         if result.video_bytes is not None:
-            output = self._outputs_dir / f"retake_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.mp4"
+            output = make_output_path(self._outputs_dir, model="retake", prompt=prompt, ext="mp4")
             with open(output, "wb") as out:
                 out.write(result.video_bytes)
             return RetakeResponse(status="complete", video_path=str(output))
@@ -138,7 +138,7 @@ class RetakeHandler(StateHandlerBase):
 
         generation_id = uuid.uuid4().hex[:8]
         seed = self._resolve_seed()
-        output_path = self._outputs_dir / f"retake_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{generation_id}.mp4"
+        output_path = make_output_path(self._outputs_dir, model="retake", prompt=prompt, ext="mp4")
         regenerate_video, regenerate_audio = self._resolve_retake_mode(mode)
 
         try:

@@ -18,10 +18,13 @@ VIDEO_EXTENSIONS = frozenset({".mp4", ".webm"})
 ALL_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
 
 # Known filename prefixes that indicate which model produced the file.
-_MODEL_PREFIXES: list[tuple[str, str]] = [
+# Legacy prefixes kept for backwards-compat with existing output files.
+_LEGACY_MODEL_PREFIXES: list[tuple[str, str]] = [
+    ("zit_edit_", "zit-edit"),
     ("zit_image_", "zit"),
     ("api_image_", "api"),
     ("ltx_fast_", "ltx-fast"),
+    ("ltx2_", "ltx2"),
     ("ltx_", "ltx"),
     ("api_video_", "api-video"),
     ("seedance_", "seedance"),
@@ -30,11 +33,26 @@ _MODEL_PREFIXES: list[tuple[str, str]] = [
     ("retake_", "retake"),
 ]
 
+_DD_PREFIX = "dd_"
+
 
 def _parse_model_name(filename: str) -> str | None:
-    """Extract model name from known filename prefixes."""
+    """Extract model name from filename.
+
+    New format: ``dd_{model}_{prompt}_{timestamp}.ext``
+    Legacy format: ``{prefix}{timestamp}_{id}.ext``
+    """
     lower = filename.lower()
-    for prefix, model in _MODEL_PREFIXES:
+    # New dd_ naming: dd_{model}_{prompt_slug}_{timestamp}.ext
+    if lower.startswith(_DD_PREFIX):
+        rest = lower[len(_DD_PREFIX):]
+        # Model name is the segment before the next underscore
+        parts = rest.split("_", 1)
+        if parts:
+            return parts[0]
+        return None
+    # Legacy prefixes
+    for prefix, model in _LEGACY_MODEL_PREFIXES:
         if lower.startswith(prefix):
             return model
     return None
@@ -112,7 +130,7 @@ class GalleryHandler:
                 )
 
         # Sort by created_at descending (newest first).
-        assets.sort(key=lambda a: a.created_at, reverse=True)
+        assets.sort(key=lambda a: float(a.created_at), reverse=True)
 
         total = len(assets)
         total_pages = max(1, math.ceil(total / per_page))

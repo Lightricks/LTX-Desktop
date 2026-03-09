@@ -107,6 +107,13 @@ class ModelsHandler(StateHandlerBase):
             if model_type == "text_encoder":
                 description += " (optional with API key)" if has_api_key else ""
                 optional_reason = "Uses LTX API for text encoding" if has_api_key else None
+            if model_type == "text_encoder_abliterated":
+                description += " (optional)"
+                optional_reason = (
+                    "Uncensored text encoder variant. Removes safety alignment from Gemma-3 "
+                    "so prompts are encoded without content filtering, giving more flexible "
+                    "and faithful prompt interpretation for video generation."
+                )
 
             models.append(
                 ModelFileStatus(

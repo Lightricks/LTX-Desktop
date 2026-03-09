@@ -25,6 +25,8 @@ interface Window {
     getNoticesText: () => Promise<string>
     openLtxApiKeyPage: () => Promise<boolean>
     openReplicateApiKeyPage: () => Promise<boolean>
+    openPaletteLoginPage: () => Promise<boolean>
+    openPaletteApiKeyPage: () => Promise<boolean>
     openParentFolderOfFile: (filePath: string) => Promise<void>
     showItemInFolder: (filePath: string) => Promise<void>
     getLogs: () => Promise<LogsResponse>
@@ -60,6 +62,7 @@ interface Window {
     getAnalyticsState: () => Promise<{ analyticsEnabled: boolean; installationId: string }>
     setAnalyticsEnabled: (enabled: boolean) => Promise<void>
     sendAnalyticsEvent: (eventName: string, extraDetails?: Record<string, unknown> | null) => Promise<void>
+    onPaletteAuthCallback: (cb: (data: { token: string }) => void) => (() => void)
     platform: string
   }
 }

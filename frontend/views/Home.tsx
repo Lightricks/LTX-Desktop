@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
-import { Plus, Folder, FolderOpen, MoreVertical, Trash2, Pencil, Sparkles, Image, UserCircle, Palette, ImageIcon, Braces, BookOpen } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Plus, Folder, FolderOpen, MoreVertical, Trash2, Pencil, Sparkles, Image, UserCircle, Palette, ImageIcon, Braces, BookOpen, LogOut, LogIn, Key } from 'lucide-react'
 import { useProjects } from '../contexts/ProjectContext'
+import { useAppSettings } from '../contexts/AppSettingsContext'
 import { LtxLogo } from '../components/LtxLogo'
 import { Button } from '../components/ui/button'
 import type { Project } from '../types/project'
@@ -114,6 +115,7 @@ function ProjectCard({ project, onOpen, onDelete, onRename, onSetAssetFolder }: 
 
 export function Home() {
   const { projects, createProject, deleteProject, renameProject, updateProject, openProject, openPlayground, openGallery, openCharacters, openStyles, openReferences, openWildcards, openPromptLibrary } = useProjects()
+  const { refreshSettings } = useAppSettings()
   const [isCreating, setIsCreating] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectAssetPath, setNewProjectAssetPath] = useState('')
@@ -122,12 +124,145 @@ export function Home() {
   const [renameValue, setRenameValue] = useState('')
   const [assetFolderProjectId, setAssetFolderProjectId] = useState<string | null>(null)
   const [assetFolderPath, setAssetFolderPath] = useState('')
+  const [paletteUser, setPaletteUser] = useState<{ name?: string; email?: string } | null>(null)
+  const [paletteConnected, setPaletteConnected] = useState(false)
+  const [creditBalance, setCreditBalance] = useState<number | null>(null)
+  const [showSignInMenu, setShowSignInMenu] = useState(false)
+  const [apiKeyInput, setApiKeyInput] = useState('')
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false)
+  const [connectError, setConnectError] = useState<string | null>(null)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [loginLoading, setLoginLoading] = useState(false)
+
+  const fetchPaletteStatus = useCallback(async () => {
+    try {
+      const backendUrl = await window.electronAPI.getBackendUrl()
+      const res = await fetch(`${backendUrl}/api/sync/status`)
+      if (res.ok) {
+        const data = await res.json()
+        setPaletteConnected(data.connected ?? false)
+        setPaletteUser(data.user ?? null)
+        if (data.connected) {
+          // Fetch credits when connected
+          const creditsRes = await fetch(`${backendUrl}/api/sync/credits`)
+          if (creditsRes.ok) {
+            const creditsData = await creditsRes.json()
+            setCreditBalance(creditsData.balance_cents ?? creditsData.balance ?? null)
+          }
+        } else {
+          setCreditBalance(null)
+        }
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  const handleDisconnect = async () => {
+    try {
+      const backendUrl = await window.electronAPI.getBackendUrl()
+      await fetch(`${backendUrl}/api/sync/disconnect`, { method: 'POST' })
+      setPaletteConnected(false)
+      setPaletteUser(null)
+      void refreshSettings()
+    } catch { /* ignore */ }
+  }
+
+  const handleConnectWithApiKey = async () => {
+    const trimmed = apiKeyInput.trim()
+    if (!trimmed) return
+    setConnectError(null)
+    try {
+      const backendUrl = await window.electronAPI.getBackendUrl()
+      const res = await fetch(`${backendUrl}/api/sync/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: trimmed }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.connected) {
+          setPaletteConnected(true)
+          setPaletteUser(data.user ?? null)
+          setApiKeyInput('')
+          setShowApiKeyInput(false)
+          setShowSignInMenu(false)
+          void refreshSettings()
+        } else {
+          setConnectError(data.error || 'Connection failed. The Palette API may not be available yet.')
+        }
+      } else {
+        setConnectError('Connection failed. Please check your key and try again.')
+      }
+    } catch {
+      setConnectError('Could not reach the server. Please try again.')
+    }
+  }
+
+  const handleEmailLogin = async () => {
+    const email = loginEmail.trim()
+    if (!email || !loginPassword) return
+    setLoginLoading(true)
+    setConnectError(null)
+    try {
+      const backendUrl = await window.electronAPI.getBackendUrl()
+      const res = await fetch(`${backendUrl}/api/sync/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: loginPassword }),
+      })
+      const data = await res.json()
+      if (data.connected) {
+        setPaletteConnected(true)
+        setPaletteUser(data.user ?? null)
+        setLoginEmail('')
+        setLoginPassword('')
+        setShowSignInMenu(false)
+        void refreshSettings()
+      } else {
+        setConnectError(data.error || 'Login failed')
+      }
+    } catch {
+      setConnectError('Could not reach the server. Please try again.')
+    } finally {
+      setLoginLoading(false)
+    }
+  }
 
   useEffect(() => {
     window.electronAPI?.getDownloadsPath().then(p => {
       setDefaultDownloadsPath(p)
     }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    void fetchPaletteStatus()
+  }, [fetchPaletteStatus])
+
+  // Listen for deep link auth callbacks (from browser login)
+  useEffect(() => {
+    const cleanup = window.electronAPI.onPaletteAuthCallback(async (data) => {
+      if (data.token) {
+        try {
+          const backendUrl = await window.electronAPI.getBackendUrl()
+          const res = await fetch(`${backendUrl}/api/sync/connect`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: data.token }),
+          })
+          if (res.ok) {
+            const result = await res.json()
+            if (result.connected) {
+              setPaletteConnected(true)
+              setPaletteUser(result.user ?? null)
+              setShowSignInMenu(false)
+              void refreshSettings()
+            }
+          }
+        } catch { /* ignore */ }
+      }
+    })
+    return cleanup
+  }, [refreshSettings])
 
   const getDefaultAssetPath = (name: string) => {
     if (!defaultDownloadsPath) return ''
@@ -273,15 +408,129 @@ export function Home() {
             </button>
           </div>
         </nav>
-        
-        <div className="p-4 border-t border-zinc-800">
-          <button
-            onClick={() => setIsCreating(true)}
-            className="w-full px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium flex items-center justify-center gap-2 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            New Project
-          </button>
+
+        {/* ACCOUNT section */}
+        <div className="mt-auto border-t border-zinc-800">
+          {paletteConnected ? (
+            <div className="p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                  {(paletteUser?.name || paletteUser?.email || '?')[0].toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-white font-medium truncate">{paletteUser?.name || 'Connected'}</p>
+                  {paletteUser?.email && (
+                    <p className="text-[10px] text-zinc-500 truncate">{paletteUser.email}</p>
+                  )}
+                </div>
+              </div>
+              {creditBalance !== null && (
+                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-zinc-800 mb-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span className="text-xs text-zinc-300 font-medium">
+                    Credits: {(creditBalance / 100).toFixed(2)}
+                  </span>
+                </div>
+              )}
+              <button
+                onClick={handleDisconnect}
+                className="w-full px-2 py-1.5 rounded-md text-zinc-400 hover:bg-zinc-800 hover:text-red-400 text-xs flex items-center gap-2 transition-colors"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <div className="p-3">
+              <p className="text-[10px] text-zinc-600 mb-2 px-1">Connect to Director's Palette for cloud gallery, characters, credits, and sync.</p>
+
+              {showSignInMenu ? (
+                <div className="space-y-1.5">
+                  {/* Email / Password login */}
+                  <input
+                    type="email"
+                    value={loginEmail}
+                    onChange={(e) => { setLoginEmail(e.target.value); setConnectError(null) }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') document.getElementById('home-palette-password')?.focus() }}
+                    placeholder="Email address"
+                    className="w-full px-2 py-1.5 rounded-md bg-zinc-800 border border-zinc-700 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-blue-500"
+                  />
+                  <input
+                    id="home-palette-password"
+                    type="password"
+                    value={loginPassword}
+                    onChange={(e) => { setLoginPassword(e.target.value); setConnectError(null) }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') void handleEmailLogin() }}
+                    placeholder="Password"
+                    className="w-full px-2 py-1.5 rounded-md bg-zinc-800 border border-zinc-700 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-blue-500"
+                  />
+                  <button
+                    onClick={() => void handleEmailLogin()}
+                    disabled={!loginEmail.trim() || !loginPassword || loginLoading}
+                    className="w-full px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <LogIn className="h-3.5 w-3.5" />
+                    {loginLoading ? 'Signing in...' : 'Sign In'}
+                  </button>
+                  <button
+                    onClick={() => setShowApiKeyInput(!showApiKeyInput)}
+                    className="w-full px-3 py-1.5 rounded-md text-zinc-400 hover:bg-zinc-800 hover:text-white text-xs flex items-center gap-2 transition-colors"
+                  >
+                    <Key className="h-3.5 w-3.5" />
+                    Use API Key
+                  </button>
+                  {showApiKeyInput && (
+                    <div className="space-y-1">
+                      <div className="flex gap-1">
+                        <input
+                          type="password"
+                          value={apiKeyInput}
+                          onChange={(e) => { setApiKeyInput(e.target.value); setConnectError(null) }}
+                          onKeyDown={(e) => e.key === 'Enter' && handleConnectWithApiKey()}
+                          placeholder="Paste API key..."
+                          className="flex-1 min-w-0 px-2 py-1.5 rounded-md bg-zinc-800 border border-zinc-700 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-blue-500"
+                        />
+                        <button
+                          onClick={handleConnectWithApiKey}
+                          disabled={!apiKeyInput.trim()}
+                          className="px-2 py-1.5 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Go
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {connectError && (
+                    <p className="text-[10px] text-red-400 px-1">{connectError}</p>
+                  )}
+                  <button
+                    onClick={() => { setShowSignInMenu(false); setShowApiKeyInput(false); setConnectError(null) }}
+                    className="w-full px-3 py-1 text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowSignInMenu(true)}
+                  className="w-full px-3 py-2 rounded-lg border border-zinc-700 hover:border-zinc-500 text-zinc-300 text-xs font-medium flex items-center justify-center gap-2 transition-colors"
+                >
+                  <LogIn className="h-3.5 w-3.5" />
+                  Sign In to Director's Palette
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="px-3 pb-3">
+            <button
+              onClick={() => setIsCreating(true)}
+              className="w-full px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              New Project
+            </button>
+          </div>
         </div>
       </aside>
       

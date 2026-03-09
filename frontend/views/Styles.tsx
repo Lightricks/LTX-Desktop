@@ -9,7 +9,7 @@ interface Style {
   id: string
   name: string
   description: string
-  reference_image?: string
+  reference_image_path?: string
   created_at: string
 }
 
@@ -59,7 +59,7 @@ export function Styles() {
     setEditingStyle(style)
     setFormName(style.name)
     setFormDescription(style.description)
-    setFormImage(style.reference_image ?? '')
+    setFormImage(style.reference_image_path ?? '')
     setIsModalOpen(true)
   }
 
@@ -71,7 +71,7 @@ export function Styles() {
       const body = {
         name: formName.trim(),
         description: formDescription.trim(),
-        reference_image: formImage || undefined,
+        reference_image_path: formImage || undefined,
       }
       if (editingStyle) {
         const res = await fetch(`${backendUrl}/api/library/styles/${editingStyle.id}`, {
@@ -178,9 +178,9 @@ export function Styles() {
                 className="group bg-zinc-900 rounded-lg border border-zinc-800 hover:border-zinc-600 transition-all overflow-hidden"
               >
                 <div className="aspect-video bg-zinc-800 flex items-center justify-center overflow-hidden">
-                  {style.reference_image ? (
+                  {style.reference_image_path ? (
                     <img
-                      src={style.reference_image}
+                      src={style.reference_image_path}
                       alt={style.name}
                       className="w-full h-full object-cover"
                     />

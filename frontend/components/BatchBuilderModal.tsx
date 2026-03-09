@@ -251,7 +251,7 @@ export function BatchBuilderModal({ isOpen, onClose }: BatchBuilderModalProps) {
           {activeTab === 'list' && (
             <div className="space-y-3">
               {/* Table header */}
-              <div className="grid grid-cols-[80px_100px_1fr_180px_80px_60px] gap-2 text-xs font-medium" style={{ color: 'oklch(0.65 0.04 290)' }}>
+              <div className="grid grid-cols-[80px_120px_1fr_180px_80px_60px] gap-2 text-xs font-medium" style={{ color: 'oklch(0.65 0.04 290)' }}>
                 <span>Type</span>
                 <span>Model</span>
                 <span>Prompt</span>
@@ -260,7 +260,7 @@ export function BatchBuilderModal({ isOpen, onClose }: BatchBuilderModalProps) {
                 <span></span>
               </div>
               {rows.map(row => (
-                <div key={row.id} className="grid grid-cols-[80px_100px_1fr_180px_80px_60px] gap-2 items-center">
+                <div key={row.id} className="grid grid-cols-[80px_120px_1fr_180px_80px_60px] gap-2 items-center">
                   <select
                     value={row.type}
                     onChange={e => updateRow(row.id, 'type', e.target.value)}

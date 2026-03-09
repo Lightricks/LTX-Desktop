@@ -11,7 +11,7 @@ interface Reference {
   id: string
   name: string
   category: Exclude<Category, 'all'>
-  image_url: string
+  image_path: string
   created_at: string
 }
 
@@ -68,7 +68,7 @@ export function References() {
         body: JSON.stringify({
           name: formName.trim(),
           category: formCategory,
-          image_url: formImage,
+          image_path: formImage,
         }),
       })
       if (!res.ok) throw new Error(`Create failed: ${res.status}`)
@@ -196,7 +196,7 @@ export function References() {
               >
                 <div className="aspect-square bg-zinc-800 flex items-center justify-center overflow-hidden">
                   <img
-                    src={ref.image_url}
+                    src={ref.image_path}
                     alt={ref.name}
                     className="w-full h-full object-cover"
                   />

@@ -10,6 +10,8 @@ interface VideoPlayerProps {
   isGenerating: boolean
   progress: number
   statusMessage: string
+  elapsedSeconds?: number
+  estimatedSeconds?: number | null
   modelName?: string | null
   onExtendVideo?: (frameUrl: string, framePath: string) => void
 }
@@ -26,7 +28,7 @@ const MODEL_DISPLAY_NAMES: Record<string, string> = {
   'seedance-1.5-pro': 'Seedance 1.5 Pro',
 }
 
-export function VideoPlayer({ videoUrl, videoPath, videoResolution, isGenerating, progress, statusMessage, modelName, onExtendVideo }: VideoPlayerProps) {
+export function VideoPlayer({ videoUrl, videoPath, videoResolution, isGenerating, progress, statusMessage, elapsedSeconds, estimatedSeconds, modelName, onExtendVideo }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const progressRef = useRef<HTMLDivElement>(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -301,15 +303,29 @@ export function VideoPlayer({ videoUrl, videoPath, videoResolution, isGenerating
               {statusMessage}
             </p>
             <div className="w-64">
+              {/* Time-based progress bar when estimate available, otherwise use backend progress */}
               <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-primary transition-all duration-300"
-                  style={{ width: `${progress}%` }}
+                  style={{ width: `${estimatedSeconds && elapsedSeconds ? Math.min((elapsedSeconds / estimatedSeconds) * 100, 95) : progress}%` }}
                 />
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                {Math.round(progress)}% complete
-              </p>
+              <div className="flex justify-between items-center mt-2">
+                <p className="text-xs text-muted-foreground">
+                  {elapsedSeconds != null && elapsedSeconds > 0
+                    ? `Elapsed: ${formatTime(elapsedSeconds)}`
+                    : `${Math.round(progress)}% complete`
+                  }
+                </p>
+                {estimatedSeconds != null && elapsedSeconds != null && elapsedSeconds > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {estimatedSeconds > elapsedSeconds
+                      ? `~${formatTime(estimatedSeconds - elapsedSeconds)} left`
+                      : 'Finishing up...'
+                    }
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         ) : videoUrl ? (

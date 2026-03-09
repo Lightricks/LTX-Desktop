@@ -26,6 +26,7 @@ MODEL_FILE_ORDER: tuple[ModelFileType, ...] = (
     "checkpoint",
     "upsampler",
     "text_encoder",
+    "text_encoder_abliterated",
     "zit",
 )
 
@@ -51,6 +52,13 @@ DEFAULT_MODEL_DOWNLOAD_SPECS: dict[ModelFileType, ModelFileDownloadSpec] = {
         is_folder=True,
         repo_id="Lightricks/gemma-3-12b-it-qat-q4_0-unquantized",
         description="Gemma text encoder (bfloat16)",
+    ),
+    "text_encoder_abliterated": ModelFileDownloadSpec(
+        relative_path=Path("gemma-3-12b-it-abliterated"),
+        expected_size_bytes=24_400_000_000,
+        is_folder=True,
+        repo_id="mlabonne/gemma-3-12b-it-abliterated",
+        description="Abliterated Gemma text encoder (~24.4 GB)",
     ),
     "zit": ModelFileDownloadSpec(
         relative_path=Path("Z-Image-Turbo"),

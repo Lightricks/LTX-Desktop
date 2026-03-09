@@ -336,7 +336,15 @@ class FakePaletteSyncClient:
         self.raise_on_validate: Exception | None = None
         self.raise_on_login: Exception | None = None
         self.user_info: dict[str, Any] = {"id": "user-123", "email": "test@example.com", "name": "Test User"}
-        self.credits_info: dict[str, Any] = {"balance": 5000, "currency": "credits"}
+        self.credits_info: dict[str, Any] = {
+            "balance_cents": 5000,
+            "lifetime_purchased_cents": 10000,
+            "lifetime_used_cents": 5000,
+            "pricing": {
+                "video_t2v": 40, "video_i2v": 40, "video_seedance": 80,
+                "image": 20, "image_edit": 20, "audio": 15, "text_enhance": 3,
+            },
+        }
 
     def validate_connection(self, *, api_key: str) -> dict[str, Any]:
         self.validate_calls.append(api_key)
@@ -364,6 +372,34 @@ class FakePaletteSyncClient:
     def get_credits(self, *, api_key: str) -> dict[str, Any]:
         self.credits_calls.append(api_key)
         return self.credits_info
+
+    def check_credits(
+        self, *, api_key: str, generation_type: str, count: int,
+    ) -> dict[str, Any]:
+        cost = {"video_t2v": 40, "video_i2v": 40, "video_seedance": 80, "image": 20, "text_enhance": 3}.get(generation_type, 40)
+        total = cost * count
+        balance = self.credits_info.get("balance_cents", 5000)
+        if not isinstance(balance, int):
+            balance = 5000
+        return {
+            "can_afford": balance >= total,
+            "cost_cents": total,
+            "balance_cents": balance,
+            "balance_after_cents": balance - total,
+        }
+
+    def deduct_credits(
+        self, *, api_key: str, generation_type: str, count: int,
+        metadata: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        cost = {"video_t2v": 40, "video_i2v": 40, "video_seedance": 80, "image": 20, "text_enhance": 3}.get(generation_type, 40)
+        total = cost * count
+        balance = self.credits_info.get("balance_cents", 5000)
+        if not isinstance(balance, int):
+            balance = 5000
+        new_balance = balance - total
+        self.credits_info["balance_cents"] = new_balance
+        return {"deducted_cents": total, "balance_cents": new_balance}
 
     def list_gallery(
         self, *, api_key: str, page: int, per_page: int, asset_type: str,

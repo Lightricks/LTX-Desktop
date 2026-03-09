@@ -5,16 +5,18 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from datetime import datetime
 from pathlib import Path
 from threading import RLock
 from typing import TYPE_CHECKING
+
+from PIL import Image
 
 from _routes._errors import HTTPError
 from api_types import GenerateImageRequest, GenerateImageResponse
 from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
+from server_utils.output_naming import make_output_path
 from services.interfaces import ImageAPIClient
 from state.app_state_types import AppState
 
@@ -78,6 +80,10 @@ class ImageGenerationHandler(StateHandlerBase):
                 num_inference_steps=req.numSteps,
                 seed=seed,
                 num_images=num_images,
+                lora_path=req.loraPath,
+                lora_weight=req.loraWeight,
+                source_image_path=req.sourceImagePath,
+                strength=req.strength,
             )
             self._generation.complete_generation(output_paths)
             return GenerateImageResponse(status="complete", image_paths=output_paths)
@@ -96,19 +102,43 @@ class ImageGenerationHandler(StateHandlerBase):
         num_inference_steps: int,
         seed: int | None,
         num_images: int,
+        lora_path: str | None = None,
+        lora_weight: float = 1.0,
+        source_image_path: str | None = None,
+        strength: float = 0.65,
     ) -> list[str]:
         if self._generation.is_generation_cancelled():
             raise RuntimeError("Generation was cancelled")
 
-        self._generation.update_progress("loading_model", 5, 0, num_inference_steps)
-        zit = self._pipelines.load_zit_to_gpu()
+        self._generation.update_progress("preparing_gpu", 3, 0, num_inference_steps)
+        zit = self._pipelines.load_zit_to_gpu(
+            on_phase=lambda phase: self._generation.update_progress(phase, 5, 0, num_inference_steps)
+        )
+
+        if lora_path:
+            logger.info("Loading LoRA: %s (weight=%.2f)", lora_path, lora_weight)
+            self._generation.update_progress("loading_lora", 10, 0, num_inference_steps)
+            zit.load_lora(lora_path, weight=lora_weight)
+        else:
+            zit.unload_lora()
+
+        # Load and prepare source image for img2img
+        source_image = None
+        if source_image_path:
+            self._generation.update_progress("encoding_image", 12, 0, num_inference_steps)
+            source_image = Image.open(source_image_path).convert("RGB")
+            width = (source_image.width // 16) * 16
+            height = (source_image.height // 16) * 16
+            source_image = source_image.resize((width, height), Image.Resampling.LANCZOS)
+
         self._generation.update_progress("inference", 15, 0, num_inference_steps)
 
         if seed is None:
             seed = int(time.time()) % 2147483647
 
+        is_edit = source_image is not None
+        model_label = "zit-edit" if is_edit else "zit"
         outputs: list[str] = []
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         for i in range(num_images):
             if self._generation.is_generation_cancelled():
@@ -117,16 +147,28 @@ class ImageGenerationHandler(StateHandlerBase):
             progress = 15 + int((i / num_images) * 80)
             self._generation.update_progress("inference", progress, i, num_images)
 
-            result = zit.generate(
-                prompt=prompt,
-                height=height,
-                width=width,
-                guidance_scale=0.0,
-                num_inference_steps=num_inference_steps,
-                seed=seed + i,
-            )
+            if source_image is not None:
+                result = zit.img2img(
+                    prompt=prompt,
+                    image=source_image,
+                    strength=strength,
+                    height=height,
+                    width=width,
+                    guidance_scale=0.0,
+                    num_inference_steps=num_inference_steps,
+                    seed=seed + i,
+                )
+            else:
+                result = zit.generate(
+                    prompt=prompt,
+                    height=height,
+                    width=width,
+                    guidance_scale=0.0,
+                    num_inference_steps=num_inference_steps,
+                    seed=seed + i,
+                )
 
-            output_path = self._outputs_dir / f"zit_image_{timestamp}_{uuid.uuid4().hex[:8]}.png"
+            output_path = make_output_path(self._outputs_dir, model=model_label, prompt=prompt, ext="png")
             result.images[0].save(str(output_path))
             outputs.append(str(output_path))
 
@@ -148,7 +190,6 @@ class ImageGenerationHandler(StateHandlerBase):
     ) -> GenerateImageResponse:
         generation_id = uuid.uuid4().hex[:8]
         output_paths: list[Path] = []
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         settings = self.state.app_settings.model_copy(deep=True)
 
         try:
@@ -180,7 +221,7 @@ class ImageGenerationHandler(StateHandlerBase):
                 download_progress = 75 + int(((idx + 1) / num_images) * 20)
                 self._generation.update_progress("downloading_output", download_progress, None, None)
 
-                output_path = self._outputs_dir / f"api_image_{timestamp}_{uuid.uuid4().hex[:8]}.png"
+                output_path = make_output_path(self._outputs_dir, model=settings.image_model, prompt=prompt, ext="png")
                 output_path.write_bytes(image_bytes)
                 output_paths.append(output_path)
 

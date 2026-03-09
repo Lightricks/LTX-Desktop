@@ -1,4 +1,4 @@
-import { ipcMain, dialog } from 'electron'
+import { ipcMain, dialog, BrowserWindow, session } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { getAllowedRoots } from '../config'
@@ -73,6 +73,187 @@ export function registerFileHandlers(): void {
   ipcMain.handle('open-replicate-api-key-page', async () => {
     const { shell } = await import('electron')
     await shell.openExternal('https://replicate.com/account/api-tokens')
+    return true
+  })
+
+  ipcMain.handle('open-palette-login-page', async () => {
+    const PALETTE_URL = 'https://directorspal.com'
+    const mainWindow = getMainWindow()
+
+    // Create a dedicated login session so we don't pollute the main session
+    const loginSession = session.fromPartition('palette-login')
+
+    const loginWindow = new BrowserWindow({
+      width: 500,
+      height: 700,
+      parent: mainWindow ?? undefined,
+      modal: true,
+      show: false,
+      webPreferences: {
+        session: loginSession,
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+      backgroundColor: '#1a1a1a',
+      title: "Sign In to Director's Palette",
+    })
+
+    loginWindow.setMenuBarVisibility(false)
+    loginWindow.once('ready-to-show', () => loginWindow.show())
+
+    // Poll for the Supabase session from cookies or localStorage.
+    // @supabase/ssr stores auth tokens as cookies on the Palette domain,
+    // either as a single cookie or chunked (sb-<ref>-auth-token.0, .1, etc.)
+    const checkForToken = async (): Promise<string | null> => {
+      try {
+        const allCookies = await loginSession.cookies.get({})
+
+        logger.info(`[palette-login] Found ${allCookies.length} cookies`)
+
+        // Look for Supabase SSR auth cookies (sb-<ref>-auth-token or chunked .0, .1, ...)
+        const baseCookies = allCookies.filter(c =>
+          c.name.startsWith('sb-') && c.name.includes('-auth-token')
+        )
+
+        if (baseCookies.length > 0) {
+          // Check for a single (non-chunked) cookie first
+          const single = baseCookies.find(c =>
+            c.name.match(/^sb-[^.]+$/) && c.name.endsWith('-auth-token')
+          )
+          let cookieValue: string | null = null
+
+          if (single?.value) {
+            cookieValue = single.value
+          } else {
+            // Reassemble chunked cookies: sb-<ref>-auth-token.0, .1, .2, ...
+            const chunks = baseCookies
+              .filter(c => /\.\d+$/.test(c.name))
+              .sort((a, b) => {
+                const aIdx = parseInt(a.name.split('.').pop() || '0', 10)
+                const bIdx = parseInt(b.name.split('.').pop() || '0', 10)
+                return aIdx - bIdx
+              })
+
+            if (chunks.length > 0) {
+              cookieValue = chunks.map(c => c.value).join('')
+            }
+          }
+
+          if (cookieValue) {
+            try {
+              const decoded = decodeURIComponent(cookieValue)
+              const parsed = JSON.parse(decoded)
+              if (parsed.access_token) {
+                logger.info('[palette-login] Token found in Supabase SSR cookie')
+                return parsed.access_token as string
+              }
+            } catch {
+              // Try base64 decode
+              try {
+                const decoded = Buffer.from(cookieValue, 'base64').toString('utf-8')
+                const parsed = JSON.parse(decoded)
+                if (parsed.access_token) {
+                  logger.info('[palette-login] Token found in base64 cookie')
+                  return parsed.access_token as string
+                }
+              } catch { /* not parseable */ }
+            }
+          }
+        }
+
+        // Fallback: check localStorage (older Supabase clients store tokens there)
+        const token = await loginWindow.webContents.executeJavaScript(`
+          (function() {
+            try {
+              for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) {
+                  const raw = localStorage.getItem(key);
+                  if (raw) {
+                    try {
+                      const parsed = JSON.parse(raw);
+                      if (parsed.access_token) return parsed.access_token;
+                    } catch(e) {}
+                  }
+                }
+              }
+            } catch(e) {}
+            return null;
+          })()
+        `).catch(() => null)
+
+        return token as string | null
+      } catch {
+        return null
+      }
+    }
+
+    let pollTimer: ReturnType<typeof setInterval> | null = null
+    let resolved = false
+
+    const onTokenFound = (token: string) => {
+      if (resolved) return
+      resolved = true
+      if (pollTimer) clearInterval(pollTimer)
+      logger.info('[palette-login] Token captured successfully')
+      if (mainWindow) {
+        mainWindow.webContents.send('palette-auth-callback', { token })
+      }
+      loginWindow.close()
+    }
+
+    // Start polling after each navigation completes
+    loginWindow.webContents.on('did-finish-load', () => {
+      const url = loginWindow.webContents.getURL()
+      logger.info(`[palette-login] Navigated to: ${url}`)
+
+      // Start polling aggressively on any Palette domain page
+      if (url.startsWith(PALETTE_URL)) {
+        if (pollTimer) clearInterval(pollTimer)
+        pollTimer = setInterval(async () => {
+          const token = await checkForToken()
+          if (token) onTokenFound(token)
+        }, 500)
+        // Also check immediately
+        void checkForToken().then(t => { if (t) onTokenFound(t) })
+      }
+    })
+
+    // Also check after any redirect (with delay for cookie to be set)
+    loginWindow.webContents.on('did-navigate', async (_event, url) => {
+      logger.info(`[palette-login] did-navigate: ${url}`)
+      // Check immediately
+      let token = await checkForToken()
+      if (token) { onTokenFound(token); return }
+      // Cookies may not be set yet — retry after a short delay
+      await new Promise(r => setTimeout(r, 1000))
+      token = await checkForToken()
+      if (token) onTokenFound(token)
+    })
+
+    // Check on in-page navigation too (SPA redirects)
+    loginWindow.webContents.on('did-navigate-in-page', async (_event, url) => {
+      logger.info(`[palette-login] did-navigate-in-page: ${url}`)
+      let token = await checkForToken()
+      if (token) { onTokenFound(token); return }
+      await new Promise(r => setTimeout(r, 1000))
+      token = await checkForToken()
+      if (token) onTokenFound(token)
+    })
+
+    loginWindow.on('closed', () => {
+      if (pollTimer) clearInterval(pollTimer)
+      // Clear the login session cookies
+      loginSession.cookies.flushStore().catch(() => {})
+    })
+
+    await loginWindow.loadURL(`${PALETTE_URL}/auth/signin`)
+    return true
+  })
+
+  ipcMain.handle('open-palette-api-key-page', async () => {
+    const { shell } = await import('electron')
+    await shell.openExternal('https://directorspal.com/settings/api-keys')
     return true
   })
 

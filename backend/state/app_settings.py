@@ -77,6 +77,7 @@ class AppSettings(SettingsBaseModel):
     prompt_enhancer_enabled_t2v: bool = True
     prompt_enhancer_enabled_i2v: bool = False
     gemini_api_key: str = ""
+    openrouter_api_key: str = ""
     seed_locked: bool = False
     locked_seed: int = 42
     batch_sound_enabled: bool = True
@@ -166,6 +167,7 @@ class SettingsResponse(SettingsBaseModel):
     prompt_enhancer_enabled_t2v: bool = True
     prompt_enhancer_enabled_i2v: bool = False
     has_gemini_api_key: bool = False
+    has_openrouter_api_key: bool = False
     seed_locked: bool = False
     locked_seed: int = 42
     batch_sound_enabled: bool = True
@@ -182,10 +184,12 @@ def to_settings_response(settings: AppSettings) -> SettingsResponse:
     palette_key = data.pop("palette_api_key", "")
     data.pop("palette_refresh_token", "")
     gemini_key = data.pop("gemini_api_key", "")
+    openrouter_key = data.pop("openrouter_api_key", "")
     data["has_ltx_api_key"] = bool(ltx_key)
     data["has_replicate_api_key"] = bool(replicate_key)
     data["has_palette_api_key"] = bool(palette_key)
     data["has_gemini_api_key"] = bool(gemini_key)
+    data["has_openrouter_api_key"] = bool(openrouter_key)
     r2_key = data.pop("r2_access_key_id", "")
     data.pop("r2_secret_access_key", "")
     data.pop("r2_endpoint", "")

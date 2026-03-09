@@ -276,6 +276,7 @@ class AppHandler:
             gpu_executor=GpuJobExecutor(self),
             api_executor=ApiJobExecutor(self),
             gpu_cleaner=gpu_cleaner,
+            credit_deductor=self.sync,
         )
         self._queue_stop = threading.Event()
         self._queue_thread = threading.Thread(target=self._queue_loop, daemon=True)

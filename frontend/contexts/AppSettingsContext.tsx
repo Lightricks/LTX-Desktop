@@ -1,4 +1,19 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+
+export interface CreditPricing {
+  video_t2v: number
+  video_i2v: number
+  video_seedance: number
+  image: number
+  image_edit: number
+  audio: number
+  text_enhance: number
+}
+
+export interface CreditInfo {
+  balance_cents: number | null
+  pricing: CreditPricing | null
+}
 
 export interface InferenceSettings {
   steps: number
@@ -63,6 +78,8 @@ interface AppSettingsContextValue {
   savePaletteApiKey: (value: string) => Promise<void>
   forceApiGenerations: boolean
   shouldVideoGenerateWithLtxApi: boolean
+  credits: CreditInfo
+  refreshCredits: () => Promise<void>
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
@@ -108,6 +125,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [backendUrl, setBackendUrl] = useState<string | null>(null)
   const [forceApiGenerations, setForceApiGenerations] = useState(true)
   const [backendProcessStatus, setBackendProcessStatus] = useState<BackendProcessStatus | null>(null)
+  const [credits, setCredits] = useState<CreditInfo>({ balance_cents: null, pricing: null })
+  const creditsPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     window.electronAPI.getBackendUrl().then(setBackendUrl).catch(() => setBackendUrl(null))
@@ -299,6 +318,44 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     await refreshSettings()
   }, [backendUrl, refreshSettings])
 
+  const refreshCredits = useCallback(async () => {
+    if (!backendUrl) return
+    try {
+      const res = await fetch(`${backendUrl}/api/sync/credits`)
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.connected) {
+        setCredits({
+          balance_cents: data.balance_cents ?? null,
+          pricing: data.pricing ?? null,
+        })
+      } else {
+        setCredits({ balance_cents: null, pricing: null })
+      }
+    } catch { /* ignore */ }
+  }, [backendUrl])
+
+  // Poll credits every 30s when connected
+  useEffect(() => {
+    if (!backendUrl || backendProcessStatus !== 'alive' || !settings.hasPaletteApiKey) {
+      setCredits({ balance_cents: null, pricing: null })
+      if (creditsPollRef.current) {
+        clearInterval(creditsPollRef.current)
+        creditsPollRef.current = null
+      }
+      return
+    }
+    // Fetch immediately, then poll
+    void refreshCredits()
+    creditsPollRef.current = setInterval(() => void refreshCredits(), 30_000)
+    return () => {
+      if (creditsPollRef.current) {
+        clearInterval(creditsPollRef.current)
+        creditsPollRef.current = null
+      }
+    }
+  }, [backendUrl, backendProcessStatus, settings.hasPaletteApiKey, refreshCredits])
+
   const shouldVideoGenerateWithLtxApi =
     forceApiGenerations || (settings.userPrefersLtxApiVideoGenerations && settings.hasLtxApiKey)
 
@@ -315,8 +372,10 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       savePaletteApiKey,
       forceApiGenerations,
       shouldVideoGenerateWithLtxApi,
+      credits,
+      refreshCredits,
     }),
-    [forceApiGenerations, isLoaded, refreshSettings, runtimePolicyLoaded, savePaletteApiKey, saveReplicateApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, updateSettings],
+    [credits, forceApiGenerations, isLoaded, refreshCredits, refreshSettings, runtimePolicyLoaded, savePaletteApiKey, saveReplicateApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, updateSettings],
   )
 
   return <AppSettingsContext.Provider value={contextValue}>{children}</AppSettingsContext.Provider>

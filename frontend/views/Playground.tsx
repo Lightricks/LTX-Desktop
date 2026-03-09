@@ -37,7 +37,7 @@ const DEFAULT_SETTINGS: GenerationSettings = {
 
 export function Playground() {
   const { goHome } = useProjects()
-  const { forceApiGenerations, shouldVideoGenerateWithLtxApi } = useAppSettings()
+  const { forceApiGenerations, shouldVideoGenerateWithLtxApi, credits } = useAppSettings()
   const [mode, setMode] = useState<GenerationMode>('text-to-video')
   const [prompt, setPrompt] = useState('')
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
@@ -76,6 +76,8 @@ export function Playground() {
     isGenerating,
     progress,
     statusMessage,
+    elapsedSeconds,
+    estimatedSeconds,
     videoUrl,
     videoPath,
     imageUrl,
@@ -110,14 +112,19 @@ export function Playground() {
   const generatedImageRef = useRef<string | null>(null)
 
   const handleEnhancePrompt = async () => {
-    if (!prompt.trim() || isEnhancing) return
+    if (isEnhancing) return
     setIsEnhancing(true)
     try {
       const backendUrl = await window.electronAPI.getBackendUrl()
       const res = await fetch(`${backendUrl}/api/enhance-prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, mode }),
+        body: JSON.stringify({
+          prompt,
+          mode,
+          model: settings.model,
+          imagePath: selectedImage ? selectedImage.replace(/^file:\/\/\/?/, '').replace(/\//g, '\\') : null,
+        }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -217,6 +224,16 @@ export function Playground() {
       : !!prompt.trim()
   )
 
+  // Compute estimated credit cost for current generation
+  const estimatedCostCents = (() => {
+    if (!credits.pricing) return null
+    if (mode === 'text-to-image') return credits.pricing.image
+    const m = settings.model as string
+    if (m === 'seedance-1.5-pro' || m === 'seedance') return credits.pricing.video_seedance
+    if (selectedImage || mode === 'image-to-video') return credits.pricing.video_i2v
+    return credits.pricing.video_t2v
+  })()
+
   return (
     <div className="h-screen bg-background flex flex-col">
       {/* Header */}
@@ -236,9 +253,19 @@ export function Playground() {
         </div>
         
         <div className="flex items-center gap-4 pr-20">
+          {/* Credit Balance */}
+          {credits.balance_cents !== null && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-800/80 border border-zinc-700/50">
+              <div className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="text-xs text-zinc-300 font-medium">
+                ${(credits.balance_cents / 100).toFixed(2)}
+              </span>
+            </div>
+          )}
+
           {/* Model Status Dropdown */}
           {!forceApiGenerations && <ModelStatusDropdown />}
-          
+
           {/* GPU Info */}
           {status.gpuInfo && (
             <div className="text-sm text-zinc-500">
@@ -315,9 +342,9 @@ export function Playground() {
               />
               <button
                 onClick={handleEnhancePrompt}
-                disabled={!prompt.trim() || isEnhancing || isBusy}
+                disabled={isEnhancing || isBusy}
                 className="absolute top-7 right-2 p-1.5 rounded-md text-zinc-500 hover:text-amber-400 hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Enhance prompt with AI"
+                title={prompt.trim() ? "Enhance prompt with AI" : "Generate a random prompt"}
               >
                 <Wand2 className={`h-4 w-4 ${isEnhancing ? 'animate-spin' : ''}`} />
               </button>
@@ -392,12 +419,12 @@ export function Playground() {
                   ) : mode === 'text-to-image' ? (
                     <>
                       <ImageIcon className="h-4 w-4" />
-                      Generate image
+                      Generate image{estimatedCostCents ? ` ($${(estimatedCostCents / 100).toFixed(2)})` : ''}
                     </>
                   ) : (
                     <>
                       <Sparkles className="h-4 w-4" />
-                      Generate video
+                      Generate video{estimatedCostCents ? ` ($${(estimatedCostCents / 100).toFixed(2)})` : ''}
                     </>
                   )}
                 </Button>
@@ -414,6 +441,8 @@ export function Playground() {
               isGenerating={isGenerating}
               progress={progress}
               statusMessage={statusMessage}
+              elapsedSeconds={elapsedSeconds}
+              estimatedSeconds={estimatedSeconds}
               onCreateVideo={handleCreateVideoFromImage}
               modelName={lastModel}
             />
@@ -434,6 +463,8 @@ export function Playground() {
               isGenerating={isGenerating}
               progress={progress}
               statusMessage={statusMessage}
+              elapsedSeconds={elapsedSeconds}
+              estimatedSeconds={estimatedSeconds}
               modelName={lastModel}
               onExtendVideo={handleExtendVideo}
             />

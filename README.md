@@ -19,12 +19,43 @@ LTX Desktop is an open-source desktop app for generating videos with LTX models 
 
 ## Features
 
-- Text-to-video generation
-- Image-to-video generation
-- Audio-to-video generation
-- Video edit generation (Retake)
-- Video Editor Interface
-- Video Editing Projects
+### Generation
+- **Text-to-video** — generate video clips from text prompts
+- **Image-to-video** — animate a still image into video
+- **Audio-to-video** — drive video generation from an audio track
+- **Image generation** — create images with ZIT (local) or fal API
+- **Image editing (img2img)** — edit existing images with ZIT Edit
+- **Video Retake** — re-generate portions of an existing video
+- **IC-LoRA** — identity-consistent generation with LoRA weights
+- **Video Extend** — continue generating from the last frame of a video
+- **Prompt Enhancement** — AI-powered prompt rewriting (via LTX API or Palette)
+
+### Batch Generation
+- **Batch Builder** — queue multiple generation jobs at once
+- **List mode** — add prompts one-by-one with per-job settings
+- **Import mode** — bulk-import prompts from CSV, JSON, or plain text files
+- **Grid Sweep mode** — combinatorial parameter sweeps (prompts × seeds × models)
+- **Timeline import** — import an edited timeline as a batch to re-generate all segments
+
+### Library & Organization
+- **Gallery** — browse, filter, and manage all generated images and videos
+- **Prompt Library** — save, tag, and reuse favorite prompts
+- **Characters** — store character descriptions for consistent generation
+- **Styles** — save and apply visual style presets
+- **References** — manage reference images for guided generation
+- **Wildcards** — define placeholder tokens that expand to random values
+
+### Palette Cloud Integration
+- **Directors Palette sync** — connect to [Directors Palette](https://directorspal.com) for cloud-synced library content
+- **Email/password login** — authenticate directly or via deep link
+- **Credit balance & cost tracking** — view remaining credits in the header, see estimated cost on Generate buttons before submitting
+- **Automatic credit deduction** — API-slot jobs automatically deduct credits after successful generation
+- **Seedance video generation** — generate videos via Seedance 1.5 Pro through the Replicate API
+
+### Editor & Export
+- **Video Editor** — multi-track timeline editor with clips, transitions, and keyframes
+- **Video Projects** — save and reopen editing sessions
+- **FFmpeg export** — export final videos with configurable codec and quality settings
 
 ## Local vs API mode
 
@@ -96,9 +127,21 @@ Used for Z Image Turbo text-to-image generation in API mode. When enabled, image
 
 Create an API key in the [fal dashboard](https://fal.ai/dashboard/keys).
 
+### Replicate API key (optional)
+
+Used for Seedance 1.5 Pro video generation. When enabled, video generation requests are sent to Replicate.
+
+Create an API key in the [Replicate dashboard](https://replicate.com/account/api-tokens).
+
 ### Gemini API key (optional)
 
 Used for AI prompt suggestions. When enabled, prompt context and frames may be sent to Google Gemini.
+
+### Directors Palette account (optional)
+
+Connect to [Directors Palette](https://directorspal.com) to sync library content (characters, styles, references), use cloud-based prompt enhancement, and track credit usage. Sign in via email/password in **Settings > Palette Connection**.
+
+Credits are consumed when generating via API-backed models (cloud video, Seedance, cloud image). Local GPU generations are free. Credit balance and per-generation costs are displayed in the UI.
 
 ## Architecture
 
@@ -113,6 +156,7 @@ LTX Desktop is split into three main layers:
 - **Backend (`backend/`)**: Python + FastAPI local server.
   - Orchestrates generation, model downloads, and GPU execution.
   - Calls external APIs only when API-backed features are used.
+  - Output files follow the naming convention `dd_{model}_{prompt_slug}_{timestamp}.{ext}` for easy identification.
 
 ```mermaid
 graph TD

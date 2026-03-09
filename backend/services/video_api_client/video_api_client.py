@@ -16,5 +16,6 @@ class VideoAPIClient(Protocol):
         resolution: str,
         aspect_ratio: str,
         generate_audio: bool,
+        last_frame: str | None = None,
     ) -> bytes:
         ...

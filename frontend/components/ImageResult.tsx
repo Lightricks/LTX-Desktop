@@ -7,12 +7,21 @@ const MODEL_DISPLAY_NAMES: Record<string, string> = {
   'nano-banana-2': 'Nano Banana 2',
 }
 
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
 interface ImageResultProps {
   imageUrl: string | null
   isGenerating: boolean
   progress: number
   statusMessage: string
+  elapsedSeconds?: number
+  estimatedSeconds?: number | null
   onCreateVideo: () => void
+  onEdit?: (imagePath: string) => void
   modelName?: string | null
 }
 
@@ -21,7 +30,10 @@ export function ImageResult({
   isGenerating,
   progress,
   statusMessage,
+  elapsedSeconds,
+  estimatedSeconds,
   onCreateVideo,
+  onEdit,
   modelName
 }: ImageResultProps) {
   const [isHovered, setIsHovered] = useState(false)
@@ -48,21 +60,31 @@ export function ImageResult({
           <div className="flex flex-col items-center justify-center p-8 text-center">
             <RefreshCw className="h-12 w-12 text-primary animate-spin mb-4" />
             <p className="text-lg font-medium text-foreground mb-2">
-              Generating Image...
-            </p>
-            <p className="text-sm text-muted-foreground mb-4">
-              {statusMessage}
+              {statusMessage || 'Generating Image...'}
             </p>
             <div className="w-64">
               <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-primary transition-all duration-300"
-                  style={{ width: `${progress}%` }}
+                  style={{ width: `${Math.max(progress, 2)}%` }}
                 />
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                {Math.round(progress)}% complete
-              </p>
+              <div className="flex justify-between items-center mt-2">
+                <p className="text-xs text-muted-foreground">
+                  {elapsedSeconds != null && elapsedSeconds > 0
+                    ? `Elapsed: ${formatTime(elapsedSeconds)}`
+                    : progress > 0 ? `${Math.round(progress)}%` : 'Starting...'
+                  }
+                </p>
+                {estimatedSeconds != null && elapsedSeconds != null && elapsedSeconds > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {estimatedSeconds > elapsedSeconds
+                      ? `~${formatTime(estimatedSeconds - elapsedSeconds)} left`
+                      : 'Finishing up...'
+                    }
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         ) : imageUrl ? (
@@ -131,6 +153,7 @@ export function ImageResult({
                   variant="ghost"
                   className="h-10 px-4 bg-black/50 hover:bg-black/70 text-white rounded-full backdrop-blur-sm flex items-center gap-2"
                   title="Edit image"
+                  onClick={() => imageUrl && onEdit?.(imageUrl)}
                 >
                   <Pencil className="h-4 w-4" />
                   <span className="text-sm font-medium">Edit</span>
