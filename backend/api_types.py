@@ -249,6 +249,9 @@ class QueueJobResponse(BaseModel):
     result_paths: list[str] = []
     error: str | None = None
     created_at: str = ""
+    batch_id: str | None = None
+    batch_index: int = 0
+    tags: list[str] = []
 
 
 class QueueStatusResponse(BaseModel):
@@ -312,12 +315,89 @@ class GenerateImageRequest(BaseModel):
     height: int = 1024
     numSteps: int = 4
     numImages: int = 1
+    loraPath: str | None = None
+    loraWeight: float = 1.0
+    sourceImagePath: str | None = None
+    strength: float = 0.65
 
 
 class QueueSubmitRequest(BaseModel):
     type: Literal["video", "image"]
     model: str
     params: dict[str, object] = {}
+
+
+# --- Batch Generation Types ---
+
+
+class BatchJobItem(BaseModel):
+    type: Literal["video", "image"]
+    model: str
+    params: dict[str, object] = {}
+
+
+class SweepAxis(BaseModel):
+    param: str
+    values: list[object]
+    mode: Literal["replace", "search_replace"] = "replace"
+    search: str | None = None
+
+
+class SweepDefinition(BaseModel):
+    base_type: Literal["video", "image"]
+    base_model: str
+    base_params: dict[str, object] = {}
+    axes: list[SweepAxis]
+
+
+class PipelineStep(BaseModel):
+    type: Literal["video", "image"]
+    model: str
+    params: dict[str, object] = {}
+    auto_prompt: bool = False
+
+
+class PipelineDefinition(BaseModel):
+    steps: list[PipelineStep]
+
+
+class BatchSubmitRequest(BaseModel):
+    mode: Literal["list", "sweep", "pipeline"]
+    target: Literal["local", "cloud"]
+    jobs: list[BatchJobItem] | None = None
+    sweep: SweepDefinition | None = None
+    pipeline: PipelineDefinition | None = None
+
+
+class BatchSubmitResponse(BaseModel):
+    batch_id: str
+    job_ids: list[str]
+    total_jobs: int
+
+
+class BatchReport(BaseModel):
+    batch_id: str
+    total: int
+    succeeded: int
+    failed: int
+    cancelled: int
+    duration_seconds: float
+    avg_job_seconds: float
+    result_paths: list[str]
+    failed_indices: list[int]
+    sweep_axes: list[str] | None = None
+
+
+class BatchStatusResponse(BaseModel):
+    batch_id: str
+    total: int
+    completed: int
+    failed: int
+    running: int
+    queued: int
+    cancelled: int = 0
+    jobs: list[QueueJobResponse]
+    report: BatchReport | None = None
 
 
 class ModelDownloadRequest(BaseModel):

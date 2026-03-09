@@ -23,6 +23,12 @@ class QueueJob:
     result_paths: list[str] = field(default_factory=lambda: list[str]())
     error: str | None = None
     created_at: str = ""
+    # Batch fields
+    batch_id: str | None = None
+    batch_index: int = 0
+    depends_on: str | None = None
+    auto_params: dict[str, str] = field(default_factory=lambda: dict[str, str]())
+    tags: list[str] = field(default_factory=lambda: list[str]())
 
 
 class JobQueue:
@@ -38,9 +44,15 @@ class JobQueue:
         model: str,
         params: dict[str, Any],
         slot: str,
+        job_id: str | None = None,
+        batch_id: str | None = None,
+        batch_index: int = 0,
+        depends_on: str | None = None,
+        auto_params: dict[str, str] | None = None,
+        tags: list[str] | None = None,
     ) -> QueueJob:
         job = QueueJob(
-            id=uuid.uuid4().hex[:8],
+            id=job_id or uuid.uuid4().hex[:8],
             type=job_type,  # type: ignore[arg-type]
             model=model,
             params=params,
@@ -51,6 +63,11 @@ class JobQueue:
             result_paths=[],
             error=None,
             created_at=datetime.now(timezone.utc).isoformat(),
+            batch_id=batch_id,
+            batch_index=batch_index,
+            depends_on=depends_on,
+            auto_params=auto_params or {},
+            tags=tags or [],
         )
         self._jobs.append(job)
         self._save()
@@ -99,6 +116,25 @@ class JobQueue:
     def cancel_job(self, job_id: str) -> None:
         self.update_job(job_id, status="cancelled")
 
+    def jobs_for_batch(self, batch_id: str) -> list[QueueJob]:
+        return sorted(
+            [j for j in self._jobs if j.batch_id == batch_id],
+            key=lambda j: j.batch_index,
+        )
+
+    def active_batch_ids(self) -> list[str]:
+        batch_ids: set[str] = set()
+        for job in self._jobs:
+            if job.batch_id and job.status in ("queued", "running"):
+                batch_ids.add(job.batch_id)
+        return sorted(batch_ids)
+
+    def all_jobs(self) -> list[QueueJob]:
+        return list(self._jobs)
+
+    def queued_jobs_for_slot(self, slot: str) -> list[QueueJob]:
+        return [j for j in self._jobs if j.status == "queued" and j.slot == slot]
+
     def clear_finished(self) -> None:
         self._jobs = [j for j in self._jobs if j.status not in ("complete", "error", "cancelled")]
         self._save()
@@ -114,11 +150,16 @@ class JobQueue:
         try:
             raw = json.loads(self._path.read_text(encoding="utf-8"))
             for item in raw.get("jobs", []):
+                # Backwards compat: provide defaults for batch fields
+                item.setdefault("batch_id", None)
+                item.setdefault("batch_index", 0)
+                item.setdefault("depends_on", None)
+                item.setdefault("auto_params", {})
+                item.setdefault("tags", [])
                 job = QueueJob(**item)
                 if job.status == "running":
-                    job.status = "queued"
-                    job.progress = 0
-                    job.phase = "queued"
+                    job.status = "error"
+                    job.error = "Interrupted by app restart"
                 self._jobs.append(job)
         except (json.JSONDecodeError, TypeError, KeyError):
             self._jobs = []

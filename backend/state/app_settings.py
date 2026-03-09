@@ -66,9 +66,11 @@ class AppSettings(SettingsBaseModel):
     user_prefers_ltx_api_video_generations: bool = False
     replicate_api_key: str = ""
     palette_api_key: str = ""
+    palette_refresh_token: str = ""
     image_model: str = "z-image-turbo"
     video_model: str = "ltx-fast"
     use_local_text_encoder: bool = False
+    use_abliterated_text_encoder: bool = False
     fast_model: FastModelSettings = Field(default_factory=FastModelSettings)
     pro_model: ProModelSettings = Field(default_factory=ProModelSettings)
     prompt_cache_size: int = 100
@@ -77,6 +79,7 @@ class AppSettings(SettingsBaseModel):
     gemini_api_key: str = ""
     seed_locked: bool = False
     locked_seed: int = 42
+    batch_sound_enabled: bool = True
 
     @field_validator("prompt_cache_size", mode="before")
     @classmethod
@@ -143,6 +146,7 @@ class SettingsResponse(SettingsBaseModel):
     image_model: str = "z-image-turbo"
     video_model: str = "ltx-fast"
     use_local_text_encoder: bool = False
+    use_abliterated_text_encoder: bool = False
     fast_model: FastModelSettings = Field(default_factory=FastModelSettings)
     pro_model: ProModelSettings = Field(default_factory=ProModelSettings)
     prompt_cache_size: int = 100
@@ -151,6 +155,7 @@ class SettingsResponse(SettingsBaseModel):
     has_gemini_api_key: bool = False
     seed_locked: bool = False
     locked_seed: int = 42
+    batch_sound_enabled: bool = True
 
 
 def to_settings_response(settings: AppSettings) -> SettingsResponse:
@@ -158,6 +163,7 @@ def to_settings_response(settings: AppSettings) -> SettingsResponse:
     ltx_key = data.pop("ltx_api_key", "")
     replicate_key = data.pop("replicate_api_key", "")
     palette_key = data.pop("palette_api_key", "")
+    data.pop("palette_refresh_token", "")
     gemini_key = data.pop("gemini_api_key", "")
     data["has_ltx_api_key"] = bool(ltx_key)
     data["has_replicate_api_key"] = bool(replicate_key)

@@ -3,7 +3,8 @@ import {
   Trash2, Download, Image, Video, X,
   Heart, Film, Volume2, VolumeX, Sparkles,
   Clock, Monitor, ChevronUp, Scissors, Music,
-  ChevronLeft, ChevronRight, Copy, Check
+  ChevronLeft, ChevronRight, Copy, Check, Wand2,
+  FastForward, Frame, SlidersHorizontal, Pencil, Grid3X3
 } from 'lucide-react'
 import { useProjects } from '../contexts/ProjectContext'
 import type { GenSpaceRetakeSource } from '../contexts/ProjectContext'
@@ -23,15 +24,18 @@ import {
 import { logger } from '../lib/logger'
 import { RetakePanel } from '../components/RetakePanel'
 import { FreeApiKeyBubble } from '../components/FreeApiKeyBubble'
+import { BatchBuilderModal } from '../components/BatchBuilderModal'
 
 // Asset card with hover overlays
-function AssetCard({ 
-  asset, 
-  onDelete, 
+function AssetCard({
+  asset,
+  onDelete,
   onPlay,
   onDragStart,
   onCreateVideo,
+  onEditImage,
   onRetake,
+  onExtendVideo,
   onToggleFavorite
 }: {
   asset: Asset
@@ -39,7 +43,9 @@ function AssetCard({
   onPlay: () => void
   onDragStart: (e: React.DragEvent, asset: Asset) => void
   onCreateVideo?: (asset: Asset) => void
+  onEditImage?: (asset: Asset) => void
   onRetake?: (asset: Asset) => void
+  onExtendVideo?: (asset: Asset) => void
   onToggleFavorite?: () => void
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -131,6 +137,13 @@ function AssetCard({
             {asset.type === 'image' && (
               <>
                 <button
+                  onClick={(e) => { e.stopPropagation(); onEditImage?.(asset) }}
+                  className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
+                >
+                  <Pencil className="h-3 w-3" />
+                  Edit
+                </button>
+                <button
                   onClick={(e) => { e.stopPropagation(); onCreateVideo?.(asset) }}
                   className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
                 >
@@ -140,13 +153,22 @@ function AssetCard({
               </>
             )}
             {asset.type === 'video' && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onRetake?.(asset) }}
-                className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
-              >
-                <Scissors className="h-3 w-3" />
-                Retake
-              </button>
+              <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onExtendVideo?.(asset) }}
+                  className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
+                >
+                  <FastForward className="h-3 w-3" />
+                  Extend
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onRetake?.(asset) }}
+                  className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
+                >
+                  <Scissors className="h-3 w-3" />
+                  Retake
+                </button>
+              </>
             )}
           </div>
           
@@ -311,12 +333,23 @@ function PromptBar({
   onInputImageChange,
   inputAudio,
   onInputAudioChange,
+  lastFrameUrl,
+  onLastFrameChange,
+  onEnhancePrompt,
+  isEnhancing,
   settings,
   onSettingsChange,
   shouldVideoGenerateWithLtxApi,
   canGenerate,
   buttonLabel,
   buttonIcon,
+  editSourceImage,
+  onEditSourceImageClear,
+  editStrength,
+  onEditStrengthChange,
+  hasReplicateApiKey,
+  onEditImageFile,
+  onBatchClick,
 }: {
   mode: 'image' | 'video' | 'retake'
   onModeChange: (mode: 'image' | 'video' | 'retake') => void
@@ -331,6 +364,17 @@ function PromptBar({
   onInputImageChange: (url: string | null) => void
   inputAudio: string | null
   onInputAudioChange: (url: string | null) => void
+  lastFrameUrl: string | null
+  onLastFrameChange: (url: string | null) => void
+  onEnhancePrompt: () => void
+  isEnhancing: boolean
+  editSourceImage: { url: string; path: string } | null
+  onEditSourceImageClear: () => void
+  editStrength: number
+  onEditStrengthChange: (strength: number) => void
+  hasReplicateApiKey: boolean
+  onBatchClick: () => void
+  onEditImageFile: (fileUrl: string) => void
   settings: {
     model: string
     duration: number
@@ -346,8 +390,11 @@ function PromptBar({
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
+  const editImageInputRef = useRef<HTMLInputElement>(null)
+  const lastFrameInputRef = useRef<HTMLInputElement>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isAudioDragOver, setIsAudioDragOver] = useState(false)
+  const [isLastFrameDragOver, setIsLastFrameDragOver] = useState(false)
   const isRetake = mode === 'retake'
   const LOCAL_MAX_DURATION: Record<string, number> = { '540p': 20, '720p': 10, '1080p': 5 }
   const localMaxDuration = LOCAL_MAX_DURATION[settings.videoResolution] ?? 20
@@ -427,6 +474,43 @@ function PromptBar({
     }
   }
   
+  const handleFrameFileSelect = (e: React.ChangeEvent<HTMLInputElement>, setter: (url: string | null) => void) => {
+    const file = e.target.files?.[0]
+    if (file && file.type.startsWith('image/')) {
+      const filePath = (file as any).path as string | undefined
+      if (filePath) {
+        const normalized = filePath.replace(/\\/g, '/')
+        const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
+        setter(fileUrl)
+      } else {
+        setter(URL.createObjectURL(file))
+      }
+    }
+    e.target.value = ''
+  }
+
+  const handleFrameDrop = (e: React.DragEvent, setter: (url: string | null) => void) => {
+    e.preventDefault()
+    setIsLastFrameDragOver(false)
+    const assetData = e.dataTransfer.getData('asset')
+    if (assetData) {
+      const asset = JSON.parse(assetData) as Asset
+      if (asset.type === 'image') setter(asset.url)
+      return
+    }
+    const file = e.dataTransfer.files?.[0]
+    if (file && file.type.startsWith('image/')) {
+      const filePath = (file as any).path as string | undefined
+      if (filePath) {
+        const normalized = filePath.replace(/\\/g, '/')
+        const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
+        setter(fileUrl)
+      } else {
+        setter(URL.createObjectURL(file))
+      }
+    }
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !isGenerating && canGenerate) {
       e.preventDefault()
@@ -438,6 +522,60 @@ function PromptBar({
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-visible">
       {/* Top row: Image ref | Prompt | Generate */}
       <div className="flex items-start">
+        {/* Source image drop zone — image mode (for editing) */}
+        {mode === 'image' && !editSourceImage && (
+          <div
+            className={`relative w-10 h-10 mx-2 mt-2 rounded-lg border-2 border-dashed transition-colors flex items-center justify-center flex-shrink-0 cursor-pointer ${
+              isDragOver ? 'border-purple-500 bg-purple-500/10' : 'border-zinc-700 hover:border-zinc-500'
+            }`}
+            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault()
+              setIsDragOver(false)
+              const assetData = e.dataTransfer.getData('asset')
+              if (assetData) {
+                try {
+                  const asset = JSON.parse(assetData) as { type: string; url?: string }
+                  if (asset.type === 'image' && asset.url) {
+                    onEditImageFile(asset.url)
+                    return
+                  }
+                } catch { /* ignore */ }
+              }
+              const file = e.dataTransfer.files?.[0]
+              if (file && file.type.startsWith('image/')) {
+                const fp = (file as { path?: string }).path
+                if (fp) {
+                  const normalized = fp.replace(/\\/g, '/')
+                  onEditImageFile(normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`)
+                }
+              }
+            }}
+            onClick={() => editImageInputRef.current?.click()}
+            title="Drop or select an image to edit"
+          >
+            <Pencil className="h-4 w-4 text-zinc-500" />
+            <input
+              ref={editImageInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) {
+                  const fp = (file as { path?: string }).path
+                  if (fp) {
+                    const normalized = fp.replace(/\\/g, '/')
+                    onEditImageFile(normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`)
+                  }
+                }
+                e.target.value = ''
+              }}
+              className="hidden"
+            />
+          </div>
+        )}
+
         {/* Input image drop zone — video mode only (I2V) */}
         {mode === 'video' && !isRetake && (
           <div
@@ -507,8 +645,47 @@ function PromptBar({
           </div>
         )}
 
+        {/* Last Frame drop zone — video mode only */}
+        {mode === 'video' && !isRetake && (
+          <div
+            className={`relative w-10 h-10 mt-2 mr-1 rounded-lg border-2 border-dashed transition-colors flex items-center justify-center flex-shrink-0 cursor-pointer ${
+              isLastFrameDragOver ? 'border-amber-500 bg-amber-500/10' : lastFrameUrl ? 'border-amber-600' : 'border-zinc-700 hover:border-zinc-500'
+            }`}
+            onDragOver={(e) => { e.preventDefault(); setIsLastFrameDragOver(true) }}
+            onDragLeave={() => setIsLastFrameDragOver(false)}
+            onDrop={(e) => handleFrameDrop(e, onLastFrameChange)}
+            onClick={() => lastFrameInputRef.current?.click()}
+            title={lastFrameUrl ? 'Last frame set — click to change' : 'Set last frame'}
+          >
+            {lastFrameUrl ? (
+              <>
+                <img src={lastFrameUrl} alt="" className="w-full h-full object-cover rounded-md" />
+                <button
+                  onClick={(e) => { e.stopPropagation(); onLastFrameChange(null) }}
+                  className="absolute -top-1 -right-1 p-0.5 rounded-full bg-zinc-800 text-zinc-400 hover:text-white z-10"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+                <span className="absolute -bottom-1 left-0.5 text-[7px] font-bold text-amber-400 bg-zinc-900/80 px-0.5 rounded">Last</span>
+              </>
+            ) : (
+              <div className="flex flex-col items-center">
+                <Frame className="h-3.5 w-3.5 text-zinc-500" />
+                <span className="text-[7px] text-zinc-600 font-medium">Last</span>
+              </div>
+            )}
+            <input
+              ref={lastFrameInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleFrameFileSelect(e, onLastFrameChange)}
+              className="hidden"
+            />
+          </div>
+        )}
+
         {/* Prompt input - fills remaining width */}
-        <div className="flex-1 min-w-0 py-1">
+        <div className="flex-1 min-w-0 py-1 relative">
           <textarea
             value={prompt}
             onChange={(e) => onPromptChange(e.target.value)}
@@ -516,11 +693,21 @@ function PromptBar({
             placeholder={mode === 'retake'
               ? "Describe what should happen in the selected section..."
               : mode === 'image'
-                ? "A close-up of a woman talking on the phone..."
+                ? editSourceImage
+                  ? "Describe your edit — e.g. make the sky a dramatic sunset..."
+                  : "A close-up of a woman talking on the phone..."
                 : "The woman sips from a cup of coffee..."
             }
-            className="w-full bg-transparent text-white text-sm placeholder:text-zinc-500 focus:outline-none px-2 py-2 resize-none overflow-y-auto h-[70px] leading-5"
+            className="w-full bg-transparent text-white text-sm placeholder:text-zinc-500 focus:outline-none pl-2 pr-8 py-2 resize-none overflow-y-auto h-[70px] leading-5"
           />
+          <button
+            onClick={onEnhancePrompt}
+            disabled={!prompt.trim() || isEnhancing || isGenerating}
+            className="absolute top-2 right-1 p-1.5 rounded-md text-zinc-500 hover:text-amber-400 hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Enhance prompt with AI"
+          >
+            <Wand2 className={`h-3.5 w-3.5 ${isEnhancing ? 'animate-spin' : ''}`} />
+          </button>
         </div>
 
       </div>
@@ -555,45 +742,99 @@ function PromptBar({
             {/* Model indicator */}
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800/50">
               <ZitIcon className="h-3.5 w-3.5" />
-              <span className="text-zinc-300 font-medium">Z-Image Turbo</span>
+              <span className="text-zinc-300 font-medium">{editSourceImage ? 'Edit' : 'Z-Image Turbo'}</span>
             </div>
-            
-            {/* Resolution dropdown */}
-            <SettingsDropdown
-              title="IMAGE RESOLUTION"
-              value={settings.imageResolution}
-              onChange={(v) => onSettingsChange({ ...settings, imageResolution: v })}
-              options={[
-                { value: '1080p', label: '1080p' },
-                { value: '1440p', label: '1440p' },
-                { value: '2048p', label: '2048p' },
-              ]}
-              trigger={
-                <>
-                  <Monitor className="h-3.5 w-3.5" />
-                  <span>{settings.imageResolution.replace('p', '')}</span>
-                </>
-              }
-            />
-            
-            {/* Aspect ratio dropdown */}
-            <SettingsDropdown
-              title="RATIO"
-              value={settings.aspectRatio}
-              onChange={(v) => onSettingsChange({ ...settings, aspectRatio: v })}
-              options={[
-                { value: '16:9', label: '16:9' },
-                { value: '1:1', label: '1:1' },
-                { value: '9:16', label: '9:16' },
-              ]}
-              trigger={
-                <>
-                  <AspectIcon className="h-3.5 w-3.5" />
-                  <span>{settings.aspectRatio}</span>
-                </>
-              }
-            />
-            
+
+            {editSourceImage ? (
+              <>
+                {/* Source image thumbnail */}
+                <div className="flex items-center gap-1.5 px-1.5 py-1 rounded-md bg-zinc-800/50">
+                  <img src={editSourceImage.url} alt="Source" className="h-6 w-6 rounded object-cover" />
+                  <button
+                    onClick={onEditSourceImageClear}
+                    className="p-0.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
+                    title="Clear source image"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+
+                {/* Strength slider */}
+                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-zinc-800/50">
+                  <span className="text-[10px] text-zinc-400 whitespace-nowrap">Strength</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={Math.round(editStrength * 100)}
+                    onChange={(e) => onEditStrengthChange(Number(e.target.value) / 100)}
+                    className="w-20 h-1 accent-blue-500"
+                  />
+                  <span className="text-[10px] text-zinc-300 w-7 text-right">{Math.round(editStrength * 100)}%</span>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Resolution dropdown */}
+                <SettingsDropdown
+                  title="IMAGE RESOLUTION"
+                  value={settings.imageResolution}
+                  onChange={(v) => onSettingsChange({ ...settings, imageResolution: v })}
+                  options={[
+                    { value: '1080p', label: '1080p' },
+                    { value: '1440p', label: '1440p' },
+                    { value: '2048p', label: '2048p' },
+                  ]}
+                  trigger={
+                    <>
+                      <Monitor className="h-3.5 w-3.5" />
+                      <span>{settings.imageResolution.replace('p', '')}</span>
+                    </>
+                  }
+                />
+
+                {/* Aspect ratio dropdown */}
+                <SettingsDropdown
+                  title="RATIO"
+                  value={settings.aspectRatio}
+                  onChange={(v) => onSettingsChange({ ...settings, aspectRatio: v })}
+                  options={[
+                    { value: '16:9', label: '16:9 — YouTube / TV' },
+                    { value: '9:16', label: '9:16 — TikTok / Reels' },
+                    { value: '1:1', label: '1:1 — Instagram Post' },
+                    { value: '4:5', label: '4:5 — Instagram Portrait' },
+                    { value: '4:3', label: '4:3 — Classic Photo' },
+                    { value: '3:4', label: '3:4 — Pinterest' },
+                    { value: '21:9', label: '21:9 — Ultrawide' },
+                  ]}
+                  trigger={
+                    <>
+                      <AspectIcon className="h-3.5 w-3.5" />
+                      <span>{settings.aspectRatio}</span>
+                    </>
+                  }
+                />
+
+                {/* Variations */}
+                <SettingsDropdown
+                  title="VARIATIONS"
+                  value={String(settings.variations)}
+                  onChange={(v) => onSettingsChange({ ...settings, variations: parseInt(v) })}
+                  options={[
+                    { value: '1', label: '1 image' },
+                    { value: '2', label: '2 images' },
+                    { value: '3', label: '3 images' },
+                    { value: '4', label: '4 images' },
+                  ]}
+                  trigger={
+                    <>
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
+                      <span>{settings.variations}x</span>
+                    </>
+                  }
+                />
+              </>
+            )}
           </>
         ) : (
           <>
@@ -601,23 +842,25 @@ function PromptBar({
               title="MODEL"
               value={settings.model}
               onChange={(v) => onSettingsChange({ ...settings, model: v })}
-              options={
-                shouldVideoGenerateWithLtxApi
+              options={[
+                ...(shouldVideoGenerateWithLtxApi
                   ? [
                       { value: 'fast', label: 'LTX-2.3 Fast (API)', disabled: !!inputAudio, tooltip: inputAudio ? 'Fast model is not available for Audio-to-Video' : undefined },
                       { value: 'pro', label: 'LTX-2.3 Pro (API)' },
                     ]
                   : [
                       { value: 'fast', label: 'LTX 2.3 Fast' },
-                    ]
-              }
+                    ]),
+                { value: 'seedance-1.5-pro', label: `Seedance 1.5 Pro (Cloud)${!hasReplicateApiKey ? ' — needs API key' : ''}`, disabled: !hasReplicateApiKey },
+              ]}
               trigger={
                 <>
                   <LightricksIcon className="h-3.5 w-3.5" />
                   <span className="text-zinc-300 font-medium">
-                    {shouldVideoGenerateWithLtxApi
-                      ? (settings.model === 'pro' ? 'LTX-2.3 Pro (API)' : 'LTX-2.3 Fast (API)')
-                      : 'LTX 2.3 Fast'}
+                    {settings.model === 'seedance-1.5-pro' ? 'Seedance 1.5 Pro'
+                      : shouldVideoGenerateWithLtxApi
+                        ? (settings.model === 'pro' ? 'LTX-2.3 Pro (API)' : 'LTX-2.3 Fast (API)')
+                        : 'LTX 2.3 Fast'}
                   </span>
                 </>
               }
@@ -678,10 +921,10 @@ function PromptBar({
               value={settings.aspectRatio}
               onChange={(v) => onSettingsChange({ ...settings, aspectRatio: v })}
               options={inputAudio
-                ? [{ value: '16:9', label: '16:9' }]
+                ? [{ value: '16:9', label: '16:9 — YouTube / TV' }]
                 : [
-                    { value: '16:9', label: '16:9' },
-                    { value: '9:16', label: '9:16' },
+                    { value: '16:9', label: '16:9 — YouTube / TV' },
+                    { value: '9:16', label: '9:16 — TikTok / Reels' },
                   ]
               }
               trigger={
@@ -695,6 +938,16 @@ function PromptBar({
           </>
         )}
         
+        {/* Batch button */}
+        <button
+          onClick={onBatchClick}
+          className="flex items-center gap-1 ml-2 px-2 py-1.5 rounded-md text-xs font-medium transition-all flex-shrink-0 border border-zinc-600 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+          title="Batch Generation"
+        >
+          <Grid3X3 className="w-3.5 h-3.5" />
+          Batch
+        </button>
+
         {/* Generate button */}
         <button
           onClick={onGenerate}
@@ -786,6 +1039,8 @@ export function GenSpace() {
   const [prompt, setPrompt] = useState('')
   const [inputImage, setInputImage] = useState<string | null>(null)
   const [inputAudio, setInputAudio] = useState<string | null>(null)
+  const [lastFrameUrl, setLastFrameUrl] = useState<string | null>(null)
+  const [isEnhancing, setIsEnhancing] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
   const [copiedPrompt, setCopiedPrompt] = useState(false)
@@ -803,6 +1058,9 @@ export function GenSpace() {
       videoDuration: number
     }
   } | null>(null)
+  const [editSourceImage, setEditSourceImage] = useState<{ url: string; path: string } | null>(null)
+  const [editStrength, setEditStrength] = useState(0.65)
+  const [showBatchModal, setShowBatchModal] = useState(false)
   const [settings, setSettings] = useState(() => ({ ...DEFAULT_VIDEO_SETTINGS }))
   const applyForcedVideoSettings = useCallback(
     (next: { model: string; duration: number; videoResolution: string; fps: number; audio: boolean; aspectRatio: string; imageResolution: string; variations: number }) => {
@@ -815,6 +1073,7 @@ export function GenSpace() {
   const {
     generate,
     generateImage,
+    editImage,
     isGenerating,
     progress,
     statusMessage,
@@ -853,11 +1112,16 @@ export function GenSpace() {
   // Handle incoming frame from the Video Editor for editing
   useEffect(() => {
     if (genSpaceEditImageUrl) {
-      setMode('video')
-      setInputImage(genSpaceEditImageUrl)
-      setPrompt('')
+      const editMode = genSpaceEditImageUrl
       setGenSpaceEditImageUrl(null)
       setGenSpaceEditMode(null)
+      // Route to image edit mode
+      const filePath = fileUrlToPath(editMode)
+      if (filePath) {
+        setMode('image')
+        setEditSourceImage({ url: editMode, path: filePath })
+      }
+      setPrompt('')
     }
   }, [genSpaceEditImageUrl, setGenSpaceEditImageUrl, setGenSpaceEditMode])
 
@@ -1063,6 +1327,45 @@ export function GenSpace() {
     }
   }, [imageUrls, currentProjectId, isGenerating])
   
+  const handleEnhancePrompt = async () => {
+    if (!prompt.trim() || isEnhancing) return
+    setIsEnhancing(true)
+    try {
+      const backendUrl = await window.electronAPI.getBackendUrl()
+      const res = await fetch(`${backendUrl}/api/enhance-prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, mode: mode === 'image' ? 'text-to-image' : 'text-to-video' }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.enhancedPrompt) setPrompt(data.enhancedPrompt)
+      }
+    } catch (err) {
+      logger.error(`Failed to enhance prompt: ${err}`)
+    } finally {
+      setIsEnhancing(false)
+    }
+  }
+
+  const handleExtendVideo = (asset: Asset) => {
+    if (asset.type !== 'video' || !asset.url) return
+    // Extract last frame from the video and set it as the first frame for next generation
+    ;(async () => {
+      try {
+        const result = await window.electronAPI.extractVideoFrame(asset.url, 9999)
+        if (result?.url) {
+          setInputImage(result.url)
+          setLastFrameUrl(null)
+          setMode('video')
+          setPrompt(asset.prompt || '')
+        }
+      } catch (err) {
+        logger.error(`Failed to extract frame for extend: ${err}`)
+      }
+    })()
+  }
+
   const handleGenerate = async () => {
     if (mode === 'retake') {
       if (!retakeInput.videoPath || retakeInput.duration < 2) return
@@ -1091,26 +1394,32 @@ export function GenSpace() {
     setLastPrompt(prompt)
 
     if (mode === 'image') {
-      generateImage(
-        prompt,
-        {
-          model: 'fast' as 'fast' | 'pro',
-          duration: 5,
-          videoResolution: settings.videoResolution,
-          fps: 24,
-          audio: false,
-          cameraMotion: 'none',
-          imageResolution: settings.imageResolution,
-          imageAspectRatio: settings.aspectRatio,
-          imageSteps: 4,
-          variations: settings.variations,
-        }
-      )
+      const imageSettings = {
+        model: 'fast' as const,
+        duration: 5,
+        videoResolution: settings.videoResolution,
+        fps: 24,
+        audio: false,
+        cameraMotion: 'none',
+        imageResolution: settings.imageResolution,
+        imageAspectRatio: settings.aspectRatio,
+        imageSteps: 4,
+        variations: settings.variations,
+        strength: editStrength,
+      }
+
+      if (editSourceImage) {
+        editImage(prompt, editSourceImage.path, imageSettings, editStrength)
+      } else {
+        generateImage(prompt, imageSettings)
+      }
     } else {
       // Generate video (t2v if no image/audio, i2v if image, a2v if audio)
       // Extract filesystem path from the file:// URL for the backend
+      // The input image serves as the first frame
       const imagePath = inputImage ? fileUrlToPath(inputImage) : null
       const audioPath = inputAudio ? fileUrlToPath(inputAudio) : null
+      const lastFramePath = lastFrameUrl ? fileUrlToPath(lastFrameUrl) : null
       const videoSettings = applyForcedVideoSettings(settings)
       if (audioPath) videoSettings.model = 'pro'
 
@@ -1118,7 +1427,7 @@ export function GenSpace() {
         prompt,
         imagePath,
         {
-          model: videoSettings.model as 'fast' | 'pro',
+          model: videoSettings.model as 'fast' | 'pro' | 'seedance-1.5-pro',
           duration: videoSettings.duration,
           videoResolution: videoSettings.videoResolution,
           fps: videoSettings.fps,
@@ -1130,6 +1439,7 @@ export function GenSpace() {
           imageSteps: 4,
         },
         audioPath,
+        lastFramePath,
       )
     }
   }
@@ -1152,6 +1462,20 @@ export function GenSpace() {
     setPrompt(`${imageAsset.prompt || 'The scene comes to life...'}`)
   }
 
+  const handleEditImage = (imageAsset: Asset) => {
+    const filePath = fileUrlToPath(imageAsset.url)
+    if (!filePath) return
+    setMode('image')
+    setEditSourceImage({ url: imageAsset.url, path: filePath })
+    setPrompt('')
+  }
+
+  const handleEditImageFile = (fileUrl: string) => {
+    const filePath = fileUrlToPath(fileUrl)
+    if (!filePath) return
+    setEditSourceImage({ url: fileUrl, path: filePath })
+  }
+
   const handleRetake = (videoAsset: Asset) => {
     setMode('retake')
     setPrompt('')
@@ -1168,7 +1492,7 @@ export function GenSpace() {
   const canSubmit = isRetakeMode
     ? retakeInput.ready && !!retakeInput.videoPath && !isRetaking
     : !!prompt.trim()
-  const promptButtonLabel = isRetakeMode ? 'Retake' : 'Generate'
+  const promptButtonLabel = isRetakeMode ? 'Retake' : (editSourceImage ? 'Edit' : 'Generate')
   const promptButtonIcon = isRetakeMode
     ? <Scissors className="h-3.5 w-3.5" />
     : <Sparkles className={`h-3.5 w-3.5 ${isGenerating ? 'animate-pulse' : ''}`} />
@@ -1323,11 +1647,12 @@ export function GenSpace() {
                       </div>
                     </div>
                     <p className="text-sm text-zinc-400">{statusMessage || 'Generating...'}</p>
-                    {progress > 0 && (
-                      <div className="w-32 h-1 bg-zinc-800 rounded-full mt-2 overflow-hidden">
-                        <div className="h-full bg-violet-500 transition-all" style={{ width: `${progress}%` }} />
-                      </div>
-                    )}
+                    <div className="w-32 h-1 bg-zinc-700 rounded-full mt-2 overflow-hidden">
+                      <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${Math.max(progress, 2)}%` }} />
+                    </div>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      {progress > 0 ? `${Math.round(progress)}%` : 'Starting...'}
+                    </p>
                   </div>
                 </div>
               )}
@@ -1339,7 +1664,9 @@ export function GenSpace() {
                   onPlay={() => setSelectedAsset(asset)}
                   onDragStart={handleDragStart}
                   onCreateVideo={handleCreateVideo}
+                  onEditImage={handleEditImage}
                   onRetake={handleRetake}
+                  onExtendVideo={handleExtendVideo}
                   onToggleFavorite={() => currentProjectId && toggleFavorite(currentProjectId, asset.id)}
                 />
               ))}
@@ -1387,9 +1714,20 @@ export function GenSpace() {
           onInputImageChange={setInputImage}
           inputAudio={inputAudio}
           onInputAudioChange={setInputAudio}
+          lastFrameUrl={lastFrameUrl}
+          onLastFrameChange={setLastFrameUrl}
+          onEnhancePrompt={handleEnhancePrompt}
+          isEnhancing={isEnhancing}
           settings={settings}
           onSettingsChange={(nextSettings) => setSettings(applyForcedVideoSettings(nextSettings))}
           shouldVideoGenerateWithLtxApi={shouldVideoGenerateWithLtxApi}
+          editSourceImage={editSourceImage}
+          onEditSourceImageClear={() => setEditSourceImage(null)}
+          editStrength={editStrength}
+          onEditStrengthChange={setEditStrength}
+          hasReplicateApiKey={appSettings.hasReplicateApiKey}
+          onEditImageFile={handleEditImageFile}
+          onBatchClick={() => setShowBatchModal(true)}
         />
       </div>
       
@@ -1487,6 +1825,8 @@ export function GenSpace() {
           onDismiss={() => { if (error) reset(); if (localError) { setLocalError(null); resetRetake() } }}
         />
       )}
+
+      <BatchBuilderModal isOpen={showBatchModal} onClose={() => setShowBatchModal(false)} />
     </div>
   )
 }

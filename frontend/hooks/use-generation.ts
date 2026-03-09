@@ -14,6 +14,9 @@ export interface QueueJob {
   result_paths: string[]
   error: string | null
   created_at: string
+  batch_id: string | null
+  batch_index: number
+  tags: string[]
 }
 
 interface GenerationState {
@@ -32,6 +35,7 @@ interface GenerationState {
 interface UseGenerationReturn extends GenerationState {
   generate: (prompt: string, imagePath: string | null, settings: GenerationSettings, audioPath?: string | null, lastFramePath?: string | null) => Promise<void>
   generateImage: (prompt: string, settings: GenerationSettings) => Promise<void>
+  editImage: (prompt: string, sourceImagePath: string, settings: GenerationSettings, strength?: number) => Promise<void>
   cancel: () => void
   reset: () => void
   clearQueue: () => void
@@ -73,16 +77,36 @@ function getImageDimensions(settings: GenerationSettings): { width: number; heig
 // Map phase to user-friendly message
 function getPhaseMessage(phase: string): string {
   switch (phase) {
+    case 'queued':
+      return 'Queued — waiting...'
+    case 'starting':
+      return 'Starting up...'
     case 'validating_request':
       return 'Validating request...'
     case 'uploading_image':
       return 'Uploading image...'
     case 'uploading_audio':
       return 'Uploading audio...'
+    case 'preparing_gpu':
+      return 'Preparing GPU...'
+    case 'unloading_video_model':
+      return 'Unloading video model...'
+    case 'unloading_image_model':
+      return 'Unloading image model...'
+    case 'cleaning_gpu':
+      return 'Freeing VRAM...'
     case 'loading_model':
       return 'Loading model...'
+    case 'loading_image_model':
+      return 'Loading image model...'
+    case 'loading_video_model':
+      return 'Loading video model...'
+    case 'loading_lora':
+      return 'Loading LoRA weights...'
     case 'encoding_text':
       return 'Encoding prompt...'
+    case 'encoding_image':
+      return 'Encoding source image...'
     case 'inference':
       return 'Generating...'
     case 'downloading_output':
@@ -92,7 +116,7 @@ function getPhaseMessage(phase: string): string {
     case 'complete':
       return 'Complete!'
     default:
-      return 'Generating...'
+      return 'Processing...'
   }
 }
 
@@ -218,9 +242,24 @@ export function useGeneration(): UseGenerationReturn {
     audioPath?: string | null,
     lastFramePath?: string | null,
   ) => {
+    // Seedance requires Replicate API key
+    if (settings.model === 'seedance-1.5-pro' && !appSettings.hasReplicateApiKey) {
+      window.dispatchEvent(new CustomEvent('open-api-gateway', {
+        detail: {
+          requiredKeys: ['replicate'],
+          title: 'Connect Replicate',
+          description: 'A Replicate API key is required to use Seedance 1.5 Pro.',
+          blocking: false,
+        },
+      }))
+      return
+    }
+
     const statusMsg = settings.model === 'pro'
       ? 'Loading Pro model & generating...'
-      : 'Generating video...'
+      : settings.model === 'seedance-1.5-pro'
+        ? 'Generating video with Seedance...'
+        : 'Generating video...'
 
     setState(prev => ({
       ...prev,
@@ -281,7 +320,7 @@ export function useGeneration(): UseGenerationReturn {
         error: error instanceof Error ? error.message : 'Unknown error',
       }))
     }
-  }, [startPolling])
+  }, [appSettings.hasReplicateApiKey, startPolling])
 
   const cancel = useCallback(async () => {
     const jobId = activeJobIdRef.current
@@ -368,11 +407,16 @@ export function useGeneration(): UseGenerationReturn {
           type: 'image',
           model: appSettings.imageModel || 'z-image-turbo',
           params: {
-            prompt,
+            prompt: settings.loraTriggerPhrase && settings.loraTriggerMode !== 'off'
+              ? settings.loraTriggerMode === 'append'
+                ? `${prompt}, ${settings.loraTriggerPhrase}`
+                : `${settings.loraTriggerPhrase}, ${prompt}`
+              : prompt,
             width: dims.width,
             height: dims.height,
             numSteps,
             numImages,
+            ...(settings.loraPath ? { loraPath: settings.loraPath, loraWeight: settings.loraWeight ?? 1.0 } : {}),
           },
         }),
       })
@@ -393,6 +437,67 @@ export function useGeneration(): UseGenerationReturn {
       }))
     }
   }, [appSettings.hasReplicateApiKey, appSettings.imageModel, forceApiGenerations, refreshSettings, startPolling])
+
+  const editImage = useCallback(async (
+    prompt: string,
+    sourceImagePath: string,
+    settings: GenerationSettings,
+    strength: number = 0.65,
+  ) => {
+    setState(prev => ({
+      ...prev,
+      isGenerating: true,
+      progress: 0,
+      statusMessage: 'Editing image...',
+      videoUrl: null,
+      videoPath: null,
+      imageUrl: null,
+      imageUrls: [],
+      error: null,
+    }))
+
+    try {
+      const backendUrl = await window.electronAPI.getBackendUrl()
+
+      const response = await fetch(`${backendUrl}/api/queue/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'image',
+          model: appSettings.imageModel || 'z-image-turbo',
+          params: {
+            prompt: settings.loraTriggerPhrase && settings.loraTriggerMode !== 'off'
+              ? settings.loraTriggerMode === 'append'
+                ? `${prompt}, ${settings.loraTriggerPhrase}`
+                : `${settings.loraTriggerPhrase}, ${prompt}`
+              : prompt,
+            sourceImagePath,
+            strength,
+            width: 0,
+            height: 0,
+            numSteps: settings.imageSteps || 4,
+            numImages: 1,
+            ...(settings.loraPath ? { loraPath: settings.loraPath, loraWeight: settings.loraWeight ?? 1.0 } : {}),
+          },
+        }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(errorText || 'Failed to submit image edit job')
+      }
+
+      const result: { id: string; status: string } = await response.json()
+      activeJobIdRef.current = result.id
+      startPolling()
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        isGenerating: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }))
+    }
+  }, [appSettings.imageModel, startPolling])
 
   const clearQueue = useCallback(async () => {
     try {
@@ -426,6 +531,7 @@ export function useGeneration(): UseGenerationReturn {
     ...state,
     generate,
     generateImage,
+    editImage,
     cancel,
     reset,
     clearQueue,

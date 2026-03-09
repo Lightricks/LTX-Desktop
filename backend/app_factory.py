@@ -28,6 +28,7 @@ from _routes.style_guide import router as style_guide_router
 from _routes.gallery import router as gallery_router
 from _routes.library import router as library_router
 from _routes.prompts import router as prompts_router
+from _routes.batch import router as batch_router
 from logging_policy import log_http_error, log_unhandled_exception
 from state import init_state_service
 
@@ -94,5 +95,6 @@ def create_app(
     app.include_router(gallery_router)
     app.include_router(library_router)
     app.include_router(prompts_router)
+    app.include_router(batch_router)
 
     return app

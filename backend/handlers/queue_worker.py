@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Protocol
+from typing import Callable, Protocol
 
 from state.job_queue import JobQueue, QueueJob
 
@@ -16,6 +16,11 @@ class JobExecutor(Protocol):
         ...
 
 
+class EnhancePromptProvider(Protocol):
+    def enhance_i2v_motion(self, image_path: str) -> str:
+        ...
+
+
 class QueueWorker:
     def __init__(
         self,
@@ -23,6 +28,8 @@ class QueueWorker:
         queue: JobQueue,
         gpu_executor: JobExecutor,
         api_executor: JobExecutor,
+        on_batch_complete: Callable[[str, list[QueueJob]], None] | None = None,
+        enhance_handler: EnhancePromptProvider | None = None,
     ) -> None:
         self._queue = queue
         self._gpu_executor = gpu_executor
@@ -30,39 +37,93 @@ class QueueWorker:
         self._gpu_busy = False
         self._api_busy = False
         self._lock = threading.Lock()
+        self._on_batch_complete = on_batch_complete
+        self._enhance_handler = enhance_handler
+        self._notified_batches: set[str] = set()
 
     def tick(self) -> None:
-        """Process one round: pick up available jobs for each free slot."""
+        """Process one round: pick up available jobs for each free slot.
+
+        Non-blocking — spawns daemon threads for each job so the tick loop
+        can keep checking for new jobs on other slots.
+        """
+        # First, fail any jobs whose dependencies have errored/cancelled
+        self._fail_orphaned_dependents()
+
         gpu_job: QueueJob | None = None
         api_job: QueueJob | None = None
 
         with self._lock:
             if not self._gpu_busy:
-                gpu_job = self._queue.next_queued_for_slot("gpu")
+                gpu_job = self._next_ready_job("gpu")
                 if gpu_job is not None:
                     self._gpu_busy = True
                     self._queue.update_job(gpu_job.id, status="running", phase="starting")
 
             if not self._api_busy:
-                api_job = self._queue.next_queued_for_slot("api")
+                api_job = self._next_ready_job("api")
                 if api_job is not None:
                     self._api_busy = True
                     self._queue.update_job(api_job.id, status="running", phase="starting")
 
-        threads: list[threading.Thread] = []
-
         if gpu_job is not None:
             t = threading.Thread(target=self._run_job, args=(gpu_job, self._gpu_executor, "gpu"), daemon=True)
-            threads.append(t)
             t.start()
 
         if api_job is not None:
             t = threading.Thread(target=self._run_job, args=(api_job, self._api_executor, "api"), daemon=True)
-            threads.append(t)
             t.start()
 
-        for t in threads:
-            t.join()
+        self._check_batch_completions()
+
+    def _next_ready_job(self, slot: str) -> QueueJob | None:
+        for job in self._queue.queued_jobs_for_slot(slot):
+            if job.depends_on is None:
+                return job
+            dep = self._queue.get_job(job.depends_on)
+            if dep is None:
+                return job  # Dependency missing, run anyway
+            if dep.status == "complete":
+                self._resolve_auto_params(job, dep)
+                return job
+            # dep still queued/running or already handled by _fail_orphaned_dependents
+            continue
+        return None
+
+    def _fail_orphaned_dependents(self) -> None:
+        for job in self._queue.all_jobs():
+            if job.status != "queued" or job.depends_on is None:
+                continue
+            dep = self._queue.get_job(job.depends_on)
+            if dep is not None and dep.status in ("error", "cancelled"):
+                self._queue.update_job(
+                    job.id,
+                    status="error",
+                    error=f"Upstream job {dep.id} failed: {dep.error or dep.status}",
+                )
+
+    def _resolve_auto_params(self, job: QueueJob, dep: QueueJob) -> None:
+        for key, template in list(job.auto_params.items()):
+            if template == "$dep.result_paths[0]" and dep.result_paths:
+                job.params[key] = dep.result_paths[0]
+
+        if job.auto_params.get("auto_prompt") == "true" and self._enhance_handler:
+            image_path = job.params.get("imagePath", dep.result_paths[0] if dep.result_paths else "")
+            if image_path:
+                motion_prompt = self._enhance_handler.enhance_i2v_motion(str(image_path))
+                job.params["prompt"] = motion_prompt
+
+    def _check_batch_completions(self) -> None:
+        seen: set[str] = set()
+        for job in self._queue.all_jobs():
+            if job.batch_id and job.batch_id not in self._notified_batches:
+                seen.add(job.batch_id)
+        for batch_id in seen:
+            jobs = self._queue.jobs_for_batch(batch_id)
+            if all(j.status in ("complete", "error", "cancelled") for j in jobs):
+                self._notified_batches.add(batch_id)
+                if self._on_batch_complete:
+                    self._on_batch_complete(batch_id, jobs)
 
     def _run_job(self, job: QueueJob, executor: JobExecutor, slot: str) -> None:
         try:

@@ -171,6 +171,7 @@ class AppHandler:
             pipelines_handler=self.pipelines,
             text_handler=self.text,
             ltx_api_client=ltx_api_client,
+            video_api_client=video_api_client,
             outputs_dir=config.outputs_dir,
             config=config,
             camera_motion_prompts=config.camera_motion_prompts,
@@ -265,7 +266,33 @@ class AppHandler:
         self.contact_sheet = ContactSheetHandler(job_queue=self.job_queue)
         self.style_guide = StyleGuideHandler(job_queue=self.job_queue)
 
+        from handlers.batch_handler import BatchHandler
+        self.batch = BatchHandler()
+
+        from handlers.job_executors import GpuJobExecutor, ApiJobExecutor
+        from handlers.queue_worker import QueueWorker
+        self._queue_worker = QueueWorker(
+            queue=self.job_queue,
+            gpu_executor=GpuJobExecutor(self),
+            api_executor=ApiJobExecutor(self),
+        )
+        self._queue_stop = threading.Event()
+        self._queue_thread = threading.Thread(target=self._queue_loop, daemon=True)
+        self._queue_thread.start()
+
         self.models.refresh_available_files()
+
+    def _queue_loop(self) -> None:
+        """Background loop that ticks the queue worker every second."""
+        import logging
+        _logger = logging.getLogger(__name__)
+        _logger.info("Queue worker background thread started")
+        while not self._queue_stop.is_set():
+            try:
+                self._queue_worker.tick()
+            except Exception as exc:
+                _logger.error("Queue worker tick error: %s", exc)
+            self._queue_stop.wait(1.0)
 
     def determine_slot(self, model: str) -> str:
         """Determine whether a job should use the gpu or api slot."""

@@ -31,6 +31,7 @@ class TestGetSettings:
         assert data["hasGeminiApiKey"] is False
         assert data["seedLocked"] is False
         assert data["lockedSeed"] == 42
+        assert data["batchSoundEnabled"] is True
         assert "ltxApiKey" not in data
         assert "replicateApiKey" not in data
         assert "geminiApiKey" not in data
@@ -220,6 +221,50 @@ class TestPaletteApiKey:
         data = resp.json()
         assert data["hasPaletteApiKey"] is True
         assert "dp_test_key_123" not in resp.text
+
+
+class TestAbliteratedTextEncoder:
+    def test_setting_roundtrips(self, client, test_state):
+        resp = client.post("/api/settings", json={"useAbliteratedTextEncoder": True})
+        assert resp.status_code == 200
+        assert test_state.state.app_settings.use_abliterated_text_encoder is True
+
+        get_resp = client.get("/api/settings")
+        assert get_resp.json()["useAbliteratedTextEncoder"] is True
+
+    def test_default_is_false(self, client):
+        resp = client.get("/api/settings")
+        assert resp.json()["useAbliteratedTextEncoder"] is False
+
+    def test_resolve_gemma_root_uses_abliterated_when_enabled(self, test_state, create_fake_model_files):
+        create_fake_model_files()
+        test_state.state.app_settings.use_local_text_encoder = True
+        test_state.state.app_settings.use_abliterated_text_encoder = True
+
+        # Create abliterated encoder directory
+        abliterated_dir = test_state.config.model_path("text_encoder_abliterated")
+        abliterated_dir.mkdir(parents=True, exist_ok=True)
+        (abliterated_dir / "model.safetensors").write_bytes(b"\x00" * 1024)
+
+        gemma_root = test_state.text.resolve_gemma_root()
+        assert gemma_root is not None
+        assert "abliterated" in gemma_root
+
+    def test_resolve_gemma_root_falls_back_when_abliterated_missing(self, test_state, create_fake_model_files):
+        create_fake_model_files()
+        test_state.state.app_settings.use_local_text_encoder = True
+        test_state.state.app_settings.use_abliterated_text_encoder = True
+
+        # No abliterated directory — should fall back to standard
+        gemma_root = test_state.text.resolve_gemma_root()
+        assert gemma_root is not None
+        assert "abliterated" not in gemma_root
+
+    def test_abliterated_not_required_for_download(self, client, test_state):
+        resp = client.get("/api/models/status")
+        models = resp.json()["models"]
+        abliterated = next(m for m in models if "abliterated" in m["name"].lower())
+        assert abliterated["required"] is False
 
 
 class TestSettingsSchemaDrift:

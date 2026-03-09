@@ -85,6 +85,65 @@ def test_persistence_survives_reload(tmp_path: Path) -> None:
     assert loaded.params == {"prompt": "test"}
 
 
+def test_submit_job_with_batch_fields(tmp_path: Path) -> None:
+    queue = JobQueue(persistence_path=tmp_path / "queue.json")
+    job = queue.submit(
+        job_type="image",
+        model="zit",
+        params={"prompt": "a cat"},
+        slot="gpu",
+        batch_id="batch_001",
+        batch_index=3,
+        depends_on="job_abc",
+        tags=["batch:batch_001", "sweep:lora_weight"],
+    )
+    assert job.batch_id == "batch_001"
+    assert job.batch_index == 3
+    assert job.depends_on == "job_abc"
+    assert job.tags == ["batch:batch_001", "sweep:lora_weight"]
+
+    # Verify persistence round-trip
+    queue2 = JobQueue(persistence_path=tmp_path / "queue.json")
+    loaded = queue2.get_job(job.id)
+    assert loaded is not None
+    assert loaded.batch_id == "batch_001"
+    assert loaded.batch_index == 3
+    assert loaded.depends_on == "job_abc"
+    assert loaded.tags == ["batch:batch_001", "sweep:lora_weight"]
+
+
+def test_jobs_for_batch(tmp_path: Path) -> None:
+    queue = JobQueue(persistence_path=tmp_path / "queue.json")
+    queue.submit(job_type="image", model="zit", params={}, slot="gpu", batch_id="b1", batch_index=0)
+    queue.submit(job_type="image", model="zit", params={}, slot="gpu", batch_id="b1", batch_index=1)
+    queue.submit(job_type="image", model="zit", params={}, slot="gpu", batch_id="b2", batch_index=0)
+    queue.submit(job_type="video", model="fast", params={}, slot="gpu")  # No batch
+
+    batch_jobs = queue.jobs_for_batch("b1")
+    assert len(batch_jobs) == 2
+    assert all(j.batch_id == "b1" for j in batch_jobs)
+    assert [j.batch_index for j in batch_jobs] == [0, 1]
+
+
+def test_active_batch_ids(tmp_path: Path) -> None:
+    queue = JobQueue(persistence_path=tmp_path / "queue.json")
+    queue.submit(job_type="image", model="zit", params={}, slot="gpu", batch_id="b1")
+    queue.submit(job_type="image", model="zit", params={}, slot="gpu", batch_id="b2")
+    queue.submit(job_type="video", model="fast", params={}, slot="gpu")
+
+    ids = queue.active_batch_ids()
+    assert set(ids) == {"b1", "b2"}
+
+
+def test_active_batch_ids_excludes_fully_resolved(tmp_path: Path) -> None:
+    queue = JobQueue(persistence_path=tmp_path / "queue.json")
+    job = queue.submit(job_type="image", model="zit", params={}, slot="gpu", batch_id="b1")
+    queue.update_job(job.id, status="complete", result_paths=["/out.png"])
+
+    ids = queue.active_batch_ids()
+    assert ids == []  # b1 is fully resolved
+
+
 def test_running_jobs_reset_to_queued_on_load(tmp_path: Path) -> None:
     path = tmp_path / "queue.json"
     queue1 = JobQueue(persistence_path=path)
@@ -94,4 +153,5 @@ def test_running_jobs_reset_to_queued_on_load(tmp_path: Path) -> None:
     queue2 = JobQueue(persistence_path=path)
     loaded = queue2.get_job(job.id)
     assert loaded is not None
-    assert loaded.status == "queued"
+    assert loaded.status == "error"
+    assert loaded.error == "Interrupted by app restart"

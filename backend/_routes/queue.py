@@ -36,6 +36,7 @@ def route_queue_status(
             id=j.id, type=j.type, model=j.model, params={k: v for k, v in j.params.items()},
             status=j.status, slot=j.slot, progress=j.progress, phase=j.phase,
             result_paths=j.result_paths, error=j.error, created_at=j.created_at,
+            batch_id=j.batch_id, batch_index=j.batch_index, tags=j.tags,
         )
         for j in jobs
     ])
@@ -47,6 +48,8 @@ def route_queue_cancel(
     handler: AppHandler = Depends(get_state_service),
 ) -> QueueSubmitResponse:
     handler.job_queue.cancel_job(job_id)
+    # Also cancel via GenerationHandler so running pipelines stop
+    handler.generation.cancel_generation()
     job = handler.job_queue.get_job(job_id)
     status = job.status if job else "not_found"
     return QueueSubmitResponse(id=job_id, status=status)
