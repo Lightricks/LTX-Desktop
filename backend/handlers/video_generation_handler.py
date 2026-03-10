@@ -129,32 +129,17 @@ class VideoGenerationHandler(StateHandlerBase):
         generation_id = self._make_generation_id()
         seed = self._resolve_seed()
 
-        try:
-            self._pipelines.load_gpu_pipeline("fast", should_warm=False)
-            self._generation.start_generation(generation_id)
-
-            output_path = self.generate_video(
-                prompt=req.prompt,
-                image=image,
-                height=height,
-                width=width,
-                num_frames=num_frames,
-                fps=fps,
-                seed=seed,
-                camera_motion=req.cameraMotion,
-                negative_prompt=req.negativePrompt,
-            )
-
-            self._generation.complete_generation(output_path)
-            return GenerateVideoResponse(status="complete", video_path=output_path)
-
-        except Exception as e:
-            self._generation.fail_generation(str(e))
-            if "cancelled" in str(e).lower():
-                logger.info("Generation cancelled by user")
-                return GenerateVideoResponse(status="cancelled")
-
-            raise HTTPError(500, str(e)) from e
+        # Route to ComfyUI workflow instead of local GPU pipeline.
+        return self._generate_comfyui(
+            req=req,
+            generation_id=generation_id,
+            seed=seed,
+            width=width,
+            height=height,
+            num_frames=num_frames,
+            fps=fps,
+            image=image,
+        )
 
     def generate_video(
         self,
@@ -246,6 +231,89 @@ class VideoGenerationHandler(StateHandlerBase):
             return str(output_path)
         finally:
             self._text.clear_api_embeddings()
+            if temp_image_path and os.path.exists(temp_image_path):
+                os.unlink(temp_image_path)
+
+    def _generate_comfyui(
+        self,
+        req: GenerateVideoRequest,
+        generation_id: str,
+        seed: int,
+        width: int,
+        height: int,
+        num_frames: int,
+        fps: int,
+        image: Image.Image | None,
+    ) -> GenerateVideoResponse:
+        """Generate a video by calling the ComfyUI workflow.
+
+        This replaces the local LTX GPU pipeline path.  All parameters have
+        already been validated and resolved by the calling ``generate()`` method.
+        The actual HTTP call to ComfyUI lives in one place:
+
+            backend/services/comfyui_pipeline/comfyui_video_pipeline.py
+                → call_comfyui_workflow(params)
+
+        Edit that function to wire up your tunnel / workflow JSON.
+        """
+        from services.comfyui_pipeline.comfyui_video_pipeline import (
+            ComfyUIGenerationParams,
+            call_comfyui_workflow,
+        )
+
+        temp_image_path: str | None = None
+        output_path = self._make_output_path()
+
+        try:
+            self._generation.start_generation(generation_id)
+            self._generation.update_progress("inference", 15, 0, 8)
+
+            if self._generation.is_generation_cancelled():
+                raise RuntimeError("Generation was cancelled")
+
+            # Persist image to a temp file so ComfyUI can reference it.
+            image_path: str | None = None
+            if image is not None:
+                temp_image_path = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
+                image.save(temp_image_path)
+                image_path = temp_image_path
+
+            params = ComfyUIGenerationParams(
+                prompt=req.prompt,
+                negative_prompt=req.negativePrompt,
+                width=width,
+                height=height,
+                num_frames=num_frames,
+                fps=fps,
+                seed=seed,
+                duration=int(float(req.duration)),
+                image_path=image_path,
+                audio_path=normalize_optional_path(req.audioPath),
+            )
+
+            # ==================================================================
+            # TODO: ComfyUI call — see
+            #   backend/services/comfyui_pipeline/comfyui_video_pipeline.py
+            # ==================================================================
+            video_bytes = call_comfyui_workflow(params)
+            # ==================================================================
+
+            if self._generation.is_generation_cancelled():
+                raise RuntimeError("Generation was cancelled")
+
+            output_path.write_bytes(video_bytes)
+            self._generation.update_progress("complete", 100, 8, 8)
+            self._generation.complete_generation(str(output_path))
+            return GenerateVideoResponse(status="complete", video_path=str(output_path))
+
+        except Exception as e:
+            self._generation.fail_generation(str(e))
+            output_path.unlink(missing_ok=True)
+            if "cancelled" in str(e).lower():
+                logger.info("Generation cancelled by user")
+                return GenerateVideoResponse(status="cancelled")
+            raise HTTPError(500, str(e)) from e
+        finally:
             if temp_image_path and os.path.exists(temp_image_path):
                 os.unlink(temp_image_path)
 
