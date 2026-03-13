@@ -26,6 +26,17 @@ export interface AppSettings {
   seedLocked: boolean
   lockedSeed: number
   modelsDir: string
+
+  // Generation defaults (persisted across sessions)
+  defaultModel: string
+  defaultDuration: number
+  defaultVideoResolution: string
+  defaultFps: number
+  defaultAspectRatio: string
+  defaultCameraMotion: string
+
+  // Player preferences
+  playerMuted: boolean
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -44,6 +55,17 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   seedLocked: false,
   lockedSeed: 42,
   modelsDir: '',
+
+  // Generation defaults
+  defaultModel: 'fast',
+  defaultDuration: 5,
+  defaultVideoResolution: '540p',
+  defaultFps: 24,
+  defaultAspectRatio: '16:9',
+  defaultCameraMotion: 'none',
+
+  // Player preferences
+  playerMuted: false,
 }
 
 type BackendProcessStatus = 'alive' | 'restarting' | 'dead'
@@ -92,6 +114,17 @@ function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
     seedLocked: data.seedLocked ?? DEFAULT_APP_SETTINGS.seedLocked,
     lockedSeed: data.lockedSeed ?? DEFAULT_APP_SETTINGS.lockedSeed,
     modelsDir: data.modelsDir ?? DEFAULT_APP_SETTINGS.modelsDir,
+
+    // Generation defaults
+    defaultModel: data.defaultModel ?? DEFAULT_APP_SETTINGS.defaultModel,
+    defaultDuration: data.defaultDuration ?? DEFAULT_APP_SETTINGS.defaultDuration,
+    defaultVideoResolution: data.defaultVideoResolution ?? DEFAULT_APP_SETTINGS.defaultVideoResolution,
+    defaultFps: data.defaultFps ?? DEFAULT_APP_SETTINGS.defaultFps,
+    defaultAspectRatio: data.defaultAspectRatio ?? DEFAULT_APP_SETTINGS.defaultAspectRatio,
+    defaultCameraMotion: data.defaultCameraMotion ?? DEFAULT_APP_SETTINGS.defaultCameraMotion,
+
+    // Player preferences
+    playerMuted: data.playerMuted ?? DEFAULT_APP_SETTINGS.playerMuted,
   }
 }
 
