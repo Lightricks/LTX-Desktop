@@ -20,7 +20,7 @@ from services.interfaces import (
     RetakePipeline,
     VideoPipelineModelType,
 )
-from services.services_utils import device_supports_fp8, get_device_type
+from services.services_utils import device_supports_fp8, get_device_type, is_rocm_device
 from state.app_state_types import (
     A2VPipelineState,
     AppState,
@@ -107,6 +107,9 @@ class PipelinesHandler(StateHandlerBase):
             return state
         if self._runtime_device == "mps":
             logger.info("Skipping torch.compile() for %s - not supported on MPS", state.pipeline.pipeline_kind)
+            return state
+        if self._runtime_device == "cuda" and is_rocm_device():
+            logger.info("Skipping torch.compile() for %s - triton not available on AMD ROCm", state.pipeline.pipeline_kind)
             return state
 
         try:

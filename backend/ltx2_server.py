@@ -113,6 +113,12 @@ def _get_device() -> torch.device:
 DEVICE = _get_device()
 DTYPE = torch.bfloat16
 
+# Enable optimized Flash Attention kernels on AMD ROCm (experimental for RDNA 3.x/4.x).
+# Without this, SDPA silently falls back to a slower math-attention path.
+if DEVICE.type == "cuda" and getattr(torch.version, "hip", None) is not None:
+    os.environ.setdefault("TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL", "1")
+    logger.info("AMD ROCm detected — enabling AoTriton experimental Flash Attention")
+
 def _resolve_app_data_dir() -> Path:
     env_path = os.environ.get("LTX_APP_DATA_DIR")
     if not env_path:

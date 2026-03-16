@@ -9,14 +9,23 @@
 
 param(
     [string]$PythonVersion = (Get-Content "$PSScriptRoot\..\backend\.python-version" -Raw).Trim(),
-    [string]$OutputDir = "python-embed"
+    [string]$OutputDir = "python-embed",
+    [ValidateSet("cuda", "rocm")]
+    [string]$GpuBackend = "cuda"
 )
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  LTX Video - Python Environment Setup" -ForegroundColor Cyan
+Write-Host "  GPU Backend: $GpuBackend" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
+
+# AMD ROCm Windows wheels only support Python 3.12
+if ($GpuBackend -eq "rocm") {
+    $PythonVersion = "3.12.10"
+    Write-Host "ROCm build: forcing Python $PythonVersion (AMD requirement)" -ForegroundColor Yellow
+}
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectDir = Split-Path -Parent $ScriptDir
@@ -29,7 +38,21 @@ $PythonUrl = "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVer
 $GetPipUrl = "https://bootstrap.pypa.io/get-pip.py"
 
 # PyTorch CUDA index (must match the index in pyproject.toml)
-$PyTorchIndex = "https://download.pytorch.org/whl/cu128"
+$PyTorchCudaIndex = "https://download.pytorch.org/whl/cu128"
+
+# ROCm wheel base URL (AMD repo.radeon.com)
+$RocmBase = "https://repo.radeon.com/rocm/windows/rocm-rel-7.2"
+$RocmSdkWheels = @(
+    "$RocmBase/rocm_sdk_core-7.2.0.dev0-py3-none-win_amd64.whl",
+    "$RocmBase/rocm_sdk_devel-7.2.0.dev0-py3-none-win_amd64.whl",
+    "$RocmBase/rocm_sdk_libraries_custom-7.2.0.dev0-py3-none-win_amd64.whl",
+    "$RocmBase/rocm-7.2.0.dev0.tar.gz"
+)
+$RocmTorchWheels = @(
+    "$RocmBase/torch-2.9.1%2Brocmsdk20260116-cp312-cp312-win_amd64.whl",
+    "$RocmBase/torchaudio-2.9.1%2Brocmsdk20260116-cp312-cp312-win_amd64.whl",
+    "$RocmBase/torchvision-0.24.1%2Brocmsdk20260116-cp312-cp312-win_amd64.whl"
+)
 
 # ============================================================
 # Step 1: Verify prerequisites
@@ -66,6 +89,19 @@ $RequirementsFile = Join-Path $BackendDir "requirements-dist.txt"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: uv export failed!" -ForegroundColor Red
     exit 1
+}
+
+# For ROCm builds: strip out CUDA-specific packages that will be replaced
+# by ROCm wheels (torch/torchvision/torchaudio) or are CUDA-only (sageattention, triton-windows)
+if ($GpuBackend -eq "rocm") {
+    $CudaOnlyPrefixes = @("torch==", "torchaudio==", "torchvision==", "sageattention==", "triton-windows==", "triton==")
+    $Filtered = Get-Content $RequirementsFile | Where-Object {
+        $line = $_.ToLower().TrimStart()
+        -not ($CudaOnlyPrefixes | Where-Object { $line.StartsWith($_) })
+    }
+    Set-Content -Path $RequirementsFile -Value $Filtered
+    $RemovedCount = (Get-Content $RequirementsFile | Where-Object { $_ -match "^\S" }).Count
+    Write-Host "ROCm build: filtered to $RemovedCount dependencies (removed CUDA-only packages)" -ForegroundColor Yellow
 }
 
 $DepCount = (Get-Content $RequirementsFile | Where-Object { $_ -match "^\S" }).Count
@@ -133,20 +169,48 @@ Write-Host "`nStep 6: Installing dependencies from requirements.txt..." -Foregro
 # Use uv for installation — it natively handles uv_build backends and is faster.
 # Falls back to pip if uv is not available (local dev without uv).
 $UvAvailable = Get-Command uv -ErrorAction SilentlyContinue
-if ($UvAvailable) {
-    & uv pip install -r $RequirementsFile `
-        --extra-index-url $PyTorchIndex `
-        --index-strategy unsafe-best-match `
-        --python $PythonExe
-} else {
-    & $PythonExe -m pip install -r $RequirementsFile `
-        --extra-index-url $PyTorchIndex `
-        --no-warn-script-location --quiet
-}
+if ($GpuBackend -eq "cuda") {
+    if ($UvAvailable) {
+        & uv pip install -r $RequirementsFile `
+            --extra-index-url $PyTorchCudaIndex `
+            --index-strategy unsafe-best-match `
+            --python $PythonExe
+    } else {
+        & $PythonExe -m pip install -r $RequirementsFile `
+            --extra-index-url $PyTorchCudaIndex `
+            --no-warn-script-location --quiet
+    }
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: pip install failed!" -ForegroundColor Red
-    exit 1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: pip install failed!" -ForegroundColor Red
+        exit 1
+    }
+} else {
+    # ROCm: install non-torch deps first (no CUDA index), then ROCm SDK and PyTorch
+    Write-Host "  Installing non-CUDA dependencies..." -ForegroundColor Cyan
+    if ($UvAvailable) {
+        & uv pip install -r $RequirementsFile --python $PythonExe
+    } else {
+        & $PythonExe -m pip install -r $RequirementsFile --no-warn-script-location --quiet
+    }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: pip install failed!" -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "  Installing ROCm SDK components..." -ForegroundColor Cyan
+    & $PythonExe -m pip install --no-cache-dir @RocmSdkWheels --no-warn-script-location
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: ROCm SDK install failed!" -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "  Installing ROCm PyTorch..." -ForegroundColor Cyan
+    & $PythonExe -m pip install --no-cache-dir @RocmTorchWheels --no-warn-script-location
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: ROCm PyTorch install failed!" -ForegroundColor Red
+        exit 1
+    }
 }
 Write-Host "All dependencies installed" -ForegroundColor Green
 
@@ -154,6 +218,10 @@ Write-Host "All dependencies installed" -ForegroundColor Green
 # Step 7: Copy Python headers for Triton/SageAttention JIT
 # ============================================================
 Write-Host "`nStep 7: Copying Python development files for Triton JIT..." -ForegroundColor Yellow
+
+if ($GpuBackend -eq "rocm") {
+    Write-Host "  Skipping (Triton JIT not required for ROCm builds)" -ForegroundColor DarkGray
+} else {
 
 # Ensure the exact Python version is available via uv, then copy headers/libs
 & uv python install "$PythonVersion" --quiet
@@ -187,6 +255,7 @@ if ($UvPython) {
     Write-Host "ERROR: Could not find Python $PythonVersion via uv" -ForegroundColor Red
     exit 1
 }
+} # end if ($GpuBackend -ne "rocm")
 
 # ============================================================
 # Step 8: Clean up
@@ -226,7 +295,15 @@ print(f'Python: {sys.version}')
 try:
     import torch
     print(f'PyTorch: {torch.__version__}')
-    print(f'CUDA available: {torch.cuda.is_available()}')
+    hip = getattr(torch.version, 'hip', None)
+    if hip:
+        print(f'Backend: AMD ROCm/HIP {hip}')
+        print(f'GPU available: {torch.cuda.is_available()}')
+        if torch.cuda.is_available():
+            print(f'Device: {torch.cuda.get_device_name(0)}')
+    else:
+        print(f'Backend: NVIDIA CUDA {torch.version.cuda}')
+        print(f'CUDA available: {torch.cuda.is_available()}')
 except ImportError as e:
     print(f'PyTorch import failed: {e}')
 try:
