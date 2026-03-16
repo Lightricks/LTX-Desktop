@@ -7,7 +7,9 @@
 
 param(
     [switch]$Unpack,
-    [string]$Publish = ""
+    [string]$Publish = "",
+    [ValidateSet("cuda", "rocm")]
+    [string]$GpuBackend = "cuda"
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,6 +30,9 @@ if (-not (Test-Path "python-embed")) {
     Write-Host "ERROR: Python environment not found. Run local-build.ps1 or prepare-python.ps1 first." -ForegroundColor Red
     exit 1
 }
+
+# Set artifact name suffix for GPU variant (read by electron-builder.yml template)
+$env:LTX_ARTIFACT_SUFFIX = if ($GpuBackend -eq "rocm") { "-ROCm" } else { "" }
 
 # Build with electron-builder
 if ($Unpack) {

@@ -7,7 +7,9 @@ param(
     [switch]$SkipPython,
     [switch]$Clean,
     [switch]$Unpack,
-    [string]$Publish = ""
+    [string]$Publish = "",
+    [ValidateSet("cuda", "rocm")]
+    [string]$GpuBackend = "cuda"
 )
 
 $ErrorActionPreference = "Stop"
@@ -62,7 +64,7 @@ if (-not $SkipPython) {
     if (Test-Path $PythonEmbedDir) {
         Write-Host "Python environment already exists. Use -Clean to rebuild." -ForegroundColor DarkYellow
     } else {
-        & "$ScriptDir\prepare-python.ps1"
+        & "$ScriptDir\prepare-python.ps1" -GpuBackend $GpuBackend
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Failed to prepare Python environment!" -ForegroundColor Red
             exit 1
@@ -105,6 +107,7 @@ if ($LASTEXITCODE -ne 0) {
 $pkgParams = @{}
 if ($Unpack)         { $pkgParams["Unpack"] = $true }
 if ($Publish -ne "") { $pkgParams["Publish"] = $Publish }
+$pkgParams["GpuBackend"] = $GpuBackend
 
 & "$ScriptDir\create-installer.ps1" @pkgParams
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

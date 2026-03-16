@@ -1,6 +1,6 @@
 # LTX Desktop
 
-LTX Desktop is an open-source desktop app for generating videos with LTX models — locally on supported Windows/Linux NVIDIA GPUs, with an API mode for unsupported hardware and macOS.
+LTX Desktop is an open-source desktop app for generating videos with LTX models — locally on supported Windows/Linux NVIDIA GPUs and Windows AMD GPUs, with an API mode for unsupported hardware and macOS.
 
 > **Status: Beta.** Expect breaking changes.
 > Frontend architecture is under active refactor; large UI PRs may be declined for now (see [`CONTRIBUTING.md`](docs/CONTRIBUTING.md)).
@@ -31,7 +31,8 @@ LTX Desktop is an open-source desktop app for generating videos with LTX models 
 | Platform / hardware | Generation mode | Notes |
 | --- | --- | --- |
 | Windows + CUDA GPU with **≥32GB VRAM** | Local generation | Downloads model weights locally |
-| Windows (no CUDA, <32GB VRAM, or unknown VRAM) | API-only | **LTX API key required** |
+| Windows + AMD GPU (ROCm) with **≥32GB VRAM** | Local generation | Requires ROCm build; see [AMD GPU support](#amd-gpu-support-windows) |
+| Windows (no CUDA/ROCm, <32GB VRAM, or unknown VRAM) | API-only | **LTX API key required** |
 | Linux + CUDA GPU with **≥32GB VRAM** | Local generation | Downloads model weights locally |
 | Linux (no CUDA, <32GB VRAM, or unknown VRAM) | API-only | **LTX API key required** |
 | macOS (Apple Silicon builds) | API-only | **LTX API key required** |
@@ -40,12 +41,33 @@ In API-only mode, available resolutions/durations may be limited to what the API
 
 ## System requirements
 
-### Windows (local generation)
+### Windows (local generation — NVIDIA)
 
 - Windows 10/11 (x64)
 - NVIDIA GPU with CUDA support and **≥32GB VRAM** (more is better)
 - 16GB+ RAM (32GB recommended)
 - **160GB+ free disk space** (for model weights, Python environment, and outputs)
+
+### Windows (local generation — AMD ROCm) {#amd-gpu-support-windows}
+
+- Windows 10/11 (x64)
+- **AMD Radeon RX 7000 series or AMD AI MAX 300 series** APU with **≥32GB GPU memory**
+  - Tested on: AMD AI MAX 395+ (Strix Halo, RDNA 3.5, up to 128 GB unified memory)
+  - Allocate ≥32 GB to the GPU in BIOS/UEFI (recommended: 96 GB GPU / 32 GB system)
+- **AMD Adrenalin driver ≥ 26.1.1** (required for ROCm Windows support)
+- **Python 3.12** (the ROCm PyTorch build is Python 3.12 only)
+- **Windows security settings** — before installing, disable:
+  - Windows Defender Application Guard (WDAG)
+  - Smart App Control
+  - (These block the ROCm SDK libraries from loading)
+- 16 GB+ system RAM (32 GB+ recommended for AI MAX APUs)
+- **160 GB+ free disk space**
+
+> **ROCm build required.** Download the `*-ROCm-Setup.exe` installer from Releases, or build from source with `.\scripts\local-build.ps1 -GpuBackend rocm`.
+
+> **Inference only.** AMD ROCm on Windows does not support model training — this is fine for LTX Desktop.
+
+> **No torch.compile.** The ROCm Windows build skips `torch.compile` (triton is unavailable). Generation still works at full quality; compile only affects throughput on very long generations.
 
 ### Linux (local generation)
 

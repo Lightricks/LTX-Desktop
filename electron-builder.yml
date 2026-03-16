@@ -38,7 +38,7 @@ win:
       arch:
         - x64
   icon: resources/icon.ico
-  artifactName: ${productName}-Setup.${ext}
+  artifactName: ${productName}${env.LTX_ARTIFACT_SUFFIX}-Setup.${ext}
   azureSignOptions:
     publisherName: Lightricks US Inc
     endpoint: https://eus.codesigning.azure.net/
