@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { Play, Pause, Download, RefreshCw, RotateCcw, Volume2, VolumeX, Maximize2 } from 'lucide-react'
 import { Button } from './ui/button'
 import { logger } from '../lib/logger'
+import { useAppSettings } from '../contexts/AppSettingsContext'
 
 interface VideoPlayerProps {
   videoUrl: string | null
@@ -19,6 +20,7 @@ function formatTime(seconds: number): string {
 }
 
 export function VideoPlayer({ videoUrl, videoPath, videoResolution, isGenerating, progress, statusMessage }: VideoPlayerProps) {
+  const { settings: appSettings, updateSettings: updateAppSettings } = useAppSettings()
   const videoRef = useRef<HTMLVideoElement>(null)
   const progressRef = useRef<HTMLDivElement>(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -26,7 +28,7 @@ export function VideoPlayer({ videoUrl, videoPath, videoResolution, isGenerating
   const [duration, setDuration] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const [isLooping, setIsLooping] = useState(true)
-  const [isMuted, setIsMuted] = useState(false)
+  const [isMuted, setIsMuted] = useState(appSettings.playerMuted)
   const [isHovering, setIsHovering] = useState(false)
   const [hasBeenUpscaled, setHasBeenUpscaled] = useState(false)
   const [_currentResolution, setCurrentResolution] = useState<string | null>(null)
@@ -203,8 +205,10 @@ export function VideoPlayer({ videoUrl, videoPath, videoResolution, isGenerating
 
   const toggleMute = () => {
     if (videoRef.current) {
-      videoRef.current.muted = !isMuted
-      setIsMuted(!isMuted)
+      const newMuted = !isMuted
+      videoRef.current.muted = newMuted
+      setIsMuted(newMuted)
+      updateAppSettings({ playerMuted: newMuted })
     }
   }
 

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Sparkles, Trash2, Square, ImageIcon, ArrowLeft, Scissors } from 'lucide-react'
 import { logger } from '../lib/logger'
 import { ImageUploader } from '../components/ImageUploader'
@@ -22,15 +22,8 @@ import { sanitizeForcedApiVideoSettings } from '../lib/api-video-options'
 import { RetakePanel } from '../components/RetakePanel'
 import { ICLoraPanel, CONDITIONING_TYPES, type ICLoraConditioningType } from '../components/ICLoraPanel'
 
-const DEFAULT_SETTINGS: GenerationSettings = {
-  model: 'fast',
-  duration: 5,
-  videoResolution: '540p',
-  fps: 24,
-  audio: true,
-  cameraMotion: 'none',
-  aspectRatio: '16:9',
-  // Image settings
+// Fallback defaults for fields not persisted in appSettings
+const IMAGE_SETTINGS_DEFAULTS = {
   imageResolution: '1080p',
   imageAspectRatio: '16:9',
   imageSteps: 4,
@@ -38,12 +31,51 @@ const DEFAULT_SETTINGS: GenerationSettings = {
 
 export function Playground() {
   const { goHome } = useProjects()
-  const { forceApiGenerations, shouldVideoGenerateWithLtxApi } = useAppSettings()
+  const { settings: appSettings, updateSettings: updateAppSettings, isLoaded: appSettingsLoaded, forceApiGenerations, shouldVideoGenerateWithLtxApi } = useAppSettings()
   const [mode, setMode] = useState<GenerationMode>('text-to-video')
   const [prompt, setPrompt] = useState('')
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [selectedAudio, setSelectedAudio] = useState<string | null>(null)
-  const [settings, setSettings] = useState<GenerationSettings>(() => ({ ...DEFAULT_SETTINGS }))
+
+  // Initialize settings from persisted appSettings
+  const [settings, setSettings] = useState<GenerationSettings>(() => ({
+    model: appSettings.defaultModel as 'fast' | 'pro',
+    duration: appSettings.defaultDuration,
+    videoResolution: appSettings.defaultVideoResolution as '540p' | '720p' | '1080p',
+    fps: appSettings.defaultFps,
+    audio: true,
+    cameraMotion: appSettings.defaultCameraMotion,
+    aspectRatio: appSettings.defaultAspectRatio as '16:9' | '9:16' | '1:1',
+    ...IMAGE_SETTINGS_DEFAULTS,
+  }))
+
+  // Sync settings from appSettings when loaded
+  useEffect(() => {
+    if (!appSettingsLoaded) return
+    setSettings(prev => ({
+      ...prev,
+      model: appSettings.defaultModel as 'fast' | 'pro',
+      duration: appSettings.defaultDuration,
+      videoResolution: appSettings.defaultVideoResolution as '540p' | '720p' | '1080p',
+      fps: appSettings.defaultFps,
+      cameraMotion: appSettings.defaultCameraMotion,
+      aspectRatio: appSettings.defaultAspectRatio as '16:9' | '9:16' | '1:1',
+    }))
+  }, [appSettingsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist generation defaults when user changes them
+  const handleSettingsChange = useCallback((newSettings: GenerationSettings) => {
+    setSettings(newSettings)
+    // Sync persisted fields to appSettings
+    updateAppSettings({
+      defaultModel: newSettings.model,
+      defaultDuration: newSettings.duration,
+      defaultVideoResolution: newSettings.videoResolution,
+      defaultFps: newSettings.fps,
+      defaultAspectRatio: newSettings.aspectRatio,
+      defaultCameraMotion: newSettings.cameraMotion,
+    })
+  }, [updateAppSettings])
 
   const { status, processStatus } = useBackend()
 
@@ -187,7 +219,17 @@ export function Playground() {
     setPrompt('')
     setSelectedImage(null)
     setSelectedAudio(null)
-    const baseDefaults = { ...DEFAULT_SETTINGS }
+    // Reset to user's persisted defaults (not hardcoded defaults)
+    const baseDefaults: GenerationSettings = {
+      model: appSettings.defaultModel as 'fast' | 'pro',
+      duration: appSettings.defaultDuration,
+      videoResolution: appSettings.defaultVideoResolution as '540p' | '720p' | '1080p',
+      fps: appSettings.defaultFps,
+      audio: true,
+      cameraMotion: appSettings.defaultCameraMotion,
+      aspectRatio: appSettings.defaultAspectRatio as '16:9' | '9:16' | '1:1',
+      ...IMAGE_SETTINGS_DEFAULTS,
+    }
     const shouldSanitizeVideoSettings = shouldVideoGenerateWithLtxApi && mode !== 'text-to-image'
     setSettings(shouldSanitizeVideoSettings ? sanitizeForcedApiVideoSettings(baseDefaults) : baseDefaults)
     if (mode !== 'text-to-image') setMode('text-to-video')
@@ -358,7 +400,7 @@ export function Playground() {
             {!isRetakeMode && !isIcLoraMode && (
               <SettingsPanel
                 settings={settings}
-                onSettingsChange={setSettings}
+                onSettingsChange={handleSettingsChange}
                 disabled={isBusy}
                 mode={mode}
                 forceApiGenerations={shouldVideoGenerateWithLtxApi}

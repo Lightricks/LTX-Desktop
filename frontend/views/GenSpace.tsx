@@ -836,12 +836,8 @@ const gallerySizeClasses: Record<GallerySize, string> = {
   large: 'grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3',
 }
 
-const DEFAULT_VIDEO_SETTINGS = {
-  model: 'fast',
-  duration: 5,
-  videoResolution: '540p',
-  fps: 24,
-  aspectRatio: '16:9',
+// Fallback defaults for fields not persisted in appSettings
+const IMAGE_SETTINGS_DEFAULTS = {
   imageResolution: '1080p',
   variations: 1,
   audio: true,
@@ -867,7 +863,7 @@ export function GenSpace() {
     setGenSpaceIcLoraSource,
     setPendingIcLoraUpdate,
   } = useProjects()
-  const { shouldVideoGenerateWithLtxApi, forceApiGenerations, settings: appSettings } = useAppSettings()
+  const { shouldVideoGenerateWithLtxApi, forceApiGenerations, settings: appSettings, updateSettings: updateAppSettings, isLoaded: appSettingsLoaded } = useAppSettings()
   const [mode, setMode] = useState<'image' | 'video' | 'retake' | 'ic-lora'>('video')
   const [prompt, setPrompt] = useState('')
   const [inputImage, setInputImage] = useState<string | null>(null)
@@ -897,7 +893,42 @@ export function GenSpace() {
       conditioningStrength: number
     }
   } | null>(null)
-  const [settings, setSettings] = useState(() => ({ ...DEFAULT_VIDEO_SETTINGS }))
+
+  // Initialize settings from persisted appSettings
+  const [settings, setSettings] = useState(() => ({
+    model: appSettings.defaultModel,
+    duration: appSettings.defaultDuration,
+    videoResolution: appSettings.defaultVideoResolution,
+    fps: appSettings.defaultFps,
+    aspectRatio: appSettings.defaultAspectRatio,
+    ...IMAGE_SETTINGS_DEFAULTS,
+  }))
+
+  // Sync settings from appSettings when loaded
+  useEffect(() => {
+    if (!appSettingsLoaded) return
+    setSettings(prev => ({
+      ...prev,
+      model: appSettings.defaultModel,
+      duration: appSettings.defaultDuration,
+      videoResolution: appSettings.defaultVideoResolution,
+      fps: appSettings.defaultFps,
+      aspectRatio: appSettings.defaultAspectRatio,
+    }))
+  }, [appSettingsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist generation defaults when user changes them
+  const handleSettingsChange = useCallback((newSettings: typeof settings) => {
+    setSettings(newSettings)
+    // Sync persisted fields to appSettings
+    updateAppSettings({
+      defaultModel: newSettings.model,
+      defaultDuration: newSettings.duration,
+      defaultVideoResolution: newSettings.videoResolution,
+      defaultFps: newSettings.fps,
+      defaultAspectRatio: newSettings.aspectRatio,
+    })
+  }, [updateAppSettings])
   const applyForcedVideoSettings = useCallback(
     (next: { model: string; duration: number; videoResolution: string; fps: number; audio: boolean; aspectRatio: string; imageResolution: string; variations: number }) => {
       if (!shouldVideoGenerateWithLtxApi || mode !== 'video') return next
@@ -1661,7 +1692,7 @@ export function GenSpace() {
           inputAudio={inputAudio}
           onInputAudioChange={setInputAudio}
           settings={settings}
-          onSettingsChange={(nextSettings) => setSettings(applyForcedVideoSettings(nextSettings))}
+          onSettingsChange={(nextSettings) => handleSettingsChange(applyForcedVideoSettings(nextSettings))}
           shouldVideoGenerateWithLtxApi={shouldVideoGenerateWithLtxApi}
           icLoraCondType={icLoraCondType}
           onIcLoraCondTypeChange={setIcLoraCondType}

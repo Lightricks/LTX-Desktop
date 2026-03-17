@@ -76,6 +76,17 @@ class AppSettings(SettingsBaseModel):
     locked_seed: int = 42
     models_dir: str = ""
 
+    # Generation defaults (persisted across sessions)
+    default_model: str = "fast"
+    default_duration: int = 5
+    default_video_resolution: str = "540p"
+    default_fps: int = 24
+    default_aspect_ratio: str = "16:9"
+    default_camera_motion: str = "none"
+
+    # Player preferences
+    player_muted: bool = False
+
     @field_validator("prompt_cache_size", mode="before")
     @classmethod
     def _clamp_prompt_cache_size(cls, value: Any) -> int:
@@ -85,6 +96,16 @@ class AppSettings(SettingsBaseModel):
     @classmethod
     def _clamp_locked_seed(cls, value: Any) -> int:
         return _clamp_int(value, minimum=0, maximum=2_147_483_647, default=42)
+
+    @field_validator("default_duration", mode="before")
+    @classmethod
+    def _clamp_default_duration(cls, value: Any) -> int:
+        return _clamp_int(value, minimum=1, maximum=20, default=5)
+
+    @field_validator("default_fps", mode="before")
+    @classmethod
+    def _clamp_default_fps(cls, value: Any) -> int:
+        return _clamp_int(value, minimum=1, maximum=60, default=24)
 
 
 SettingsModelT = TypeVar("SettingsModelT", bound=SettingsBaseModel)
@@ -147,6 +168,17 @@ class SettingsResponse(SettingsBaseModel):
     seed_locked: bool = False
     locked_seed: int = 42
     models_dir: str = ""
+
+    # Generation defaults
+    default_model: str = "fast"
+    default_duration: int = 5
+    default_video_resolution: str = "540p"
+    default_fps: int = 24
+    default_aspect_ratio: str = "16:9"
+    default_camera_motion: str = "none"
+
+    # Player preferences
+    player_muted: bool = False
 
 
 def to_settings_response(settings: AppSettings) -> SettingsResponse:
