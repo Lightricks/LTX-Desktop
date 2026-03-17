@@ -25,8 +25,8 @@ interface GenerationProgress {
 }
 
 interface UseGenerationReturn extends GenerationState {
-  generate: (prompt: string, imagePath: string | null, settings: GenerationSettings, audioPath?: string | null) => Promise<void>
-  generateImage: (prompt: string, settings: GenerationSettings) => Promise<void>
+  generate: (prompt: string, imagePath: string | null, settings: GenerationSettings, audioPath?: string | null) => Promise<{ success: boolean; videoUrl: string | null; videoPath: string | null }>
+  generateImage: (prompt: string, settings: GenerationSettings) => Promise<{ success: boolean }>
   cancel: () => void
   reset: () => void
 }
@@ -111,7 +111,7 @@ export function useGeneration(): UseGenerationReturn {
     imagePath: string | null,
     settings: GenerationSettings,
     audioPath?: string | null,
-  ) => {
+  ): Promise<{ success: boolean; videoUrl: string | null; videoPath: string | null }> => {
     const statusMsg = settings.model === 'pro'
       ? 'Loading Pro model & generating...'
       : 'Generating video...'
@@ -132,6 +132,9 @@ export function useGeneration(): UseGenerationReturn {
     abortControllerRef.current = new AbortController()
     let progressInterval: ReturnType<typeof setInterval> | null = null
     let shouldApplyPollingUpdates = true
+    let succeeded = false
+    let resultVideoUrl: string | null = null
+    let resultVideoPath: string | null = null
 
     try {
       // Prepare JSON body
@@ -223,6 +226,8 @@ export function useGeneration(): UseGenerationReturn {
         const videoPathNormalized = result.video_path.replace(/\\/g, '/')
         const fileUrl = videoPathNormalized.startsWith('/') ? `file://${videoPathNormalized}` : `file:///${videoPathNormalized}`
         
+        resultVideoUrl = fileUrl
+        resultVideoPath = result.video_path
         setState({
           isGenerating: false,
           progress: 100,
@@ -235,6 +240,7 @@ export function useGeneration(): UseGenerationReturn {
           imagePaths: [],
           error: null,
         })
+        succeeded = true
       } else if (result.status === 'cancelled') {
         setState(prev => ({
           ...prev,
@@ -265,6 +271,7 @@ export function useGeneration(): UseGenerationReturn {
         clearInterval(progressInterval)
       }
     }
+    return { success: succeeded, videoUrl: resultVideoUrl, videoPath: resultVideoPath }
   }, [])
 
   const cancel = useCallback(async () => {
@@ -288,7 +295,7 @@ export function useGeneration(): UseGenerationReturn {
   const generateImage = useCallback(async (
     prompt: string,
     settings: GenerationSettings
-  ) => {
+  ): Promise<{ success: boolean }> => {
     if (forceApiGenerations) {
       try {
         const response = await backendFetch('/api/settings')
@@ -304,7 +311,7 @@ export function useGeneration(): UseGenerationReturn {
                 blocking: false,
               },
             }))
-            return
+            return { success: false }
           }
         }
       } catch {
@@ -317,7 +324,7 @@ export function useGeneration(): UseGenerationReturn {
               blocking: false,
             },
           }))
-          return
+          return { success: false }
         }
       }
     }
@@ -338,6 +345,7 @@ export function useGeneration(): UseGenerationReturn {
     })
 
     abortControllerRef.current = new AbortController()
+    let succeeded = false
 
     try {
       // Skip prompt enhancement for T2I - use original prompt directly
@@ -425,6 +433,7 @@ export function useGeneration(): UseGenerationReturn {
             imagePaths: rawPaths,   // All image paths
             error: null,
           })
+          succeeded = true
         }
       } else if (result.status === 'cancelled') {
         setState(prev => ({
@@ -451,6 +460,7 @@ export function useGeneration(): UseGenerationReturn {
         }))
       }
     }
+    return { success: succeeded }
   }, [appSettings.hasFalApiKey, forceApiGenerations, refreshSettings])
 
   const reset = useCallback(() => {

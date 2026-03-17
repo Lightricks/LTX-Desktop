@@ -18,8 +18,8 @@ export interface UseRegenerationParams {
   deleteTakeFromAsset: (projectId: string, assetId: string, takeIndex: number) => void
   resolveClipSrc: (clip: TimelineClip | null) => string
   // Generation hook values
-  regenGenerate: (prompt: string, imagePath: string | null, settings: GenerationSettings) => Promise<void>
-  regenGenerateImage: (prompt: string, settings: GenerationSettings) => Promise<void>
+  regenGenerate: (prompt: string, imagePath: string | null, settings: GenerationSettings) => Promise<{ success: boolean; videoUrl: string | null; videoPath: string | null }>
+  regenGenerateImage: (prompt: string, settings: GenerationSettings) => Promise<{ success: boolean }>
   regenVideoUrl: string | null
   regenVideoPath: string | null
   regenImageUrl: string | null
