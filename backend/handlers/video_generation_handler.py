@@ -228,7 +228,11 @@ class VideoGenerationHandler(StateHandlerBase):
         if last_frame_image is not None:
             temp_last_frame_path = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
             last_frame_image.save(temp_last_frame_path)
-            images.append(ImageConditioningInput(path=temp_last_frame_path, frame_idx=num_frames - 1, strength=1.0))
+            # Use frame_idx=0 (first-frame conditioning) for extend.
+            # The distilled pipeline doesn't support last-frame conditioning
+            # (frame_idx=num_frames-1), but first-frame works identically —
+            # the new video continues from this frame.
+            images.append(ImageConditioningInput(path=temp_last_frame_path, frame_idx=0, strength=1.0))
 
         output_path = self._make_output_path(model="ltx-fast", prompt=prompt)
 
@@ -332,7 +336,7 @@ class VideoGenerationHandler(StateHandlerBase):
             if last_frame_image is not None:
                 temp_last_frame_path = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
                 last_frame_image.save(temp_last_frame_path)
-                images.append(ImageConditioningInput(path=temp_last_frame_path, frame_idx=num_frames - 1, strength=1.0))
+                images.append(ImageConditioningInput(path=temp_last_frame_path, frame_idx=0, strength=1.0))
 
             output_path = self._make_output_path(model="ltx-pro", prompt=req.prompt)
 
