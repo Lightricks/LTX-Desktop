@@ -127,6 +127,8 @@ class GpuJobExecutor:
             audioPath=str(params.get("audioPath")) if params.get("audioPath") else None,
             lastFramePath=str(params.get("lastFramePath")) if params.get("lastFramePath") else None,
             aspectRatio=str(params.get("aspectRatio", "16:9")),  # type: ignore[arg-type]
+            loraPath=str(params.get("loraPath")) if params.get("loraPath") else None,
+            loraWeight=float(params.get("loraWeight", 1.0)),
         )
         result = self._handler.video_generation.generate(req)
         if result.status == "cancelled":
@@ -187,6 +189,8 @@ class ApiJobExecutor:
             audioPath=str(params.get("audioPath")) if params.get("audioPath") else None,
             lastFramePath=str(params.get("lastFramePath")) if params.get("lastFramePath") else None,
             aspectRatio=str(params.get("aspectRatio", "16:9")),  # type: ignore[arg-type]
+            loraPath=str(params.get("loraPath")) if params.get("loraPath") else None,
+            loraWeight=float(params.get("loraWeight", 1.0)),
         )
         result = self._handler.video_generation.generate(req)
         if result.status == "cancelled":

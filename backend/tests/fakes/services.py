@@ -618,8 +618,10 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
         gemma_root: str | None,
         upsampler_path: str,
         device: str | object,
+        lora_path: str | None = None,
+        lora_weight: float = 1.0,
     ) -> "FakeFastVideoPipeline":
-        del checkpoint_path, gemma_root, upsampler_path, device
+        del checkpoint_path, gemma_root, upsampler_path, device, lora_path, lora_weight
         pipeline = FakeFastVideoPipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeFastVideoPipeline singleton is not bound")

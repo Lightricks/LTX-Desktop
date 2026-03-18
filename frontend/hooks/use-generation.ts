@@ -360,6 +360,10 @@ export function useGeneration(): UseGenerationReturn {
       if (lastFramePath) {
         params.lastFramePath = lastFramePath
       }
+      if (settings.loraPath) {
+        params.loraPath = settings.loraPath
+        params.loraWeight = settings.loraWeight ?? 1.0
+      }
 
       const response = await fetch(`${backendUrl}/api/queue/submit`, {
         method: 'POST',

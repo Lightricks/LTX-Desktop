@@ -143,7 +143,10 @@ class VideoGenerationHandler(StateHandlerBase):
         seed = self._resolve_seed()
 
         try:
-            self._pipelines.load_gpu_pipeline("fast", should_warm=False)
+            self._pipelines.load_gpu_pipeline(
+                "fast", should_warm=False,
+                lora_path=req.loraPath, lora_weight=req.loraWeight,
+            )
             self._generation.start_generation(generation_id)
 
             output_path = self.generate_video(
@@ -157,6 +160,8 @@ class VideoGenerationHandler(StateHandlerBase):
                 seed=seed,
                 camera_motion=req.cameraMotion,
                 negative_prompt=req.negativePrompt,
+                lora_path=req.loraPath,
+                lora_weight=req.loraWeight,
             )
 
             self._generation.complete_generation(output_path)
@@ -182,6 +187,8 @@ class VideoGenerationHandler(StateHandlerBase):
         camera_motion: VideoCameraMotion,
         negative_prompt: str,
         last_frame_image: Image.Image | None = None,
+        lora_path: str | None = None,
+        lora_weight: float = 1.0,
     ) -> str:
         t_total_start = time.perf_counter()
         gen_mode = "i2v" if image is not None else "t2v"
@@ -201,6 +208,8 @@ class VideoGenerationHandler(StateHandlerBase):
             "fast",
             should_warm=False,
             on_phase=lambda phase: self._generation.update_progress(phase, 5, 0, total_steps),
+            lora_path=lora_path,
+            lora_weight=lora_weight,
         )
         t_load_end = time.perf_counter()
         logger.info("[%s] Pipeline load: %.2fs", gen_mode, t_load_end - t_load_start)

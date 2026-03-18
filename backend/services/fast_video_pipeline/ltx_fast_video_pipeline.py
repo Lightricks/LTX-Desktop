@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 import os
-from typing import Final, cast
+from typing import Any, Final, cast
 
 import torch
 
@@ -22,26 +22,57 @@ class LTXFastVideoPipeline:
         gemma_root: str | None,
         upsampler_path: str,
         device: torch.device,
+        lora_path: str | None = None,
+        lora_weight: float = 1.0,
     ) -> "LTXFastVideoPipeline":
         return LTXFastVideoPipeline(
             checkpoint_path=checkpoint_path,
             gemma_root=gemma_root,
             upsampler_path=upsampler_path,
             device=device,
+            lora_path=lora_path,
+            lora_weight=lora_weight,
         )
 
-    def __init__(self, checkpoint_path: str, gemma_root: str | None, upsampler_path: str, device: torch.device) -> None:
+    def __init__(
+        self,
+        checkpoint_path: str,
+        gemma_root: str | None,
+        upsampler_path: str,
+        device: torch.device,
+        lora_path: str | None = None,
+        lora_weight: float = 1.0,
+    ) -> None:
         from ltx_core.quantization import QuantizationPolicy
         from ltx_pipelines.distilled import DistilledPipeline
+
+        lora_entries: list[Any] = []
+        if lora_path:
+            from ltx_core.loader.primitives import LoraPathStrengthAndSDOps  # pyright: ignore[reportMissingImports]
+
+            sd_ops: Any = None
+            try:
+                import importlib
+                _ser = importlib.import_module("ltx_core.loader.serialization")
+                sd_ops = getattr(_ser, "LTXV_LORA_COMFY_RENAMING_MAP", None)
+            except (ImportError, AttributeError):
+                pass
+
+            lora_entries = [LoraPathStrengthAndSDOps(
+                path=lora_path,
+                strength=lora_weight,
+                sd_ops=sd_ops,
+            )]
 
         self.pipeline = DistilledPipeline(
             distilled_checkpoint_path=checkpoint_path,
             gemma_root=cast(str, gemma_root),
             spatial_upsampler_path=upsampler_path,
-            loras=[],
+            loras=lora_entries,
             device=device,
             quantization=QuantizationPolicy.fp8_cast() if device_supports_fp8(device) else None,
         )
+        self.lora_path = lora_path
 
     def _run_inference(
         self,

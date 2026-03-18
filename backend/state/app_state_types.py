@@ -104,6 +104,7 @@ class VideoPipelineState:
     pipeline: FastVideoPipeline
     warmth: VideoPipelineWarmth
     is_compiled: bool
+    lora_path: str | None = None
 
 
 @dataclass
