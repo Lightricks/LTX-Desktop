@@ -288,6 +288,177 @@ class VideoGenerationHandler(StateHandlerBase):
             if temp_last_frame_path and os.path.exists(temp_last_frame_path):
                 os.unlink(temp_last_frame_path)
 
+    def generate_long_video(
+        self,
+        prompt: str,
+        image_path: str,
+        target_duration: int,
+        resolution: str = "512p",
+        aspect_ratio: str = "16:9",
+        fps: int = 24,
+        segment_duration: int = 4,
+        camera_motion: VideoCameraMotion = "none",
+        lora_path: str | None = None,
+        lora_weight: float = 1.0,
+    ) -> str:
+        """Generate a long video by chaining I2V + extend segments.
+
+        1. Generate initial segment from source image (I2V)
+        2. Extract last frame, generate next segment conditioned on it
+        3. Repeat until target_duration is reached
+        4. Concatenate all segments (trimming first frame of extensions)
+        """
+        RESOLUTION_MAP_16_9: dict[str, tuple[int, int]] = {
+            "512p": (960, 544), "540p": (960, 544),
+            "720p": (1280, 704), "1080p": (1920, 1088),
+        }
+
+        def get_size(res: str, ar: str) -> tuple[int, int]:
+            w, h = RESOLUTION_MAP_16_9.get(res, (960, 544))
+            return (h, w) if ar == "9:16" else (w, h)
+
+        width, height = get_size(resolution, aspect_ratio)
+        num_segments = max(1, (target_duration + segment_duration - 1) // segment_duration)
+        logger.info("[long] Starting %ds video: %d segments of %ds (%dx%d)",
+                    target_duration, num_segments, segment_duration, width, height)
+
+        ffmpeg_path = self._find_ffmpeg()
+        segment_paths: list[str] = []
+        temp_files: list[str] = []
+
+        try:
+            # --- Segment 1: I2V from source image ---
+            image = self._prepare_image(image_path, width, height)
+            num_frames = self._compute_num_frames(segment_duration, fps)
+            seed = self._resolve_seed()
+
+            generation_id = self._make_generation_id()
+            self._pipelines.load_gpu_pipeline(
+                "fast", should_warm=False,
+                lora_path=lora_path, lora_weight=lora_weight,
+            )
+            self._generation.start_generation(generation_id)
+
+            try:
+                self._generation.update_progress("generating_segment", 5, 1, num_segments)
+                seg1_path = self.generate_video(
+                    prompt=prompt, image=image, height=height, width=width,
+                    num_frames=num_frames, fps=float(fps), seed=seed,
+                    camera_motion=camera_motion, negative_prompt="",
+                    lora_path=lora_path, lora_weight=lora_weight,
+                )
+                segment_paths.append(seg1_path)
+                logger.info("[long] Segment 1/%d complete: %s", num_segments, seg1_path)
+            except Exception:
+                self._generation.fail_generation("Segment 1 failed")
+                raise
+
+            # --- Segments 2..N: extend from last frame ---
+            for seg_idx in range(2, num_segments + 1):
+                if self._generation.is_generation_cancelled():
+                    raise RuntimeError("Generation was cancelled")
+
+                prev_path = segment_paths[-1]
+                last_frame = self._extract_last_frame(prev_path, ffmpeg_path)
+                temp_files.append(last_frame)
+
+                last_frame_image = Image.open(last_frame).convert("RGB")
+                seed = self._resolve_seed()
+
+                self._generation.update_progress(
+                    "generating_segment", int(15 + 70 * seg_idx / num_segments),
+                    seg_idx, num_segments,
+                )
+
+                seg_path = self.generate_video(
+                    prompt=prompt, image=None, last_frame_image=last_frame_image,
+                    height=height, width=width, num_frames=num_frames, fps=float(fps),
+                    seed=seed, camera_motion=camera_motion, negative_prompt="",
+                    lora_path=lora_path, lora_weight=lora_weight,
+                )
+                segment_paths.append(seg_path)
+                logger.info("[long] Segment %d/%d complete: %s", seg_idx, num_segments, seg_path)
+
+            # --- Concatenate segments ---
+            self._generation.update_progress("concatenating", 90, num_segments, num_segments)
+            output_path = self._make_output_path(model="ltx-fast-long", prompt=prompt)
+
+            self._concatenate_segments(
+                segment_paths, str(output_path), ffmpeg_path, fps,
+            )
+            logger.info("[long] Final video: %s (%d segments)", output_path, len(segment_paths))
+
+            self._generation.complete_generation(str(output_path))
+            return str(output_path)
+
+        except Exception as e:
+            if "cancelled" not in str(e).lower():
+                self._generation.fail_generation(str(e))
+            raise
+        finally:
+            for f in temp_files:
+                if os.path.exists(f):
+                    os.unlink(f)
+
+    @staticmethod
+    def _find_ffmpeg() -> str:
+        """Find ffmpeg binary — bundled with imageio-ffmpeg."""
+        try:
+            import imageio_ffmpeg
+            return imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            pass
+        raise RuntimeError("ffmpeg not found. Install imageio-ffmpeg.")
+
+    @staticmethod
+    def _extract_last_frame(video_path: str, ffmpeg_path: str) -> str:
+        """Extract the last frame of a video to a temp PNG."""
+        import subprocess
+
+        out = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        out.close()
+        subprocess.run(
+            [ffmpeg_path, "-y", "-sseof", "-0.05", "-i", video_path,
+             "-frames:v", "1", "-update", "1", out.name],
+            capture_output=True, check=True,
+        )
+        return out.name
+
+    @staticmethod
+    def _concatenate_segments(
+        segment_paths: list[str], output_path: str, ffmpeg_path: str, fps: int,
+    ) -> None:
+        """Concatenate video segments into one file."""
+        import subprocess
+
+        if len(segment_paths) == 1:
+            import shutil
+            shutil.copy2(segment_paths[0], output_path)
+            return
+
+        # Use concat demuxer — simple and reliable.
+        concat_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False,
+        )
+        try:
+            for seg in segment_paths:
+                # ffmpeg concat demuxer needs forward slashes or escaped backslashes
+                safe_path = seg.replace("\\", "/")
+                concat_file.write(f"file '{safe_path}'\n")
+            concat_file.close()
+
+            cmd = [
+                ffmpeg_path, "-y",
+                "-f", "concat", "-safe", "0",
+                "-i", concat_file.name,
+                "-c", "copy",
+                output_path,
+            ]
+            subprocess.run(cmd, capture_output=True, check=True)
+        finally:
+            if os.path.exists(concat_file.name):
+                os.unlink(concat_file.name)
+
     def _generate_a2v(
         self, req: GenerateVideoRequest, duration: int, fps: int, *, audio_path: str
     ) -> GenerateVideoResponse:

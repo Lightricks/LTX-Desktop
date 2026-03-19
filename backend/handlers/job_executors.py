@@ -61,6 +61,8 @@ class GpuJobExecutor:
                 result = self._execute_image(job)
             elif job.type == "video":
                 result = self._execute_video(job)
+            elif job.type == "long_video":
+                result = self._execute_long_video(job)
             else:
                 raise ValueError(f"Unknown job type: {job.type}")
             self._try_upload_to_r2(job, result)
@@ -136,6 +138,22 @@ class GpuJobExecutor:
         if result.video_path is None:
             return []
         return [result.video_path]
+
+    def _execute_long_video(self, job: QueueJob) -> list[str]:
+        params = job.params
+        video_path = self._handler.video_generation.generate_long_video(
+            prompt=str(params.get("prompt", "")),
+            image_path=str(params.get("imagePath", "")),
+            target_duration=int(params.get("targetDuration", 20)),
+            resolution=str(params.get("resolution", "512p")),
+            aspect_ratio=str(params.get("aspectRatio", "16:9")),
+            fps=int(params.get("fps", 24)),
+            segment_duration=int(params.get("segmentDuration", 4)),
+            camera_motion=str(params.get("cameraMotion", "none")),  # type: ignore[arg-type]
+            lora_path=str(params.get("loraPath")) if params.get("loraPath") else None,
+            lora_weight=float(params.get("loraWeight", 1.0)),
+        )
+        return [video_path]
 
 
 class ApiJobExecutor:

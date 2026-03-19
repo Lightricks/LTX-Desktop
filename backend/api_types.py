@@ -311,6 +311,26 @@ class GenerateVideoRequest(BaseModel):
     loraWeight: float = 1.0
 
 
+class GenerateLongVideoRequest(BaseModel):
+    prompt: NonEmptyPrompt
+    imagePath: str
+    targetDuration: int = 20
+    resolution: str = "512p"
+    aspectRatio: Literal["16:9", "9:16"] = "16:9"
+    fps: int = 24
+    segmentDuration: int = 4
+    cameraMotion: VideoCameraMotion = "none"
+    loraPath: str | None = None
+    loraWeight: float = 1.0
+
+
+class GenerateLongVideoResponse(BaseModel):
+    status: str
+    video_path: str | None = None
+    segments: int = 0
+    total_duration: int = 0
+
+
 class GenerateImageRequest(BaseModel):
     prompt: NonEmptyPrompt
     width: int = 1024
@@ -324,7 +344,7 @@ class GenerateImageRequest(BaseModel):
 
 
 class QueueSubmitRequest(BaseModel):
-    type: Literal["video", "image"]
+    type: Literal["video", "image", "long_video"]
     model: str
     params: dict[str, object] = {}
 
