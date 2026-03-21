@@ -222,6 +222,7 @@ export async function startPythonBackend(): Promise<void> {
       env: {
         ...process.env,
         PYTHONUNBUFFERED: '1',
+        PYTHONNOUSERSITE: '1',
         LTX_PORT: String(PYTHON_PORT),
         LTX_LOG_FILE: getCurrentLogFilename(),
         LTX_APP_DATA_DIR: getAppDataDir(),
