@@ -415,6 +415,9 @@ class FakePaletteSyncClient:
     def list_references(self, *, api_key: str, category: str | None) -> dict[str, Any]:
         return {"references": []}
 
+    def list_loras(self, *, api_key: str) -> dict[str, Any]:
+        return {"loras": []}
+
     def enhance_prompt(self, *, api_key: str, prompt: str, level: str) -> dict[str, Any]:
         return {"enhanced_prompt": f"Enhanced ({level}): {prompt}"}
 

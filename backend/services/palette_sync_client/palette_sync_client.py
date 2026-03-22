@@ -55,6 +55,10 @@ class PaletteSyncClient(Protocol):
         """List reference images with optional category filter."""
         ...
 
+    def list_loras(self, *, api_key: str) -> dict[str, Any]:
+        """List available LoRAs from the Palette library."""
+        ...
+
     def enhance_prompt(
         self, *, api_key: str, prompt: str, level: str,
     ) -> dict[str, Any]:

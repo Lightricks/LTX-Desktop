@@ -210,6 +210,16 @@ class PaletteSyncClientImpl:
             raise RuntimeError(f"Palette references failed: {resp.status_code}")
         return cast(dict[str, Any], resp.json())
 
+    def list_loras(self, *, api_key: str) -> dict[str, Any]:
+        resp = self._http.get(
+            f"{self._base_url}/api/desktop/library/loras",
+            headers=self._headers(api_key),
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"Palette loras failed: {resp.status_code}")
+        return cast(dict[str, Any], resp.json())
+
     def enhance_prompt(
         self, *, api_key: str, prompt: str, level: str,
     ) -> dict[str, Any]:
