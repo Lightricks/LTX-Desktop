@@ -38,6 +38,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const [paletteLoginError, setPaletteLoginError] = useState<string | null>(null)
   const [paletteLoginLoading, setPaletteLoginLoading] = useState(false)
   const [paletteAuthMode, setPaletteAuthMode] = useState<'login' | 'apikey'>('login')
+  const [loraSyncing, setLoraSyncing] = useState(false)
+  const [loraSyncResult, setLoraSyncResult] = useState<string | null>(null)
   const [civitaiApiKeyInput, setCivitaiApiKeyInput] = useState('')
   const [textEncoderStatus, setTextEncoderStatus] = useState<TextEncoderStatus | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
@@ -295,6 +297,29 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       logger.error(`Failed to load notices: ${e}`)
     } finally {
       setNoticesLoading(false)
+    }
+  }
+
+  const handleSyncLoras = async () => {
+    setLoraSyncing(true)
+    setLoraSyncResult(null)
+    try {
+      const backendUrl = await window.electronAPI.getBackendUrl()
+      const resp = await fetch(`${backendUrl}/api/sync/library/sync-loras`, { method: 'POST' })
+      const data = await resp.json()
+      if (data.connected === false) {
+        setLoraSyncResult('Not connected to Palette')
+      } else {
+        const parts: string[] = []
+        if (data.synced > 0) parts.push(`${data.synced} synced`)
+        if (data.skipped > 0) parts.push(`${data.skipped} already up to date`)
+        if (data.failed > 0) parts.push(`${data.failed} failed`)
+        setLoraSyncResult(parts.length > 0 ? parts.join(', ') : 'No LoRAs available')
+      }
+    } catch {
+      setLoraSyncResult('Sync failed')
+    } finally {
+      setLoraSyncing(false)
     }
   }
 
@@ -1064,6 +1089,18 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                         Credits: <span className="text-white font-medium">{paletteCredits.toLocaleString()}</span>
                       </span>
                     )}
+                    <div className="flex items-center gap-3 mt-2">
+                      <button
+                        onClick={handleSyncLoras}
+                        disabled={loraSyncing}
+                        className="px-3 py-1.5 rounded-lg text-xs bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50 transition-colors"
+                      >
+                        {loraSyncing ? 'Syncing LoRAs...' : 'Sync LoRAs'}
+                      </button>
+                      {loraSyncResult && (
+                        <span className="text-xs text-zinc-400">{loraSyncResult}</span>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
