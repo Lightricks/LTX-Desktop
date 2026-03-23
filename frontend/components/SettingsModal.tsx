@@ -1616,10 +1616,10 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   <div className="flex items-start gap-2.5">
                     <AlertCircle className="h-4 w-4 text-amber-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm text-amber-300 font-medium">Distilled LoRA not found</p>
+                      <p className="text-sm text-amber-300 font-medium">Speed Boost file missing</p>
                       <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
-                        A distilled LoRA is required for optimal performance with quantized models.
-                        Check the Model Guide for details on which files to download.
+                        Compressed models need a small extra file (the "Speed Boost LoRA") to generate videos quickly.
+                        Open the Model Guide below to find the download link — just drop it in your models folder.
                       </p>
                     </div>
                   </div>
@@ -1633,7 +1633,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   className="w-full px-4 py-2.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
                 >
                   <Info className="h-4 w-4" />
-                  Open Model Guide
+                  Which Model Do I Need?
                 </button>
               </div>
             </>

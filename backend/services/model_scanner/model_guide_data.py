@@ -7,71 +7,99 @@ from api_types import DistilledLoraInfo, ModelFormatInfo
 MODEL_FORMATS: list[ModelFormatInfo] = [
     ModelFormatInfo(
         id="bf16",
-        name="BF16 (Full Precision)",
+        name="Full Quality (BF16)",
         size_gb=43,
         min_vram_gb=32,
         quality_tier="Best",
         needs_distilled_lora=False,
         download_url="https://huggingface.co/Lightricks/LTX-Video-2.3-22b-distilled",
-        description="Best quality. Requires 32GB+ VRAM. Auto-downloaded by default.",
+        description=(
+            "The original, uncompressed model. Best possible video quality but "
+            "needs a high-end GPU with 32 GB+ of video memory (e.g. RTX 4090, A100). "
+            "This is the default — it downloads automatically on first run."
+        ),
     ),
     ModelFormatInfo(
         id="fp8",
-        name="FP8 Distilled Checkpoint",
+        name="Half-Size (FP8)",
         size_gb=22,
         min_vram_gb=20,
         quality_tier="Excellent",
         needs_distilled_lora=False,
         download_url="https://huggingface.co/Lightricks/LTX-Video-2.3-22b-distilled",
-        description="Excellent quality, smaller file. Good for 20-31GB VRAM GPUs.",
+        description=(
+            "Same model, compressed to half the file size with almost no quality loss. "
+            "Great for GPUs with 20–31 GB of video memory (e.g. RTX 3090, RTX 4080). "
+            "Drop-in replacement — just swap the file."
+        ),
     ),
     ModelFormatInfo(
         id="gguf_q8",
-        name="GGUF Q8",
+        name="Compressed Q8 (GGUF)",
         size_gb=22,
         min_vram_gb=18,
         quality_tier="Excellent",
         needs_distilled_lora=True,
         download_url="https://huggingface.co/city96/LTX-Video-2.3-22b-0.9.7-dev-gguf",
-        description="Excellent quality quantized model. Needs distilled LoRA.",
+        description=(
+            "High-quality compressed model. Very close to the original but uses "
+            "less video memory. Needs the Speed Boost LoRA file (see below). "
+            "Good for 20–24 GB GPUs."
+        ),
     ),
     ModelFormatInfo(
         id="gguf_q5k",
-        name="GGUF Q5_K",
+        name="Compressed Q5 (GGUF)",
         size_gb=15,
         min_vram_gb=13,
         quality_tier="Very Good",
         needs_distilled_lora=True,
         download_url="https://huggingface.co/city96/LTX-Video-2.3-22b-0.9.7-dev-gguf",
-        description="Very good quality, balanced size. Good for 16-19GB VRAM GPUs.",
+        description=(
+            "Nicely balanced — smaller file, still looks great. Best pick for "
+            "16 GB GPUs like the RTX 4060 Ti 16GB or RTX 3080. "
+            "Needs the Speed Boost LoRA file (see below)."
+        ),
     ),
     ModelFormatInfo(
         id="gguf_q4k",
-        name="GGUF Q4_K",
+        name="Compressed Q4 (GGUF)",
         size_gb=12,
         min_vram_gb=10,
         quality_tier="Good",
         needs_distilled_lora=True,
         download_url="https://huggingface.co/city96/LTX-Video-2.3-22b-0.9.7-dev-gguf",
-        description="Good quality, smallest file. Good for 10-15GB VRAM GPUs.",
+        description=(
+            "Smallest file, runs on GPUs with as little as 10 GB of video memory "
+            "(e.g. RTX 3060 12GB). Some quality loss but still very usable. "
+            "Needs the Speed Boost LoRA file (see below)."
+        ),
     ),
     ModelFormatInfo(
         id="nf4",
-        name="NF4 (4-bit BitsAndBytes)",
+        name="4-Bit Compressed (NF4)",
         size_gb=12,
         min_vram_gb=10,
         quality_tier="Good",
         needs_distilled_lora=True,
         download_url="https://huggingface.co/Lightricks/LTX-Video-2.3-22b-distilled",
-        description="4-bit quantization via BitsAndBytes. Good for 10-15GB VRAM GPUs.",
+        description=(
+            "Another way to run on 10–15 GB GPUs. Uses a different compression method "
+            "that needs extra software (bitsandbytes). Try the Q4 GGUF option first — "
+            "it's simpler to set up. Needs the Speed Boost LoRA file (see below)."
+        ),
     ),
 ]
 
 DISTILLED_LORA_INFO = DistilledLoraInfo(
-    name="LTX 2.3 Distilled LoRA",
+    name="Speed Boost LoRA (Required for Compressed Models)",
     size_gb=0.5,
     download_url="https://huggingface.co/Lightricks/LTX-Video-2.3-22b-distilled",
-    description="Required for GGUF and NF4 models to enable fast distilled generation.",
+    description=(
+        "A small add-on file that makes compressed models generate videos fast. "
+        "You MUST download this if you're using any of the compressed (GGUF or NF4) models. "
+        "Just put it in the same folder as your model file."
+    ),
 )
 
 

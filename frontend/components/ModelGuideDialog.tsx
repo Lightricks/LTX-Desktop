@@ -41,11 +41,11 @@ const QUALITY_COLORS: Record<string, string> = {
 }
 
 const SETUP_STEPS = [
-  'Download the recommended model file (.safetensors or .gguf) using the button above.',
-  'If your model requires the Distilled LoRA, download it as well.',
-  'Open Settings → Models and click the folder icon to set your model directory.',
-  'Place the downloaded files in that directory.',
-  'Click "Scan" in the Models tab — the new model will appear in the list.',
+  'Click the Download button on the model you want. It\'ll take you to the download page — grab the file.',
+  'If the model says it needs the Speed Boost LoRA, download that too (the yellow box below).',
+  'Go to Settings → Models and set the folder where you want to keep your model files.',
+  'Move the downloaded files into that folder.',
+  'Hit "Scan" in the Models tab — your new model will show up and you\'re ready to go.',
 ]
 
 export function ModelGuideDialog({ isOpen, onClose }: ModelGuideDialogProps) {
@@ -85,7 +85,7 @@ export function ModelGuideDialog({ isOpen, onClose }: ModelGuideDialogProps) {
       <div className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-          <h2 className="text-base font-semibold text-white tracking-tight">Model Download Guide</h2>
+          <h2 className="text-base font-semibold text-white tracking-tight">Which Model Do I Need?</h2>
           <button
             onClick={onClose}
             className="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
@@ -128,17 +128,22 @@ export function ModelGuideDialog({ isOpen, onClose }: ModelGuideDialogProps) {
                     <p className="text-sm text-zinc-400">No GPU detected — API mode only</p>
                   )}
                   <p className="text-xs text-zinc-500 mt-0.5">
-                    Recommended format:{' '}
-                    <span className="text-purple-300 font-medium">{guide.recommended_format}</span>
+                    Best pick for your GPU:{' '}
+                    <span className="text-purple-300 font-medium">
+                      {guide.formats.find(f => f.id === guide.recommended_format)?.name ?? guide.recommended_format}
+                    </span>
                   </p>
                 </div>
               </div>
 
               {/* Format cards */}
               <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
-                  Available Formats
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+                  Pick a Model Size
                 </h3>
+                <p className="text-xs text-zinc-500 mb-3">
+                  Smaller models use less video memory so they run on cheaper GPUs, but the video quality goes down a bit.
+                </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {guide.formats.map((fmt) => {
                     const isRecommended = fmt.id === guide.recommended_format
@@ -229,7 +234,7 @@ export function ModelGuideDialog({ isOpen, onClose }: ModelGuideDialogProps) {
               {/* Setup instructions */}
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
-                  Setup Instructions
+                  How to Set It Up
                 </h3>
                 <ol className="space-y-2">
                   {SETUP_STEPS.map((step, i) => (
