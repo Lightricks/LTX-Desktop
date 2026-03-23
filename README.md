@@ -68,6 +68,27 @@ LTX Desktop is an open-source desktop app for generating videos with LTX models 
 
 In API-only mode, available resolutions/durations may be limited to what the API supports.
 
+## Custom Video Models
+
+Directors Desktop supports multiple LTX 2.3 model formats, so you can run on GPUs with less VRAM.
+
+| Your GPU VRAM | Recommended Format | File Size |
+|---------------|-------------------|-----------|
+| 32 GB+ | BF16 (auto-downloaded) | ~43 GB |
+| 20-31 GB | [FP8 Checkpoint](https://huggingface.co/Lightricks/LTX-Video-2.3-22b-distilled) | ~22 GB |
+| 16-19 GB | [GGUF Q5_K](https://huggingface.co/city96/LTX-Video-2.3-22b-0.9.7-dev-gguf) | ~15 GB |
+| 10-15 GB | [GGUF Q4_K](https://huggingface.co/city96/LTX-Video-2.3-22b-0.9.7-dev-gguf) | ~12 GB |
+
+### Setup
+
+1. Download the model file for your GPU from the links above
+2. Open **Settings → Models** and set your model folder
+3. If using GGUF or NF4, also download the [distilled LoRA](https://huggingface.co/Lightricks/LTX-Video-2.3-22b-distilled)
+4. Select your model from the dropdown
+5. Generate!
+
+The app also has a built-in **Model Guide** (Settings → Models → Open Model Guide) that detects your GPU and recommends the best format automatically.
+
 ## System requirements
 
 ### Windows (local generation)
