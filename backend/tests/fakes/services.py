@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from PIL import Image
-from api_types import ImageConditioningInput, VideoCameraMotion
+from api_types import DetectedModel, ImageConditioningInput, VideoCameraMotion
 from services.interfaces import IcLoraDownloadPayload, IcLoraModelPayload, VideoInfoPayload
 from services.ltx_api_client.ltx_api_client import LTXRetakeResult
 from tests.fakes.fake_gpu_info import FakeGpuInfo
@@ -420,6 +420,17 @@ class FakePaletteSyncClient:
 
     def enhance_prompt(self, *, api_key: str, prompt: str, level: str) -> dict[str, Any]:
         return {"enhanced_prompt": f"Enhanced ({level}): {prompt}"}
+
+
+class FakeModelScanner:
+    def __init__(self) -> None:
+        self._models: list[DetectedModel] = []
+
+    def set_models(self, models: list[DetectedModel]) -> None:
+        self._models = list(models)
+
+    def scan_video_models(self, folder: Path) -> list[DetectedModel]:  # noqa: ARG002
+        return list(self._models)
 
 
 class FakeModelDownloader:
@@ -913,6 +924,7 @@ class FakeServices:
     a2v_pipeline: FakeA2VPipeline = field(default_factory=FakeA2VPipeline)
     retake_pipeline: FakeRetakePipeline = field(default_factory=FakeRetakePipeline)
     ic_lora_model_downloader: FakeIcLoraModelDownloader = field(default_factory=FakeIcLoraModelDownloader)
+    model_scanner: FakeModelScanner = field(default_factory=FakeModelScanner)
 
     def __post_init__(self) -> None:
         FakeFastVideoPipeline.bind_singleton(self.fast_video_pipeline)

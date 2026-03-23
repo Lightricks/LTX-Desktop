@@ -23,6 +23,7 @@ from services.model_downloader.model_downloader import ModelDownloader
 from services.services_utils import JSONScalar, JSONValue
 from services.task_runner.task_runner import TaskRunner
 from services.text_encoder.text_encoder import TextEncoder
+from services.model_scanner.model_scanner import ModelScanner
 from services.palette_sync_client.palette_sync_client import PaletteSyncClient
 from services.video_api_client.video_api_client import VideoAPIClient
 from services.video_processor.video_processor import VideoInfoPayload, VideoProcessor
@@ -52,6 +53,7 @@ __all__ = [
     "IcLoraPipeline",
     "IcLoraModelDownloader",
     "LTXAPIClient",
+    "ModelScanner",
     "PaletteSyncClient",
     "RetakePipeline",
     "TextEncoder",
