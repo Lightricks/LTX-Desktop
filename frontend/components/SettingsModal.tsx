@@ -1,4 +1,4 @@
-import { AlertCircle, Check, Download, Film, Info, KeyRound, Settings, Sliders, Sparkles, X, Zap } from 'lucide-react'
+import { AlertCircle, Check, Cpu, Download, Film, FolderOpen, Info, KeyRound, RefreshCw, Settings, Sliders, Sparkles, X, Zap } from 'lucide-react'
 import React, { useEffect, useRef, useState } from 'react'
 import { Button } from './ui/button'
 import { useAppSettings, type AppSettings } from '../contexts/AppSettingsContext'
@@ -17,7 +17,7 @@ interface SettingsModalProps {
   initialTab?: TabId
 }
 
-type TabId = 'general' | 'apiKeys' | 'inference' | 'promptEnhancer' | 'about'
+type TabId = 'general' | 'apiKeys' | 'inference' | 'promptEnhancer' | 'models' | 'about'
 
 export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
   const { settings, updateSettings, saveLtxApiKey, saveReplicateApiKey, saveGeminiApiKey, saveCivitaiApiKey, refreshSettings, forceApiGenerations } = useAppSettings()
@@ -52,6 +52,11 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const [modelLicenseLoading, setModelLicenseLoading] = useState(false)
   const [showModelLicense, setShowModelLicense] = useState(false)
   const [analyticsEnabled, setAnalyticsEnabled] = useState(false)
+  const [videoModels, setVideoModels] = useState<any[]>([])
+  const [distilledLoraFound, setDistilledLoraFound] = useState(false)
+  const [modelScanning, setModelScanning] = useState(false)
+  const [gpuInfo, setGpuInfo] = useState<{ name: string | null; vram: number | null } | null>(null)
+  const [showModelGuide, setShowModelGuide] = useState(false)
 
   // Sync active tab with initialTab prop when modal opens
   useEffect(() => {
@@ -114,6 +119,35 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       .then((state: { analyticsEnabled: boolean }) => setAnalyticsEnabled(state.analyticsEnabled))
       .catch(() => {})
   }, [isOpen])
+
+  // Load model data when Models tab is active
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'models') return
+    let cancelled = false
+    const load = async () => {
+      try {
+        const backendUrl = await window.electronAPI.getBackendUrl()
+        const [scanRes, guideRes] = await Promise.all([
+          fetch(`${backendUrl}/api/models/video/scan`),
+          fetch(`${backendUrl}/api/models/video/guide`),
+        ])
+        if (cancelled) return
+        if (scanRes.ok) {
+          const data = await scanRes.json()
+          setVideoModels(data.models)
+          setDistilledLoraFound(data.distilled_lora_found)
+        }
+        if (guideRes.ok) {
+          const guide = await guideRes.json()
+          setGpuInfo({ name: guide.gpu_name, vram: guide.vram_gb })
+        }
+      } catch (err) {
+        logger.error(`Failed to load model data: ${err}`)
+      }
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [isOpen, activeTab])
 
   // Fetch text encoder status when modal opens
   useEffect(() => {
@@ -328,6 +362,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     { id: 'apiKeys' as TabId, label: 'API Keys', icon: KeyRound },
     { id: 'inference' as TabId, label: 'Inference', icon: Sliders },
     { id: 'promptEnhancer' as TabId, label: 'Prompt Enhancer', icon: Sparkles },
+    { id: 'models' as TabId, label: 'Models', icon: Cpu },
     { id: 'about' as TabId, label: 'About', icon: Info },
   ]
 
@@ -1446,6 +1481,174 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                       </div>
                     </div>
                   </>
+                )}
+              </div>
+            </>
+          )}
+
+          {activeTab === 'models' && (
+            <>
+              {/* GPU Info Banner */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Cpu className="h-4 w-4 text-blue-400" />
+                  <h3 className="text-sm font-semibold text-white">GPU Info</h3>
+                </div>
+                <div className="bg-zinc-800/50 rounded-lg p-4 border border-zinc-700/50">
+                  {gpuInfo ? (
+                    <div className="flex items-center gap-3">
+                      <Cpu className="h-5 w-5 text-blue-400 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-white">{gpuInfo.name ?? 'Unknown GPU'}</p>
+                        {gpuInfo.vram !== null && (
+                          <p className="text-xs text-zinc-400">{gpuInfo.vram} GB VRAM</p>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-zinc-500">Loading GPU info...</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Video Model Selection */}
+              <div className="space-y-3 pt-4 border-t border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <Film className="h-4 w-4 text-purple-400" />
+                  <h3 className="text-sm font-semibold text-white">Video Model</h3>
+                </div>
+                <select
+                  value={settings.selectedVideoModel}
+                  onChange={async (e) => {
+                    const model = e.target.value
+                    updateSettings({ selectedVideoModel: model })
+                    try {
+                      const backendUrl = await window.electronAPI.getBackendUrl()
+                      await fetch(`${backendUrl}/api/models/video/select`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ model }),
+                      })
+                    } catch (err) {
+                      logger.error(`Failed to select video model: ${err}`)
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">-- Select a model --</option>
+                  {videoModels.map((m: any) => (
+                    <option key={m.path ?? m.filename ?? m.name} value={m.path ?? m.filename ?? m.name}>
+                      {m.display_name ?? m.filename ?? m.name}
+                    </option>
+                  ))}
+                </select>
+                {videoModels.length === 0 && (
+                  <p className="text-xs text-zinc-500">No model files detected. Scan your model folder to find models.</p>
+                )}
+              </div>
+
+              {/* Model Folder */}
+              <div className="space-y-3 pt-4 border-t border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="h-4 w-4 text-amber-400" />
+                  <h3 className="text-sm font-semibold text-white">Model Folder</h3>
+                </div>
+                <div className="bg-zinc-800/50 rounded-lg p-3 border border-zinc-700/50">
+                  <p className="text-xs text-zinc-400 font-mono break-all">
+                    {settings.customVideoModelPath || 'Default model folder'}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      const result = await window.electronAPI?.showOpenDirectoryDialog?.({ title: 'Select Video Models Folder' })
+                      if (result) {
+                        updateSettings({ customVideoModelPath: result })
+                      }
+                    }}
+                    className="flex-1 px-3 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded-lg transition-colors"
+                  >
+                    Change
+                  </button>
+                  <button
+                    onClick={() => {
+                      const folderPath = settings.customVideoModelPath
+                      if (folderPath) {
+                        window.electronAPI?.showItemInFolder(folderPath)
+                      }
+                    }}
+                    disabled={!settings.customVideoModelPath}
+                    className="flex-1 px-3 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Open Folder
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setModelScanning(true)
+                      try {
+                        const backendUrl = await window.electronAPI.getBackendUrl()
+                        const scanRes = await fetch(`${backendUrl}/api/models/video/scan`)
+                        if (scanRes.ok) {
+                          const data = await scanRes.json()
+                          setVideoModels(data.models)
+                          setDistilledLoraFound(data.distilled_lora_found)
+                        }
+                      } catch (err) {
+                        logger.error(`Failed to scan models: ${err}`)
+                      } finally {
+                        setModelScanning(false)
+                      }
+                    }}
+                    disabled={modelScanning}
+                    className="flex-1 px-3 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${modelScanning ? 'animate-spin' : ''}`} />
+                    {modelScanning ? 'Scanning...' : 'Scan'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Distilled LoRA Warning */}
+              {settings.selectedVideoModel && !distilledLoraFound && (
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="h-4 w-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm text-amber-300 font-medium">Distilled LoRA not found</p>
+                      <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                        A distilled LoRA is required for optimal performance with quantized models.
+                        Check the Model Guide for details on which files to download.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Model Guide Button */}
+              <div className="pt-2">
+                <button
+                  onClick={() => setShowModelGuide(true)}
+                  className="w-full px-4 py-2.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <Info className="h-4 w-4" />
+                  Open Model Guide
+                </button>
+                {showModelGuide && (
+                  <div className="mt-3 bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold text-white">Model Guide</h4>
+                      <button
+                        onClick={() => setShowModelGuide(false)}
+                        className="text-zinc-400 hover:text-white transition-colors"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      Use the Model Guide to find recommended model formats for your GPU.
+                      Download the appropriate .safetensors or .gguf file and place it in your model folder, then click Scan.
+                    </p>
+                  </div>
                 )}
               </div>
             </>

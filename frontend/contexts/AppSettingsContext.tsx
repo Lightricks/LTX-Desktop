@@ -43,6 +43,8 @@ export interface AppSettings {
   seedLocked: boolean
   lockedSeed: number
   hasCivitaiApiKey: boolean
+  customVideoModelPath: string
+  selectedVideoModel: string
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -64,6 +66,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   seedLocked: false,
   lockedSeed: 42,
   hasCivitaiApiKey: false,
+  customVideoModelPath: '',
+  selectedVideoModel: '',
 }
 
 type BackendProcessStatus = 'alive' | 'restarting' | 'dead'
@@ -119,6 +123,8 @@ function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
     seedLocked: data.seedLocked ?? DEFAULT_APP_SETTINGS.seedLocked,
     lockedSeed: data.lockedSeed ?? DEFAULT_APP_SETTINGS.lockedSeed,
     hasCivitaiApiKey: data.hasCivitaiApiKey ?? DEFAULT_APP_SETTINGS.hasCivitaiApiKey,
+    customVideoModelPath: data.customVideoModelPath ?? DEFAULT_APP_SETTINGS.customVideoModelPath,
+    selectedVideoModel: data.selectedVideoModel ?? DEFAULT_APP_SETTINGS.selectedVideoModel,
   }
 }
 
