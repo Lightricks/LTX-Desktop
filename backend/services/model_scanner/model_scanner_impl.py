@@ -27,19 +27,22 @@ class ModelScannerImpl:
         results: list[DetectedModel] = []
 
         for entry in sorted(folder.iterdir()):
-            if entry.is_file():
-                if entry.suffix.lower() == ".gguf":
-                    model = self._scan_gguf(entry)
+            try:
+                if entry.is_file():
+                    if entry.suffix.lower() == ".gguf":
+                        model = self._scan_gguf(entry)
+                        if model is not None:
+                            results.append(model)
+                    elif entry.suffix.lower() == ".safetensors":
+                        model = self._scan_safetensors(entry)
+                        if model is not None:
+                            results.append(model)
+                elif entry.is_dir():
+                    model = self._scan_nf4_folder(entry)
                     if model is not None:
                         results.append(model)
-                elif entry.suffix.lower() == ".safetensors":
-                    model = self._scan_safetensors(entry)
-                    if model is not None:
-                        results.append(model)
-            elif entry.is_dir():
-                model = self._scan_nf4_folder(entry)
-                if model is not None:
-                    results.append(model)
+            except Exception:
+                continue  # skip inaccessible entries
 
         return results
 
