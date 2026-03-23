@@ -666,3 +666,54 @@ class ExpandWildcardsRequest(BaseModel):
 
 class ExpandWildcardsResponse(BaseModel):
     expanded: list[str]
+
+
+# ============================================================
+# Video Model Scanner Types
+# ============================================================
+
+
+class DetectedModel(BaseModel):
+    filename: str
+    path: str
+    format: str  # "bf16" | "fp8" | "gguf" | "nf4"
+    quant_type: str | None = None
+    size_bytes: int
+    size_gb: float
+    is_distilled: bool
+    display_name: str
+
+
+class ModelFormatInfo(BaseModel):
+    id: str
+    name: str
+    size_gb: float
+    min_vram_gb: int
+    quality_tier: str
+    needs_distilled_lora: bool
+    download_url: str
+    description: str
+
+
+class DistilledLoraInfo(BaseModel):
+    name: str
+    size_gb: float
+    download_url: str
+    description: str
+
+
+class VideoModelScanResponse(BaseModel):
+    models: list[DetectedModel]
+    distilled_lora_found: bool
+
+
+class VideoModelGuideResponse(BaseModel):
+    gpu_name: str | None
+    vram_gb: int | None
+    recommended_format: str
+    formats: list[ModelFormatInfo]
+    distilled_lora: DistilledLoraInfo
+
+
+class SelectModelRequest(BaseModel):
+    model: str

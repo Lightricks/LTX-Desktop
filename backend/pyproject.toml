@@ -22,6 +22,7 @@ dependencies = [
     "transformers>=4.52,<5",
     "sentencepiece>=0.1.99",
     "sageattention>=1.0.0; sys_platform != 'darwin'",
+    "gguf>=0.10.0",
     "opencv-python-headless>=4.8.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",

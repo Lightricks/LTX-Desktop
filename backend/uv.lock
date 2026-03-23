@@ -307,6 +307,21 @@ wheels = [
 ]
 
 [[package]]
+name = "gguf"
+version = "0.18.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3f/26/7622a41c39db9d7090225a4bf8368550e59694dcf7313b44f9a82b501209/gguf-0.18.0.tar.gz", hash = "sha256:b4659093d5d0dccdb5902a904d54b327f4052879fe5e90946ad5fce9f8018c2e", size = 107170, upload-time = "2026-02-27T15:05:39.254Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5e/0c/e0f1eae7535a97476fb903f65301e35da2a66182b8161066b7eb312b2cb8/gguf-0.18.0-py3-none-any.whl", hash = "sha256:af93f7ef198a265cbde5fa6a6b3101528bca285903949ab0a3e591cd993a1864", size = 114244, upload-time = "2026-02-27T15:05:37.991Z" },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -513,6 +528,7 @@ dependencies = [
     { name = "diffusers" },
     { name = "fastapi" },
     { name = "ftfy" },
+    { name = "gguf" },
     { name = "huggingface-hub" },
     { name = "imageio" },
     { name = "imageio-ffmpeg" },
@@ -552,6 +568,7 @@ requires-dist = [
     { name = "diffusers", git = "https://github.com/huggingface/diffusers.git?rev=01de02e8b4f2cc91df4f3e91cb6535ebcbeb490c" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "ftfy", specifier = ">=6.0.0" },
+    { name = "gguf", specifier = ">=0.10.0" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.27" },
     { name = "huggingface-hub", specifier = ">=0.23.0" },
     { name = "imageio", specifier = ">=2.37.2" },

@@ -90,6 +90,8 @@ class AppSettings(SettingsBaseModel):
     r2_public_url: str = ""
     auto_upload_to_r2: bool = False
     civitai_api_key: str = ""
+    custom_video_model_path: str = ""
+    selected_video_model: str = ""
 
     @field_validator("ffn_chunk_count", mode="before")
     @classmethod
@@ -177,6 +179,8 @@ class SettingsResponse(SettingsBaseModel):
     has_r2_credentials: bool = False
     auto_upload_to_r2: bool = False
     has_civitai_api_key: bool = False
+    custom_video_model_path: str = ""
+    selected_video_model: str = ""
 
 
 def to_settings_response(settings: AppSettings) -> SettingsResponse:
