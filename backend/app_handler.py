@@ -72,6 +72,7 @@ class AppHandler:
         video_api_client: VideoAPIClient,
         palette_sync_client: PaletteSyncClient,
         fast_video_pipeline_class: type[FastVideoPipeline],
+        gguf_video_pipeline_class: type[FastVideoPipeline] | None,
         image_generation_pipeline_class: type[ImageGenerationPipeline],
         flux_klein_pipeline_class: type[ImageGenerationPipeline] | None,
         ic_lora_pipeline_class: type[IcLoraPipeline],
@@ -94,6 +95,7 @@ class AppHandler:
         self.video_api_client = video_api_client
         self.palette_sync_client = palette_sync_client
         self.fast_video_pipeline_class = fast_video_pipeline_class
+        self.gguf_video_pipeline_class = gguf_video_pipeline_class
         self.image_generation_pipeline_class = image_generation_pipeline_class
         self.flux_klein_pipeline_class = flux_klein_pipeline_class
         self.ic_lora_pipeline_class = ic_lora_pipeline_class
@@ -160,7 +162,7 @@ class AppHandler:
             text_handler=self.text,
             gpu_cleaner=gpu_cleaner,
             fast_video_pipeline_class=fast_video_pipeline_class,
-            gguf_video_pipeline_class=None,  # Will be set in Task 8
+            gguf_video_pipeline_class=gguf_video_pipeline_class,
             nf4_video_pipeline_class=None,   # Will be set in Task 9
             image_generation_pipeline_class=image_generation_pipeline_class,
             flux_klein_pipeline_class=flux_klein_pipeline_class,
@@ -341,6 +343,7 @@ class ServiceBundle:
     video_api_client: VideoAPIClient
     palette_sync_client: PaletteSyncClient
     fast_video_pipeline_class: type[FastVideoPipeline]
+    gguf_video_pipeline_class: type[FastVideoPipeline] | None
     image_generation_pipeline_class: type[ImageGenerationPipeline]
     flux_klein_pipeline_class: type[ImageGenerationPipeline] | None
     ic_lora_pipeline_class: type[IcLoraPipeline]
@@ -353,6 +356,7 @@ class ServiceBundle:
 def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
     """Build real runtime services with lazy heavy imports isolated from tests."""
     from services.fast_video_pipeline.ltx_fast_video_pipeline import LTXFastVideoPipeline
+    from services.fast_video_pipeline.gguf_fast_video_pipeline import GGUFFastVideoPipeline
     from services.image_api_client.replicate_client_impl import ReplicateImageClientImpl
     from services.video_api_client.replicate_video_client_impl import ReplicateVideoClientImpl
     from services.gpu_cleaner.torch_cleaner import TorchCleaner
@@ -391,6 +395,7 @@ def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
         video_api_client=ReplicateVideoClientImpl(http=http),
         palette_sync_client=PaletteSyncClientImpl(http=http),
         fast_video_pipeline_class=LTXFastVideoPipeline,
+        gguf_video_pipeline_class=GGUFFastVideoPipeline,
         image_generation_pipeline_class=ZitImageGenerationPipeline,
         flux_klein_pipeline_class=FluxKleinImagePipeline,
         ic_lora_pipeline_class=LTXIcLoraPipeline,
@@ -423,6 +428,7 @@ def build_initial_state(
         video_api_client=bundle.video_api_client,
         palette_sync_client=bundle.palette_sync_client,
         fast_video_pipeline_class=bundle.fast_video_pipeline_class,
+        gguf_video_pipeline_class=bundle.gguf_video_pipeline_class,
         image_generation_pipeline_class=bundle.image_generation_pipeline_class,
         flux_klein_pipeline_class=bundle.flux_klein_pipeline_class,
         ic_lora_pipeline_class=bundle.ic_lora_pipeline_class,

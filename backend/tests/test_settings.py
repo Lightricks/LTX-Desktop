@@ -168,6 +168,7 @@ class TestSettingsPersistence:
             video_api_client=fake_services.video_api_client,
             palette_sync_client=fake_services.palette_sync_client,
             fast_video_pipeline_class=type(fake_services.fast_video_pipeline),
+            gguf_video_pipeline_class=None,
             image_generation_pipeline_class=type(fake_services.image_generation_pipeline),
             flux_klein_pipeline_class=None,
             ic_lora_pipeline_class=type(fake_services.ic_lora_pipeline),
