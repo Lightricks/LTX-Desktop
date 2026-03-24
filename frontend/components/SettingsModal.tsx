@@ -942,10 +942,16 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                       onChange={(e) => updateSettings({ imageModel: e.target.value })}
                       className="w-full bg-zinc-900 text-white text-sm rounded-lg px-3 py-2 border border-zinc-700 focus:border-blue-500 focus:outline-none"
                     >
-                      <option value="z-image-turbo">Z-Image Turbo</option>
                       <option value="flux-klein-9b">FLUX.2 Klein 9B</option>
+                      <option value="z-image-turbo">Z-Image Turbo</option>
                       <option value="nano-banana-2">Nano Banana 2 (Cloud)</option>
                     </select>
+                    <p className="text-[11px] text-zinc-500 mt-1.5 leading-relaxed">
+                      {settings.imageModel === 'flux-klein-9b' && 'High quality images with LoRA support. Reloads each generation (~5s extra).'}
+                      {settings.imageModel === 'z-image-turbo' && 'Fast single-step generation. Stays in memory between runs for quick back-to-back images.'}
+                      {settings.imageModel === 'nano-banana-2' && 'Runs in the cloud — no GPU needed. Requires a Replicate API key.'}
+                      {' '}Switching models takes a few seconds on your first image — you\'ll see a progress message.
+                    </p>
                   </div>
 
                   <div className="pt-2 border-t border-zinc-700">

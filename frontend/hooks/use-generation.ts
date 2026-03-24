@@ -136,13 +136,13 @@ function getPhaseMessage(phase: string): string {
     case 'unloading_video_model':
       return 'Unloading video model...'
     case 'unloading_image_model':
-      return 'Unloading image model...'
+      return 'Swapping image model — clearing the old one...'
     case 'cleaning_gpu':
-      return 'Freeing VRAM...'
+      return 'Freeing up video memory...'
     case 'loading_model':
       return 'Loading model...'
     case 'loading_image_model':
-      return 'Loading image model...'
+      return 'Loading image model (this can take a moment)...'
     case 'loading_video_model':
       return 'Loading video model...'
     case 'loading_lora':
