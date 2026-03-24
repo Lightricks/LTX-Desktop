@@ -114,7 +114,7 @@ def default_app_settings() -> AppSettings:
 
 @pytest.fixture
 def create_fake_model_files(test_state):
-    def _create(include_zit: bool = False):
+    def _create(include_zit: bool = False, include_flux_klein: bool = False):
         for path in (
             test_state.config.model_path("checkpoint"),
             test_state.config.model_path("upsampler"),
@@ -131,6 +131,14 @@ def create_fake_model_files(test_state):
             zit_dir = test_state.config.model_path("zit")
             zit_dir.mkdir(parents=True, exist_ok=True)
             (zit_dir / "model.safetensors").write_bytes(b"\x00" * 1024)
+            # Default is now flux-klein-9b; switch to ZIT when creating ZIT files
+            test_state.state.app_settings.image_model = "z-image-turbo"
+
+        if include_flux_klein:
+            flux_dir = test_state.config.model_path("flux_klein")
+            flux_dir.mkdir(parents=True, exist_ok=True)
+            (flux_dir / "model_index.json").write_bytes(b"{}")
+            (flux_dir / "model.safetensors").write_bytes(b"\x00" * 1024)
 
     return _create
 

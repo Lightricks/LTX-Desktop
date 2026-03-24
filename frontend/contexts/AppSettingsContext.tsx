@@ -54,7 +54,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   userPrefersLtxApiVideoGenerations: false,
   hasReplicateApiKey: false,
   hasPaletteApiKey: false,
-  imageModel: 'z-image-turbo',
+  imageModel: 'flux-klein-9b',
   videoModel: 'ltx-fast',
   hasGeminiApiKey: false,
   useLocalTextEncoder: false,

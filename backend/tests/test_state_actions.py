@@ -139,7 +139,7 @@ def test_mps_skips_torch_compile(test_state, fake_services):
 
 
 def test_startup_warmup_keeps_fast_on_gpu_and_preloads_zit_on_cpu(test_state, fake_services, create_fake_model_files):
-    create_fake_model_files(include_zit=True)
+    create_fake_model_files(include_zit=True, include_flux_klein=True)
     test_state.state.app_settings.load_on_startup = True
 
     test_state.health.default_warmup()

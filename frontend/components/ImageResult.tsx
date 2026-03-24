@@ -3,6 +3,7 @@ import { Download, RefreshCw, ImageIcon, Video, Heart, Pencil, MoreHorizontal } 
 import { Button } from './ui/button'
 
 const MODEL_DISPLAY_NAMES: Record<string, string> = {
+  'flux-klein-9b': 'FLUX.2 Klein 9B',
   'z-image-turbo': 'Z-Image Turbo',
   'nano-banana-2': 'Nano Banana 2',
 }

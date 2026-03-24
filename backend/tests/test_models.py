@@ -31,7 +31,7 @@ class TestModelsStatus:
         assert r.json()["all_downloaded"] is False
 
     def test_all_downloaded(self, client, create_fake_model_files):
-        create_fake_model_files(include_zit=True)
+        create_fake_model_files(include_flux_klein=True)
         r = client.get("/api/models/status")
         assert r.json()["all_downloaded"] is True
 

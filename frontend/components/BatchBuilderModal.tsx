@@ -48,7 +48,7 @@ export function BatchBuilderModal({ isOpen, onClose }: BatchBuilderModalProps) {
 
   // List tab state
   const [rows, setRows] = useState<ListRow[]>([
-    { id: nextRowId(), type: 'image', model: 'z-image-turbo', prompt: '', loraPath: '', loraWeight: 1.0 },
+    { id: nextRowId(), type: 'image', model: 'flux-klein-9b', prompt: '', loraPath: '', loraWeight: 1.0 },
   ])
 
   // Import tab state
@@ -68,7 +68,7 @@ export function BatchBuilderModal({ isOpen, onClose }: BatchBuilderModalProps) {
 
   const addRow = () => {
     setRows(prev => [...prev, {
-      id: nextRowId(), type: 'image', model: 'z-image-turbo', prompt: '', loraPath: '', loraWeight: 1.0,
+      id: nextRowId(), type: 'image', model: 'flux-klein-9b', prompt: '', loraPath: '', loraWeight: 1.0,
     }])
   }
 
@@ -353,7 +353,7 @@ export function BatchBuilderModal({ isOpen, onClose }: BatchBuilderModalProps) {
               <textarea
                 value={importText}
                 onChange={e => handleImportParse(e.target.value)}
-                placeholder={'prompt,type,model,loraWeight\n"a cute cat",image,zit,0.8\n"a happy dog",image,zit,1.0'}
+                placeholder={'prompt,type,model,loraWeight\n"a cute cat",image,flux-klein-9b,0.8\n"a happy dog",image,flux-klein-9b,1.0'}
                 rows={8}
                 className="w-full text-sm rounded-lg px-3 py-2 border font-mono resize-none"
                 style={{ background: 'oklch(0.22 0.025 290)', borderColor: 'oklch(0.32 0.03 290)', color: 'oklch(0.92 0.02 290)' }}

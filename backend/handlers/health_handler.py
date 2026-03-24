@@ -119,6 +119,8 @@ class HealthHandler(StateHandlerBase):
                     case _:
                         pass
 
+            # Only preload ZIT to CPU if it's downloaded — Flux Klein (now default)
+            # doesn't support CPU parking, it rebuilds each time on demand.
             zit_models_path = self._config.model_path("zit")
             zit_exists = zit_models_path.exists() and any(zit_models_path.iterdir())
             if zit_exists:

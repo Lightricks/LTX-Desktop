@@ -281,7 +281,7 @@ class PipelinesHandler(StateHandlerBase):
 
     def load_image_model_to_gpu(
         self,
-        model_name: str = "zit",
+        model_name: str = "flux-klein-9b",
         on_phase: "Callable[[str], None] | None" = None,
     ) -> ImageGenerationPipeline:
         """Load the requested image model to GPU.

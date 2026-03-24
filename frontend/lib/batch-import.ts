@@ -48,7 +48,7 @@ export function parseCSV(text: string): BatchJobItem[] {
     })
     return {
       type: (cols[headers.indexOf('type')]?.trim() as 'video' | 'image') || 'image',
-      model: cols[headers.indexOf('model')]?.trim() || 'zit',
+      model: cols[headers.indexOf('model')]?.trim() || 'flux-klein-9b',
       params,
     }
   })
@@ -59,7 +59,7 @@ export function parseJSON(text: string): BatchJobItem[] {
   const defaults = data.defaults || {}
   return (data.jobs || []).map((job: Record<string, unknown>) => ({
     type: job.type || defaults.type || 'image',
-    model: job.model || defaults.model || 'zit',
+    model: job.model || defaults.model || 'flux-klein-9b',
     params: { ...defaults, ...(job.params as Record<string, unknown> || {}), prompt: job.prompt || '' },
   }))
 }

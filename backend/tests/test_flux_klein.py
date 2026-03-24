@@ -18,10 +18,11 @@ def _create_flux_klein_model_files(test_state) -> None:
 
 
 def _create_zit_model_files(test_state) -> None:
-    """Create fake ZIT model directory."""
+    """Create fake ZIT model directory and set it as the active image model."""
     zit_dir = test_state.config.model_path("zit")
     zit_dir.mkdir(parents=True, exist_ok=True)
     (zit_dir / "model.safetensors").write_bytes(b"\x00" * 1024)
+    test_state.state.app_settings.image_model = "z-image-turbo"
 
 
 # ── 1. Model Registration ─────────────────────────────────────────────
@@ -74,8 +75,8 @@ class TestFluxKleinPipelineRouting:
 
 
 class TestFluxKleinImageGeneration:
-    def test_generate_image_default_zit(self, client, fake_services, test_state):
-        """Default image_model=z-image-turbo uses ZIT pipeline."""
+    def test_generate_image_zit_explicit(self, client, fake_services, test_state):
+        """Explicitly selecting z-image-turbo uses ZIT pipeline."""
         _create_zit_model_files(test_state)
         r = client.post(
             "/api/generate-image",
@@ -195,8 +196,8 @@ class TestFluxKleinErrorHandling:
 
 
 class TestFluxKleinSettingsIntegration:
-    def test_image_model_setting_defaults_to_zit(self, test_state):
-        assert test_state.state.app_settings.image_model == "z-image-turbo"
+    def test_image_model_setting_defaults_to_flux_klein(self, test_state):
+        assert test_state.state.app_settings.image_model == "flux-klein-9b"
 
     def test_image_model_setting_can_be_changed(self, test_state):
         test_state.state.app_settings.image_model = "flux-klein-9b"

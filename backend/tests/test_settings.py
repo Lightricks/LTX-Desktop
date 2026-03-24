@@ -20,7 +20,7 @@ class TestGetSettings:
         assert data["hasLtxApiKey"] is False
         assert data["userPrefersLtxApiVideoGenerations"] is False
         assert data["hasReplicateApiKey"] is False
-        assert data["imageModel"] == "z-image-turbo"
+        assert data["imageModel"] == "flux-klein-9b"
         assert data["videoModel"] == "ltx-fast"
         assert data["useLocalTextEncoder"] is False
         assert data["fastModel"] == {"useUpscaler": True}

@@ -490,7 +490,7 @@ export function useGeneration(): UseGenerationReturn {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'image',
-          model: appSettings.imageModel || 'z-image-turbo',
+          model: appSettings.imageModel || 'flux-klein-9b',
           params: {
             prompt: settings.loraTriggerPhrase && settings.loraTriggerMode !== 'off'
               ? settings.loraTriggerMode === 'append'
@@ -552,7 +552,7 @@ export function useGeneration(): UseGenerationReturn {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'image',
-          model: appSettings.imageModel || 'z-image-turbo',
+          model: appSettings.imageModel || 'flux-klein-9b',
           params: {
             prompt: settings.loraTriggerPhrase && settings.loraTriggerMode !== 'off'
               ? settings.loraTriggerMode === 'append'

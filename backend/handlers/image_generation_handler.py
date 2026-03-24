@@ -108,7 +108,7 @@ class ImageGenerationHandler(StateHandlerBase):
         lora_weight: float = 1.0,
         source_image_path: str | None = None,
         strength: float = 0.65,
-        image_model: str = "z-image-turbo",
+        image_model: str = "flux-klein-9b",
     ) -> list[str]:
         if self._generation.is_generation_cancelled():
             raise RuntimeError("Generation was cancelled")

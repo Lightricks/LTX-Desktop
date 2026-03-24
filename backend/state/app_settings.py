@@ -67,7 +67,7 @@ class AppSettings(SettingsBaseModel):
     replicate_api_key: str = ""
     palette_api_key: str = ""
     palette_refresh_token: str = ""
-    image_model: str = "z-image-turbo"
+    image_model: str = "flux-klein-9b"
     video_model: str = "ltx-fast"
     use_local_text_encoder: bool = False
     use_abliterated_text_encoder: bool = False
@@ -160,7 +160,7 @@ class SettingsResponse(SettingsBaseModel):
     user_prefers_ltx_api_video_generations: bool = False
     has_replicate_api_key: bool = False
     has_palette_api_key: bool = False
-    image_model: str = "z-image-turbo"
+    image_model: str = "flux-klein-9b"
     video_model: str = "ltx-fast"
     use_local_text_encoder: bool = False
     use_abliterated_text_encoder: bool = False

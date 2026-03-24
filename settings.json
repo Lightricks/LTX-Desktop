@@ -5,7 +5,7 @@
   "ltx_api_key": "",
   "replicate_api_key": "",
   "palette_api_key": "",
-  "image_model": "z-image-turbo",
+  "image_model": "flux-klein-9b",
   "video_model": "ltx-fast",
   "fast_model": {
     "steps": 8,

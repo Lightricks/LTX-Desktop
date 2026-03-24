@@ -79,7 +79,7 @@ DEFAULT_MODEL_DOWNLOAD_SPECS: dict[ModelFileType, ModelFileDownloadSpec] = {
 
 
 DEFAULT_REQUIRED_MODEL_TYPES: frozenset[ModelFileType] = frozenset(
-    {"checkpoint", "upsampler", "zit"}
+    {"checkpoint", "upsampler", "flux_klein"}
 )
 
 
