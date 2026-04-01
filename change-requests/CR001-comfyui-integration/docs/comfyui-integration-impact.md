@@ -4,7 +4,7 @@
 
 This document assesses the architectural impact of integrating a ComfyUI backend alongside the current local generative pipelines. The goal is to allow dynamic, runtime switching between the existing local GPU implementations and a configurable ComfyUI workflow engine.
 
-The integration assumes that a ComfyUI adapter already exists and that necessary generation workflows (in JSON format) are supplied with the application. The primary challenge is adapting the existing FastAPI + `AppHandler` architecture to support a modular, parameterized workflow engine without severely disrupting the strictly typed, centralized `AppState` and resource locking mechanisms.
+Based on recent analysis of reference projects (Krita AI Diffusion and Vlo), this document focuses on clarifying the architectural options for procedural node discovery and UI mapping. The objective of this phase is to review these options prior to committing to a final architectural decision.
 
 ---
 
@@ -14,77 +14,70 @@ The backend uses a local FastAPI server where endpoints delegate business logic 
 
 - **State Management:** A highly normalized, typed `AppState` manages limited resources (e.g., `GpuSlot`, `CpuSlot`, `DownloadingSession`).
 - **Concurrency & Locking:** A single shared `RLock` protects `AppState`. Handlers follow a strict "lock -> check -> unlock -> heavy work -> lock -> update" pattern to prevent blocking the server during generation.
-- **Service Boundaries:** Heavy generative tasks are isolated behind strictly typed Python Protocols in `backend/services/` (e.g., `FastVideoPipeline`, `ImageGenerationPipeline`). These protocols dictate exact Python method signatures (e.g., `generate(...)` with specific arguments).
+- **Service Boundaries:** Heavy generative tasks are isolated behind strictly typed Python Protocols in `backend/services/` (e.g., `FastVideoPipeline`).
 - **Generation Lifecycle:** `GenerationHandler` tracks progress using normalized state machines (`GenerationRunning`, `GenerationComplete`, etc.).
 
 ---
 
-## 3. Proposed Architecture Options
+## 3. Proposed Architecture Options for UI-to-Node Mapping
 
-We must expose supplied ComfyUI workflows dynamically, allowing the UI to configure parameters (models, LoRAs) and the user to switch generation backends at runtime.
+A core challenge is how the frontend UI (sliders, dropdowns for models/LoRAs) dynamically maps to and controls the underlying ComfyUI node graph. Two distinct architectural options have been identified based on industry reference projects.
 
-### Option A: Adapter Service Implementations (The "Facade" Approach)
+### Option A: Functional Mapping via Dedicated Custom Nodes (The Krita Approach)
 
-In this approach, we retain the exact existing Service Protocols (like `FastVideoPipeline`) and introduce new implementations (e.g., `ComfyUIFastVideoPipeline`) that wrap the ComfyUI adapter and hardcode the mapping to the JSON workflows.
+In this approach, the integration relies on abstracting the low-level node graph into a high-level Python API, tightly coupled with a dedicated suite of custom ComfyUI nodes.
 
+*   **Mechanism:**
+    *   Relies on the ComfyUI `/object_info` API to discover available nodes and their schemas.
+    *   The backend implements a "Builder Pattern" (`ComfyWorkflow`) that translates high-level UI requests (e.g., `generate_video(prompt, seed)`) into specific node instantiations.
+    *   **Crucial Prerequisite:** Requires installing a dedicated ComfyUI extension with custom nodes (e.g., `LTX_LoadImage`, `LTX_InjectVideo`) designed specifically to bridge the communication gap (e.g., handling in-memory transfers or specific app logic).
 *   **Pros:**
-    *   **Minimal Blast Radius:** Zero changes to `PipelinesHandler`, `GenerationHandler`, or `_routes`.
-    *   **Maintains Strong Typing:** Preserves the existing rigid structural typing of the Python backend.
+    *   **Strong Type Safety:** The builder validates inputs/outputs against the `object_info` schema before execution.
+    *   **Simpler UI Logic:** The UI only interacts with high-level parameters; the backend handles the complex graph construction.
 *   **Cons:**
-    *   **Hides Dynamism:** Fails the requirement of "configurable ComfyUI workflows" because adding a new workflow or exposing a new parameter (like a new LoRA node) would require modifying the Python protocol and every implementation.
-    *   **Duplication:** We would have to maintain a 1:1 mapping of rigid Python interfaces to dynamic JSON workflows.
+    *   **High Maintenance:** Tightly coupled to specific custom nodes. Any changes to the node logic require updating the backend builder.
+    *   **Less Flexible:** Harder for users to drop in arbitrary, wildly different ComfyUI workflows without backend updates.
 
-### Option B: Generic Workflow Engine Service (Recommended)
+### Option B: Proxy-Based Metadata Mapping (The Vlo Approach)
 
-In this approach, we introduce a new generic service, `ComfyUIWorkflowEngine`, and update the `GenerationHandler` and endpoints to route requests based on the user's active configuration.
+This approach is workflow-agnostic and relies on embedding UI mapping rules directly within the ComfyUI workflow JSON metadata.
 
-*   **Core Concept:** The backend loads JSON workflows from disk at startup (or dynamically). These workflows are parsed to identify configurable nodes (parameters, models, LoRAs).
-*   **Runtime Config:** A new setting in `AppSettings` (e.g., `generation_backend: Literal["local", "comfyui"]`) dictates the routing in the handlers.
+*   **Mechanism:**
+    *   Relies on a custom metadata field, specifically the established ComfyUI convention `proxyWidgets`, located within the `properties` dictionary of Subgraphs (Group Nodes) or individual nodes.
+    *   The workflow JSON explicitly defines mapping tuples (e.g., `["node_id_31", "seed"]`).
+    *   The backend parses these JSON files at startup, discovers the exposed parameters, and serves this dynamic schema to the frontend.
+    *   **Crucial Prerequisite:** Requires zero dedicated custom nodes. It interfaces with standard ComfyUI nodes and relies entirely on the JSON metadata structure.
 *   **Pros:**
-    *   **Highly Extensible:** Adding a new workflow or parameter only requires updating the JSON file and the UI; the backend simply passes through the configuration to the ComfyUI adapter.
-    *   **Modular:** Clearly separates local GPU logic from ComfyUI external process logic.
+    *   **Highly Decoupled & Workflow Agnostic:** The UI structure is defined *by* the graph. Users can drop in entirely new workflows (using standard nodes) as long as they tag the inputs with `proxyWidgets`.
+    *   **Minimal Backend Logic:** The backend acts primarily as a pass-through and normalizer, rather than a complex graph builder.
 *   **Cons:**
-    *   Requires modifications to `AppState` to track ComfyUI jobs.
-    *   Requires updates to request/response models (`api_types.py`) to accept dynamic key-value parameters for ComfyUI.
+    *   **Weaker Typing:** Relies on dynamic dictionaries passing through the backend, requiring careful validation logic.
+    *   **Complex JSON Maintenance:** The burden of defining the UI shifts to whoever authors the ComfyUI JSON workflows; they must correctly set up the `proxyWidgets` arrays.
 
 ---
 
-## 4. Architectural Impact & Necessary Changes (Based on Option B)
+## 4. Architectural Impact on LTX-Desktop Backend
 
-To achieve a modular integration that fulfills the dynamic configuration requirements, the following architectural changes are required.
+Regardless of the option chosen, migrating to a ComfyUI engine impacts the core architecture:
 
 ### 4.1. AppSettings and API Types
+*   **Runtime Config:** `app_settings.py` needs a `generation_backend` flag.
+*   **Dynamic Payloads:** `api_types.py` must be updated. Option B requires highly dynamic `workflow_params: dict[str, Any]` to accommodate arbitrary proxy widgets, whereas Option A might allow slightly more structured, high-level requests.
 
-*   **`app_settings.py`:** Add a `generation_backend` property to allow runtime switching.
-*   **`api_types.py`:** Update generation request payloads (e.g., `VideoGenerationRequest`) to include an optional dictionary for dynamic workflow parameters: `workflow_params: dict[str, Any] | None = None`.
-*   *Note: While the backend generally avoids dynamic dicts, it is necessary here as a pass-through layer for the ComfyUI JSON schema.*
+### 4.2. State Management (`AppState` & `GpuSlot`)
+*   Currently, `GpuSlot` is strictly typed to local pipelines.
+*   A new slot (e.g., `ComfyUISlot`) must be added to track the state of the external ComfyUI process. The `AppHandler` lock will protect this slot similarly to local execution.
 
-### 4.2. Workflow Parsing and Exposure
-
-*   **New Service:** Introduce a `WorkflowParserService` that reads the provided JSON workflows from a designated directory (e.g., `resources/workflows/`).
-*   **New Endpoint:** Create `GET /api/workflows` to serve the parsed parameters to the frontend, allowing the UI to dynamically render dropdowns (for models, LoRAs) and sliders based on the workflow's exposed nodes.
-
-### 4.3. State Management (`AppState` & `GpuSlot`)
-
-Currently, `GpuSlot` is strictly typed to local pipelines (e.g., `VideoPipelineState | ICLoraState | ...`).
-
-*   **Impact:** Offloading to ComfyUI means the local GPU is *not* occupied by the FastAPI process.
-*   **Change:** `AppState` must be expanded. `GpuSlot` can remain for local models, but a new slot (e.g., `ExternalSlot` or `ComfyUISlot`) must be added to track the state of the ComfyUI process.
-*   **Locking:** The `AppHandler` lock will still protect this new slot. The lock scope remains identical: Lock -> update `ComfyUISlot` to running -> Unlock -> send HTTP request to ComfyUI -> Lock -> update progress.
-
-### 4.4. Generation Handler and Progress Tracking
-
-*   **Polling vs. Callbacks:** ComfyUI typically operates asynchronously. The backend's `GenerationHandler` currently assumes it is the active runner updating progress continuously.
-*   **Change:** If using ComfyUI, the backend must initiate a background task (using the existing `TaskRunner`) to poll the ComfyUI adapter for progress, mapping ComfyUI's step data to the existing `GenerationProgress` state model. This ensures the frontend's `/api/generation/progress` polling endpoint remains unbroken.
-
-### 4.5. Model Management (Out of Scope)
-
-*   Currently, `ModelDownloader` fetches models to a local directory. For this iteration, ComfyUI's model management is considered out of scope. ComfyUI will be responsible for locating its own models and LoRAs as specified by the parameterized JSON workflows.
+### 4.3. Generation Handler and Progress Tracking
+*   ComfyUI operates asynchronously. The backend must introduce a background polling mechanism (via `TaskRunner`) or websocket listener to track progress and map ComfyUI's step data to the existing `GenerationProgress` state model, keeping the frontend polling endpoint intact.
 
 ---
 
-## 5. Conclusion
+## 5. Conclusion and Next Steps
 
-To support configurable, parameterized ComfyUI workflows alongside the existing local GPU pipelines, the backend must shift slightly from its strictly typed generative protocols to a generic workflow engine.
+The decision between **Option A (Functional/Custom Nodes)** and **Option B (Proxy Metadata/Agnostic)** dictates the entire trajectory of the backend integration. 
 
-By introducing a generic `ComfyUIWorkflowEngine` service, expanding `AppState` to include an `ExternalSlot` for job tracking, and updating `GenerationHandler` to poll the ComfyUI adapter in the background, the application can remain modular. This approach keeps the heavy lifting in the respective processes while maintaining the centralized locking and state guarantees that the FastAPI architecture relies upon.
+*   Option A favors strict control, type safety, and specialized custom node logic but sacrifices user workflow flexibility.
+*   Option B favors extreme flexibility and relies on established ComfyUI UI conventions (`proxyWidgets`), pushing the configuration burden to the workflow JSON authors.
+
+**Next Step:** This document serves as the basis for an architectural review. A final decision on Option A vs. Option B must be made before implementation of the ComfyUI adapter service begins.
