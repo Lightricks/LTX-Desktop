@@ -149,14 +149,14 @@ class ModelsStatusResponse(BaseModel):
 class DownloadProgressResponse(BaseModel):
     status: str
     current_downloading_file: ModelFileType | None
-    current_file_progress: int
-    total_progress: int
+    current_file_progress: float
+    total_progress: float
     total_downloaded_bytes: int
     expected_total_bytes: int
     completed_files: set[ModelFileType]
     all_files: set[ModelFileType]
     error: str | None
-    speed_mbps: int
+    speed_bytes_per_sec: float
 
 
 class SuggestGapPromptResponse(BaseModel):

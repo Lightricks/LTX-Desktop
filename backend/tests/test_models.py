@@ -105,7 +105,7 @@ class TestDownloadProgress:
                 file_type="checkpoint",
                 target_path="checkpoint",
                 downloaded_bytes=5_000_000_000,
-                speed_mbps=50,
+                speed_bytes_per_sec=50_000_000.0,
             ),
             files_to_download={"checkpoint"},
             completed_files=set(),
@@ -344,9 +344,10 @@ class TestAtomicDownloads:
 class TestHuggingFaceInternals:
     """Guard tests for huggingface_hub internals we rely on.
 
-    We monkey-patch ``file_download.http_get`` to inject a custom tqdm bar
-    for progress tracking during ``hf_hub_download`` (which has no public
-    ``tqdm_class`` parameter, unlike ``snapshot_download``).
+    We monkey-patch ``file_download.http_get`` and ``file_download.xet_get``
+    to inject a custom tqdm bar for progress tracking during
+    ``hf_hub_download`` (which has no public ``tqdm_class`` parameter,
+    unlike ``snapshot_download``).
 
     If these tests break after a huggingface_hub upgrade, the internal API
     has changed.  Find an alternative approach and raise to a developer.
@@ -362,4 +363,13 @@ class TestHuggingFaceInternals:
         sig = inspect.signature(file_download.http_get)
         assert "_tqdm_bar" in sig.parameters, (
             "file_download.http_get no longer accepts _tqdm_bar — progress patch for hf_hub_download is broken"
+        )
+
+    def test_xet_get_accepts_tqdm_bar(self):
+        xet_get = getattr(file_download, "xet_get", None)
+        if xet_get is None:
+            return  # xet_get not present in this version; patch skips it gracefully
+        sig = inspect.signature(xet_get)
+        assert "_tqdm_bar" in sig.parameters, (
+            "file_download.xet_get no longer accepts _tqdm_bar — progress patch for xet downloads is broken"
         )

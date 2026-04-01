@@ -43,7 +43,7 @@ class FileDownloadRunning:
     file_type: ModelFileType
     target_path: str
     downloaded_bytes: int
-    speed_mbps: float
+    speed_bytes_per_sec: float
 
 
 @dataclass

@@ -39,7 +39,7 @@ class TestDownloadProgressSnakeCaseKeys:
                 file_type="checkpoint",
                 target_path="checkpoint",
                 downloaded_bytes=5_000_000_000,
-                speed_mbps=50,
+                speed_bytes_per_sec=50_000_000.0,
             ),
             files_to_download={"checkpoint"},
             completed_files=set(),
@@ -60,7 +60,7 @@ class TestDownloadProgressSnakeCaseKeys:
             "completed_files",
             "all_files",
             "error",
-            "speed_mbps",
+            "speed_bytes_per_sec",
         }
         assert set(data.keys()) == expected_keys
 

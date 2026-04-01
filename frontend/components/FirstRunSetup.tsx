@@ -22,7 +22,7 @@ interface DownloadProgress {
   completed_files: string[]
   all_files: string[]
   error: string | null
-  speed_mbps: number
+  speed_bytes_per_sec: number
 }
 
 interface RequiredModelsResponse {
@@ -82,11 +82,10 @@ export function LaunchGate({
 
   // Calculate ETA based on speed and remaining bytes
   const getTimeRemaining = (): string => {
-    if (!downloadProgress || downloadProgress.speed_mbps <= 0) return '--'
+    if (!downloadProgress || downloadProgress.speed_bytes_per_sec <= 0) return '--'
     const remainingBytes = downloadProgress.expected_total_bytes - downloadProgress.total_downloaded_bytes
     if (remainingBytes <= 0) return '--'
-    const speedBytesPerSec = downloadProgress.speed_mbps * 1024 * 1024
-    const secondsRemaining = remainingBytes / speedBytesPerSec
+    const secondsRemaining = remainingBytes / downloadProgress.speed_bytes_per_sec
     return formatTimeRemaining(secondsRemaining)
   }
 
@@ -701,7 +700,7 @@ export function LaunchGate({
                     {(downloadProgress?.total_progress || 0) > 85 ? 'Installing...' : 'Downloading...'}
                   </span>
                   <span style={{ fontSize: 13, color: '#A98BD9', fontWeight: 600 }}>
-                    {downloadProgress?.total_progress || 0}%
+                    {Math.round(downloadProgress?.total_progress || 0)}%
                   </span>
                 </div>
 
@@ -739,9 +738,9 @@ export function LaunchGate({
 
                   {/* Speed and ETA */}
                   <div style={{ display: 'flex', gap: 16, marginLeft: 16, flexShrink: 0 }}>
-                    {downloadProgress && downloadProgress.speed_mbps > 0 && (
+                    {downloadProgress && downloadProgress.speed_bytes_per_sec > 0 && (
                       <span style={{ color: '#6D28D9', fontWeight: 500 }}>
-                        {downloadProgress.speed_mbps.toFixed(1)} MB/s
+                        {(downloadProgress.speed_bytes_per_sec / (1024 * 1024)).toFixed(1)} MB/s
                       </span>
                     )}
                     {downloadProgress && downloadProgress.expected_total_bytes > 0 && (
@@ -749,7 +748,7 @@ export function LaunchGate({
                         {formatBytes(downloadProgress.total_downloaded_bytes)} / {formatBytes(downloadProgress.expected_total_bytes)}
                       </span>
                     )}
-                    {downloadProgress && downloadProgress.speed_mbps > 0 && (
+                    {downloadProgress && downloadProgress.speed_bytes_per_sec > 0 && (
                       <span>
                         ETA: {getTimeRemaining()}
                       </span>

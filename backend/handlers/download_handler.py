@@ -72,7 +72,7 @@ class DownloadHandler(StateHandlerBase):
             file_type=file_type,
             target_path=target,
             downloaded_bytes=0,
-            speed_mbps=0.0,
+            speed_bytes_per_sec=0.0,
         )
 
     @with_state_lock
@@ -87,7 +87,7 @@ class DownloadHandler(StateHandlerBase):
         self.state.downloading_session = None
 
     @with_state_lock
-    def update_file_progress(self, file_type: ModelFileType, downloaded: int, speed_mbps: float) -> None:
+    def update_file_progress(self, file_type: ModelFileType, downloaded: int, speed_bytes_per_sec: float) -> None:
         session = self.state.downloading_session
         if session is None:
             return
@@ -95,7 +95,7 @@ class DownloadHandler(StateHandlerBase):
         if rf is None or rf.file_type != file_type:
             return
         rf.downloaded_bytes = downloaded
-        rf.speed_mbps = speed_mbps
+        rf.speed_bytes_per_sec = speed_bytes_per_sec
 
     @with_state_lock
     def fail_download(self, error: str) -> None:
@@ -106,12 +106,25 @@ class DownloadHandler(StateHandlerBase):
             self.state.downloading_session = None
 
     def _make_progress_callback(self, file_type: ModelFileType) -> Callable[[int], None]:
-        start_time = time.monotonic()
+        last_sample_time = time.monotonic()
+        last_sample_bytes = 0
+        smoothed_speed = 0.0
 
         def on_progress(downloaded: int) -> None:
-            elapsed = time.monotonic() - start_time
-            speed_mbps = (downloaded / elapsed / (1024 * 1024)) if elapsed > 0 else 0.0
-            self.update_file_progress(file_type, downloaded, speed_mbps)
+            nonlocal last_sample_time, last_sample_bytes, smoothed_speed
+            now = time.monotonic()
+            elapsed = now - last_sample_time
+            if elapsed >= 1.0:
+                instant_speed = (downloaded - last_sample_bytes) / elapsed
+                # EWMA: weight new sample at 30%, keep 70% of previous.
+                # On first sample (smoothed_speed == 0) use instant value.
+                if smoothed_speed == 0.0:
+                    smoothed_speed = instant_speed
+                else:
+                    smoothed_speed = 0.3 * instant_speed + 0.7 * smoothed_speed
+                last_sample_time = now
+                last_sample_bytes = downloaded
+            self.update_file_progress(file_type, downloaded, smoothed_speed)
 
         return on_progress
 
@@ -130,15 +143,15 @@ class DownloadHandler(StateHandlerBase):
                 self.config.spec_for(ft).expected_size_bytes for ft in session.files_to_download
             )
 
-            current_file_progress = 0
+            current_file_progress = 0.0
             if rf is not None:
                 spec = self.config.spec_for(rf.file_type)
                 if spec.expected_size_bytes > 0:
-                    current_file_progress = min(99, int(rf.downloaded_bytes / spec.expected_size_bytes * 100))
+                    current_file_progress = min(99.0, rf.downloaded_bytes / spec.expected_size_bytes * 100)
 
-            total_progress = 0
+            total_progress = 0.0
             if expected_total_bytes > 0:
-                total_progress = min(99, int(total_downloaded / expected_total_bytes * 100))
+                total_progress = min(99.0, total_downloaded / expected_total_bytes * 100)
 
             return DownloadProgressResponse(
                 status="downloading",
@@ -149,7 +162,7 @@ class DownloadHandler(StateHandlerBase):
                 expected_total_bytes=expected_total_bytes,
                 completed_files=set(session.completed_files),
                 all_files=set(session.files_to_download),
-                speed_mbps=int(rf.speed_mbps) if rf else 0,
+                speed_bytes_per_sec=rf.speed_bytes_per_sec if rf else 0.0,
                 error=None,
             )
 
@@ -159,26 +172,26 @@ class DownloadHandler(StateHandlerBase):
                 return DownloadProgressResponse(
                     status="complete",
                     current_downloading_file=None,
-                    current_file_progress=100,
-                    total_progress=100,
+                    current_file_progress=100.0,
+                    total_progress=100.0,
                     total_downloaded_bytes=0,
                     expected_total_bytes=0,
                     completed_files=set(),
                     all_files=set(),
-                    speed_mbps=0,
+                    speed_bytes_per_sec=0.0,
                     error=None,
                 )
             else:
                 return DownloadProgressResponse(
                     status="error",
                     current_downloading_file=None,
-                    current_file_progress=0,
-                    total_progress=0,
+                    current_file_progress=0.0,
+                    total_progress=0.0,
                     total_downloaded_bytes=0,
                     expected_total_bytes=0,
                     completed_files=set(),
                     all_files=set(),
-                    speed_mbps=0,
+                    speed_bytes_per_sec=0.0,
                     error=result,
                 )
 
