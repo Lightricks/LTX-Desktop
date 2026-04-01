@@ -4,6 +4,13 @@
 
 Krita AI Diffusion manages ComfyUI integration by abstracting the low-level node graph into a high-level Python API. This approach ensures type safety and simplifies the construction of complex workflows while remaining flexible enough to support custom nodes.
 
+## Prerequisites
+
+This technique requires the installation of a **dedicated ComfyUI extension** (`ComfyUI-Krita-AI-Diffusion`). 
+
+- **Custom Nodes**: The system relies on specific nodes (prefixed with `ETN_`, such as `ETN_LoadImageCache`, `ETN_InjectImage`, and `ETN_LoadMaskBase64`) to handle specialized tasks like in-memory image transfer and precise canvas synchronization.
+- **Fixed API Contract**: The Python backend is tightly coupled to these custom nodes. Without them, the high-level builder cannot generate the necessary graph structure to communicate with Krita.
+
 ## Node Discovery Technique
 
 The system relies on the `/object_info` endpoint of the ComfyUI API to procedurally discover available nodes and their respective input/output schemas.
