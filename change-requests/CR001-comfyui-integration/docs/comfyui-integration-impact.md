@@ -56,28 +56,39 @@ This approach is workflow-agnostic and relies on embedding UI mapping rules dire
 
 ---
 
-## 4. Architectural Impact on LTX-Desktop Backend
+## 4. Architectural Impact on LTX-Desktop Backend (Option B Selected)
 
-Regardless of the option chosen, migrating to a ComfyUI engine impacts the core architecture:
+Following review, **Option B (Proxy-Based Metadata Mapping)** has been selected. The primary directive for this integration is to **maximize out-of-the-box compatibility** while ensuring a **minimal fork update impact**. 
 
-### 4.1. AppSettings and API Types
-*   **Runtime Config:** `app_settings.py` needs a `generation_backend` flag.
-*   **Dynamic Payloads:** `api_types.py` must be updated. Option B requires highly dynamic `workflow_params: dict[str, Any]` to accommodate arbitrary proxy widgets, whereas Option A might allow slightly more structured, high-level requests.
+Crucially, the ComfyUI integration must be added *on top* of existing services. Current LTX Desktop functionality (local, native GPU generation) must be fully retained and operate exactly as before when ComfyUI is not active. By isolating the new ComfyUI logic, we ensure that upstream merges from the original `LTX-Desktop` repository remain trivial.
 
-### 4.2. State Management (`AppState` & `GpuSlot`)
-*   Currently, `GpuSlot` is strictly typed to local pipelines.
-*   A new slot (e.g., `ComfyUISlot`) must be added to track the state of the external ComfyUI process. The `AppHandler` lock will protect this slot similarly to local execution.
+### 4.1. Core Principle: Isolation for Minimal Merge Conflicts
+To minimize merge conflicts when pulling from the upstream fork, the ComfyUI integration will avoid heavily modifying existing core files (like `app_handler.py` or complex state machines) wherever possible. Instead, it will rely on new interface implementations and isolated modules.
 
-### 4.3. Generation Handler and Progress Tracking
-*   ComfyUI operates asynchronously. The backend must introduce a background polling mechanism (via `TaskRunner`) or websocket listener to track progress and map ComfyUI's step data to the existing `GenerationProgress` state model, keeping the frontend polling endpoint intact.
+*   **New Modules:** All ComfyUI-specific parsing, proxy mapping, and network communication will live in a strictly separated directory (e.g., `backend/services/comfyui/`).
+*   **Interface Implementation:** The ComfyUI engine will implement the existing pipeline interfaces (e.g., creating a `ComfyUIVideoPipeline` that adheres to the same Protocol as `FastVideoPipeline`). This allows the core `GenerationHandler` to treat it as just another backend without knowing its internal complexities.
+
+### 4.2. AppSettings and API Types (Additive Changes)
+Changes to core API files will be strictly additive, preserving all existing schemas.
+*   **`app_settings.py`:** Add a new, optional `generation_backend` flag (defaulting to `local`).
+*   **`api_types.py`:** Add a new, optional `workflow_params: dict[str, Any] | None = None` to the generation request models to handle the dynamic `proxyWidgets` inputs. Existing strictly-typed fields (prompt, seed, etc.) remain untouched and can be mapped internally if ComfyUI is the active backend.
+
+### 4.3. State Management (`AppState` & `GpuSlot`)
+The existing `GpuSlot` logic, which carefully manages local VRAM, must remain untouched to ensure the default local generation experience is not compromised.
+*   **Additive State:** A new, distinct slot (e.g., `ExternalSlot` or `ComfyUIJobSlot`) will be introduced to `AppState`.
+*   **Locking:** The `AppHandler` will use the same locking mechanism to protect this new slot, ensuring thread safety without needing to rewrite the existing local GPU locking logic. If the active backend is ComfyUI, the handler checks the `ExternalSlot` instead of the `GpuSlot`.
+
+### 4.4. Generation Handler and Progress Tracking
+The existing `GenerationHandler` relies heavily on the local process actively reporting progress.
+*   **Adapter Pattern:** A `ComfyUIAdapter` service will act as a bridge. When a generation task is dispatched to ComfyUI, the adapter will use the `TaskRunner` to spawn a background polling task.
+*   **State Translation:** This polling task will fetch ComfyUI's native progress (using its API/Websocket) and translate it into the *exact same* `GenerationProgress` state objects currently expected by the frontend. This ensures the frontend UI requires minimal, if any, modifications to display progress bars.
 
 ---
 
-## 5. Conclusion and Next Steps
+## 5. Conclusion
 
-The decision between **Option A (Functional/Custom Nodes)** and **Option B (Proxy Metadata/Agnostic)** dictates the entire trajectory of the backend integration. 
+By selecting **Option B (Proxy-Based Metadata Mapping)**, we achieve a highly flexible, workflow-agnostic system. 
 
-*   Option A favors strict control, type safety, and specialized custom node logic but sacrifices user workflow flexibility.
-*   Option B favors extreme flexibility and relies on established ComfyUI UI conventions (`proxyWidgets`), pushing the configuration burden to the workflow JSON authors.
-
-**Next Step:** This document serves as the basis for an architectural review. A final decision on Option A vs. Option B must be made before implementation of the ComfyUI adapter service begins.
+By applying a strict **"Additive Isolation"** architectural lens, we ensure that:
+1.  **Original functionality is preserved:** Local generation remains completely unaffected and acts as the default.
+2.  **Upstream merges are trivial:** By avoiding modifications to core logic loops and instead adding new interface implementations and isolated service folders, we minimize the "fork divergence," allowing the project to easily consume future updates from the original Lightricks repository.
