@@ -14,8 +14,8 @@
   "packageManager": "pnpm@10.30.3",
   "scripts": {
     "setup:dev": "node scripts/run-script.js scripts/setup-dev",
-    "dev": "cross-env LTX_BYPASS_API_CHECK=1 vite",
-    "dev:debug": "cross-env BACKEND_DEBUG=1 ELECTRON_DEBUG=1 LTX_BYPASS_API_CHECK=1 vite",
+    "dev": "cross-env LTX_BYPASS_API_CHECK=1 LTX_BYPASS_MODEL_CHECK=1 vite",
+    "dev:debug": "cross-env BACKEND_DEBUG=1 ELECTRON_DEBUG=1 LTX_BYPASS_API_CHECK=1 LTX_BYPASS_MODEL_CHECK=1 vite",
     "typecheck": "concurrently \"pnpm run typecheck:ts\" \"pnpm run typecheck:py\"",
     "typecheck:ts": "tsc --noEmit",
     "typecheck:py": "cd backend && uv run pyright",

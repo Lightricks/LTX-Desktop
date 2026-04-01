@@ -8,17 +8,24 @@ The solution ensures that developers can access and work on the application UI (
 
 ## 2. Core Components
 
-### 2.1. Backend Runtime Policy
+### 2.1. Backend Runtime Policy & Model Checking
 
-The single source of truth for whether the application requires API keys is the `decide_force_api_generations` function located in `backend/runtime_config/runtime_policy.py`.
+The application normally enforces two major gates before allowing access to the main UI:
+1.  **API Key Gate:** Triggered if the system lacks the necessary hardware to run local models (managed by `decide_force_api_generations`).
+2.  **Model Download Gate:** Triggered if local generation is allowed but the required model files (e.g., checkpoints) are missing on disk.
 
-*   **Change:** An environment variable check (`LTX_BYPASS_API_CHECK`) was introduced into this function.
-*   **Logic:** If `os.environ.get("LTX_BYPASS_API_CHECK") == "1"`, the function immediately returns `False`.
-*   **Impact:** Returning `False` forces the backend to report that local generation is allowed, which in turn signals the frontend to dismiss the blocking API Key modal.
+To bypass these gates, two environment variables were introduced:
+
+*   **`LTX_BYPASS_API_CHECK`:**
+    *   **Location:** `backend/runtime_config/runtime_policy.py` (`decide_force_api_generations`)
+    *   **Logic:** If set to `"1"`, the function returns `False`, tricking the app into believing local generation is fully supported, thereby dismissing the mandatory API key prompt.
+*   **`LTX_BYPASS_MODEL_CHECK`:**
+    *   **Location:** `backend/ltx2_server.py`
+    *   **Logic:** If set to `"1"`, the `REQUIRED_MODEL_TYPES` frozen set is overridden to be empty (`frozenset()`). This tricks the frontend's model status check into believing all necessary models are already downloaded, skipping the "Choose Location" installation screen.
 
 ### 2.2. Development Scripts configuration
 
-To ensure this bypass is seamless and strictly limited to local development, the environment variable is injected via `package.json` scripts rather than relying on a global `.env` file.
+To ensure these bypasses are seamless and strictly limited to local development, the environment variables are injected via `package.json` scripts rather than relying on a global `.env` file.
 
 *   **Change:** The `dev` and `dev:debug` scripts in `package.json` were updated using `cross-env`.
 *   **Old Scripts:**
@@ -28,14 +35,14 @@ To ensure this bypass is seamless and strictly limited to local development, the
     ```
 *   **New Scripts:**
     ```json
-    "dev": "cross-env LTX_BYPASS_API_CHECK=1 vite",
-    "dev:debug": "cross-env BACKEND_DEBUG=1 ELECTRON_DEBUG=1 LTX_BYPASS_API_CHECK=1 vite"
+    "dev": "cross-env LTX_BYPASS_API_CHECK=1 LTX_BYPASS_MODEL_CHECK=1 vite",
+    "dev:debug": "cross-env BACKEND_DEBUG=1 ELECTRON_DEBUG=1 LTX_BYPASS_API_CHECK=1 LTX_BYPASS_MODEL_CHECK=1 vite"
     ```
 
 ## 3. Security and Production Safety
 
-*   **No Global `.env`:** By avoiding a `.env` file, we prevent accidental commits or persistent global state that could inadvertently disable the API check outside of an active `pnpm dev` session.
-*   **Production Build Isolation:** The `build`, `build:skip-python`, and `build:fast` scripts in `package.json` do **not** include the `LTX_BYPASS_API_CHECK` flag. Consequently, packaged release binaries remain secure and will correctly enforce hardware checks and API key requirements for end-users.
+*   **No Global `.env`:** By avoiding a `.env` file, we prevent accidental commits or persistent global state that could inadvertently disable the API or model checks outside of an active `pnpm dev` session.
+*   **Production Build Isolation:** The `build`, `build:skip-python`, and `build:fast` scripts in `package.json` do **not** include these bypass flags. Consequently, packaged release binaries remain secure and will correctly enforce hardware checks, API key requirements, and model downloads for end-users.
 
 ## 4. Conclusion
 
