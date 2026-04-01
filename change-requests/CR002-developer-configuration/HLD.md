@@ -20,8 +20,13 @@ To bypass these gates, two environment variables were introduced:
     *   **Location:** `backend/runtime_config/runtime_policy.py` (`decide_force_api_generations`)
     *   **Logic:** If set to `"1"`, the function returns `False`, tricking the app into believing local generation is fully supported, thereby dismissing the mandatory API key prompt.
 *   **`LTX_BYPASS_MODEL_CHECK`:**
-    *   **Location:** `backend/ltx2_server.py`
-    *   **Logic:** If set to `"1"`, the `REQUIRED_MODEL_TYPES` frozen set is overridden to be empty (`frozenset()`). This tricks the frontend's model status check into believing all necessary models are already downloaded, skipping the "Choose Location" installation screen.
+    *   **Locations:** 
+        *   Backend: `backend/ltx2_server.py`
+        *   Electron Main Process: `electron/ipc/app-handlers.ts` (`getSetupStatus`)
+    *   **Logic:** 
+        *   In the backend, if set to `"1"`, the `REQUIRED_MODEL_TYPES` frozen set is overridden to be empty (`frozenset()`). This tricks the frontend's model status check (`/api/models/status`) into believing all necessary models are already downloaded.
+        *   In the Electron main process, if set to `"1"`, the IPC handler immediately returns `{ needsSetup: false, needsLicense: false }`, overriding the local `app_state.json` file.
+    *   **Impact:** Together, these bypass both the local app state checks and the backend filesystem checks, completely skipping the "Choose Location" installation screen.
 
 ### 2.2. Development Scripts configuration
 
