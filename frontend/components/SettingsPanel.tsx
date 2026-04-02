@@ -1,11 +1,12 @@
 import { Select } from './ui/select'
-import type { GenerationMode } from './ModeTabs'
 import {
   FORCED_API_VIDEO_FPS,
   FORCED_API_VIDEO_RESOLUTIONS,
   getAllowedForcedApiDurations,
   sanitizeForcedApiVideoSettings,
 } from '../lib/api-video-options'
+
+export type GenerationMode = 'text-to-video' | 'image-to-video' | 'text-to-image'
 
 export interface GenerationSettings {
   model: 'fast' | 'pro'

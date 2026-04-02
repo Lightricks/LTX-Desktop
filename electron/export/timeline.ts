@@ -1,7 +1,5 @@
-import { urlToFilePath } from './ffmpeg-utils'
-
 export interface ExportClip {
-  url: string; type: string; startTime: number; duration: number; trimStart: number;
+  path: string; type: string; startTime: number; duration: number; trimStart: number;
   speed: number; reversed: boolean; flipH: boolean; flipV: boolean; opacity: number; trackIndex: number;
   muted: boolean; volume: number;
 }
@@ -48,7 +46,7 @@ export function flattenTimeline(clips: ExportClip[]): FlatSegment[] {
       const c = active[0]
       const offsetInClip = t0 - c.startTime
       segments.push({
-        filePath: urlToFilePath(c.url),
+        filePath: c.path,
         type: c.type,
         startTime: t0,
         duration: segDur,

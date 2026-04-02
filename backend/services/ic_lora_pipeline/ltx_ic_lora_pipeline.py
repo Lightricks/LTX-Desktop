@@ -76,6 +76,7 @@ class LTXIcLoraPipeline:
             images=[_LtxImageInput(img.path, img.frame_idx, img.strength) for img in images],
             video_conditioning=video_conditioning,
             tiling_config=tiling_config,
+            streaming_prefetch_count=2,
         )
 
     @torch.inference_mode()

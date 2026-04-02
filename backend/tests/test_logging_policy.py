@@ -34,8 +34,8 @@ def test_http_400_logs_without_traceback(caplog, client) -> None:
             "prompt": "test",
             "resolution": "540p",
             "model": "fast",
-            "duration": "2",
-            "fps": "24",
+            "duration": 2,
+            "fps": 24,
             "imagePath": "/no/such/file.png",
         },
     )
@@ -102,7 +102,7 @@ def test_logger_exception_usage_is_restricted_to_boundaries() -> None:
     }
 
     for path in backend_dir.rglob("*.py"):
-        if "tests" in path.parts or ".venv" in path.parts:
+        if "tests" in path.parts or ".venv" in path.parts or "tmp" in path.parts:
             continue
         content = path.read_text(encoding="utf-8")
         if "logger.exception(" in content:

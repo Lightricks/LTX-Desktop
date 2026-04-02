@@ -122,7 +122,7 @@ class HealthHandler(StateHandlerBase):
             if zit_exists:
                 self.set_startup_loading("Preloading Z-Image-Turbo to CPU", 85)
                 if self.state.cpu_slot is None:
-                    self._pipelines.preload_zit_to_cpu()
+                    self._pipelines.preload_image_generation_pipeline_to_cpu()
 
             self.set_startup_ready()
         except Exception as exc:

@@ -1,15 +1,20 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { X, Download, FolderOpen, Film, Package, Loader2, Check, AlertCircle, ChevronDown } from 'lucide-react'
 import { Button } from './ui/button'
-import type { Track, Timeline, TimelineClip } from '../types/project'
 import { DEFAULT_SUBTITLE_STYLE } from '../types/project'
+import type { Track, TimelineClip } from '../types/project'
+import {
+  selectActiveTimeline,
+  selectAssets,
+  selectClipPathFromAssets,
+  selectClips,
+  selectShowExportModal,
+  selectSubtitles,
+  selectTracks,
+} from '../views/editor/editor-selectors'
+import { useEditorActions, useEditorStore } from '../views/editor/editor-store'
 
 interface ExportModalProps {
-  open: boolean
-  onClose: () => void
-  clips: TimelineClip[]
-  tracks: Track[]
-  timeline: Timeline | null
   projectName: string
 }
 
@@ -45,6 +50,14 @@ const PRORES_PROFILES = [
   { value: 3, label: 'HQ' },
 ]
 
+const LETTERBOX_RATIO_MAP: Record<string, number> = {
+  '2.35:1': 2.35,
+  '2.39:1': 2.39,
+  '2.76:1': 2.76,
+  '1.85:1': 1.85,
+  '4:3': 4 / 3,
+}
+
 // Generate FCPXML for Premiere / DaVinci
 function generateFCPXML(
   clips: TimelineClip[],
@@ -64,13 +77,13 @@ function generateFCPXML(
     if (seenAssets.has(assetId)) continue
     seenAssets.add(assetId)
 
-    const src = clip.asset?.url || clip.importedUrl || ''
+    const assetPath = clip.asset?.path || ''
     const dur = clip.asset?.duration || clip.duration
     const durFrames = Math.ceil(dur * fps)
     const format = clip.type === 'audio' ? 'audio' : 'video'
 
     assetEntries.push(
-      `        <asset id="${escapeXml(assetId)}" name="${escapeXml(clip.asset?.prompt?.slice(0, 60) || clip.importedName || 'Clip')}" src="${escapeXml(src)}" start="0s" duration="${durFrames}/${fps}s" hasVideo="${format === 'video' ? '1' : '0'}" hasAudio="1" format="r1" />`
+      `        <asset id="${escapeXml(assetId)}" name="${escapeXml(clip.asset?.prompt?.slice(0, 60) || clip.importedName || 'Clip')}" src="${escapeXml(assetPath)}" start="0s" duration="${durFrames}/${fps}s" hasVideo="${format === 'video' ? '1' : '0'}" hasAudio="1" format="r1" />`
     )
   }
 
@@ -139,7 +152,73 @@ function escapeXml(str: string): string {
     .replace(/'/g, '&apos;')
 }
 
-export function ExportModal({ open, onClose, clips, tracks, timeline, projectName }: ExportModalProps) {
+export function ExportModal({ projectName }: ExportModalProps) {
+  const { closeExportModal } = useEditorActions()
+  const isOpen = useEditorStore(selectShowExportModal)
+  const timeline = useEditorStore(selectActiveTimeline)
+  const assets = useEditorStore(selectAssets)
+  const clips = useEditorStore(selectClips)
+  const tracks = useEditorStore(selectTracks)
+  const subtitles = useEditorStore(selectSubtitles)
+
+  const exportClips = useMemo(() => (
+    clips
+      .filter(clip => clip.type === 'video' || clip.type === 'image' || clip.type === 'audio')
+      .filter(clip => tracks[clip.trackIndex]?.enabled !== false)
+      .map(clip => ({
+        path: selectClipPathFromAssets(assets, clip),
+        type: clip.type,
+        startTime: clip.startTime,
+        duration: clip.duration,
+        trimStart: clip.trimStart,
+        speed: clip.speed || 1,
+        reversed: clip.reversed || false,
+        flipH: clip.flipH || false,
+        flipV: clip.flipV || false,
+        opacity: clip.opacity ?? 100,
+        trackIndex: clip.trackIndex,
+        muted: clip.muted || false,
+        volume: clip.volume ?? 1,
+      }))
+  ), [assets, clips, tracks])
+
+  const subtitleData = useMemo(() => (
+    subtitles.map(subtitle => {
+      const track = tracks[subtitle.trackIndex]
+      return {
+        text: subtitle.text,
+        startTime: subtitle.startTime,
+        endTime: subtitle.endTime,
+        style: {
+          ...DEFAULT_SUBTITLE_STYLE,
+          ...(track?.subtitleStyle || {}),
+          ...(subtitle.style || {}),
+        },
+      }
+    })
+  ), [subtitles, tracks])
+
+  const letterbox = useMemo(() => {
+    const adjustmentClips = clips.filter(
+      clip =>
+        clip.type === 'adjustment'
+        && clip.letterbox?.enabled
+        && tracks[clip.trackIndex]?.enabled !== false,
+    )
+    if (adjustmentClips.length === 0) return null
+    const best = adjustmentClips.reduce((currentBest, candidate) => (
+      candidate.duration > currentBest.duration ? candidate : currentBest
+    ))
+    const config = best.letterbox!
+    return {
+      ratio: config.aspectRatio === 'custom'
+        ? (config.customRatio || 2.35)
+        : (LETTERBOX_RATIO_MAP[config.aspectRatio] || 2.35),
+      color: config.color || '#000000',
+      opacity: (config.opacity ?? 100) / 100,
+    }
+  }, [clips, tracks])
+
   const [exportStatus, setExportStatus] = useState<ExportStatus>('idle')
   const [exportType, setExportType] = useState<'package' | 'video' | null>(null)
   const [exportProgress, setExportProgress] = useState(0)
@@ -158,31 +237,22 @@ export function ExportModal({ open, onClose, clips, tracks, timeline, projectNam
   })
   const [burnSubtitles, setBurnSubtitles] = useState(true)
 
-  // Compute dominant letterbox from adjustment layers
-  const exportLetterbox = useMemo(() => {
-    const ratioMap: Record<string, number> = { '2.35:1': 2.35, '2.39:1': 2.39, '2.76:1': 2.76, '1.85:1': 1.85, '4:3': 4 / 3 }
-    const adjClips = clips.filter(c => c.type === 'adjustment' && c.letterbox?.enabled && tracks[c.trackIndex]?.enabled !== false)
-    if (adjClips.length === 0) return null
-    // Pick the adjustment layer covering the most time
-    const best = adjClips.reduce((a, b) => (b.duration > a.duration ? b : a))
-    const lb = best.letterbox!
-    const ratio = lb.aspectRatio === 'custom' ? (lb.customRatio || 2.35) : (ratioMap[lb.aspectRatio] || 2.35)
-    return { ratio, color: lb.color || '#000000', opacity: (lb.opacity ?? 100) / 100 }
-  }, [clips, tracks])
+  const closeModal = useCallback(() => {
+    closeExportModal()
+  }, [closeExportModal])
 
-  const hasSubtitles = (timeline?.subtitles?.length || 0) > 0
+  const hasSubtitles = subtitleData.length > 0
 
   useEffect(() => {
-    if (open) {
-      setExportStatus('idle')
-      setExportType(null)
-      setExportProgress(0)
-      setExportError(null)
-      setExportPath(null)
-      setExportFrameInfo('')
-      abortRef.current = false
-    }
-  }, [open])
+    if (!isOpen) return
+    setExportStatus('idle')
+    setExportType(null)
+    setExportProgress(0)
+    setExportError(null)
+    setExportPath(null)
+    setExportFrameInfo('')
+    abortRef.current = false
+  }, [isOpen])
 
   // Update quality default when codec changes
   const handleCodecChange = useCallback((codec: ExportCodec) => {
@@ -216,13 +286,13 @@ export function ExportModal({ open, onClose, clips, tracks, timeline, projectNam
 
       setExportProgress(50)
       const xml = generateFCPXML(clips, tracks, projectName, timeline.name)
-      const result = await window.electronAPI?.saveFile(filePath, xml)
+      const result = await window.electronAPI?.saveFile({ filePath, data: xml })
       if (result?.success) {
         setExportProgress(100)
         setExportPath(filePath)
         setExportStatus('done')
       } else {
-        throw new Error(result?.error || 'Failed to save file')
+        throw new Error(result && !result.success ? result.error : 'Failed to save file')
       }
     } catch (err) {
       setExportError(String(err))
@@ -257,32 +327,6 @@ export function ExportModal({ open, onClose, clips, tracks, timeline, projectNam
       }
 
       // Build clip data for ffmpeg native export (video/image + audio clips)
-      const exportClips = clips
-        .filter(c => c.type === 'video' || c.type === 'image' || c.type === 'audio')
-        .filter(c => tracks[c.trackIndex]?.enabled !== false)
-        .map(c => ({
-          url: c.asset?.url || c.importedUrl || '',
-          type: c.type as string,
-          startTime: c.startTime,
-          duration: c.duration,
-          trimStart: c.trimStart,
-          speed: c.speed || 1,
-          reversed: c.reversed || false,
-          flipH: c.flipH || false,
-          flipV: c.flipV || false,
-          opacity: c.opacity ?? 100,
-          trackIndex: c.trackIndex,
-          muted: c.muted || false,
-          volume: c.volume ?? 1,
-        }))
-
-      // Compute subtitle data for burn-in
-      const subtitleData = (burnSubtitles && timeline.subtitles) ? timeline.subtitles.map(sub => {
-        const track = tracks[sub.trackIndex]
-        const style = { ...DEFAULT_SUBTITLE_STYLE, ...(track?.subtitleStyle || {}), ...sub.style }
-        return { text: sub.text, startTime: sub.startTime, endTime: sub.endTime, style }
-      }) : []
-
       setExportFrameInfo('Starting ffmpeg...')
 
       const result = await window.electronAPI?.exportNative({
@@ -293,11 +337,11 @@ export function ExportModal({ open, onClose, clips, tracks, timeline, projectNam
         height: settings.height,
         fps: settings.fps,
         quality: settings.quality,
-        letterbox: exportLetterbox || undefined,
-        subtitles: subtitleData.length > 0 ? subtitleData : undefined,
+        letterbox: letterbox || undefined,
+        subtitles: burnSubtitles && subtitleData.length > 0 ? subtitleData : undefined,
       })
 
-      if (result?.error) {
+      if (result && !result.success) {
         throw new Error(result.error)
       }
 
@@ -309,18 +353,16 @@ export function ExportModal({ open, onClose, clips, tracks, timeline, projectNam
       setExportError(String(err))
       setExportStatus('error')
     }
-  }, [clips, tracks, timeline, projectName, settings, burnSubtitles, exportLetterbox])
+  }, [burnSubtitles, exportClips, letterbox, projectName, settings, subtitleData, timeline])
 
   const handleCancel = useCallback(async () => {
     abortRef.current = true
-    window.electronAPI?.exportCancel('current').catch(() => {})
+    window.electronAPI?.exportCancel({ sessionId: 'current' }).catch(() => {})
     setExportStatus('idle')
   }, [])
 
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={closeModal}>
       <div 
         className="bg-zinc-900 rounded-2xl border border-zinc-700/50 shadow-2xl w-full max-w-lg relative overflow-hidden max-h-[calc(100vh-2rem)] flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -329,7 +371,7 @@ export function ExportModal({ open, onClose, clips, tracks, timeline, projectNam
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
           <h2 className="text-lg font-bold text-white">Export</h2>
           <button
-            onClick={onClose}
+            onClick={closeModal}
             className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors"
           >
             <X className="h-5 w-5" />
@@ -389,7 +431,7 @@ export function ExportModal({ open, onClose, clips, tracks, timeline, projectNam
                   className="border-zinc-700 text-zinc-300"
                   onClick={() => {
                     if (exportPath) {
-                      window.electronAPI?.openParentFolderOfFile(exportPath)
+                      window.electronAPI?.openParentFolderOfFile({ filePath: exportPath })
                     }
                   }}
                 >

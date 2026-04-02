@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 import torch
 
 from api_types import ImageConditioningInput
-from services.services_utils import AudioOrNone, TilingConfigType, device_supports_fp8, sync_device
+from services.services_utils import AudioOrNone, TilingConfigType, device_supports_fp8
 
 if TYPE_CHECKING:
     from ltx_core.components.guiders import MultiModalGuiderParams
-    from ltx_core.types import LatentState
 
 
 def default_tiling_config() -> TilingConfigType:
@@ -61,9 +60,15 @@ class DistilledNativePipeline:
         device: torch.device | None = None,
         fp8transformer: bool = False,
     ) -> None:
-        from ltx_pipelines.utils import ModelLedger
+        from ltx_core.quantization import QuantizationPolicy
+        from ltx_pipelines.utils.blocks import (
+            AudioDecoder,
+            DiffusionStage,
+            ImageConditioner,
+            PromptEncoder,
+            VideoDecoder,
+        )
         from ltx_pipelines.utils.helpers import get_device
-        from ltx_pipelines.utils.types import PipelineComponents
 
         if device is None:
             device = get_device()
@@ -71,17 +76,20 @@ class DistilledNativePipeline:
         self.device = device
         self.dtype = torch.bfloat16
 
-        from ltx_core.quantization import QuantizationPolicy
-
-        self.model_ledger = ModelLedger(
-            dtype=self.dtype,
-            device=device,
-            checkpoint_path=checkpoint_path,
-            gemma_root_path=gemma_root,
-            loras=None,
+        self.prompt_encoder = PromptEncoder(
+            checkpoint_path, gemma_root or "", self.dtype, device,
+        )
+        self.image_conditioner = ImageConditioner(
+            checkpoint_path, self.dtype, device,
+        )
+        self.stage = DiffusionStage(
+            checkpoint_path,
+            self.dtype,
+            device,
             quantization=QuantizationPolicy.fp8_cast() if fp8transformer and device_supports_fp8(device) else None,
         )
-        self.pipeline_components = PipelineComponents(dtype=self.dtype, device=device)
+        self.video_decoder = VideoDecoder(checkpoint_path, self.dtype, device)
+        self.audio_decoder = AudioDecoder(checkpoint_path, self.dtype, device)
 
     @torch.inference_mode()
     def __call__(
@@ -95,88 +103,47 @@ class DistilledNativePipeline:
         images: list[ImageConditioningInput],
         tiling_config: TilingConfigType | None = None,
     ) -> tuple[torch.Tensor | Iterator[torch.Tensor], AudioOrNone]:
-        from ltx_core.components.diffusion_steps import EulerDiffusionStep
         from ltx_core.components.noisers import GaussianNoiser
-        from ltx_core.model.audio_vae import decode_audio as vae_decode_audio
-        from ltx_core.model.video_vae import decode_video as vae_decode_video
-        from ltx_core.text_encoders.gemma import encode_text
-        from ltx_core.types import VideoPixelShape
-        from ltx_pipelines.utils.constants import DISTILLED_SIGMA_VALUES
         from ltx_pipelines.utils.args import ImageConditioningInput as _LtxImageInput
-        from ltx_pipelines.utils.helpers import (
-            cleanup_memory,
-            denoise_audio_video,
-            image_conditionings_by_replacing_latent,
-            simple_denoising_func,
-        )
-        from ltx_pipelines.utils.samplers import euler_denoising_loop
+        from ltx_pipelines.utils.constants import DISTILLED_SIGMA_VALUES
+        from ltx_pipelines.utils.denoisers import SimpleDenoiser
+        from ltx_pipelines.utils.helpers import image_conditionings_by_replacing_latent
+        from ltx_pipelines.utils.types import ModalitySpec
 
         generator = torch.Generator(device=self.device).manual_seed(seed)
         noiser = GaussianNoiser(generator=generator)
-        stepper = EulerDiffusionStep()
         dtype = torch.bfloat16
 
-        text_encoder = self.model_ledger.text_encoder()
-        context_p = encode_text(text_encoder, prompts=[prompt])[0]
-        video_context, audio_context = context_p
+        (ctx_p,) = self.prompt_encoder([prompt])
+        video_context, audio_context = ctx_p.video_encoding, ctx_p.audio_encoding
 
-        sync_device(self.device)
-        del text_encoder
-        cleanup_memory()
-
-        video_encoder = self.model_ledger.video_encoder()
-        transformer = self.model_ledger.transformer()
         sigmas = torch.Tensor(DISTILLED_SIGMA_VALUES).to(self.device)
 
-        def denoising_loop(
-            sigmas: torch.Tensor,
-            video_state: LatentState,
-            audio_state: LatentState,
-            stepper: EulerDiffusionStep,
-        ) -> tuple[LatentState, LatentState]:
-            return euler_denoising_loop(
-                sigmas=sigmas,
-                video_state=video_state,
-                audio_state=audio_state,
-                stepper=stepper,
-                denoise_fn=simple_denoising_func(
-                    video_context=video_context,
-                    audio_context=audio_context,
-                    transformer=transformer,
-                ),
+        ltx_images = [_LtxImageInput(img.path, img.frame_idx, img.strength) for img in images]
+        conditionings = self.image_conditioner(
+            lambda enc: image_conditionings_by_replacing_latent(
+                images=ltx_images,
+                height=height,
+                width=width,
+                video_encoder=enc,
+                dtype=dtype,
+                device=self.device,
             )
-
-        output_shape = VideoPixelShape(batch=1, frames=num_frames, width=width, height=height, fps=frame_rate)
-        conditionings = image_conditionings_by_replacing_latent(
-            images=[_LtxImageInput(img.path, img.frame_idx, img.strength) for img in images],
-            height=output_shape.height,
-            width=output_shape.width,
-            video_encoder=video_encoder,
-            dtype=dtype,
-            device=self.device,
         )
 
-        video_state, audio_state = denoise_audio_video(
-            output_shape=output_shape,
-            conditionings=conditionings,
-            noiser=noiser,
+        video_state, audio_state = self.stage(
+            denoiser=SimpleDenoiser(video_context, audio_context),
             sigmas=sigmas,
-            stepper=stepper,
-            denoising_loop_fn=cast(Any, denoising_loop),
-            components=self.pipeline_components,
-            dtype=dtype,
-            device=self.device,
+            noiser=noiser,
+            width=width,
+            height=height,
+            frames=num_frames,
+            fps=frame_rate,
+            video=ModalitySpec(context=video_context, conditionings=conditionings),
+            audio=ModalitySpec(context=audio_context) if audio_context is not None else None,
         )
 
-        sync_device(self.device)
-        del transformer
-        del video_encoder
-        cleanup_memory()
-
-        decoded_video = vae_decode_video(video_state.latent, self.model_ledger.video_decoder(), tiling_config)
-        decoded_audio = vae_decode_audio(
-            audio_state.latent,
-            self.model_ledger.audio_decoder(),
-            self.model_ledger.vocoder(),
-        )
+        assert video_state is not None
+        decoded_video = self.video_decoder(video_state.latent, tiling_config)
+        decoded_audio = self.audio_decoder(audio_state.latent) if audio_state is not None else None
         return decoded_video, decoded_audio

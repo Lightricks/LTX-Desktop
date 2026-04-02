@@ -15,7 +15,6 @@ class TestGenerationProgressCamelCaseKeys:
                 warmth=VideoPipelineWarmth.COLD,
                 is_compiled=False,
             ),
-            generation=None,
         )
         test_state.generation.start_generation("gen-1")
         test_state.generation.update_progress("inference", 50, 5, 20)

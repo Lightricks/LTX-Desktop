@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Plus, Folder, MoreVertical, Trash2, Pencil, Sparkles } from 'lucide-react'
+import { Plus, Folder, MoreVertical, Trash2, Pencil } from 'lucide-react'
 import { useProjects } from '../contexts/ProjectContext'
 import { LtxLogo } from '../components/LtxLogo'
 import { Button } from '../components/ui/button'
+import { pathToFileUrl } from '../lib/file-url'
 import type { Project } from '../types/project'
 
 function formatDate(timestamp: number): string {
@@ -25,34 +26,49 @@ function ProjectCard({ project, onOpen, onDelete, onRename }: {
   const [showMenu, setShowMenu] = useState(false)
   const [imgError, setImgError] = useState(false)
   
-  // Get thumbnail: use stored thumbnail, or first asset's URL as fallback
-  const thumbnailUrl = project.thumbnail || (project.assets.length > 0 ? project.assets[0].url : null)
-  // For videos, try to find the first image asset for a better thumbnail
-  const bestThumbnail = project.assets.find(a => a.type === 'image')?.url || thumbnailUrl
-  
+  // Keep existing representative selection logic: prefer first image, else first asset.
+  const representativeAsset = project.assets.find(a => a.type === 'image') || project.assets[0] || null
+  const representativeUrl = representativeAsset?.path ? pathToFileUrl(representativeAsset.path) : null
+  const representativeBigThumbnailUrl = representativeAsset?.bigThumbnailPath
+    ? pathToFileUrl(representativeAsset.bigThumbnailPath)
+    : null
+
   return (
-    <div 
+    <div
       className="group relative bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 hover:border-zinc-700 transition-colors cursor-pointer"
       onClick={onOpen}
     >
       {/* Thumbnail */}
       <div className="aspect-video bg-zinc-800 flex items-center justify-center relative overflow-hidden">
-        {bestThumbnail && !imgError ? (
-          project.assets.find(a => a.type === 'video' && a.url === bestThumbnail) ? (
-            <video 
-              src={bestThumbnail} 
-              className="w-full h-full object-cover" 
-              muted 
-              preload="metadata"
+        {representativeAsset && !imgError ? (
+          representativeAsset.type === 'video' ? (
+            representativeBigThumbnailUrl ? (
+              <img
+                src={representativeBigThumbnailUrl}
+                alt={project.name}
+                className="w-full h-full object-cover"
+                onError={() => setImgError(true)}
+              />
+            ) : representativeUrl ? (
+              <video
+                src={representativeUrl}
+                className="w-full h-full object-cover"
+                muted
+                preload="metadata"
+                onError={() => setImgError(true)}
+              />
+            ) : (
+              <Folder className="h-12 w-12 text-zinc-600" />
+            )
+          ) : representativeUrl ? (
+            <img
+              src={representativeUrl}
+              alt={project.name}
+              className="w-full h-full object-cover"
               onError={() => setImgError(true)}
             />
           ) : (
-            <img 
-              src={bestThumbnail} 
-              alt={project.name} 
-              className="w-full h-full object-cover" 
-              onError={() => setImgError(true)}
-            />
+            <Folder className="h-12 w-12 text-zinc-600" />
           )
         ) : (
           <Folder className="h-12 w-12 text-zinc-600" />
@@ -105,7 +121,7 @@ function ProjectCard({ project, onOpen, onDelete, onRename }: {
 }
 
 export function Home() {
-  const { projects, createProject, deleteProject, renameProject, openProject, openPlayground } = useProjects()
+  const { projects, createProject, deleteProject, renameProject, openProject } = useProjects()
   const [isCreating, setIsCreating] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [renamingId, setRenamingId] = useState<string | null>(null)
@@ -146,19 +162,6 @@ export function Home() {
             <Folder className="h-4 w-4" />
             Home
           </button>
-          
-          <div className="mt-6">
-            <h4 className="px-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
-              Quick Actions
-            </h4>
-            <button 
-              onClick={openPlayground}
-              className="w-full px-3 py-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white text-left text-sm flex items-center gap-2 transition-colors"
-            >
-              <Sparkles className="h-4 w-4" />
-              Playground
-            </button>
-          </div>
           
           {projects.length > 0 && (
             <div className="mt-6">

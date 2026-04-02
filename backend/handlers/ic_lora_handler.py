@@ -12,8 +12,11 @@ from threading import RLock
 from typing import TYPE_CHECKING
 
 from api_types import (
+    ConditioningType,
     IcLoraExtractRequest,
     IcLoraExtractResponse,
+    IcLoraGenerateCancelledResponse,
+    IcLoraGenerateCompleteResponse,
     IcLoraGenerateRequest,
     IcLoraGenerateResponse,
     ImageConditioningInput,
@@ -56,7 +59,7 @@ class IcLoraHandler(StateHandlerBase):
     def _build_conditioning_frame(
         self,
         frame: FrameArray,
-        conditioning_type: str,
+        conditioning_type: ConditioningType,
         ic_state: ICLoraState | None = None,
     ) -> FrameArray:
         match conditioning_type:
@@ -116,6 +119,8 @@ class IcLoraHandler(StateHandlerBase):
         settings = self.state.app_settings
         if settings.seed_locked:
             return settings.locked_seed
+        if self.config.dev_mode:
+            return 1000
         return int(time.time()) % 2147483647
 
     def generate(self, req: IcLoraGenerateRequest) -> IcLoraGenerateResponse:
@@ -250,7 +255,7 @@ class IcLoraHandler(StateHandlerBase):
 
             self._generation.update_progress("complete", 100, 1, 1)
             self._generation.complete_generation(str(output_path))
-            return IcLoraGenerateResponse(status="complete", video_path=str(output_path))
+            return IcLoraGenerateCompleteResponse(status="complete", video_path=str(output_path))
 
         except HTTPError:
             self._generation.fail_generation("IC-LoRA generation failed")
@@ -258,7 +263,7 @@ class IcLoraHandler(StateHandlerBase):
         except Exception as exc:
             self._generation.fail_generation(str(exc))
             if "cancelled" in str(exc).lower():
-                return IcLoraGenerateResponse(status="cancelled")
+                return IcLoraGenerateCancelledResponse(status="cancelled")
             raise HTTPError(500, f"Generation error: {exc}") from exc
         finally:
             self._text.clear_api_embeddings()

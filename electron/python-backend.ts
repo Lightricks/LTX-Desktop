@@ -251,6 +251,7 @@ export async function startPythonBackend(): Promise<void> {
         LTX_ADMIN_TOKEN: adminToken,
         LTX_LOG_FILE: getCurrentLogFilename(),
         LTX_APP_DATA_DIR: getAppDataDir(),
+        LTX_DEV_MODE: isDev ? '1' : '0',
         PYTORCH_ENABLE_MPS_FALLBACK: '1',
         // Set PYTHONHOME for bundled Python on macOS so it finds its stdlib
         ...(!isDev && process.platform !== 'win32' ? {

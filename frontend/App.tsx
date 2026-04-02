@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, AlertCircle, Settings, FileText } from 'lucide-react'
-import { backendFetch } from './lib/backend'
+import { ApiClient } from './lib/api-client'
 import { ProjectProvider, useProjects } from './contexts/ProjectContext'
 import { KeyboardShortcutsProvider } from './contexts/KeyboardShortcutsContext'
 import { AppSettingsProvider, useAppSettings } from './contexts/AppSettingsContext'
@@ -9,7 +9,6 @@ import { useBackend } from './hooks/use-backend'
 import { logger } from './lib/logger'
 import { Home } from './views/Home'
 import { Project } from './views/Project'
-import { Playground } from './views/Playground'
 import { LaunchGate } from './components/FirstRunSetup'
 import { PythonSetup } from './components/PythonSetup'
 import { SettingsModal, type SettingsTabId } from './components/SettingsModal'
@@ -178,11 +177,7 @@ function AppContent() {
     isForcedFirstRun && isLoaded && settings.hasLtxApiKey && !isFinalizingFirstRun && !firstRunFinalizeError
 
   const areRequiredModelsDownloaded = useCallback(async () => {
-    const response = await backendFetch('/api/models/status')
-    if (!response.ok) {
-      throw new Error(`Model status fetch failed with status ${response.status}`)
-    }
-    const payload = (await response.json()) as { all_downloaded?: boolean }
+    const payload = await ApiClient.getModelsStatus()
     return payload.all_downloaded === true
   }, [])
 
@@ -429,8 +424,6 @@ function AppContent() {
         return <Home />
       case 'project':
         return <Project />
-      case 'playground':
-        return <Playground />
       default:
         return <Home />
     }

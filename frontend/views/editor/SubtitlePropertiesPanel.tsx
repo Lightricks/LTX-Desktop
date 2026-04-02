@@ -1,36 +1,35 @@
-import React from 'react'
+import { useMemo } from 'react'
 import { MessageSquare, Trash2 } from 'lucide-react'
-import type { SubtitleClip, SubtitleStyle } from '../../types/project'
+import type { SubtitleStyle } from '../../types/project'
 import { DEFAULT_SUBTITLE_STYLE } from '../../types/project'
+import {
+  selectSelectedSubtitleId,
+  selectSubtitles,
+  selectTracks,
+} from './editor-selectors'
+import { useEditorActions, useEditorStore } from './editor-store'
 
-interface SubtitlePropertiesPanelProps {
-  selectedSub: SubtitleClip
-  trackStyle: Partial<SubtitleStyle>
-  rightPanelWidth: number
-  onResizeDragStart: (e: React.MouseEvent) => void
-  updateSubtitle: (id: string, updates: Partial<SubtitleClip>) => void
-  deleteSubtitle: (id: string) => void
-}
-
-export function SubtitlePropertiesPanel({
-  selectedSub,
-  trackStyle,
-  rightPanelWidth,
-  onResizeDragStart,
-  updateSubtitle,
-  deleteSubtitle,
-}: SubtitlePropertiesPanelProps) {
+export function SubtitlePropertiesPanel() {
+  const { updateSubtitle, deleteSubtitle } = useEditorActions()
+  const selectedSubtitleId = useEditorStore(selectSelectedSubtitleId)
+  const subtitles = useEditorStore(selectSubtitles)
+  const tracks = useEditorStore(selectTracks)
+  const selectedSub = useMemo(
+    () => subtitles.find(subtitle => subtitle.id === selectedSubtitleId) ?? null,
+    [selectedSubtitleId, subtitles],
+  )
+  if (!selectedSub) return null
+  const trackStyle = useMemo(() => {
+    const track = tracks[selectedSub.trackIndex]
+    return {
+      ...(track?.subtitleStyle || {}),
+      ...(selectedSub.style || {}),
+    }
+  }, [selectedSub, tracks])
   const subStyle = { ...DEFAULT_SUBTITLE_STYLE, ...trackStyle, ...selectedSub.style }
 
   return (
-    <>
-      <div
-        className="w-1 flex-shrink-0 cursor-col-resize bg-transparent hover:bg-amber-500/40 active:bg-amber-500/60 transition-colors relative group z-10"
-        onMouseDown={onResizeDragStart}
-      >
-        <div className="absolute inset-y-0 -left-1 -right-1" />
-      </div>
-      <div className="flex-shrink-0 border-l border-zinc-800 bg-zinc-900 p-4 overflow-auto" style={{ width: rightPanelWidth }}>
+    <div className="h-full border-l border-zinc-800 bg-zinc-900 p-4 overflow-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
             <MessageSquare className="h-4 w-4" />
@@ -192,6 +191,5 @@ export function SubtitlePropertiesPanel({
           </div>
         </div>
       </div>
-    </>
   )
 }

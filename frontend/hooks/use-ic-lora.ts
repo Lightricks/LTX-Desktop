@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react'
-import { backendFetch } from '../lib/backend'
+import { ApiClient } from '../lib/api-client'
 import { logger } from '../lib/logger'
 
-export type IcLoraConditioningType = 'canny' | 'depth' | 'pose'
+export type IcLoraConditioningType = 'canny' | 'depth'
 
 export interface IcLoraSubmitParams {
   videoPath: string
@@ -13,7 +13,6 @@ export interface IcLoraSubmitParams {
 
 export interface IcLoraResult {
   videoPath: string
-  videoUrl: string
 }
 
 interface UseIcLoraState {
@@ -42,41 +41,33 @@ export function useIcLora() {
     })
 
     try {
-      const response = await backendFetch('/api/ic-lora/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          video_path: params.videoPath,
-          conditioning_type: params.conditioningType,
-          conditioning_strength: params.conditioningStrength,
-          prompt: params.prompt,
-        }),
-      })
+      const payload = await ApiClient.generateIcLora({
+        video_path: params.videoPath,
+        conditioning_type: params.conditioningType,
+        conditioning_strength: params.conditioningStrength,
+        prompt: params.prompt,
+      } as unknown as Parameters<typeof ApiClient.generateIcLora>[0])
+      if (payload.status === 'cancelled') {
+        setState({
+          isGenerating: false,
+          status: 'Cancelled',
+          error: null,
+          result: null,
+        })
+        return
+      }
 
-      const data = await response.json()
-      if (response.ok && data.status === 'complete' && data.video_path) {
-        const pathNormalized = data.video_path.replace(/\\/g, '/')
-        const videoUrl = pathNormalized.startsWith('/') ? `file://${pathNormalized}` : `file:///${pathNormalized}`
+      if (payload.status === 'complete') {
         setState({
           isGenerating: false,
           status: 'Generation complete!',
           error: null,
           result: {
-            videoPath: data.video_path,
-            videoUrl,
+            videoPath: payload.video_path,
           },
         })
         return
       }
-
-      const errorMsg = data.error || 'Unknown error'
-      logger.error(`IC-LoRA failed: ${errorMsg}`)
-      setState({
-        isGenerating: false,
-        status: '',
-        error: errorMsg,
-        result: null,
-      })
     } catch (error) {
       const message = (error as Error).message || 'Unknown error'
       logger.error(`IC-LoRA error: ${message}`)

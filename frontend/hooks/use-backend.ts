@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { backendFetch, backendWsUrl, resetBackendCredentials } from '../lib/backend'
+import { resetBackendCredentials } from '../lib/backend'
+import { ApiClient } from '../lib/api-client'
 import { logger } from '../lib/logger'
 
 interface BackendStatus {
@@ -12,14 +13,6 @@ interface BackendStatus {
   } | null
 }
 
-interface ModelStatus {
-  id: string
-  name: string
-  size: number
-  downloaded: boolean
-  downloadProgress: number
-}
-
 export type BackendProcessStatus = 'alive' | 'restarting' | 'dead'
 
 interface BackendHealthStatusPayload {
@@ -29,12 +22,10 @@ interface BackendHealthStatusPayload {
 
 interface UseBackendReturn {
   status: BackendStatus
-  models: ModelStatus[]
   processStatus: BackendProcessStatus | null
   isLoading: boolean
   error: string | null
   checkHealth: () => Promise<boolean>
-  downloadModel: (modelId: string) => Promise<void>
 }
 
 function toBackendHealthStatus(value: unknown): BackendHealthStatusPayload | null {
@@ -59,7 +50,6 @@ export function useBackend(): UseBackendReturn {
     modelsLoaded: false,
     gpuInfo: null,
   })
-  const [models, setModels] = useState<ModelStatus[]>([])
   const [processStatus, setProcessStatus] = useState<BackendProcessStatus | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -67,71 +57,20 @@ export function useBackend(): UseBackendReturn {
   const checkHealth = useCallback(async (): Promise<boolean> => {
     try {
       logger.info('Checking backend health...')
-      const response = await backendFetch('/health')
+      const data = await ApiClient.getHealth()
+      logger.info(`Backend health: ${JSON.stringify(data)}`)
 
-      if (response.ok) {
-        const data = await response.json()
-        logger.info(`Backend health: ${JSON.stringify(data)}`)
-
-        setStatus({
-          connected: true,
-          modelsLoaded: data.models_loaded,
-          gpuInfo: data.gpu_info,
-        })
-        setError(null)
-        return true
-      }
-      logger.warn(`Backend health check failed with status: ${response.status}`)
-      return false
+      setStatus({
+        connected: true,
+        modelsLoaded: data.models_loaded,
+        gpuInfo: data.gpu_info,
+      })
+      setError(null)
+      return true
     } catch (err) {
       logger.error(`Backend health check error: ${err}`)
       setStatus(prev => ({ ...prev, connected: false }))
       return false
-    }
-  }, [])
-
-  const fetchModels = useCallback(async () => {
-    try {
-      const response = await backendFetch('/api/models')
-
-      if (response.ok) {
-        const data = await response.json()
-        setModels(data.models)
-      }
-    } catch (err) {
-      logger.error(`Failed to fetch models: ${err}`)
-    }
-  }, [])
-
-  const downloadModel = useCallback(async (modelId: string) => {
-    try {
-      // Connect to WebSocket for download progress
-      const wsUrl = await backendWsUrl(`/ws/download/${modelId}`)
-      const ws = new WebSocket(wsUrl)
-
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data)
-        if (data.type === 'progress') {
-          setModels(prev => prev.map(m =>
-            m.id === modelId
-              ? { ...m, downloadProgress: data.progress }
-              : m
-          ))
-        } else if (data.type === 'complete') {
-          setModels(prev => prev.map(m =>
-            m.id === modelId
-              ? { ...m, downloaded: true, downloadProgress: 100 }
-              : m
-          ))
-        }
-      }
-
-      // Trigger download
-      await backendFetch(`/api/models/${modelId}/download`, {
-        method: 'POST',
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Download failed')
     }
   }, [])
 
@@ -142,9 +81,7 @@ export function useBackend(): UseBackendReturn {
       // Reset cached credentials so the new port/token are fetched
       resetBackendCredentials()
       const healthy = await checkHealth()
-      if (healthy) {
-        await fetchModels()
-      } else {
+      if (!healthy) {
         setError('Failed to connect to backend')
       }
       setIsLoading(false)
@@ -158,7 +95,7 @@ export function useBackend(): UseBackendReturn {
     setStatus((prev) => ({ ...prev, connected: false }))
     setError('The backend process crashed and could not be restarted')
     setIsLoading(false)
-  }, [checkHealth, fetchModels])
+  }, [checkHealth])
 
   useEffect(() => {
     let cancelled = false
@@ -194,11 +131,9 @@ export function useBackend(): UseBackendReturn {
 
   return {
     status,
-    models,
     processStatus,
     isLoading,
     error,
     checkHealth,
-    downloadModel,
   }
 }

@@ -2,15 +2,9 @@ import { AlertCircle, Check, Download, Film, Folder, Info, KeyRound, Settings, S
 import React, { useEffect, useRef, useState } from 'react'
 import { Button } from './ui/button'
 import { useAppSettings, type AppSettings } from '../contexts/AppSettingsContext'
-import { backendFetch } from '../lib/backend'
+import { ApiClient } from '../lib/api-client'
 import { logger } from '../lib/logger'
 import { ApiKeyHelperRow, LtxApiKeyInput, LtxApiKeyHelperRow } from './LtxApiKeyInput'
-
-interface TextEncoderStatus {
-  downloaded: boolean
-  size_gb: number
-  expected_size_gb: number
-}
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -31,7 +25,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const falApiKeyInputRef = useRef<HTMLInputElement>(null)
   const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('')
   const geminiApiKeyInputRef = useRef<HTMLInputElement>(null)
-  const [textEncoderStatus, setTextEncoderStatus] = useState<TextEncoderStatus | null>(null)
+  const [textEncoderStatus, setTextEncoderStatus] = useState<Awaited<ReturnType<typeof ApiClient.getModelsStatus>>['text_encoder_status'] | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [appVersion, setAppVersion] = useState('')
@@ -87,11 +81,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
 
     const fetchStatus = async () => {
       try {
-        const response = await backendFetch('/api/models/status')
-        if (response.ok) {
-          const data = await response.json()
-          setTextEncoderStatus(data.text_encoder_status)
-        }
+        const data = await ApiClient.getModelsStatus()
+        setTextEncoderStatus(data.text_encoder_status)
       } catch (e) {
         logger.error(`Failed to fetch text encoder status: ${e}`)
       }
@@ -108,8 +99,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     setIsDownloading(true)
     setDownloadError(null)
     try {
-      const response = await backendFetch('/api/text-encoder/download', { method: 'POST' })
-      const data = await response.json()
+      const data = await ApiClient.startTextEncoderDownload()
 
       if (data.status === 'already_downloaded') {
         setTextEncoderStatus(prev => prev ? { ...prev, downloaded: true } : null)
@@ -117,14 +107,11 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       // Poll for completion
       const pollInterval = setInterval(async () => {
         try {
-          const statusRes = await backendFetch('/api/models/status')
-          if (statusRes.ok) {
-            const statusData = await statusRes.json()
-            setTextEncoderStatus(statusData.text_encoder_status)
-            if (statusData.text_encoder_status?.downloaded) {
-              setIsDownloading(false)
-              clearInterval(pollInterval)
-            }
+          const statusData = await ApiClient.getModelsStatus()
+          setTextEncoderStatus(statusData.text_encoder_status)
+          if (statusData.text_encoder_status?.downloaded) {
+            setIsDownloading(false)
+            clearInterval(pollInterval)
           }
         } catch {
           // ignore
@@ -212,7 +199,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const handleToggleAnalytics = () => {
     const next = !analyticsEnabled
     setAnalyticsEnabled(next)
-    window.electronAPI.setAnalyticsEnabled(next).catch(() => {})
+    window.electronAPI.setAnalyticsEnabled({ enabled: next }).catch(() => {})
   }
 
   // Seed handlers
@@ -341,7 +328,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                     className="border-zinc-700 flex-shrink-0"
                     onClick={async () => {
                       const result = await window.electronAPI.openProjectAssetsPathChangeDialog()
-                      if (result.success && result.path) {
+                      if (result.success) {
                         setProjectAssetsPath(result.path)
                       }
                     }}

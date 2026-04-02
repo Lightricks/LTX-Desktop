@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { backendFetch, resetBackendCredentials } from '../lib/backend'
+import { resetBackendCredentials } from '../lib/backend'
+import { ApiClient } from '../lib/api-client'
 
 export interface InferenceSettings {
   steps: number
@@ -110,12 +111,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
 
     const fetchRuntimePolicy = async () => {
       try {
-        const response = await backendFetch('/api/runtime-policy')
-        if (!response.ok) {
-          throw new Error(`Runtime policy fetch failed with status ${response.status}`)
-        }
-
-        const payload = (await response.json()) as { force_api_generations?: unknown }
+        const payload = await ApiClient.getRuntimePolicy() as { force_api_generations?: unknown }
         if (typeof payload.force_api_generations !== 'boolean') {
           throw new Error('Runtime policy response missing force_api_generations boolean')
         }
@@ -175,11 +171,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const refreshSettings = useCallback(async () => {
-    const response = await backendFetch('/api/settings')
-    if (!response.ok) {
-      throw new Error(`Settings fetch failed with status ${response.status}`)
-    }
-    const data = await response.json()
+    const data = await ApiClient.getSettings()
     setSettings(normalizeAppSettings(data))
     setIsLoaded(true)
   }, [])
@@ -214,11 +206,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     const syncTimer = setTimeout(async () => {
       try {
         const { hasLtxApiKey: _a, hasFalApiKey: _b, hasGeminiApiKey: _c, modelsDir: _d, ...syncPayload } = settings
-        await backendFetch('/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(syncPayload),
-        })
+        await ApiClient.updateSettings(syncPayload)
       } catch {
         // Best-effort settings sync.
       }
@@ -235,41 +223,17 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const saveLtxApiKey = useCallback(async (value: string) => {
-    const response = await backendFetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ltxApiKey: value }),
-    })
-    if (!response.ok) {
-      const detail = await response.text()
-      throw new Error(detail || 'Failed to save LTX API key.')
-    }
+    await ApiClient.updateSettings({ ltxApiKey: value })
     await refreshSettings()
   }, [refreshSettings])
 
   const saveGeminiApiKey = useCallback(async (value: string) => {
-    const response = await backendFetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ geminiApiKey: value }),
-    })
-    if (!response.ok) {
-      const detail = await response.text()
-      throw new Error(detail || 'Failed to save Gemini API key.')
-    }
+    await ApiClient.updateSettings({ geminiApiKey: value })
     await refreshSettings()
   }, [refreshSettings])
 
   const saveFalApiKey = useCallback(async (value: string) => {
-    const response = await backendFetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ falApiKey: value }),
-    })
-    if (!response.ok) {
-      const detail = await response.text()
-      throw new Error(detail || 'Failed to save FAL API key.')
-    }
+    await ApiClient.updateSettings({ falApiKey: value })
     await refreshSettings()
   }, [refreshSettings])
 

@@ -54,7 +54,7 @@ def test_cancel_marks_running_generation(test_state):
 
 def test_zit_slot_invariant_enforced(test_state, fake_services):
     zit = fake_services.image_generation_pipeline
-    test_state.state.gpu_slot = GpuSlot(active_pipeline=zit, generation=None)
+    test_state.state.gpu_slot = GpuSlot(active_pipeline=zit)
     test_state.state.cpu_slot = CpuSlot(active_pipeline=zit)
 
     with test_state._lock:  # noqa: SLF001 - explicit invariant check in tests

@@ -1,0 +1,2339 @@
+{
+  "components": {
+    "schemas": {
+      "AppSettingsPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "falApiKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Falapikey"
+          },
+          "fastModel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FastModelSettingsPatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "geminiApiKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geminiapikey"
+          },
+          "loadOnStartup": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loadonstartup"
+          },
+          "lockedSeed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lockedseed"
+          },
+          "ltxApiKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltxapikey"
+          },
+          "modelsDir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modelsdir"
+          },
+          "proModel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProModelSettingsPatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "promptCacheSize": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promptcachesize"
+          },
+          "promptEnhancerEnabledI2V": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promptenhancerenabledi2V"
+          },
+          "promptEnhancerEnabledT2V": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promptenhancerenabledt2V"
+          },
+          "seedLocked": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seedlocked"
+          },
+          "useLocalTextEncoder": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uselocaltextencoder"
+          },
+          "useTorchCompile": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usetorchcompile"
+          },
+          "userPrefersLtxApiVideoGenerations": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Userprefersltxapivideogenerations"
+          }
+        },
+        "title": "AppSettingsPatch",
+        "type": "object"
+      },
+      "CancelCancellingResponse": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "cancelling",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "id"
+        ],
+        "title": "CancelCancellingResponse",
+        "type": "object"
+      },
+      "CancelNoActiveGenerationResponse": {
+        "properties": {
+          "status": {
+            "const": "no_active_generation",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "CancelNoActiveGenerationResponse",
+        "type": "object"
+      },
+      "DownloadProgressCompleteResponse": {
+        "properties": {
+          "status": {
+            "const": "complete",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "DownloadProgressCompleteResponse",
+        "type": "object"
+      },
+      "DownloadProgressErrorResponse": {
+        "properties": {
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "status": {
+            "const": "error",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "error"
+        ],
+        "title": "DownloadProgressErrorResponse",
+        "type": "object"
+      },
+      "DownloadProgressRunningResponse": {
+        "properties": {
+          "all_files": {
+            "items": {
+              "enum": [
+                "checkpoint",
+                "upsampler",
+                "distilled_lora",
+                "ic_lora",
+                "depth_processor",
+                "person_detector",
+                "pose_processor",
+                "text_encoder",
+                "zit"
+              ],
+              "type": "string"
+            },
+            "title": "All Files",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "completed_files": {
+            "items": {
+              "enum": [
+                "checkpoint",
+                "upsampler",
+                "distilled_lora",
+                "ic_lora",
+                "depth_processor",
+                "person_detector",
+                "pose_processor",
+                "text_encoder",
+                "zit"
+              ],
+              "type": "string"
+            },
+            "title": "Completed Files",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "current_downloading_file": {
+            "anyOf": [
+              {
+                "enum": [
+                  "checkpoint",
+                  "upsampler",
+                  "distilled_lora",
+                  "ic_lora",
+                  "depth_processor",
+                  "person_detector",
+                  "pose_processor",
+                  "text_encoder",
+                  "zit"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Downloading File"
+          },
+          "current_file_progress": {
+            "title": "Current File Progress",
+            "type": "number"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "expected_total_bytes": {
+            "title": "Expected Total Bytes",
+            "type": "integer"
+          },
+          "speed_bytes_per_sec": {
+            "title": "Speed Bytes Per Sec",
+            "type": "number"
+          },
+          "status": {
+            "const": "downloading",
+            "title": "Status",
+            "type": "string"
+          },
+          "total_downloaded_bytes": {
+            "title": "Total Downloaded Bytes",
+            "type": "integer"
+          },
+          "total_progress": {
+            "title": "Total Progress",
+            "type": "number"
+          }
+        },
+        "required": [
+          "status",
+          "current_downloading_file",
+          "current_file_progress",
+          "total_progress",
+          "total_downloaded_bytes",
+          "expected_total_bytes",
+          "completed_files",
+          "all_files",
+          "speed_bytes_per_sec"
+        ],
+        "title": "DownloadProgressRunningResponse",
+        "type": "object"
+      },
+      "FastModelSettings": {
+        "properties": {
+          "useUpscaler": {
+            "default": true,
+            "title": "Useupscaler",
+            "type": "boolean"
+          }
+        },
+        "title": "FastModelSettings",
+        "type": "object"
+      },
+      "FastModelSettingsPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "useUpscaler": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Useupscaler"
+          }
+        },
+        "title": "FastModelSettingsPatch",
+        "type": "object"
+      },
+      "GenerateImageCancelledResponse": {
+        "properties": {
+          "status": {
+            "const": "cancelled",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "GenerateImageCancelledResponse",
+        "type": "object"
+      },
+      "GenerateImageCompleteResponse": {
+        "properties": {
+          "image_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Image Paths",
+            "type": "array"
+          },
+          "status": {
+            "const": "complete",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "image_paths"
+        ],
+        "title": "GenerateImageCompleteResponse",
+        "type": "object"
+      },
+      "GenerateImageRequest": {
+        "properties": {
+          "height": {
+            "default": 1024,
+            "minimum": 16.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "numImages": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Numimages",
+            "type": "integer"
+          },
+          "numSteps": {
+            "default": 4,
+            "minimum": 1.0,
+            "title": "Numsteps",
+            "type": "integer"
+          },
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "width": {
+            "default": 1024,
+            "minimum": 16.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "title": "GenerateImageRequest",
+        "type": "object"
+      },
+      "GenerateVideoCancelledResponse": {
+        "properties": {
+          "status": {
+            "const": "cancelled",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "GenerateVideoCancelledResponse",
+        "type": "object"
+      },
+      "GenerateVideoCompleteResponse": {
+        "properties": {
+          "status": {
+            "const": "complete",
+            "title": "Status",
+            "type": "string"
+          },
+          "video_path": {
+            "title": "Video Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "video_path"
+        ],
+        "title": "GenerateVideoCompleteResponse",
+        "type": "object"
+      },
+      "GenerateVideoRequest": {
+        "properties": {
+          "aspectRatio": {
+            "default": "16:9",
+            "enum": [
+              "16:9",
+              "9:16"
+            ],
+            "title": "Aspectratio",
+            "type": "string"
+          },
+          "audio": {
+            "default": false,
+            "title": "Audio",
+            "type": "boolean"
+          },
+          "audioPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audiopath"
+          },
+          "cameraMotion": {
+            "default": "none",
+            "enum": [
+              "none",
+              "dolly_in",
+              "dolly_out",
+              "dolly_left",
+              "dolly_right",
+              "jib_up",
+              "jib_down",
+              "static",
+              "focus_shift"
+            ],
+            "title": "Cameramotion",
+            "type": "string"
+          },
+          "duration": {
+            "default": 2,
+            "minimum": 1.0,
+            "title": "Duration",
+            "type": "integer"
+          },
+          "fps": {
+            "default": 24,
+            "minimum": 1.0,
+            "title": "Fps",
+            "type": "integer"
+          },
+          "imagePath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imagepath"
+          },
+          "model": {
+            "default": "fast",
+            "enum": [
+              "fast",
+              "pro"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "negativePrompt": {
+            "default": "",
+            "title": "Negativeprompt",
+            "type": "string"
+          },
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "resolution": {
+            "default": "1080p",
+            "enum": [
+              "540p",
+              "720p",
+              "1080p",
+              "1440p",
+              "2160p"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "title": "GenerateVideoRequest",
+        "type": "object"
+      },
+      "GenerationProgressResponse": {
+        "properties": {
+          "currentStep": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentstep"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "idle",
+              "running",
+              "complete",
+              "cancelled",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "totalSteps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalsteps"
+          }
+        },
+        "required": [
+          "status",
+          "phase",
+          "progress",
+          "currentStep",
+          "totalSteps"
+        ],
+        "title": "GenerationProgressResponse",
+        "type": "object"
+      },
+      "GpuInfoResponse": {
+        "properties": {
+          "cuda_available": {
+            "title": "Cuda Available",
+            "type": "boolean"
+          },
+          "gpu_available": {
+            "default": false,
+            "title": "Gpu Available",
+            "type": "boolean"
+          },
+          "gpu_info": {
+            "$ref": "#/components/schemas/GpuTelemetry"
+          },
+          "gpu_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gpu Name"
+          },
+          "mps_available": {
+            "default": false,
+            "title": "Mps Available",
+            "type": "boolean"
+          },
+          "vram_gb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vram Gb"
+          }
+        },
+        "required": [
+          "cuda_available",
+          "gpu_name",
+          "vram_gb",
+          "gpu_info"
+        ],
+        "title": "GpuInfoResponse",
+        "type": "object"
+      },
+      "GpuTelemetry": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "vram": {
+            "title": "Vram",
+            "type": "integer"
+          },
+          "vramUsed": {
+            "title": "Vramused",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "vram",
+          "vramUsed"
+        ],
+        "title": "GpuTelemetry",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "active_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Model"
+          },
+          "gpu_info": {
+            "$ref": "#/components/schemas/GpuTelemetry"
+          },
+          "models_loaded": {
+            "title": "Models Loaded",
+            "type": "boolean"
+          },
+          "models_status": {
+            "items": {
+              "$ref": "#/components/schemas/ModelStatusItem"
+            },
+            "title": "Models Status",
+            "type": "array"
+          },
+          "sage_attention": {
+            "title": "Sage Attention",
+            "type": "boolean"
+          },
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "models_loaded",
+          "active_model",
+          "gpu_info",
+          "sage_attention",
+          "models_status"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "IcLoraExtractRequest": {
+        "properties": {
+          "conditioning_type": {
+            "default": "canny",
+            "enum": [
+              "canny",
+              "depth"
+            ],
+            "title": "Conditioning Type",
+            "type": "string"
+          },
+          "frame_time": {
+            "default": 0,
+            "title": "Frame Time",
+            "type": "number"
+          },
+          "video_path": {
+            "title": "Video Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "video_path"
+        ],
+        "title": "IcLoraExtractRequest",
+        "type": "object"
+      },
+      "IcLoraExtractResponse": {
+        "properties": {
+          "conditioning": {
+            "title": "Conditioning",
+            "type": "string"
+          },
+          "conditioning_type": {
+            "enum": [
+              "canny",
+              "depth"
+            ],
+            "title": "Conditioning Type",
+            "type": "string"
+          },
+          "frame_time": {
+            "title": "Frame Time",
+            "type": "number"
+          },
+          "original": {
+            "title": "Original",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conditioning",
+          "original",
+          "conditioning_type",
+          "frame_time"
+        ],
+        "title": "IcLoraExtractResponse",
+        "type": "object"
+      },
+      "IcLoraGenerateCancelledResponse": {
+        "properties": {
+          "status": {
+            "const": "cancelled",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "IcLoraGenerateCancelledResponse",
+        "type": "object"
+      },
+      "IcLoraGenerateCompleteResponse": {
+        "properties": {
+          "status": {
+            "const": "complete",
+            "title": "Status",
+            "type": "string"
+          },
+          "video_path": {
+            "title": "Video Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "video_path"
+        ],
+        "title": "IcLoraGenerateCompleteResponse",
+        "type": "object"
+      },
+      "IcLoraGenerateRequest": {
+        "properties": {
+          "cfg_guidance_scale": {
+            "default": 1.0,
+            "title": "Cfg Guidance Scale",
+            "type": "number"
+          },
+          "conditioning_strength": {
+            "default": 1.0,
+            "title": "Conditioning Strength",
+            "type": "number"
+          },
+          "conditioning_type": {
+            "enum": [
+              "canny",
+              "depth"
+            ],
+            "title": "Conditioning Type",
+            "type": "string"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/IcLoraImageInput"
+            },
+            "title": "Images",
+            "type": "array"
+          },
+          "negative_prompt": {
+            "default": "",
+            "title": "Negative Prompt",
+            "type": "string"
+          },
+          "num_inference_steps": {
+            "default": 30,
+            "title": "Num Inference Steps",
+            "type": "integer"
+          },
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "video_path": {
+            "title": "Video Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "video_path",
+          "conditioning_type",
+          "prompt"
+        ],
+        "title": "IcLoraGenerateRequest",
+        "type": "object"
+      },
+      "IcLoraImageInput": {
+        "properties": {
+          "frame": {
+            "default": 0,
+            "title": "Frame",
+            "type": "integer"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "strength": {
+            "default": 1.0,
+            "title": "Strength",
+            "type": "number"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "IcLoraImageInput",
+        "type": "object"
+      },
+      "ModelDownloadRequest": {
+        "properties": {
+          "modelTypes": {
+            "items": {
+              "enum": [
+                "checkpoint",
+                "upsampler",
+                "distilled_lora",
+                "ic_lora",
+                "depth_processor",
+                "person_detector",
+                "pose_processor",
+                "text_encoder",
+                "zit"
+              ],
+              "type": "string"
+            },
+            "title": "Modeltypes",
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "title": "ModelDownloadRequest",
+        "type": "object"
+      },
+      "ModelDownloadStartResponse": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "status": {
+            "const": "started",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message",
+          "sessionId"
+        ],
+        "title": "ModelDownloadStartResponse",
+        "type": "object"
+      },
+      "ModelFileStatus": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "downloaded": {
+            "title": "Downloaded",
+            "type": "boolean"
+          },
+          "expected_size": {
+            "title": "Expected Size",
+            "type": "integer"
+          },
+          "id": {
+            "enum": [
+              "checkpoint",
+              "upsampler",
+              "distilled_lora",
+              "ic_lora",
+              "depth_processor",
+              "person_detector",
+              "pose_processor",
+              "text_encoder",
+              "zit"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "is_folder": {
+            "default": false,
+            "title": "Is Folder",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "optional_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Optional Reason"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "downloaded",
+          "size",
+          "expected_size"
+        ],
+        "title": "ModelFileStatus",
+        "type": "object"
+      },
+      "ModelInfo": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description"
+        ],
+        "title": "ModelInfo",
+        "type": "object"
+      },
+      "ModelStatusItem": {
+        "properties": {
+          "downloaded": {
+            "title": "Downloaded",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "loaded",
+          "downloaded"
+        ],
+        "title": "ModelStatusItem",
+        "type": "object"
+      },
+      "ModelsStatusResponse": {
+        "properties": {
+          "all_downloaded": {
+            "title": "All Downloaded",
+            "type": "boolean"
+          },
+          "downloaded_size": {
+            "title": "Downloaded Size",
+            "type": "integer"
+          },
+          "downloaded_size_gb": {
+            "title": "Downloaded Size Gb",
+            "type": "number"
+          },
+          "has_api_key": {
+            "title": "Has Api Key",
+            "type": "boolean"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelFileStatus"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "models_path": {
+            "title": "Models Path",
+            "type": "string"
+          },
+          "text_encoder_status": {
+            "$ref": "#/components/schemas/TextEncoderStatus"
+          },
+          "total_size": {
+            "title": "Total Size",
+            "type": "integer"
+          },
+          "total_size_gb": {
+            "title": "Total Size Gb",
+            "type": "number"
+          },
+          "use_local_text_encoder": {
+            "title": "Use Local Text Encoder",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "models",
+          "all_downloaded",
+          "total_size",
+          "downloaded_size",
+          "total_size_gb",
+          "downloaded_size_gb",
+          "models_path",
+          "has_api_key",
+          "text_encoder_status",
+          "use_local_text_encoder"
+        ],
+        "title": "ModelsStatusResponse",
+        "type": "object"
+      },
+      "ProModelSettings": {
+        "properties": {
+          "steps": {
+            "default": 20,
+            "title": "Steps",
+            "type": "integer"
+          },
+          "useUpscaler": {
+            "default": true,
+            "title": "Useupscaler",
+            "type": "boolean"
+          }
+        },
+        "title": "ProModelSettings",
+        "type": "object"
+      },
+      "ProModelSettingsPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
+          },
+          "useUpscaler": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Useupscaler"
+          }
+        },
+        "title": "ProModelSettingsPatch",
+        "type": "object"
+      },
+      "RequiredModelsResponse": {
+        "properties": {
+          "modelTypes": {
+            "items": {
+              "enum": [
+                "checkpoint",
+                "upsampler",
+                "distilled_lora",
+                "ic_lora",
+                "depth_processor",
+                "person_detector",
+                "pose_processor",
+                "text_encoder",
+                "zit"
+              ],
+              "type": "string"
+            },
+            "title": "Modeltypes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "modelTypes"
+        ],
+        "title": "RequiredModelsResponse",
+        "type": "object"
+      },
+      "RetakeCancelledResponse": {
+        "properties": {
+          "status": {
+            "const": "cancelled",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "RetakeCancelledResponse",
+        "type": "object"
+      },
+      "RetakePayloadResponse": {
+        "properties": {
+          "result": {
+            "additionalProperties": true,
+            "title": "Result",
+            "type": "object"
+          },
+          "status": {
+            "const": "complete",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "result"
+        ],
+        "title": "RetakePayloadResponse",
+        "type": "object"
+      },
+      "RetakeRequest": {
+        "properties": {
+          "duration": {
+            "title": "Duration",
+            "type": "number"
+          },
+          "mode": {
+            "default": "replace_audio_and_video",
+            "enum": [
+              "replace_audio_and_video",
+              "replace_video",
+              "replace_audio"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "prompt": {
+            "default": "",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "number"
+          },
+          "video_path": {
+            "title": "Video Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "video_path",
+          "start_time",
+          "duration"
+        ],
+        "title": "RetakeRequest",
+        "type": "object"
+      },
+      "RetakeVideoResponse": {
+        "properties": {
+          "status": {
+            "const": "complete",
+            "title": "Status",
+            "type": "string"
+          },
+          "video_path": {
+            "title": "Video Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "video_path"
+        ],
+        "title": "RetakeVideoResponse",
+        "type": "object"
+      },
+      "RuntimePolicyResponse": {
+        "properties": {
+          "force_api_generations": {
+            "title": "Force Api Generations",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "force_api_generations"
+        ],
+        "title": "RuntimePolicyResponse",
+        "type": "object"
+      },
+      "SettingsResponse": {
+        "properties": {
+          "fastModel": {
+            "$ref": "#/components/schemas/FastModelSettings"
+          },
+          "hasFalApiKey": {
+            "default": false,
+            "title": "Hasfalapikey",
+            "type": "boolean"
+          },
+          "hasGeminiApiKey": {
+            "default": false,
+            "title": "Hasgeminiapikey",
+            "type": "boolean"
+          },
+          "hasLtxApiKey": {
+            "default": false,
+            "title": "Hasltxapikey",
+            "type": "boolean"
+          },
+          "loadOnStartup": {
+            "default": false,
+            "title": "Loadonstartup",
+            "type": "boolean"
+          },
+          "lockedSeed": {
+            "default": 42,
+            "title": "Lockedseed",
+            "type": "integer"
+          },
+          "modelsDir": {
+            "default": "",
+            "title": "Modelsdir",
+            "type": "string"
+          },
+          "proModel": {
+            "$ref": "#/components/schemas/ProModelSettings"
+          },
+          "promptCacheSize": {
+            "default": 100,
+            "title": "Promptcachesize",
+            "type": "integer"
+          },
+          "promptEnhancerEnabledI2V": {
+            "default": false,
+            "title": "Promptenhancerenabledi2V",
+            "type": "boolean"
+          },
+          "promptEnhancerEnabledT2V": {
+            "default": true,
+            "title": "Promptenhancerenabledt2V",
+            "type": "boolean"
+          },
+          "seedLocked": {
+            "default": false,
+            "title": "Seedlocked",
+            "type": "boolean"
+          },
+          "useLocalTextEncoder": {
+            "default": false,
+            "title": "Uselocaltextencoder",
+            "type": "boolean"
+          },
+          "useTorchCompile": {
+            "default": false,
+            "title": "Usetorchcompile",
+            "type": "boolean"
+          },
+          "userPrefersLtxApiVideoGenerations": {
+            "default": false,
+            "title": "Userprefersltxapivideogenerations",
+            "type": "boolean"
+          }
+        },
+        "title": "SettingsResponse",
+        "type": "object"
+      },
+      "StatusResponse": {
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "StatusResponse",
+        "type": "object"
+      },
+      "SuggestGapPromptRequest": {
+        "properties": {
+          "afterFrame": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Afterframe"
+          },
+          "afterPrompt": {
+            "default": "",
+            "title": "Afterprompt",
+            "type": "string"
+          },
+          "beforeFrame": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Beforeframe"
+          },
+          "beforePrompt": {
+            "default": "",
+            "title": "Beforeprompt",
+            "type": "string"
+          },
+          "gapDuration": {
+            "default": 5,
+            "title": "Gapduration",
+            "type": "number"
+          },
+          "inputImage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputimage"
+          },
+          "mode": {
+            "default": "text-to-video",
+            "enum": [
+              "text-to-video",
+              "image-to-video",
+              "text-to-image"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "SuggestGapPromptRequest",
+        "type": "object"
+      },
+      "SuggestGapPromptResponse": {
+        "properties": {
+          "status": {
+            "const": "success",
+            "default": "success",
+            "title": "Status",
+            "type": "string"
+          },
+          "suggested_prompt": {
+            "title": "Suggested Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "suggested_prompt"
+        ],
+        "title": "SuggestGapPromptResponse",
+        "type": "object"
+      },
+      "TextEncoderAlreadyDownloadedResponse": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "const": "already_downloaded",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "TextEncoderAlreadyDownloadedResponse",
+        "type": "object"
+      },
+      "TextEncoderDownloadStartedResponse": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "status": {
+            "const": "started",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message",
+          "sessionId"
+        ],
+        "title": "TextEncoderDownloadStartedResponse",
+        "type": "object"
+      },
+      "TextEncoderStatus": {
+        "properties": {
+          "downloaded": {
+            "title": "Downloaded",
+            "type": "boolean"
+          },
+          "expected_size_gb": {
+            "title": "Expected Size Gb",
+            "type": "number"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "size_gb": {
+            "title": "Size Gb",
+            "type": "number"
+          }
+        },
+        "required": [
+          "downloaded",
+          "size_bytes",
+          "size_gb",
+          "expected_size_gb"
+        ],
+        "title": "TextEncoderStatus",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "LTX-2 Video Generation Server",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/generate": {
+      "post": {
+        "description": "POST /api/generate — video generation from JSON body.",
+        "operationId": "route_generate_api_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateVideoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/GenerateVideoCompleteResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/GenerateVideoCancelledResponse"
+                    }
+                  ],
+                  "title": "Response Route Generate Api Generate Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Route Generate",
+        "tags": [
+          "generation"
+        ]
+      }
+    },
+    "/api/generate-image": {
+      "post": {
+        "description": "POST /api/generate-image.",
+        "operationId": "route_generate_image_api_generate_image_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateImageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/GenerateImageCompleteResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/GenerateImageCancelledResponse"
+                    }
+                  ],
+                  "title": "Response Route Generate Image Api Generate Image Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Route Generate Image",
+        "tags": [
+          "image"
+        ]
+      }
+    },
+    "/api/generate/cancel": {
+      "post": {
+        "description": "POST /api/generate/cancel.",
+        "operationId": "route_generate_cancel_api_generate_cancel_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CancelCancellingResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CancelNoActiveGenerationResponse"
+                    }
+                  ],
+                  "title": "Response Route Generate Cancel Api Generate Cancel Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Route Generate Cancel",
+        "tags": [
+          "generation"
+        ]
+      }
+    },
+    "/api/generation/progress": {
+      "get": {
+        "description": "GET /api/generation/progress.",
+        "operationId": "route_generation_progress_api_generation_progress_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationProgressResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Route Generation Progress",
+        "tags": [
+          "generation"
+        ]
+      }
+    },
+    "/api/gpu-info": {
+      "get": {
+        "operationId": "route_gpu_info_api_gpu_info_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GpuInfoResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Route Gpu Info",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/ic-lora/extract-conditioning": {
+      "post": {
+        "operationId": "route_ic_lora_extract_api_ic_lora_extract_conditioning_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IcLoraExtractRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IcLoraExtractResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Route Ic Lora Extract",
+        "tags": [
+          "ic-lora"
+        ]
+      }
+    },
+    "/api/ic-lora/generate": {
+      "post": {
+        "operationId": "route_ic_lora_generate_api_ic_lora_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IcLoraGenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/IcLoraGenerateCompleteResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IcLoraGenerateCancelledResponse"
+                    }
+                  ],
+                  "title": "Response Route Ic Lora Generate Api Ic Lora Generate Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Route Ic Lora Generate",
+        "tags": [
+          "ic-lora"
+        ]
+      }
+    },
+    "/api/models": {
+      "get": {
+        "operationId": "route_models_list_api_models_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ModelInfo"
+                  },
+                  "title": "Response Route Models List Api Models Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Route Models List",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/models/download": {
+      "post": {
+        "operationId": "route_model_download_api_models_download_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelDownloadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelDownloadStartResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Route Model Download",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/models/download/progress": {
+      "get": {
+        "operationId": "route_download_progress_api_models_download_progress_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "title": "Sessionid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DownloadProgressRunningResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DownloadProgressCompleteResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DownloadProgressErrorResponse"
+                    }
+                  ],
+                  "title": "Response Route Download Progress Api Models Download Progress Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Route Download Progress",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/models/required-models": {
+      "get": {
+        "operationId": "route_required_models_api_models_required_models_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "skipTextEncoder",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Skiptextencoder",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequiredModelsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Route Required Models",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/models/status": {
+      "get": {
+        "operationId": "route_models_status_api_models_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelsStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Route Models Status",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/retake": {
+      "post": {
+        "operationId": "route_retake_api_retake_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetakeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RetakeVideoResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RetakePayloadResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RetakeCancelledResponse"
+                    }
+                  ],
+                  "title": "Response Route Retake Api Retake Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Route Retake",
+        "tags": [
+          "retake"
+        ]
+      }
+    },
+    "/api/runtime-policy": {
+      "get": {
+        "operationId": "route_runtime_policy_api_runtime_policy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimePolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Route Runtime Policy",
+        "tags": [
+          "runtime-policy"
+        ]
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "operationId": "route_get_settings_api_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Route Get Settings",
+        "tags": [
+          "settings"
+        ]
+      },
+      "post": {
+        "operationId": "route_post_settings_api_settings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppSettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Route Post Settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/suggest-gap-prompt": {
+      "post": {
+        "operationId": "route_suggest_gap_prompt_api_suggest_gap_prompt_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestGapPromptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestGapPromptResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Route Suggest Gap Prompt",
+        "tags": [
+          "prompt"
+        ]
+      }
+    },
+    "/api/system/shutdown": {
+      "post": {
+        "operationId": "route_shutdown_api_system_shutdown_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Route Shutdown Api System Shutdown Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Route Shutdown",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/text-encoder/download": {
+      "post": {
+        "operationId": "route_text_encoder_download_api_text_encoder_download_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TextEncoderDownloadStartedResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TextEncoderAlreadyDownloadedResponse"
+                    }
+                  ],
+                  "title": "Response Route Text Encoder Download Api Text Encoder Download Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Route Text Encoder Download",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "route_health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Route Health",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

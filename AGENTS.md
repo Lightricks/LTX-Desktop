@@ -34,7 +34,7 @@ PRs must pass: `pnpm typecheck` + `pnpm backend:test` + frontend Vite build.
 
 - **Path alias**: `@/*` maps to `frontend/*`
 - **State management**: React contexts only (`ProjectContext`, `AppSettingsContext`, `KeyboardShortcutsContext`) — no Redux/Zustand
-- **Routing**: View-based via `ProjectContext` with views: `home`, `project`, `playground`
+- **Routing**: View-based via `ProjectContext` with views: `home`, `project`
 - **IPC bridge**: All Electron communication through `window.electronAPI` (defined in `electron/preload.ts`)
 - **Backend calls**: Always use `backendFetch` from `frontend/lib/backend.ts` for app backend HTTP requests (it attaches auth/session details). Do not call `fetch` directly for backend endpoints.
 - **Styling**: Tailwind with custom semantic color tokens via CSS variables; utilities from `class-variance-authority` + `clsx` + `tailwind-merge`

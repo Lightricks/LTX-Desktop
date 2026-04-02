@@ -7,7 +7,7 @@ import mimetypes
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from api_types import VideoCameraMotion
+from api_types import RetakeMode, VideoCameraMotion
 from pydantic import BaseModel, ConfigDict, ValidationError
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError, LTXRetakeResult
 from services.http_client.http_client import HTTPClient
@@ -155,7 +155,7 @@ class LTXAPIClientImpl:
         start_time: float,
         duration: float,
         prompt: str,
-        mode: str,
+        mode: RetakeMode,
     ) -> LTXRetakeResult:
         try:
             storage_uri = self.upload_file(api_key=api_key, file_path=video_path)

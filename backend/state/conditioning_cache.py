@@ -6,12 +6,14 @@ import logging
 from pathlib import Path
 from typing import NamedTuple
 
+from api_types import ConditioningType
+
 logger = logging.getLogger(__name__)
 
 
 class ConditioningCacheKey(NamedTuple):
     video_path: str
-    conditioning_type: str
+    conditioning_type: ConditioningType
 
 
 class ConditioningCacheEntry(NamedTuple):

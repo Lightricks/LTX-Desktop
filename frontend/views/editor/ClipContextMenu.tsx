@@ -10,8 +10,12 @@ import type { Asset, TimelineClip, Track, TextOverlayStyle } from '../../types/p
 import { TEXT_PRESETS } from '../../types/project'
 import { COLOR_LABELS } from './video-editor-utils'
 
+export type ClipContextMenuState =
+  | { kind: 'background'; x: number; y: number }
+  | { kind: 'clip'; clipId: string; x: number; y: number }
+
 export interface ClipContextMenuProps {
-  clipContextMenu: { clipId: string; x: number; y: number }
+  clipContextMenu: ClipContextMenuState
   contextClip: TimelineClip | null
   clipContextMenuRef: React.RefObject<HTMLDivElement>
   clips: TimelineClip[]
@@ -21,17 +25,13 @@ export interface ClipContextMenuProps {
   currentTime: number
   hasClipboard: boolean
   isRegenerating: boolean
-  i2vClipId: string | null
-  assets: Asset[]
-  assetGridRef: React.RefObject<HTMLDivElement | null>
   currentProjectId: string | null
   updateAsset: (projectId: string, assetId: string, updates: Partial<Asset>) => void
   handleCopy: () => void
   handleCut: () => void
   handlePaste: () => void
-  setClipContextMenu: React.Dispatch<React.SetStateAction<{ clipId: string; x: number; y: number } | null>>
+  setClipContextMenu: React.Dispatch<React.SetStateAction<ClipContextMenuState | null>>
   addTextClip: (style?: Partial<TextOverlayStyle>, startTime?: number) => void
-  pushUndo: () => void
   setClips: React.Dispatch<React.SetStateAction<TimelineClip[]>>
   handleRegenerate: (assetId: string, clipId: string) => void
   handleCancelRegeneration: () => void
@@ -43,12 +43,8 @@ export interface ClipContextMenuProps {
   updateClip: (clipId: string, updates: Partial<TimelineClip>) => void
   getLiveAsset: (clip: TimelineClip) => Asset | null | undefined
   getMaxClipDuration: (clip: TimelineClip) => number
-  setAssetFilter: (v: 'all' | 'video' | 'image' | 'audio') => void
-  setSelectedBin: (v: string | null) => void
-  setTakesViewAssetId: (v: string | null) => void
-  setSelectedAssetIds: React.Dispatch<React.SetStateAction<Set<string>>>
-  setI2vClipId: (v: string | null) => void
-  setI2vPrompt: (v: string) => void
+  onRevealAsset: (assetId: string) => void
+  onCreateVideoFromImage: (clip: TimelineClip) => void
   onRetakeClip: (clip: TimelineClip) => void
   onICLoraClip: (clip: TimelineClip) => void
   canUseIcLora: boolean
@@ -100,9 +96,6 @@ export function ClipContextMenu({
   currentTime,
   hasClipboard,
   isRegenerating,
-  i2vClipId,
-  assets,
-  assetGridRef,
   currentProjectId,
   updateAsset,
   handleCopy,
@@ -110,7 +103,6 @@ export function ClipContextMenu({
   handlePaste,
   setClipContextMenu,
   addTextClip,
-  pushUndo,
   setClips,
   handleRegenerate,
   handleCancelRegeneration,
@@ -122,12 +114,8 @@ export function ClipContextMenu({
   updateClip,
   getLiveAsset,
   getMaxClipDuration,
-  setAssetFilter,
-  setSelectedBin,
-  setTakesViewAssetId,
-  setSelectedAssetIds,
-  setI2vClipId,
-  setI2vPrompt,
+  onRevealAsset,
+  onCreateVideoFromImage,
   onRetakeClip,
   onICLoraClip,
   canUseIcLora,
@@ -135,12 +123,12 @@ export function ClipContextMenu({
   onCreateVideoFromAudio,
 }: ClipContextMenuProps) {
   const close = () => setClipContextMenu(null)
-  const isBackground = !contextClip
+  const isBackground = clipContextMenu.kind === 'background'
 
   // Check if all selected clips are in the same linked group — if so, treat as single selection
   const multiSelected = (() => {
     if (selectedClipIds.size <= 1) return false
-    if (!contextClip) return selectedClipIds.size > 1
+    if (!contextClip) return clipContextMenu.kind === 'background'
     // Expand the linked group of the context clip
     const linkedGroup = new Set([contextClip.id])
     const queue = [contextClip.id]
@@ -202,7 +190,7 @@ export function ClipContextMenu({
           currentProjectId={currentProjectId}
           updateAsset={updateAsset}
           handleCopy={handleCopy} handleCut={handleCut} handlePaste={handlePaste}
-          pushUndo={pushUndo} setClips={setClips}
+          setClips={setClips}
           getMaxClipDuration={getMaxClipDuration}
           close={close}
         />
@@ -222,13 +210,11 @@ export function ClipContextMenu({
           })()}
           clips={clips}
           hasClipboard={hasClipboard}
-          isRegenerating={isRegenerating} i2vClipId={i2vClipId}
-          assets={assets}
-          assetGridRef={assetGridRef}
+          isRegenerating={isRegenerating}
           currentProjectId={currentProjectId}
           updateAsset={updateAsset}
           handleCopy={handleCopy} handleCut={handleCut} handlePaste={handlePaste}
-          pushUndo={pushUndo} setClips={setClips}
+          setClips={setClips}
           handleRegenerate={handleRegenerate}
           handleCancelRegeneration={handleCancelRegeneration}
           handleClipTakeChange={handleClipTakeChange}
@@ -239,12 +225,8 @@ export function ClipContextMenu({
           updateClip={updateClip}
           getLiveAsset={getLiveAsset}
           getMaxClipDuration={getMaxClipDuration}
-          setAssetFilter={setAssetFilter}
-          setSelectedBin={setSelectedBin}
-          setTakesViewAssetId={setTakesViewAssetId}
-          setSelectedAssetIds={setSelectedAssetIds}
-          setI2vClipId={setI2vClipId}
-          setI2vPrompt={setI2vPrompt}
+          onRevealAsset={onRevealAsset}
+          onCreateVideoFromImage={onCreateVideoFromImage}
           onRetakeClip={onRetakeClip}
           onICLoraClip={onICLoraClip}
           canUseIcLora={canUseIcLora}
@@ -271,15 +253,15 @@ export function ClipContextMenu({
    ────────────────────────────────────────────── */
 function SingleClipMenu({
   contextClip, clips, hasClipboard,
-  isRegenerating, i2vClipId, assets, assetGridRef,
+  isRegenerating,
   currentProjectId, updateAsset,
-  handleCopy, handleCut, handlePaste, pushUndo, setClips,
+  handleCopy, handleCut, handlePaste, setClips,
   handleRegenerate, handleCancelRegeneration,
   handleClipTakeChange, handleDeleteTake,
   duplicateClip, splitClipAtPlayhead, removeClip, updateClip,
   getLiveAsset, getMaxClipDuration,
-  setAssetFilter, setSelectedBin, setTakesViewAssetId, setSelectedAssetIds,
-  setI2vClipId, setI2vPrompt, onRetakeClip, onICLoraClip, canUseIcLora,
+  onRevealAsset,
+  onCreateVideoFromImage, onRetakeClip, onICLoraClip, canUseIcLora,
   onCaptureFrameForVideo,
   onCreateVideoFromAudio,
   close,
@@ -287,13 +269,11 @@ function SingleClipMenu({
   contextClip: TimelineClip
   clips: TimelineClip[]
   hasClipboard: boolean
-  isRegenerating: boolean; i2vClipId: string | null
-  assets: Asset[]
-  assetGridRef: React.RefObject<HTMLDivElement | null>
+  isRegenerating: boolean
   currentProjectId: string | null
   updateAsset: (projectId: string, assetId: string, updates: Partial<Asset>) => void
   handleCopy: () => void; handleCut: () => void; handlePaste: () => void
-  pushUndo: () => void; setClips: React.Dispatch<React.SetStateAction<TimelineClip[]>>
+  setClips: React.Dispatch<React.SetStateAction<TimelineClip[]>>
   handleRegenerate: (assetId: string, clipId: string) => void
   handleCancelRegeneration: () => void
   handleClipTakeChange: (clipId: string, direction: 'prev' | 'next') => void
@@ -304,12 +284,8 @@ function SingleClipMenu({
   updateClip: (clipId: string, updates: Partial<TimelineClip>) => void
   getLiveAsset: (clip: TimelineClip) => Asset | null | undefined
   getMaxClipDuration: (clip: TimelineClip) => number
-  setAssetFilter: (v: 'all' | 'video' | 'image' | 'audio') => void
-  setSelectedBin: (v: string | null) => void
-  setTakesViewAssetId: (v: string | null) => void
-  setSelectedAssetIds: React.Dispatch<React.SetStateAction<Set<string>>>
-  setI2vClipId: (v: string | null) => void
-  setI2vPrompt: (v: string) => void
+  onRevealAsset: (assetId: string) => void
+  onCreateVideoFromImage: (clip: TimelineClip) => void
   onRetakeClip: (clip: TimelineClip) => void
   onICLoraClip: (clip: TimelineClip) => void
   canUseIcLora: boolean
@@ -387,7 +363,6 @@ function SingleClipMenu({
       {/* ── 5. Structure (Link / Track) ── */}
       {contextClip.linkedClipIds?.length ? (
         <MenuItem icon={Unlink2} label="Unlink Audio" onClick={() => {
-          pushUndo()
           const allLinked = new Set(contextClip.linkedClipIds!)
           setClips(prev => prev.map(c => {
             if (c.id === contextClip.id) return { ...c, linkedClipIds: undefined }
@@ -409,7 +384,6 @@ function SingleClipMenu({
         if (!candidates.length) return null
         return (
           <MenuItem icon={Link2} label="Link Audio" onClick={() => {
-            pushUndo()
             const candidateIds = candidates.map(c => c.id)
             setClips(prev => prev.map(c => {
               if (c.id === contextClip.id) return { ...c, linkedClipIds: candidateIds }
@@ -429,7 +403,6 @@ function SingleClipMenu({
           onClick={() => {
             if (contextClip.assetId) {
               // Update ALL clips that share this asset
-              pushUndo()
               setClips(prev => prev.map(c => c.assetId === contextClip.assetId ? { ...c, colorLabel: undefined } : c))
               if (currentProjectId) updateAsset(currentProjectId, contextClip.assetId, { colorLabel: undefined })
             } else {
@@ -450,7 +423,6 @@ function SingleClipMenu({
             onClick={() => {
               if (contextClip.assetId) {
                 // Update ALL clips that share this asset
-                pushUndo()
                 setClips(prev => prev.map(c => c.assetId === contextClip.assetId ? { ...c, colorLabel: cl.id } : c))
                 if (currentProjectId) updateAsset(currentProjectId, contextClip.assetId, { colorLabel: cl.id })
               } else {
@@ -516,8 +488,7 @@ function SingleClipMenu({
           )}
           {isImage && (
             <MenuItem icon={Film} iconClass="text-blue-400" label="Image to Video (I2V)"
-              disabled={isRegenerating && i2vClipId === contextClip.id}
-              onClick={() => { setI2vClipId(contextClip.id); setI2vPrompt(contextClip.asset?.prompt || ''); close() }} />
+              onClick={() => { onCreateVideoFromImage(contextClip); close() }} />
           )}
           {isVideo && contextClip.assetId && (
             <>
@@ -551,8 +522,7 @@ function SingleClipMenu({
                   onClick={() => { onCaptureFrameForVideo(contextClip); close() }} />
                 {isImage && (
                   <MenuItem icon={Film} iconClass="text-blue-400" label="Image to Video (I2V)"
-                    disabled={isRegenerating && i2vClipId === contextClip.id}
-                    onClick={() => { setI2vClipId(contextClip.id); setI2vPrompt(contextClip.asset?.prompt || ''); close() }} />
+                    onClick={() => { onCreateVideoFromImage(contextClip); close() }} />
                 )}
               </div>
             </div>
@@ -566,15 +536,7 @@ function SingleClipMenu({
           <Divider />
           {contextClip.assetId && (
             <MenuItem icon={Eye} label="Reveal in Assets" onClick={() => {
-              const asset = assets.find(a => a.id === contextClip.assetId)
-              if (asset) {
-                setAssetFilter('all'); setSelectedBin(asset.bin ?? null)
-                setTakesViewAssetId(null); setSelectedAssetIds(new Set([asset.id]))
-                setTimeout(() => {
-                  const card = assetGridRef.current?.querySelector(`[data-asset-id="${asset.id}"]`)
-                  card?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                }, 100)
-              }
+              onRevealAsset(contextClip.assetId!)
               close()
             }} />
           )}
@@ -589,7 +551,7 @@ function SingleClipMenu({
             const label = window.electronAPI?.platform === 'darwin' ? 'Reveal in Finder'
               : window.electronAPI?.platform === 'linux' ? 'Show in Files'
               : 'Show in Explorer'
-            return <MenuItem icon={FolderOpen} label={label} onClick={() => { window.electronAPI?.showItemInFolder(filePath); close() }} />
+            return <MenuItem icon={FolderOpen} label={label} onClick={() => { window.electronAPI?.showItemInFolder({ filePath }); close() }} />
           })()}
         </>
       )}
@@ -614,7 +576,7 @@ function SingleClipMenu({
 function MultiClipMenu({
   clips, selectedClipIds, setSelectedClipIds, hasClipboard,
   currentProjectId, updateAsset,
-  handleCopy, handleCut, handlePaste, pushUndo, setClips, getMaxClipDuration, close,
+  handleCopy, handleCut, handlePaste, setClips, getMaxClipDuration, close,
 }: {
   clips: TimelineClip[]
   selectedClipIds: Set<string>; setSelectedClipIds: React.Dispatch<React.SetStateAction<Set<string>>>
@@ -622,7 +584,7 @@ function MultiClipMenu({
   currentProjectId: string | null
   updateAsset: (projectId: string, assetId: string, updates: Partial<Asset>) => void
   handleCopy: () => void; handleCut: () => void; handlePaste: () => void
-  pushUndo: () => void; setClips: React.Dispatch<React.SetStateAction<TimelineClip[]>>
+  setClips: React.Dispatch<React.SetStateAction<TimelineClip[]>>
   getMaxClipDuration: (clip: TimelineClip) => number
   close: () => void
 }) {
@@ -633,7 +595,6 @@ function MultiClipMenu({
   const allFlipH = selectedClips.every(c => c.flipH)
   const allFlipV = selectedClips.every(c => c.flipV)
   const batchUpdate = (updates: Partial<TimelineClip>) => {
-    pushUndo()
     setClips(prev => prev.map(c => selectedClipIds.has(c.id) ? { ...c, ...updates } : c))
     close()
   }
@@ -664,7 +625,6 @@ function MultiClipMenu({
           <button
             key={speed}
             onClick={() => {
-              pushUndo()
               setClips(prev => prev.map(c => {
                 if (!selectedClipIds.has(c.id)) return c
                 const oldSpeed = c.speed
@@ -704,7 +664,6 @@ function MultiClipMenu({
       {/* ── 4. Structure ── */}
       {anyLinked && (
         <MenuItem icon={Unlink2} label="Unlink" onClick={() => {
-          pushUndo()
           const selIds = new Set(selectedClipIds)
           setClips(prev => prev.map(c => {
             if (!selIds.has(c.id)) return c
@@ -716,7 +675,6 @@ function MultiClipMenu({
       )}
       {hasVideoAndAudio && !allFullyLinked && (
         <MenuItem icon={Link2} label="Link" onClick={() => {
-          pushUndo()
           const selIds = [...selectedClipIds]
           setClips(prev => prev.map(c => {
             if (!selectedClipIds.has(c.id)) return c
@@ -735,7 +693,6 @@ function MultiClipMenu({
       <div className="px-3 py-1.5 flex items-center gap-1 flex-wrap">
         <button
           onClick={() => {
-            pushUndo()
             const affectedAssetIds = new Set(selectedClips.map(c => c.assetId).filter(Boolean) as string[])
             // Update selected clips AND all other clips sharing the same assets
             setClips(prev => prev.map(c => {
@@ -758,7 +715,6 @@ function MultiClipMenu({
           <button
             key={cl.id}
             onClick={() => {
-              pushUndo()
               const affectedAssetIds = new Set(selectedClips.map(c => c.assetId).filter(Boolean) as string[])
               // Update selected clips AND all other clips sharing the same assets
               setClips(prev => prev.map(c => {
@@ -782,7 +738,6 @@ function MultiClipMenu({
       {/* ── 6. Delete ── */}
       <Divider />
       <MenuItem icon={Trash2} label={`Delete ${n} Clips`} shortcut="Del" danger onClick={() => {
-        pushUndo()
         setClips(prev => prev.filter(c => !selectedClipIds.has(c.id)).map(c => {
           if (!c.linkedClipIds) return c
           const remaining = c.linkedClipIds.filter(lid => !selectedClipIds.has(lid))

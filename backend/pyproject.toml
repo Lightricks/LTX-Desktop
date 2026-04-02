@@ -41,8 +41,8 @@ torch = [
 ]
 torchaudio = { index = "pytorch-cu128" }
 diffusers = { git = "https://github.com/huggingface/diffusers.git", rev = "01de02e8b4f2cc91df4f3e91cb6535ebcbeb490c" }
-ltx-core = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-core", rev = "00dc53d3f81c405932f9f16d9c57557de411e702" }
-ltx-pipelines = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-pipelines", rev = "00dc53d3f81c405932f9f16d9c57557de411e702" }
+ltx-core = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-core", rev = "59ca828d5ae24358832ffd7003c2306fbceeba3a" }
+ltx-pipelines = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-pipelines", rev = "59ca828d5ae24358832ffd7003c2306fbceeba3a" }
 
 [project.optional-dependencies]
 test = ["pytest>=8.0", "requests>=2.31", "httpx>=0.27"]

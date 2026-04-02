@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { backendFetch } from '../lib/backend'
+import { ApiClient } from '../lib/api-client'
 import { logger } from '../lib/logger'
 
 export type RetakeMode = 'replace_audio_and_video' | 'replace_video' | 'replace_audio'
@@ -14,7 +14,6 @@ export interface RetakeSubmitParams {
 
 export interface RetakeResult {
   videoPath: string
-  videoUrl: string
 }
 
 interface UseRetakeState {
@@ -43,44 +42,44 @@ export function useRetake() {
     })
 
     try {
-      const response = await backendFetch('/api/retake', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          video_path: params.videoPath,
-          start_time: params.startTime,
-          duration: params.duration,
-          prompt: params.prompt,
-          mode: params.mode,
-        }),
+      const payload = await ApiClient.retake({
+        video_path: params.videoPath,
+        start_time: params.startTime,
+        duration: params.duration,
+        prompt: params.prompt,
+        mode: params.mode,
       })
 
-      const data = await response.json()
+      if (payload.status === 'cancelled') {
+        setState({
+          isRetaking: false,
+          retakeStatus: 'Cancelled',
+          retakeError: null,
+          result: null,
+        })
+        return
+      }
 
-      if (response.ok && data.status === 'complete' && data.video_path) {
-        const pathNormalized = data.video_path.replace(/\\/g, '/')
-        const videoUrl = pathNormalized.startsWith('/') ? `file://${pathNormalized}` : `file:///${pathNormalized}`
-
+      if ('video_path' in payload) {
         setState({
           isRetaking: false,
           retakeStatus: 'Retake complete!',
           retakeError: null,
           result: {
-            videoPath: data.video_path,
-            videoUrl,
+            videoPath: payload.video_path,
           },
         })
         return
       }
 
-      const errorMsg = data.error || 'Unknown error'
+      logger.error(`Retake completed without local video payload: ${JSON.stringify(payload.result)}`)
+      const errorMsg = 'Retake completed but no local video file was returned'
       setState({
         isRetaking: false,
         retakeStatus: '',
         retakeError: errorMsg,
         result: null,
       })
-      logger.error(`Retake failed: ${errorMsg}`)
     } catch (error) {
       const message = (error as Error).message || 'Unknown error'
       logger.error(`Retake error: ${message}`)

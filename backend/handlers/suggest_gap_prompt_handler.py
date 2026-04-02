@@ -86,8 +86,8 @@ class SuggestGapPromptHandler(StateHandlerBase):
         if not gemini_api_key:
             raise HTTPError(400, "GEMINI_API_KEY_MISSING")
 
-        is_image_gen = mode in ("text-to-image", "t2i")
-        is_image_to_video = mode in ("image-to-video", "i2v")
+        is_image_gen = mode == "text-to-image"
+        is_image_to_video = mode == "image-to-video"
         if not is_image_to_video:
             input_image = None
 

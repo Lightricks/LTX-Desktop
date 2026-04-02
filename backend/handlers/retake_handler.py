@@ -8,7 +8,14 @@ from pathlib import Path
 from threading import RLock
 import time
 
-from api_types import RetakeRequest, RetakeResponse
+from api_types import (
+    RetakeCancelledResponse,
+    RetakeMode,
+    RetakePayloadResponse,
+    RetakeRequest,
+    RetakeResponse,
+    RetakeVideoResponse,
+)
 from _routes._errors import HTTPError
 from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
@@ -81,7 +88,7 @@ class RetakeHandler(StateHandlerBase):
         start_time: float,
         duration: float,
         prompt: str,
-        mode: str,
+        mode: RetakeMode,
     ) -> RetakeResponse:
         api_key = self.state.app_settings.ltx_api_key
         if not api_key:
@@ -103,10 +110,10 @@ class RetakeHandler(StateHandlerBase):
             output = self.config.outputs_dir / f"retake_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.mp4"
             with open(output, "wb") as out:
                 out.write(result.video_bytes)
-            return RetakeResponse(status="complete", video_path=str(output))
+            return RetakeVideoResponse(status="complete", video_path=str(output))
 
         if result.result_payload is not None:
-            return RetakeResponse(status="complete", result=result.result_payload)
+            return RetakePayloadResponse(status="complete", result=result.result_payload)
 
         raise HTTPError(500, "Retake API returned no result")
 
@@ -117,7 +124,7 @@ class RetakeHandler(StateHandlerBase):
         start_time: float,
         duration: float,
         prompt: str,
-        mode: str,
+        mode: RetakeMode,
     ) -> RetakeResponse:
         if self._generation.is_generation_running():
             raise HTTPError(409, "Generation already in progress")
@@ -167,23 +174,23 @@ class RetakeHandler(StateHandlerBase):
 
             self._generation.update_progress("complete", 100, 1, 1)
             self._generation.complete_generation(str(output_path))
-            return RetakeResponse(status="complete", video_path=str(output_path))
+            return RetakeVideoResponse(status="complete", video_path=str(output_path))
         except HTTPError:
             self._generation.fail_generation("Retake generation failed")
             raise
         except Exception as exc:
             self._generation.fail_generation(str(exc))
             if "cancelled" in str(exc).lower():
-                return RetakeResponse(status="cancelled")
+                return RetakeCancelledResponse(status="cancelled")
             raise HTTPError(500, f"Generation error: {exc}") from exc
         finally:
             self._text.clear_api_embeddings()
 
     @staticmethod
-    def _resolve_retake_mode(mode: str) -> tuple[bool, bool]:
+    def _resolve_retake_mode(mode: RetakeMode) -> tuple[bool, bool]:
         if mode == "replace_audio_and_video":
             return True, True
-        if mode in {"replace_video", "replace_video_only"}:
+        if mode == "replace_video":
             return True, False
         if mode == "replace_audio":
             return False, True
@@ -193,6 +200,8 @@ class RetakeHandler(StateHandlerBase):
         settings = self.state.app_settings
         if settings.seed_locked:
             return settings.locked_seed
+        if self.config.dev_mode:
+            return 1000
         return int(time.time()) % 2147483647
 
     @staticmethod
@@ -200,8 +209,8 @@ class RetakeHandler(StateHandlerBase):
         from ltx_core.types import SpatioTemporalScaleFactors
         from ltx_pipelines.utils.media_io import get_videostream_metadata
 
-        fps, num_frames, width, height = get_videostream_metadata(video_path)
-        del fps
+        meta = get_videostream_metadata(video_path)
+        num_frames, width, height = meta.frames, meta.width, meta.height
         scale = SpatioTemporalScaleFactors.default()
         if (num_frames - 1) % scale.time != 0:
             snapped = ((num_frames - 1) // scale.time) * scale.time + 1

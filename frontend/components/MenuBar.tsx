@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { Search } from 'lucide-react'
 
 // --- Types ---
@@ -30,7 +30,6 @@ export function MenuBar({ menus, rightContent }: MenuBarProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [hoverMenuId, setHoverMenuId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<{ menuLabel: string; item: MenuItem }[]>([])
   const [highlightedResult, setHighlightedResult] = useState(0)
   const menuBarRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -65,37 +64,35 @@ export function MenuBar({ menus, rightContent }: MenuBarProps) {
     return () => document.removeEventListener('keydown', handleKey)
   }, [])
 
-  // Search all menu items
-  const searchAllItems = useCallback((query: string) => {
-    if (!query.trim()) {
-      setSearchResults([])
-      return
-    }
-    const q = query.toLowerCase()
+  const searchResults = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return []
     const results: { menuLabel: string; item: MenuItem }[] = []
     for (const menu of menus) {
       for (const item of menu.items) {
         if (item.separator) continue
-        if (item.label.toLowerCase().includes(q)) {
+        if (item.label.toLowerCase().includes(query)) {
           results.push({ menuLabel: menu.label, item })
         }
         if (item.submenu) {
           for (const sub of item.submenu) {
             if (sub.separator) continue
-            if (sub.label.toLowerCase().includes(q)) {
+            if (sub.label.toLowerCase().includes(query)) {
               results.push({ menuLabel: `${menu.label} > ${item.label}`, item: sub })
             }
           }
         }
       }
     }
-    setSearchResults(results)
-    setHighlightedResult(0)
-  }, [menus])
+    return results
+  }, [menus, searchQuery])
 
   useEffect(() => {
-    searchAllItems(searchQuery)
-  }, [searchQuery, searchAllItems])
+    setHighlightedResult(prev => {
+      if (searchResults.length === 0) return 0
+      return Math.min(prev, searchResults.length - 1)
+    })
+  }, [searchResults.length])
 
   const handleItemClick = (item: MenuItem) => {
     if (item.disabled || !item.action) return

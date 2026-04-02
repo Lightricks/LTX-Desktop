@@ -1,4 +1,5 @@
 import { spawn, spawnSync, ChildProcess, execSync } from 'child_process'
+import os from 'os'
 import path from 'path'
 import fs from 'fs'
 import { isDev, getCurrentDir } from '../config'
@@ -51,26 +52,6 @@ export function fileHasAudio(ffmpegPath: string, filePath: string): boolean {
   }
 }
 
-export function urlToFilePath(url: string): string {
-  // Convert http://127.0.0.1:PORT/outputs/file.mp4 -> backend/outputs/file.mp4
-  if (url.startsWith('http://127.0.0.1') || url.startsWith('http://localhost')) {
-    const urlObj = new URL(url)
-    const relPath = decodeURIComponent(urlObj.pathname).replace(/^\//, '')
-    return path.join(getCurrentDir(), 'backend', relPath)
-  }
-  // file:///Users/path (macOS) -> /Users/path
-  // file:///C:/path (Windows) -> C:/path
-  if (url.startsWith('file://')) {
-    let filePath = decodeURIComponent(url.slice(7)) // strip 'file://'
-    // On Windows, strip leading / from /C:/path
-    if (process.platform === 'win32' && /^\/[A-Za-z]:/.test(filePath)) {
-      filePath = filePath.slice(1)
-    }
-    return filePath
-  }
-  // Already a file path
-  return url
-}
 
 /** Run an ffmpeg command and return a promise. Logs stderr and sets activeExportProcess. */
 export function runFfmpeg(ffmpegPath: string, args: string[]): Promise<{ success: boolean; error?: string }> {
@@ -104,6 +85,93 @@ export function runFfmpeg(ffmpegPath: string, args: string[]): Promise<{ success
       resolve({ success: false, error: `Failed to start ffmpeg: ${err.message}` })
     })
   })
+}
+
+function runFfmpegSyncOrThrow(ffmpegPath: string, args: string[], timeoutMs = 30000): void {
+  logger.info(`[ffmpeg-sync] spawn: ${args.join(' ').slice(0, 400)}`)
+  const result = spawnSync(ffmpegPath, args, { timeout: timeoutMs })
+  if (result.status === 0) return
+  const stderr = (result.stderr?.toString() || '').split('\n').filter(Boolean).slice(-5).join('\n')
+  throw new Error(`FFmpeg failed (code ${result.status}): ${stderr.slice(0, 300)}`)
+}
+
+export function extractVideoFrameToFile({
+  videoPath,
+  seekTime,
+  width,
+  quality,
+  outputPath,
+  timeoutMs = 10000,
+}: {
+  videoPath: string
+  seekTime: number
+  width?: number
+  quality?: number
+  outputPath?: string
+  timeoutMs?: number
+}): string {
+  const ffmpegPath = findFfmpegPath()
+  if (!ffmpegPath) {
+    throw new Error('ffmpeg not found')
+  }
+  if (!fs.existsSync(videoPath)) {
+    throw new Error(`Video file not found: ${videoPath}`)
+  }
+
+  const resolvedOutputPath = outputPath
+    ?? path.join(
+      os.tmpdir(),
+      `ltx_frame_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`,
+    )
+
+  const args: string[] = [
+    '-ss', String(Math.max(0, seekTime)),
+    '-i', videoPath,
+    ...(width ? ['-vf', `scale=${width}:-2`] : []),
+    '-frames:v', '1',
+    ...(quality !== undefined ? ['-q:v', String(quality)] : []),
+    '-y',
+    resolvedOutputPath,
+  ]
+
+  logger.info(`[extract-frame] ${args.join(' ').slice(0, 300)}`)
+  runFfmpegSyncOrThrow(ffmpegPath, args, timeoutMs)
+
+  if (!fs.existsSync(resolvedOutputPath)) {
+    throw new Error('ffmpeg produced no output file')
+  }
+
+  return resolvedOutputPath
+}
+
+export function getVideoDimensions(videoPath: string): { width: number; height: number } {
+  const ffmpegPath = findFfmpegPath()
+  if (!ffmpegPath) {
+    throw new Error('ffmpeg not found')
+  }
+  if (!fs.existsSync(videoPath)) {
+    throw new Error(`Video file not found: ${videoPath}`)
+  }
+
+  const result = spawnSync(ffmpegPath, ['-hide_banner', '-i', videoPath], {
+    encoding: 'utf8',
+    timeout: 10000,
+  })
+  const output = `${result.stdout || ''}\n${result.stderr || ''}`
+  const videoStreamLine = output.split('\n').find(line => line.includes('Video:'))
+  const match = videoStreamLine?.match(/(\d{2,5})x(\d{2,5})(?:[,\s\[]|$)/)
+
+  if (!match) {
+    throw new Error(`Could not determine video dimensions for ${videoPath}`)
+  }
+
+  const width = Number(match[1])
+  const height = Number(match[2])
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    throw new Error(`Invalid video dimensions for ${videoPath}: ${match[1]}x${match[2]}`)
+  }
+
+  return { width, height }
 }
 
 export function stopExportProcess(): void {

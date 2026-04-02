@@ -11,7 +11,12 @@ from threading import RLock
 from typing import TYPE_CHECKING
 
 from _routes._errors import HTTPError
-from api_types import GenerateImageRequest, GenerateImageResponse
+from api_types import (
+    GenerateImageCancelledResponse,
+    GenerateImageCompleteResponse,
+    GenerateImageRequest,
+    GenerateImageResponse,
+)
 from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
@@ -52,6 +57,8 @@ class ImageGenerationHandler(StateHandlerBase):
         if settings.seed_locked:
             seed = settings.locked_seed
             logger.info("Using locked seed for image: %s", seed)
+        elif self.config.dev_mode:
+            seed = 1000
         else:
             seed = int(time.time()) % 2147483647
 
@@ -66,7 +73,7 @@ class ImageGenerationHandler(StateHandlerBase):
             )
 
         try:
-            self._pipelines.load_zit_to_gpu()
+            self._pipelines.load_image_generation_pipeline_to_gpu()
             self._generation.start_generation(generation_id)
             output_paths = self.generate_image(
                 prompt=req.prompt,
@@ -77,12 +84,12 @@ class ImageGenerationHandler(StateHandlerBase):
                 num_images=num_images,
             )
             self._generation.complete_generation(output_paths)
-            return GenerateImageResponse(status="complete", image_paths=output_paths)
+            return GenerateImageCompleteResponse(status="complete", image_paths=output_paths)
         except Exception as e:
             self._generation.fail_generation(str(e))
             if "cancelled" in str(e).lower():
                 logger.info("Image generation cancelled by user")
-                return GenerateImageResponse(status="cancelled")
+                return GenerateImageCancelledResponse(status="cancelled")
             raise HTTPError(500, str(e)) from e
 
     def generate_image(
@@ -98,7 +105,7 @@ class ImageGenerationHandler(StateHandlerBase):
             raise RuntimeError("Generation was cancelled")
 
         self._generation.update_progress("loading_model", 5, 0, num_inference_steps)
-        zit = self._pipelines.load_zit_to_gpu()
+        image_generation_pipeline = self._pipelines.load_image_generation_pipeline_to_gpu()
         self._generation.update_progress("inference", 15, 0, num_inference_steps)
 
         if seed is None:
@@ -114,7 +121,7 @@ class ImageGenerationHandler(StateHandlerBase):
             progress = 15 + int((i / num_images) * 80)
             self._generation.update_progress("inference", progress, i, num_images)
 
-            result = zit.generate(
+            result = image_generation_pipeline.generate(
                 prompt=prompt,
                 height=height,
                 width=width,
@@ -182,7 +189,7 @@ class ImageGenerationHandler(StateHandlerBase):
 
             self._generation.update_progress("complete", 100, None, None)
             self._generation.complete_generation([str(path) for path in output_paths])
-            return GenerateImageResponse(status="complete", image_paths=[str(path) for path in output_paths])
+            return GenerateImageCompleteResponse(status="complete", image_paths=[str(path) for path in output_paths])
         except HTTPError as e:
             self._generation.fail_generation(e.detail)
             raise
@@ -192,5 +199,5 @@ class ImageGenerationHandler(StateHandlerBase):
                 for path in output_paths:
                     path.unlink(missing_ok=True)
                 logger.info("Image generation cancelled by user")
-                return GenerateImageResponse(status="cancelled")
+                return GenerateImageCancelledResponse(status="cancelled")
             raise HTTPError(500, str(e)) from e

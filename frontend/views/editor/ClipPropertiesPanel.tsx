@@ -1,4 +1,5 @@
-import React from 'react'
+import { useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import {
   Trash2, FileVideo, FileImage, FileAudio, Layers, Type,
   FlipHorizontal2, FlipVertical2, ChevronDown, ChevronRight,
@@ -6,79 +7,96 @@ import {
   SunDim, Moon, RotateCcw, Film, // EFFECTS HIDDEN: removed EyeOff, Sparkles, Plus, X
   AlignLeft, AlignCenter, AlignRight,
 } from 'lucide-react'
-import type { Asset, TimelineClip, Track, ClipEffect, LetterboxSettings, TextOverlayStyle, TransitionType } from '../../types/project' // EFFECTS HIDDEN: removed EffectMask
+import type { Asset, TimelineClip, LetterboxSettings, TextOverlayStyle, TransitionType } from '../../types/project' // EFFECTS HIDDEN: removed EffectMask
 import { DEFAULT_COLOR_CORRECTION, DEFAULT_LETTERBOX, TEXT_PRESETS } from '../../types/project' // EFFECTS HIDDEN: removed EFFECT_DEFINITIONS, DEFAULT_EFFECT_MASK
 import { formatTime } from './video-editor-utils'
 import { Tooltip } from '../../components/ui/tooltip'
+import {
+  selectAssets,
+  selectSelectedClipAudioControls,
+  selectSelectedClipForProperties,
+  selectTracks,
+} from './editor-selectors'
+import { useEditorActions, useEditorStore } from './editor-store'
 
 interface ClipPropertiesPanelProps {
-  selectedClip: TimelineClip
-  clips: TimelineClip[]
-  tracks: Track[]
-  propertiesTab: 'properties' | 'metadata'
-  setPropertiesTab: (tab: 'properties' | 'metadata') => void
-  showFlip: boolean
-  setShowFlip: (v: boolean) => void
-  showTransitions: boolean
-  setShowTransitions: (v: boolean) => void
-  showAppliedEffects: boolean
-  setShowAppliedEffects: (v: boolean) => void
-  showColorCorrection: boolean
-  setShowColorCorrection: (v: boolean) => void
-  resolutionCache: Record<string, { width: number; height: number }>
-  rightPanelWidth: number
-  updateClip: (clipId: string, updates: Partial<TimelineClip>) => void
-  removeEffectFromClip: (clipId: string, effectId: string) => void
-  updateEffectOnClip: (clipId: string, effectId: string, updates: Partial<ClipEffect>) => void
-  handleDeleteTake: (clipId: string) => void
-  setShowEffectsBrowser: (v: boolean) => void
-  setI2vClipId: (v: string | null) => void
-  setI2vPrompt: (v: string) => void
-  i2vClipId: string | null
-  isRegenerating: boolean
-  getLiveAsset: (clip: TimelineClip) => Asset | null | undefined
-  getClipUrl: (clip: TimelineClip) => string | null
-  getClipResolution: (clip: TimelineClip) => { label: string; color: string; height: number } | null
-  getMaxClipDuration: (clip: TimelineClip) => number
-  handleRegenerate: (clipId: string) => void
-  handleCancelRegeneration: () => void
-  setClips: React.Dispatch<React.SetStateAction<TimelineClip[]>>
-  pushUndo: (currentClips?: TimelineClip[]) => void
-  handleClipTakeChange: (clipId: string, direction: 'prev' | 'next') => void
-  setSubtitleTrackStyleIdx: (v: number | null) => void
-  subtitleTrackStyleIdx: number | null
+  onCreateVideoFromImage: (clip: TimelineClip) => void
 }
 
 export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
   const {
-    selectedClip,
-    tracks,
-    propertiesTab,
-    setPropertiesTab,
-    showFlip,
-    setShowFlip,
-    showTransitions,
-    setShowTransitions,
-    // EFFECTS HIDDEN: showAppliedEffects, setShowAppliedEffects removed from destructuring
-    showColorCorrection,
-    setShowColorCorrection,
-    resolutionCache,
-    rightPanelWidth,
-    updateClip,
-    // EFFECTS HIDDEN: removeEffectFromClip, updateEffectOnClip, setShowEffectsBrowser removed from destructuring
-    handleDeleteTake,
-    setI2vClipId,
-    setI2vPrompt,
-    i2vClipId,
-    isRegenerating,
-    getLiveAsset,
-    getClipUrl,
-    getClipResolution,
-    getMaxClipDuration,
+    onCreateVideoFromImage,
   } = props
+  const {
+    deleteClipDisplayedTake,
+    setClipAudioLevel,
+    setClipAudioMuted,
+    updateClip,
+  } = useEditorActions()
+  const assets = useEditorStore(selectAssets)
+  const tracks = useEditorStore(selectTracks)
+  const selectedClip = useEditorStore(selectSelectedClipForProperties)
+  const clipAudioControls = useEditorStore(useShallow(selectSelectedClipAudioControls))
+  if (!selectedClip) return null
+
+  const effectiveMuted = clipAudioControls?.muted ?? (selectedClip.muted || false)
+  const effectiveVolume = clipAudioControls?.volume ?? (selectedClip.volume ?? 1)
+
+  const getLiveAsset = (clip: TimelineClip): Asset | null | undefined => {
+    if (!clip.assetId) return clip.asset
+    return assets.find(asset => asset.id === clip.assetId) || clip.asset
+  }
+
+  const getClipResolution = (clip: TimelineClip): { label: string; color: string; height: number } | null => {
+    const dims = getClipDimensions(clip)
+    if (!dims) return null
+    const suffix = ` (${dims.width}x${dims.height})`
+    if (dims.height >= 2160) return { label: `4K${suffix}`, color: '#22c55e', height: dims.height }
+    if (dims.height >= 1080) return { label: `1080p${suffix}`, color: '#3b82f6', height: dims.height }
+    if (dims.height >= 720) return { label: `720p${suffix}`, color: '#f59e0b', height: dims.height }
+    return { label: `${dims.height}p${suffix}`, color: '#ef4444', height: dims.height }
+  }
+
+  const getMaxClipDuration = (clip: TimelineClip): number => {
+    const liveAsset = getLiveAsset(clip)
+    if (clip.type !== 'video' || !liveAsset?.duration) return Infinity
+    const mediaDuration = liveAsset.duration
+    const usableMedia = mediaDuration - clip.trimStart - clip.trimEnd
+    return Math.max(0.5, usableMedia / clip.speed)
+  }
+
+  const handleDeleteDisplayedTake = () => {
+    deleteClipDisplayedTake(selectedClip.id)
+  }
+
+  const [propertiesTab, setPropertiesTab] = useState<'properties' | 'metadata'>('properties')
+  const [showFlip, setShowFlip] = useState(false)
+  const [showTransitions, setShowTransitions] = useState(false)
+  const [showColorCorrection, setShowColorCorrection] = useState(false)
+
+  const getClipDimensions = (clip: TimelineClip): { width: number; height: number } | null => {
+    if (clip.type === 'audio') return null
+    const liveAsset = getLiveAsset(clip)
+    if (!liveAsset) return null
+
+    const takeIndex = clip.takeIndex ?? liveAsset.activeTakeIndex
+    if (liveAsset.takes && liveAsset.takes.length > 0 && takeIndex !== undefined) {
+      const idx = Math.max(0, Math.min(takeIndex, liveAsset.takes.length - 1))
+      const take = liveAsset.takes[idx]
+      if (take.width && take.height) {
+        return { width: take.width, height: take.height }
+      }
+    }
+
+    if (liveAsset.width && liveAsset.height) {
+      return { width: liveAsset.width, height: liveAsset.height }
+    }
+
+    return null
+  }
 
   return (
-    <div className="flex-shrink-0 border-l border-zinc-800 bg-zinc-900 p-4 overflow-auto" style={{ width: rightPanelWidth }}>
+    <div className="h-full w-full flex-shrink-0 border-l border-zinc-800 bg-zinc-900 p-4 overflow-auto">
       {/* Tab header */}
       <div className="flex items-center gap-0 mb-4 border-b border-zinc-700">
         <button
@@ -106,8 +124,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
       {/* Metadata Tab */}
       {propertiesTab === 'metadata' && (() => {
         const liveAsset = getLiveAsset(selectedClip)
-        const clipUrl = getClipUrl(selectedClip) || selectedClip.asset?.url || selectedClip.importedUrl
-        const dims = clipUrl ? resolutionCache[clipUrl] : null
+        const dims = getClipDimensions(selectedClip)
         const resInfo = getClipResolution(selectedClip)
         const genParams = liveAsset?.generationParams
 
@@ -142,7 +159,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                         <button
                           onClick={() => {
                             if (confirm(`Delete take ${displayTakeNum}?`)) {
-                              handleDeleteTake(selectedClip.id)
+                              handleDeleteDisplayedTake()
                             }
                           }}
                           className="p-0.5 rounded hover:bg-red-900/50 text-zinc-500 hover:text-red-400 transition-colors"
@@ -177,7 +194,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                     )}
                   </>
                 ) : (
-                  <div className="text-xs text-zinc-500 italic">Detecting resolution...</div>
+                  <div className="text-xs text-zinc-500 italic">Resolution metadata unavailable.</div>
                 )}
                 {originalRes && originalRes !== 'imported' && (
                   <div className="flex items-center justify-between">
@@ -608,15 +625,11 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
         {/* Image-to-Video quick action for image clips */}
         {selectedClip.type === 'image' && (
           <button
-            onClick={() => {
-              setI2vClipId(selectedClip.id)
-              setI2vPrompt(selectedClip.asset?.prompt || '')
-            }}
-            disabled={isRegenerating && i2vClipId === selectedClip.id}
+            onClick={() => onCreateVideoFromImage(selectedClip)}
             className="w-full px-3 py-2 rounded-lg bg-blue-600/15 border border-blue-500/30 text-blue-400 text-xs hover:bg-blue-600/25 hover:border-blue-500/50 transition-colors font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Film className="h-3.5 w-3.5" />
-            {isRegenerating && i2vClipId === selectedClip.id ? 'Generating Video...' : 'Generate Video (I2V)'}
+            Generate Video (I2V)
           </button>
         )}
         <div>
@@ -691,13 +704,13 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
             min={0}
             max={1}
             step={0.1}
-            value={selectedClip.muted ? 0 : selectedClip.volume}
-            onChange={(e) => updateClip(selectedClip.id, { volume: parseFloat(e.target.value), muted: false })}
+            value={effectiveMuted ? 0 : effectiveVolume}
+            onChange={(e) => setClipAudioLevel(selectedClip.id, parseFloat(e.target.value))}
             className="w-full"
           />
           <div className="flex justify-between text-[10px] text-zinc-500 mt-1">
             <span>0%</span>
-            <span className="text-white">{selectedClip.muted ? '0' : Math.round(selectedClip.volume * 100)}%</span>
+            <span className="text-white">{effectiveMuted ? '0' : Math.round(effectiveVolume * 100)}%</span>
             <span>100%</span>
           </div>
         </div>
@@ -715,8 +728,8 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
-              checked={selectedClip.muted}
-              onChange={(e) => updateClip(selectedClip.id, { muted: e.target.checked })}
+              checked={effectiveMuted}
+              onChange={(e) => setClipAudioMuted(selectedClip.id, e.target.checked)}
               className="rounded bg-zinc-800 border-zinc-600"
             />
             <span className="text-sm text-zinc-300">Mute audio</span>

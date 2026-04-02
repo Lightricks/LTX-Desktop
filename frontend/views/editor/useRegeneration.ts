@@ -1,472 +1,318 @@
-import { useState, useCallback, useEffect } from 'react'
-import type { Asset, TimelineClip } from '../../types/project'
+import { useCallback, useEffect } from 'react'
+import type { Asset } from '../../types/project'
 import type { GenerationSettings } from '../../components/SettingsPanel'
-import { copyToAssetFolder } from '../../lib/asset-copy'
-import { backendFetch } from '../../lib/backend'
-import { fileUrlToPath } from '../../lib/url-to-path'
+import { addVisualAssetToProject } from '../../lib/asset-copy'
+import { ApiClient } from '../../lib/api-client'
 import { sanitizeForcedApiVideoSettings } from '../../lib/api-video-options'
 import { logger } from '../../lib/logger'
+import type { TimelineClip } from '../../types/project'
+import {
+  selectAssets,
+  selectClips,
+  selectRegenerationPreError,
+  selectRegeneratingAssetId,
+  selectRegeneratingClipId,
+} from './editor-selectors'
+import { useEditorActions, useEditorStore } from './editor-store'
+
+const LEGACY_VIDEO_RESOLUTION_MAP: Record<string, string> = {
+  '768x512': '540p',
+  '1024x576': '540p',
+  '1280x720': '720p',
+  '1920x1080': '1080p',
+}
+
+const LEGACY_IMAGE_RESOLUTION_MAP: Record<string, string> = {
+  '768x512': '1080p',
+  '1024x576': '1080p',
+  '1280x720': '1080p',
+  '1920x1080': '1080p',
+  '2160p': '2048p',
+}
+
+function normalizeVideoResolution(value: string | undefined): string {
+  if (!value) return '540p'
+  if (value === '540p' || value === '720p' || value === '1080p' || value === '1440p' || value === '2160p') {
+    return value
+  }
+  return LEGACY_VIDEO_RESOLUTION_MAP[value] || '540p'
+}
+
+function normalizeImageResolution(value: string | undefined): string {
+  if (!value) return '1080p'
+  if (value === '1080p' || value === '1440p' || value === '2048p') {
+    return value
+  }
+  return LEGACY_IMAGE_RESOLUTION_MAP[value] || '1080p'
+}
+
+function resolveLiveAssetForClip(assets: Asset[], clip: TimelineClip): Asset {
+  if (!clip.assetId) return clip.asset!
+  return assets.find(asset => asset.id === clip.assetId) || clip.asset!
+}
+
+function resolveClipPath(assets: Asset[], clip: TimelineClip): string {
+  const liveAsset = resolveLiveAssetForClip(assets, clip)
+  if (liveAsset.takes && liveAsset.takes.length > 0 && clip.takeIndex !== undefined) {
+    const idx = Math.max(0, Math.min(clip.takeIndex, liveAsset.takes.length - 1))
+    return liveAsset.takes[idx].path || ''
+  }
+  return liveAsset.path || ''
+}
+
+function resolveAssetPreviewPath(assets: Asset[], clips: TimelineClip[], asset: Asset, clipId?: string): string {
+  const clip = clipId ? clips.find(candidate => candidate.id === clipId) : undefined
+  if (clip) {
+    const clipPath = resolveClipPath(assets, clip)
+    if (clipPath) return clipPath
+  }
+
+  if (asset.takes && asset.takes.length > 0) {
+    const activeIndex = Math.max(0, Math.min(asset.activeTakeIndex ?? (asset.takes.length - 1), asset.takes.length - 1))
+    return asset.takes[activeIndex]?.path || asset.path
+  }
+
+  return asset.path
+}
 
 export interface UseRegenerationParams {
-  clips: TimelineClip[]
-  setClips: React.Dispatch<React.SetStateAction<TimelineClip[]>>
-  assets: Asset[]
-  currentProjectId: string | null
-  addAsset: (projectId: string, asset: Omit<Asset, 'id' | 'createdAt'>) => Asset
-  updateAsset: (projectId: string, assetId: string, updates: Partial<Asset>) => void
-  addTakeToAsset: (projectId: string, assetId: string, take: { url: string; path: string; createdAt: number }) => void
-  deleteTakeFromAsset: (projectId: string, assetId: string, takeIndex: number) => void
-  resolveClipSrc: (clip: TimelineClip | null) => string
+  projectId: string
   // Generation hook values
   regenGenerate: (prompt: string, imagePath: string | null, settings: GenerationSettings) => Promise<void>
   regenGenerateImage: (prompt: string, settings: GenerationSettings) => Promise<void>
-  regenVideoUrl: string | null
   regenVideoPath: string | null
-  regenImageUrl: string | null
   regenImagePath: string | null
   isRegenerating: boolean
-  regenProgress: number
-  regenStatusMessage: string
   regenCancel: () => void
   regenReset: () => void
   regenError: string | null
-  projectId: string
   shouldVideoGenerateWithLtxApi: boolean
 }
 
 export function useRegeneration(params: UseRegenerationParams) {
   const {
-    clips, setClips, assets, currentProjectId,
-    addAsset, updateAsset, addTakeToAsset, deleteTakeFromAsset,
-    resolveClipSrc,
-    regenGenerate, regenGenerateImage,
-    regenVideoUrl, regenVideoPath, regenImageUrl, regenImagePath,
-    isRegenerating, regenProgress, regenStatusMessage,
-    regenCancel, regenReset,
-    regenError,
     projectId,
+    regenGenerate,
+    regenGenerateImage,
+    regenVideoPath,
+    regenImagePath,
+    isRegenerating,
+    regenCancel,
+    regenReset,
+    regenError,
     shouldVideoGenerateWithLtxApi,
   } = params
+  const {
+    applyGeneratedTake,
+    cancelClipRegeneration,
+    failClipRegeneration,
+    setRegenerationPreError,
+    startClipRegeneration,
+    updateAsset,
+  } = useEditorActions()
+  const assets = useEditorStore(selectAssets)
+  const clips = useEditorStore(selectClips)
+  const regeneratingAssetId = useEditorStore(selectRegeneratingAssetId)
+  const regeneratingClipId = useEditorStore(selectRegeneratingClipId)
+  const regenerationPreError = useEditorStore(selectRegenerationPreError)
 
-  // Track which asset/clip is being regenerated
-  const [regeneratingAssetId, setRegeneratingAssetId] = useState<string | null>(null)
-  const [regeneratingClipId, setRegeneratingClipId] = useState<string | null>(null)
-
-  // Error state for imported assets that can't auto-generate a prompt
-  const [regenerationPreError, setRegenerationPreError] = useState<string | null>(null)
-  const dismissRegenerationPreError = useCallback(() => setRegenerationPreError(null), [])
-
-  // Image-to-Video generation from an image clip on the timeline
-  const [i2vClipId, setI2vClipId] = useState<string | null>(null)
-  const [i2vPrompt, setI2vPrompt] = useState('')
-  const [i2vSettings, setI2vSettings] = useState<GenerationSettings>({
-    model: 'fast',
-    duration: 5,
-    videoResolution: '540p',
-    fps: 24,
-    audio: true,
-    cameraMotion: 'none',
-    imageResolution: '1080p',
-    imageAspectRatio: '16:9',
-    imageSteps: 30,
-  })
-
-  useEffect(() => {
-    if (!shouldVideoGenerateWithLtxApi) return
-    setI2vSettings((prev) => sanitizeForcedApiVideoSettings(prev))
-  }, [shouldVideoGenerateWithLtxApi])
-
-  const handleI2vGenerate = useCallback(async () => {
-    if (!i2vClipId || !i2vPrompt.trim() || !currentProjectId) return
-
-    const clip = clips.find(c => c.id === i2vClipId)
-    if (!clip) return
-
-    // Get the image URL for this clip and extract the filesystem path
-    const imageUrl = resolveClipSrc(clip)
-    if (!imageUrl) return
-
-    const imagePath = fileUrlToPath(imageUrl)
-    if (!imagePath) {
-      logger.error(`I2V: cannot extract path from ${imageUrl}`)
-      return
-    }
-
-    const rawSettings: GenerationSettings = {
-      ...i2vSettings,
-      duration: Math.min(Math.max(1, Math.round(clip.duration)), i2vSettings.model === 'pro' ? 10 : 20),
-    }
-    const settings = shouldVideoGenerateWithLtxApi ? sanitizeForcedApiVideoSettings(rawSettings) : rawSettings
-
-    try {
-      await regenGenerate(i2vPrompt, imagePath, settings)
-    } catch (err) {
-      logger.error(`I2V generation failed: ${err}`)
-    }
-  }, [i2vClipId, i2vPrompt, i2vSettings, currentProjectId, clips, resolveClipSrc, regenGenerate, shouldVideoGenerateWithLtxApi])
-
-  // When I2V generation completes, replace the image clip with a video clip
-  useEffect(() => {
-    if (!i2vClipId || isRegenerating) return
-    if (!regenVideoUrl || !currentProjectId) return
-
-    const clip = clips.find(c => c.id === i2vClipId)
-    if (!clip) { setI2vClipId(null); return }
-
-      ;(async () => {
-        const srcPath = regenVideoPath || regenVideoUrl
-        const copied = await copyToAssetFolder(srcPath, projectId)
-        const finalPath = copied?.path ?? srcPath
-        const finalUrl = copied?.url ?? regenVideoUrl
-        const savedI2vSettings = shouldVideoGenerateWithLtxApi
-          ? sanitizeForcedApiVideoSettings({
-              ...i2vSettings,
-              duration: Math.min(Math.max(1, Math.round(clip.duration)), i2vSettings.model === 'pro' ? 10 : 20),
-            })
-          : {
-              ...i2vSettings,
-              duration: Math.min(Math.max(1, Math.round(clip.duration)), i2vSettings.model === 'pro' ? 10 : 20),
-            }
-
-        const asset = addAsset(currentProjectId, {
-          type: 'video',
-          path: finalPath,
-          url: finalUrl,
-          prompt: i2vPrompt,
-          resolution: savedI2vSettings.videoResolution,
-          duration: clip.duration,
-          generationParams: {
-            mode: 'image-to-video',
-            prompt: i2vPrompt,
-            model: savedI2vSettings.model,
-            duration: savedI2vSettings.duration,
-            resolution: savedI2vSettings.videoResolution,
-            fps: savedI2vSettings.fps,
-            audio: savedI2vSettings.audio,
-            cameraMotion: savedI2vSettings.cameraMotion,
-          },
-        takes: [{
-          url: finalUrl,
-          path: finalPath,
-          createdAt: Date.now(),
-        }],
-        activeTakeIndex: 0,
-      })
-
-      setClips(prev => prev.map(c => {
-        if (c.id !== i2vClipId) return c
-        return {
-          ...c,
-          assetId: asset.id,
-          type: 'video' as const,
-          asset,
-        }
-      }))
-
-      setI2vClipId(null)
-      setI2vPrompt('')
-      regenReset()
-    })()
-
-  }, [regenVideoUrl, isRegenerating, regenVideoPath, currentProjectId, clips, i2vClipId, i2vPrompt, i2vSettings, addAsset, setClips, regenReset, projectId, shouldVideoGenerateWithLtxApi])
-
-  // Clean up I2V state when generation fails
-  useEffect(() => {
-    if (!i2vClipId || isRegenerating || !regenError) return
-    setI2vClipId(null)
-    setI2vPrompt('')
-  }, [regenError, i2vClipId, isRegenerating])
+  const dismissRegenerationPreError = useCallback(() => {
+    setRegenerationPreError(null)
+  }, [setRegenerationPreError])
 
   const handleRegenerate = useCallback(async (assetId: string, clipId?: string) => {
-    if (!currentProjectId || isRegenerating) return
-    const asset = assets.find(a => a.id === assetId)
+    if (!projectId || isRegenerating) return
+    const asset = assets.find(candidate => candidate.id === assetId)
     if (!asset) return
 
-    setRegeneratingAssetId(assetId)
-    setRegeneratingClipId(clipId || null)
+    startClipRegeneration(assetId, clipId)
 
-    // Mark the clip as regenerating for visual feedback
-    if (clipId) {
-      setClips(prev => prev.map(c => c.id === clipId ? { ...c, isRegenerating: true } : c))
-    }
-
-    // If the asset has no generationParams (imported asset), auto-generate a prompt from the first frame via Gemini
-    let params = asset.generationParams
-    if (!params) {
+    let generationParams = asset.generationParams
+    if (!generationParams) {
       try {
-        const clipSrc = resolveClipSrc(clips.find(c => c.id === clipId) || { asset, assetId: asset.id } as any)
+        const clipPath = resolveAssetPreviewPath(assets, clips, asset, clipId)
         let framePath = ''
-        if (asset.type === 'video' && clipSrc) {
-          const result = await window.electronAPI.extractVideoFrame(clipSrc, 0.1, 512, 3)
-          framePath = result.path
-        } else if (asset.type === 'image' && clipSrc) {
-          framePath = fileUrlToPath(clipSrc) || ''
+
+        if (asset.type === 'video' && clipPath) {
+          const frame = await window.electronAPI.extractVideoFrame({
+            videoPath: clipPath,
+            seekTime: 0.1,
+            width: 512,
+            quality: 3,
+          })
+          framePath = frame.path
+        } else if (asset.type === 'image' && clipPath) {
+          framePath = clipPath
         }
 
         if (framePath) {
-          // Ask Gemini to describe the frame
-          const resp = await backendFetch('/api/suggest-gap-prompt', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              gapDuration: asset.duration || 5,
-              mode: asset.type === 'image' ? 'text-to-image' : 'text-to-video',
-              beforePrompt: '',
-              afterPrompt: '',
-              beforeFrame: framePath,
-              afterFrame: '',
-            }),
+          const promptSuggestion = await ApiClient.suggestGapPrompt({
+            gapDuration: asset.duration || 5,
+            mode: asset.type === 'image' ? 'text-to-image' : 'text-to-video',
+            beforePrompt: '',
+            afterPrompt: '',
+            beforeFrame: framePath,
+            afterFrame: '',
           })
-          if (resp.ok) {
-            const data = await resp.json()
-            if (data.suggested_prompt) {
-              params = {
-                mode: asset.type === 'image' ? 'text-to-image' : 'text-to-video',
-                prompt: data.suggested_prompt,
-                model: 'fast',
-                duration: asset.duration || 5,
-                resolution: asset.resolution || '768x512',
-                fps: 24,
-                audio: false,
-                cameraMotion: 'none',
-              }
-              // Save the generated params back to the asset so future regenerations are instant
-              // (update the asset in project context)
-              if (asset.id && currentProjectId) {
-                updateAsset(currentProjectId, asset.id, { generationParams: params })
-              }
+
+          if (promptSuggestion.suggested_prompt) {
+            generationParams = {
+              mode: asset.type === 'image' ? 'text-to-image' : 'text-to-video',
+              prompt: promptSuggestion.suggested_prompt,
+              model: 'fast',
+              duration: asset.duration || 5,
+              resolution: asset.type === 'image'
+                ? normalizeImageResolution(asset.resolution)
+                : normalizeVideoResolution(asset.resolution),
+              fps: 24,
+              audio: false,
+              cameraMotion: 'none',
             }
+            updateAsset(asset.id, { generationParams })
           }
         }
-      } catch (err) {
-        logger.warn(`Failed to auto-generate prompt for imported asset: ${err}`)
+      } catch (error) {
+        logger.warn(`Failed to auto-generate prompt for imported asset: ${error}`)
       }
 
-      if (!params) {
-        // Still no params — can't regenerate
-        setRegeneratingAssetId(null)
-        setRegeneratingClipId(null)
-        if (clipId) {
-          setClips(prev => prev.map(c => c.id === clipId ? { ...c, isRegenerating: false } : c))
-        }
-        setRegenerationPreError('Could not auto-generate a prompt for this clip. Try using "Send to GenSpace" instead.')
+      if (!generationParams) {
+        failClipRegeneration(
+          'Could not auto-generate a prompt for this clip. Try using "Send to GenSpace" instead.',
+        )
         return
       }
     }
 
-    if (params.mode === 'retake') {
-      setRegeneratingAssetId(null)
-      setRegeneratingClipId(null)
-      if (clipId) {
-        setClips(prev => prev.map(c => c.id === clipId ? { ...c, isRegenerating: false } : c))
-      }
-      setRegenerationPreError('Retake assets cannot be regenerated yet. Try using Retake from the clip menu instead.')
+    if (generationParams.mode === 'retake') {
+      failClipRegeneration(
+        'Retake assets cannot be regenerated yet. Try using Retake from the clip menu instead.',
+      )
       return
     }
 
-    if (params.mode === 'ic-lora') {
-      setRegeneratingAssetId(null)
-      setRegeneratingClipId(null)
-      if (clipId) {
-        setClips(prev => prev.map(c => c.id === clipId ? { ...c, isRegenerating: false } : c))
-      }
-      setRegenerationPreError('IC-LoRA assets cannot be regenerated yet. Try using IC-LoRA from the clip menu instead.')
+    if (generationParams.mode === 'ic-lora') {
+      failClipRegeneration(
+        'IC-LoRA assets cannot be regenerated yet. Try using IC-LoRA from the clip menu instead.',
+      )
       return
     }
 
-    if (params.mode === 'text-to-image') {
-      regenGenerateImage(params.prompt, {
-        model: params.model as 'fast' | 'pro',
-        duration: params.duration,
+    if (generationParams.mode === 'text-to-image') {
+      void regenGenerateImage(generationParams.prompt, {
+        model: generationParams.model as 'fast' | 'pro',
+        duration: generationParams.duration,
         videoResolution: '540p',
-        fps: params.fps,
-        audio: params.audio,
-        cameraMotion: params.cameraMotion,
-        imageResolution: params.resolution,
-        imageAspectRatio: params.imageAspectRatio || '16:9',
-        imageSteps: params.imageSteps || 4,
+        fps: generationParams.fps,
+        audio: generationParams.audio,
+        cameraMotion: generationParams.cameraMotion,
+        imageResolution: normalizeImageResolution(generationParams.resolution),
+        imageAspectRatio: generationParams.imageAspectRatio || '16:9',
+        imageSteps: generationParams.imageSteps || 4,
         variations: 1,
       })
-    } else {
-      // For video generation (T2V or I2V)
-      // Extract filesystem path from the input image URL if present
-      const imagePath = params.mode === 'image-to-video' && params.inputImageUrl
-        ? fileUrlToPath(params.inputImageUrl)
-        : null
-
-      const rawVideoSettings: GenerationSettings = {
-        model: params.model as 'fast' | 'pro',
-        duration: params.duration,
-        videoResolution: params.resolution,
-        fps: params.fps,
-        audio: params.audio,
-        cameraMotion: params.cameraMotion,
-        imageResolution: '1080p',
-        imageAspectRatio: params.imageAspectRatio || '16:9',
-        imageSteps: params.imageSteps || 4,
-      }
-      const videoSettings = shouldVideoGenerateWithLtxApi
-        ? sanitizeForcedApiVideoSettings(rawVideoSettings)
-        : rawVideoSettings
-
-      regenGenerate(params.prompt, imagePath, videoSettings)
+      return
     }
-  }, [currentProjectId, isRegenerating, assets, clips, regenGenerate, regenGenerateImage, resolveClipSrc, updateAsset, shouldVideoGenerateWithLtxApi])
+
+    const imagePath = generationParams.mode === 'image-to-video' && generationParams.inputImageUrl
+      ? generationParams.inputImageUrl
+      : null
+    const rawVideoSettings: GenerationSettings = {
+      model: generationParams.model as 'fast' | 'pro',
+      duration: generationParams.duration,
+      videoResolution: normalizeVideoResolution(generationParams.resolution),
+      fps: generationParams.fps,
+      audio: generationParams.audio,
+      cameraMotion: generationParams.cameraMotion,
+      imageResolution: '1080p',
+      imageAspectRatio: generationParams.imageAspectRatio || '16:9',
+      imageSteps: generationParams.imageSteps || 4,
+    }
+    const videoSettings = shouldVideoGenerateWithLtxApi
+      ? sanitizeForcedApiVideoSettings(rawVideoSettings)
+      : rawVideoSettings
+    void regenGenerate(generationParams.prompt, imagePath, videoSettings)
+  }, [
+    isRegenerating,
+    projectId,
+    regenGenerate,
+    regenGenerateImage,
+    startClipRegeneration,
+    failClipRegeneration,
+    shouldVideoGenerateWithLtxApi,
+    assets,
+    clips,
+    updateAsset,
+  ])
 
   const handleCancelRegeneration = useCallback(() => {
     regenCancel()
-    // Clear the regenerating visual on the clip
-    if (regeneratingClipId) {
-      setClips(prev => prev.map(c => c.id === regeneratingClipId ? { ...c, isRegenerating: false } : c))
-    }
-    setRegeneratingAssetId(null)
-    setRegeneratingClipId(null)
+    cancelClipRegeneration()
     regenReset()
-  }, [regenCancel, regenReset, regeneratingClipId])
+  }, [cancelClipRegeneration, regenCancel, regenReset])
 
-  // Handle regeneration video result
-  useEffect(() => {
-    if (regenVideoUrl && regenVideoPath && regeneratingAssetId && currentProjectId && !isRegenerating) {
-      ;(async () => {
-        const copied = await copyToAssetFolder(regenVideoPath, projectId)
-        const finalPath = copied?.path ?? regenVideoPath
-        const finalUrl = copied?.url ?? regenVideoUrl
+  const persistGeneratedTake = useCallback(async (
+    generatedPath: string,
+    type: 'video' | 'image',
+    assetId: string,
+    clipId: string | null,
+  ) => {
+    if (!projectId) return
 
-        addTakeToAsset(currentProjectId, regeneratingAssetId, {
-          url: finalUrl,
-          path: finalPath,
-          createdAt: Date.now(),
-        })
-
-        if (regeneratingClipId) {
-          setClips(prev => prev.map(c => {
-            if (c.id !== regeneratingClipId) return c
-            const asset = assets.find(a => a.id === c.assetId)
-            const newTakeIdx = asset?.takes ? asset.takes.length : 1
-            return { ...c, isRegenerating: false, takeIndex: newTakeIdx }
-          }))
-        }
-
-        setRegeneratingAssetId(null)
-        setRegeneratingClipId(null)
-        regenReset()
-      })()
+    const copied = await addVisualAssetToProject(generatedPath, projectId, type)
+    if (!copied) {
+      logger.error(`Failed to persist regenerated ${type}: ${generatedPath}`)
+      cancelClipRegeneration()
+      regenReset()
+      return
     }
-  }, [regenVideoUrl, regenVideoPath, regeneratingAssetId, currentProjectId, isRegenerating])
 
-  // Handle regeneration image result
+    applyGeneratedTake(assetId, {
+      path: copied.path,
+      bigThumbnailPath: copied.bigThumbnailPath,
+      smallThumbnailPath: copied.smallThumbnailPath,
+      width: copied.width,
+      height: copied.height,
+      createdAt: Date.now(),
+    }, clipId ?? undefined)
+    regenReset()
+  }, [applyGeneratedTake, cancelClipRegeneration, projectId, regenReset])
+
   useEffect(() => {
-    if (regenImageUrl && regeneratingAssetId && currentProjectId && !isRegenerating) {
-      ;(async () => {
-        const srcPath = regenImagePath || regenImageUrl
-        const copied = await copyToAssetFolder(srcPath, projectId)
-        const finalPath = copied?.path ?? srcPath
-        const finalUrl = copied?.url ?? regenImageUrl
+    if (!regenVideoPath || !regeneratingAssetId || !projectId || isRegenerating) return
+    void persistGeneratedTake(regenVideoPath, 'video', regeneratingAssetId, regeneratingClipId)
+  }, [
+    isRegenerating,
+    persistGeneratedTake,
+    projectId,
+    regeneratingAssetId,
+    regeneratingClipId,
+    regenVideoPath,
+  ])
 
-        addTakeToAsset(currentProjectId, regeneratingAssetId, {
-          url: finalUrl,
-          path: finalPath,
-          createdAt: Date.now(),
-        })
+  useEffect(() => {
+    if (!regenImagePath || !regeneratingAssetId || !projectId || isRegenerating) return
+    void persistGeneratedTake(regenImagePath, 'image', regeneratingAssetId, regeneratingClipId)
+  }, [
+    isRegenerating,
+    persistGeneratedTake,
+    projectId,
+    regeneratingAssetId,
+    regeneratingClipId,
+    regenImagePath,
+  ])
 
-        if (regeneratingClipId) {
-          setClips(prev => prev.map(c => {
-            if (c.id !== regeneratingClipId) return c
-            const asset = assets.find(a => a.id === c.assetId)
-            const newTakeIdx = asset?.takes ? asset.takes.length : 1
-            return { ...c, isRegenerating: false, takeIndex: newTakeIdx }
-          }))
-        }
-
-        setRegeneratingAssetId(null)
-        setRegeneratingClipId(null)
-        regenReset()
-      })()
-    }
-  }, [regenImageUrl, regeneratingAssetId, currentProjectId, isRegenerating])
-
-  // Clean up regeneration state when generation fails (let the error dialog handle regenReset)
+  // Keep UI clip state in sync if generation fails.
+  // Do not reset generation error here; dialog owns that lifecycle.
   useEffect(() => {
     if (!regeneratingAssetId || isRegenerating || !regenError) return
-    if (regeneratingClipId) {
-      setClips(prev => prev.map(c =>
-        c.id === regeneratingClipId ? { ...c, isRegenerating: false } : c
-      ))
-    }
-    setRegeneratingAssetId(null)
-    setRegeneratingClipId(null)
-    // Do NOT call regenReset() — let the error dialog handle it
-  }, [regenError, regeneratingAssetId, isRegenerating])
-
-  // Handle take navigation on a clip (also updates linked audio/video clips)
-  const handleClipTakeChange = useCallback((clipId: string, direction: 'prev' | 'next') => {
-    setClips(prev => {
-      const clip = prev.find(c => c.id === clipId)
-      if (!clip?.asset) return prev
-      const asset = assets.find(a => a.id === clip.assetId)
-      if (!asset?.takes || asset.takes.length <= 1) return prev
-
-      const currentIdx = clip.takeIndex ?? (asset.activeTakeIndex ?? asset.takes.length - 1)
-      let newIdx = direction === 'prev' ? currentIdx - 1 : currentIdx + 1
-      newIdx = Math.max(0, Math.min(newIdx, asset.takes.length - 1))
-
-      // Collect all clip IDs that should switch: this clip + all linked clips with the same asset
-      const linkedIds = new Set(clip.linkedClipIds || [])
-      linkedIds.add(clipId)
-
-      return prev.map(c => {
-        if (!linkedIds.has(c.id)) return c
-        // Only update clips that share the same asset (linked audio/video pairs)
-        if (c.assetId !== clip.assetId) return c
-        return { ...c, takeIndex: newIdx }
-      })
-    })
-  }, [assets])
-
-  // Delete the currently displayed take from a clip's asset
-  const handleDeleteTake = useCallback((clipId: string) => {
-    if (!currentProjectId) return
-    const clip = clips.find(c => c.id === clipId)
-    if (!clip?.assetId) return
-    const asset = assets.find(a => a.id === clip.assetId)
-    if (!asset?.takes || asset.takes.length <= 1) return // Can't delete the only take
-
-    const takeIdx = clip.takeIndex ?? (asset.activeTakeIndex ?? asset.takes.length - 1)
-
-    // Delete the take from the asset in context
-    deleteTakeFromAsset(currentProjectId, asset.id, takeIdx)
-
-    // Update ALL clips that reference this asset: adjust their takeIndex
-    setClips(prev => prev.map(c => {
-      if (c.assetId !== asset.id) return c
-      const cIdx = c.takeIndex ?? (asset.activeTakeIndex ?? asset.takes!.length - 1)
-      if (cIdx === takeIdx) {
-        // This clip was showing the deleted take → move to the previous one (or 0)
-        return { ...c, takeIndex: Math.max(0, takeIdx - 1) }
-      } else if (cIdx > takeIdx) {
-        // This clip was showing a take after the deleted one → shift down by 1
-        return { ...c, takeIndex: cIdx - 1 }
-      }
-      return c
-    }))
-  }, [clips, assets, currentProjectId, deleteTakeFromAsset])
+    cancelClipRegeneration()
+  }, [cancelClipRegeneration, isRegenerating, regeneratingAssetId, regenError])
 
   return {
-    // State
-    regeneratingAssetId, setRegeneratingAssetId,
-    regeneratingClipId, setRegeneratingClipId,
-    i2vClipId, setI2vClipId,
-    i2vPrompt, setI2vPrompt,
-    i2vSettings, setI2vSettings,
-    // Pre-generation error (e.g. imported asset can't auto-generate prompt)
-    regenerationPreError, dismissRegenerationPreError,
-    // Passthrough from generation hook
-    isRegenerating, regenProgress, regenStatusMessage,
-    // Actions
-    handleI2vGenerate,
+    regeneratingAssetId,
+    regenerationPreError,
     handleRegenerate,
     handleCancelRegeneration,
-    handleClipTakeChange,
-    handleDeleteTake,
+    dismissRegenerationPreError,
   }
 }

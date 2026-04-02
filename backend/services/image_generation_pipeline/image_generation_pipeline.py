@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from services.services_utils import ImagePipelineOutputLike
 
 
+@runtime_checkable
 class ImageGenerationPipeline(Protocol):
     @staticmethod
     def create(

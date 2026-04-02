@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { Video } from 'lucide-react'
 
-export function VideoThumbnailCard({ url, thumbnailUrl }: { url: string; thumbnailUrl?: string }) {
+export function VideoThumbnailCard({ videoUrl, thumbnailUrl }: { videoUrl: string; thumbnailUrl?: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isHovering, setIsHovering] = useState(false)
   const [videoReady, setVideoReady] = useState(false)
@@ -52,37 +51,38 @@ export function VideoThumbnailCard({ url, thumbnailUrl }: { url: string; thumbna
     setVideoReady(false)
     setScrubProgress(0)
     setScrubTime('')
-    const video = videoRef.current
-    if (video) {
-      video.currentTime = 0
-      video.removeAttribute('src')
-      video.load()
-    }
   }, [])
 
   useEffect(() => {
     if (!isHovering) return
-    const video = videoRef.current
-    if (!video) return
-    video.src = url
+    const video = document.createElement('video')
+    video.muted = true
+    video.playsInline = true
     video.preload = 'auto'
-    video.load()
+    video.src = videoUrl
+    videoRef.current = video
 
     const onLoaded = () => {
       setVideoReady(true)
       requestAnimationFrame(drawFrame)
     }
-    video.addEventListener('loadeddata', onLoaded, { once: true })
-    return () => video.removeEventListener('loadeddata', onLoaded)
-  }, [isHovering, url, drawFrame])
-
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video || !isHovering) return
     const onSeeked = () => requestAnimationFrame(drawFrame)
+
+    video.addEventListener('loadeddata', onLoaded)
     video.addEventListener('seeked', onSeeked)
-    return () => video.removeEventListener('seeked', onSeeked)
-  }, [isHovering, drawFrame])
+    video.load()
+
+    return () => {
+      video.removeEventListener('loadeddata', onLoaded)
+      video.removeEventListener('seeked', onSeeked)
+      video.pause()
+      video.removeAttribute('src')
+      video.load()
+      if (videoRef.current === video) {
+        videoRef.current = null
+      }
+    }
+  }, [isHovering, videoUrl, drawFrame])
 
   return (
     <div
@@ -99,22 +99,12 @@ export function VideoThumbnailCard({ url, thumbnailUrl }: { url: string; thumbna
           className={`w-full h-full object-cover absolute inset-0 ${isHovering && videoReady ? 'opacity-0' : 'opacity-100'} transition-opacity duration-100`}
         />
       ) : (
-        <div className={`w-full h-full bg-zinc-800 absolute inset-0 flex items-center justify-center ${isHovering && videoReady ? 'opacity-0' : 'opacity-100'} transition-opacity duration-100`}>
-          <Video className="h-5 w-5 text-zinc-600" />
-        </div>
+        <div className={`w-full h-full absolute inset-0 ${isHovering && videoReady ? 'opacity-0' : 'opacity-100'} transition-opacity duration-100`} />
       )}
 
       <canvas
         ref={canvasRef}
         className={`w-full h-full object-cover absolute inset-0 ${isHovering && videoReady ? 'opacity-100' : 'opacity-0'} transition-opacity duration-100`}
-      />
-
-      <video
-        ref={videoRef}
-        className="hidden"
-        muted
-        playsInline
-        preload="none"
       />
 
       {isHovering && (

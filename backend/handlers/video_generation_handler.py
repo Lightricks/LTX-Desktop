@@ -14,7 +14,14 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
-from api_types import GenerateVideoRequest, GenerateVideoResponse, ImageConditioningInput, VideoCameraMotion
+from api_types import (
+    GenerateVideoCancelledResponse,
+    GenerateVideoCompleteResponse,
+    GenerateVideoRequest,
+    GenerateVideoResponse,
+    ImageConditioningInput,
+    VideoCameraMotion,
+)
 from _routes._errors import HTTPError
 from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
@@ -83,13 +90,15 @@ class VideoGenerationHandler(StateHandlerBase):
             raise HTTPError(409, "Generation already in progress")
 
         resolution = req.resolution
-
-        duration = int(float(req.duration))
-        fps = int(float(req.fps))
+        duration = req.duration
+        fps = req.fps
 
         audio_path = normalize_optional_path(req.audioPath)
         if audio_path:
             return self._generate_a2v(req, duration, fps, audio_path=audio_path)
+
+        if req.model != "fast":
+            raise HTTPError(400, "INVALID_LOCAL_MODEL")
 
         logger.info("Resolution %s - using fast pipeline", resolution)
 
@@ -100,7 +109,10 @@ class VideoGenerationHandler(StateHandlerBase):
         }
 
         def get_16_9_size(res: str) -> tuple[int, int]:
-            return RESOLUTION_MAP_16_9.get(res, (960, 544))
+            size = RESOLUTION_MAP_16_9.get(res)
+            if size is None:
+                raise HTTPError(400, "INVALID_LOCAL_RESOLUTION")
+            return size
 
         def get_9_16_size(res: str) -> tuple[int, int]:
             w, h = get_16_9_size(res)
@@ -140,13 +152,13 @@ class VideoGenerationHandler(StateHandlerBase):
             )
 
             self._generation.complete_generation(output_path)
-            return GenerateVideoResponse(status="complete", video_path=output_path)
+            return GenerateVideoCompleteResponse(status="complete", video_path=output_path)
 
         except Exception as e:
             self._generation.fail_generation(str(e))
             if "cancelled" in str(e).lower():
                 logger.info("Generation cancelled by user")
-                return GenerateVideoResponse(status="cancelled")
+                return GenerateVideoCancelledResponse(status="cancelled")
 
             raise HTTPError(500, str(e)) from e
 
@@ -246,8 +258,6 @@ class VideoGenerationHandler(StateHandlerBase):
     def _generate_a2v(
         self, req: GenerateVideoRequest, duration: int, fps: int, *, audio_path: str
     ) -> GenerateVideoResponse:
-        if req.model != "pro":
-            logger.warning("A2V local requested with model=%s; A2V always uses pro pipeline", req.model)
         validated_audio_path = validate_audio_file(audio_path)
         audio_path_str = str(validated_audio_path)
 
@@ -256,7 +266,10 @@ class VideoGenerationHandler(StateHandlerBase):
             "720p": (1280, 704),
             "1080p": (1920, 1088),
         }
-        width, height = RESOLUTION_MAP.get(req.resolution, (960, 576))
+        size = RESOLUTION_MAP.get(req.resolution)
+        if size is None:
+            raise HTTPError(400, "INVALID_LOCAL_A2V_RESOLUTION")
+        width, height = size
 
         num_frames = self._compute_num_frames(duration, fps)
 
@@ -322,13 +335,13 @@ class VideoGenerationHandler(StateHandlerBase):
 
             self._generation.update_progress("complete", 100, total_steps, total_steps)
             self._generation.complete_generation(str(output_path))
-            return GenerateVideoResponse(status="complete", video_path=str(output_path))
+            return GenerateVideoCompleteResponse(status="complete", video_path=str(output_path))
 
         except Exception as e:
             self._generation.fail_generation(str(e))
             if "cancelled" in str(e).lower():
                 logger.info("Generation cancelled by user")
-                return GenerateVideoResponse(status="cancelled")
+                return GenerateVideoCancelledResponse(status="cancelled")
             raise HTTPError(500, str(e)) from e
         finally:
             self._text.clear_api_embeddings()
@@ -369,6 +382,8 @@ class VideoGenerationHandler(StateHandlerBase):
         if settings.seed_locked:
             logger.info("Using locked seed: %s", settings.locked_seed)
             return settings.locked_seed
+        if self.config.dev_mode:
+            return 1000
         return int(time.time()) % 2147483647
 
     def _make_output_path(self) -> Path:
@@ -395,7 +410,7 @@ class VideoGenerationHandler(StateHandlerBase):
             if not api_key:
                 raise HTTPError(400, "PRO_API_KEY_REQUIRED")
 
-            requested_model = req.model.strip().lower()
+            requested_model = req.model
             api_model_id = FORCED_API_MODEL_MAP.get(requested_model)
             if api_model_id is None:
                 raise HTTPError(400, "INVALID_FORCED_API_MODEL")
@@ -405,7 +420,7 @@ class VideoGenerationHandler(StateHandlerBase):
             if resolution_by_aspect is None:
                 raise HTTPError(400, "INVALID_FORCED_API_RESOLUTION")
 
-            aspect_ratio = req.aspectRatio.strip()
+            aspect_ratio = req.aspectRatio
             if aspect_ratio not in FORCED_API_ALLOWED_ASPECT_RATIOS:
                 raise HTTPError(400, "INVALID_FORCED_API_ASPECT_RATIO")
 
@@ -417,8 +432,6 @@ class VideoGenerationHandler(StateHandlerBase):
                 raise RuntimeError("Generation was cancelled")
 
             if has_input_audio:
-                if requested_model != "pro":
-                    logger.warning("A2V requested with model=%s; overriding to 'pro'", requested_model)
                 api_model_id = FORCED_API_MODEL_MAP["pro"]
                 if api_resolution != A2V_FORCED_API_RESOLUTION:
                     logger.warning("A2V requested with resolution=%s; overriding to '%s'", api_resolution, A2V_FORCED_API_RESOLUTION)
@@ -453,14 +466,14 @@ class VideoGenerationHandler(StateHandlerBase):
             elif has_input_image:
                 validated_image_path = validate_image_file(image_path)
 
-                duration = self._parse_forced_numeric_field(req.duration, "INVALID_FORCED_API_DURATION")
-                fps = self._parse_forced_numeric_field(req.fps, "INVALID_FORCED_API_FPS")
+                duration = req.duration
+                fps = req.fps
                 if fps not in FORCED_API_ALLOWED_FPS:
                     raise HTTPError(400, "INVALID_FORCED_API_FPS")
                 if duration not in _get_allowed_durations(api_model_id, resolution_label, fps):
                     raise HTTPError(400, "INVALID_FORCED_API_DURATION")
 
-                generate_audio = self._parse_audio_flag(req.audio)
+                generate_audio = req.audio
                 self._generation.update_progress("uploading_image", 20, None, None)
                 image_uri = self._ltx_api_client.upload_file(
                     api_key=api_key,
@@ -480,14 +493,14 @@ class VideoGenerationHandler(StateHandlerBase):
                 )
                 self._generation.update_progress("downloading_output", 85, None, None)
             else:
-                duration = self._parse_forced_numeric_field(req.duration, "INVALID_FORCED_API_DURATION")
-                fps = self._parse_forced_numeric_field(req.fps, "INVALID_FORCED_API_FPS")
+                duration = req.duration
+                fps = req.fps
                 if fps not in FORCED_API_ALLOWED_FPS:
                     raise HTTPError(400, "INVALID_FORCED_API_FPS")
                 if duration not in _get_allowed_durations(api_model_id, resolution_label, fps):
                     raise HTTPError(400, "INVALID_FORCED_API_DURATION")
 
-                generate_audio = self._parse_audio_flag(req.audio)
+                generate_audio = req.audio
                 self._generation.update_progress("inference", 55, None, None)
                 video_bytes = self._ltx_api_client.generate_text_to_video(
                     api_key=api_key,
@@ -511,7 +524,7 @@ class VideoGenerationHandler(StateHandlerBase):
 
             self._generation.update_progress("complete", 100, None, None)
             self._generation.complete_generation(str(output_path))
-            return GenerateVideoResponse(status="complete", video_path=str(output_path))
+            return GenerateVideoCompleteResponse(status="complete", video_path=str(output_path))
         except HTTPError as e:
             self._generation.fail_generation(e.detail)
             raise
@@ -519,24 +532,10 @@ class VideoGenerationHandler(StateHandlerBase):
             self._generation.fail_generation(str(e))
             if "cancelled" in str(e).lower():
                 logger.info("Generation cancelled by user")
-                return GenerateVideoResponse(status="cancelled")
+                return GenerateVideoCancelledResponse(status="cancelled")
             raise HTTPError(500, str(e)) from e
 
     def _write_forced_api_video(self, video_bytes: bytes) -> Path:
         output_path = self._make_output_path()
         output_path.write_bytes(video_bytes)
         return output_path
-
-    @staticmethod
-    def _parse_forced_numeric_field(raw_value: str, error_detail: str) -> int:
-        try:
-            return int(float(raw_value))
-        except (TypeError, ValueError):
-            raise HTTPError(400, error_detail) from None
-
-    @staticmethod
-    def _parse_audio_flag(audio_value: str | bool) -> bool:
-        if isinstance(audio_value, bool):
-            return audio_value
-        normalized = audio_value.strip().lower()
-        return normalized in {"1", "true", "yes", "on"}

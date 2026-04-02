@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
-import type { Project, Asset, AssetTake, ViewType, ProjectTab, Timeline } from '../types/project'
+import type { Project, Asset, AssetTake, ViewType, ProjectTab } from '../types/project'
 import { createDefaultTimeline } from '../types/project'
 import { logger } from '../lib/logger'
 
@@ -15,6 +15,7 @@ interface ProjectContextType {
   // Projects
   projects: Project[]
   currentProject: Project | null
+  setCurrentProject: (project: Project) => void
   createProject: (name: string) => Project
   deleteProject: (id: string) => void
   renameProject: (id: string, name: string) => void
@@ -28,27 +29,17 @@ interface ProjectContextType {
   setAssetActiveTake: (projectId: string, assetId: string, takeIndex: number) => void
   toggleFavorite: (projectId: string, assetId: string) => void
   
-  // Timelines
-  addTimeline: (projectId: string, name?: string) => Timeline
-  deleteTimeline: (projectId: string, timelineId: string) => void
-  renameTimeline: (projectId: string, timelineId: string, name: string) => void
-  duplicateTimeline: (projectId: string, timelineId: string) => Timeline | null
-  setActiveTimeline: (projectId: string, timelineId: string) => void
-  updateTimeline: (projectId: string, timelineId: string, updates: Partial<Pick<Timeline, 'tracks' | 'clips' | 'subtitles'>>) => void
-  getActiveTimeline: (projectId: string) => Timeline | null
-  
   // Navigation helpers
   openProject: (id: string) => void
   goHome: () => void
-  openPlayground: () => void
   
   // Cross-view communication (editor → gen space)
-  genSpaceEditImageUrl: string | null
-  setGenSpaceEditImageUrl: (url: string | null) => void
+  genSpaceEditImagePath: string | null
+  setGenSpaceEditImagePath: (path: string | null) => void
   genSpaceEditMode: 'image' | 'video' | null
   setGenSpaceEditMode: (mode: 'image' | 'video' | null) => void
-  genSpaceAudioUrl: string | null
-  setGenSpaceAudioUrl: (url: string | null) => void
+  genSpaceAudioPath: string | null
+  setGenSpaceAudioPath: (path: string | null) => void
   genSpaceRetakeSource: GenSpaceRetakeSource | null
   setGenSpaceRetakeSource: (source: GenSpaceRetakeSource | null) => void
   pendingRetakeUpdate: PendingRetakeUpdate | null
@@ -60,7 +51,6 @@ interface ProjectContextType {
 }
 
 export interface GenSpaceRetakeSource {
-  videoUrl: string
   videoPath: string
   clipId?: string
   assetId?: string
@@ -75,7 +65,6 @@ export interface PendingRetakeUpdate {
 }
 
 export interface GenSpaceIcLoraSource {
-  videoUrl: string
   videoPath: string
   clipId?: string
   assetId?: string
@@ -104,52 +93,6 @@ function migrateProject(project: Project): Project {
   return project
 }
 
-// Rebuild a file:// URL from a filesystem path
-function pathToFileUrl(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, '/')
-  return normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
-}
-
-// Check if a path looks like a real filesystem path (not just a filename)
-function isRealPath(p: string): boolean {
-  if (!p) return false
-  // Has directory separators or starts with a drive letter (Windows) or /
-  return p.includes('/') || p.includes('\\') || /^[A-Za-z]:/.test(p)
-}
-
-// Recover broken blob URLs by rebuilding file:// URLs from stored paths
-function recoverAssetUrls(project: Project): Project {
-  let changed = false
-  const fixedAssets = project.assets.map(asset => {
-    // If the URL is a blob: URL and we have a real file path, recover it
-    if (asset.url && asset.url.startsWith('blob:') && isRealPath(asset.path)) {
-      changed = true
-      const fixedUrl = pathToFileUrl(asset.path)
-      const fixedTakes = asset.takes?.map(t => ({
-        ...t,
-        url: t.url.startsWith('blob:') && isRealPath(t.path) ? pathToFileUrl(t.path) : t.url
-      }))
-      return { ...asset, url: fixedUrl, takes: fixedTakes || asset.takes }
-    }
-    return asset
-  })
-  
-  if (!changed) return project
-  
-  // Also fix clip embedded assets and timeline clip references
-  const fixedTimelines = project.timelines?.map(tl => ({
-    ...tl,
-    clips: tl.clips?.map(clip => {
-      if (clip.asset?.url?.startsWith('blob:') && isRealPath(clip.asset.path)) {
-        return { ...clip, asset: { ...clip.asset, url: pathToFileUrl(clip.asset.path) } }
-      }
-      return clip
-    }) || tl.clips
-  }))
-  
-  return { ...project, assets: fixedAssets, timelines: fixedTimelines || project.timelines }
-}
-
 // Load initial projects from localStorage synchronously
 function loadProjectsFromStorage(): Project[] {
   try {
@@ -157,8 +100,7 @@ function loadProjectsFromStorage(): Project[] {
     if (stored) {
       const parsed = JSON.parse(stored)
       if (Array.isArray(parsed)) {
-        // Migrate any old projects, then recover broken blob URLs
-        return parsed.map(migrateProject).map(recoverAssetUrls)
+        return parsed.map(migrateProject)
       }
     }
   } catch (e) {
@@ -171,9 +113,9 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const [currentView, setCurrentView] = useState<ViewType>('home')
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null)
   const [currentTab, setCurrentTab] = useState<ProjectTab>('gen-space')
-  const [genSpaceEditImageUrl, setGenSpaceEditImageUrl] = useState<string | null>(null)
+  const [genSpaceEditImagePath, setGenSpaceEditImagePath] = useState<string | null>(null)
   const [genSpaceEditMode, setGenSpaceEditMode] = useState<'image' | 'video' | null>(null)
-  const [genSpaceAudioUrl, setGenSpaceAudioUrl] = useState<string | null>(null)
+  const [genSpaceAudioPath, setGenSpaceAudioPath] = useState<string | null>(null)
   const [genSpaceRetakeSource, setGenSpaceRetakeSource] = useState<GenSpaceRetakeSource | null>(null)
   const [pendingRetakeUpdate, setPendingRetakeUpdate] = useState<PendingRetakeUpdate | null>(null)
   const [genSpaceIcLoraSource, setGenSpaceIcLoraSource] = useState<GenSpaceIcLoraSource | null>(null)
@@ -201,6 +143,12 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   }, [projects])
   
   const currentProject = projects.find(p => p.id === currentProjectId) || null
+
+  const setCurrentProject = useCallback((project: Project) => {
+    setProjects(prev => prev.map(existing => (
+      existing.id === project.id ? project : existing
+    )))
+  }, [])
   
   const createProject = useCallback((name: string): Project => {
     const defaultTimeline = createDefaultTimeline('Timeline 1')
@@ -243,7 +191,6 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
             ...p, 
             assets: [newAsset, ...p.assets],
             updatedAt: Date.now(),
-            thumbnail: p.thumbnail || newAsset.thumbnail || newAsset.url,
           } 
         : p
     ))
@@ -281,9 +228,11 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
           if (a.id !== assetId) return a
           // Initialize takes array if it doesn't exist (original asset becomes take 0)
           const existingTakes: AssetTake[] = a.takes || [{
-            url: a.url,
             path: a.path,
-            thumbnail: a.thumbnail,
+            bigThumbnailPath: a.bigThumbnailPath,
+            smallThumbnailPath: a.smallThumbnailPath,
+            width: a.width,
+            height: a.height,
             createdAt: a.createdAt,
           }]
           const newTakes = [...existingTakes, take]
@@ -292,10 +241,11 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
             ...a,
             takes: newTakes,
             activeTakeIndex: newIndex,
-            // Update the main url/path to the new take
-            url: take.url,
             path: take.path,
-            thumbnail: take.thumbnail || a.thumbnail,
+            bigThumbnailPath: take.bigThumbnailPath,
+            smallThumbnailPath: take.smallThumbnailPath,
+            width: take.width,
+            height: take.height,
           }
         }),
         updatedAt: Date.now(),
@@ -320,9 +270,11 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
             ...a,
             takes: newTakes,
             activeTakeIndex: newActiveIdx,
-            url: activeTake.url,
             path: activeTake.path,
-            thumbnail: activeTake.thumbnail || a.thumbnail,
+            bigThumbnailPath: activeTake.bigThumbnailPath,
+            smallThumbnailPath: activeTake.smallThumbnailPath,
+            width: activeTake.width,
+            height: activeTake.height,
           }
         }),
         updatedAt: Date.now(),
@@ -342,9 +294,11 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
           return {
             ...a,
             activeTakeIndex: idx,
-            url: take.url,
             path: take.path,
-            thumbnail: take.thumbnail || a.thumbnail,
+            bigThumbnailPath: take.bigThumbnailPath,
+            smallThumbnailPath: take.smallThumbnailPath,
+            width: take.width,
+            height: take.height,
           }
         }),
         updatedAt: Date.now(),
@@ -366,119 +320,6 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     ))
   }, [])
   
-  // --- Timeline CRUD ---
-  
-  const addTimeline = useCallback((projectId: string, name?: string): Timeline => {
-    const project = projects.find(p => p.id === projectId)
-    const count = (project?.timelines?.length || 0) + 1
-    const newTimeline = createDefaultTimeline(name || `Timeline ${count}`)
-    
-    setProjects(prev => prev.map(p => 
-      p.id === projectId 
-        ? { 
-            ...p, 
-            timelines: [...(p.timelines || []), newTimeline],
-            activeTimelineId: newTimeline.id,
-            updatedAt: Date.now(),
-          } 
-        : p
-    ))
-    return newTimeline
-  }, [projects])
-  
-  const deleteTimeline = useCallback((projectId: string, timelineId: string) => {
-    setProjects(prev => prev.map(p => {
-      if (p.id !== projectId) return p
-      const remaining = (p.timelines || []).filter(t => t.id !== timelineId)
-      // Don't allow deleting the last timeline
-      if (remaining.length === 0) return p
-      return {
-        ...p,
-        timelines: remaining,
-        // If we deleted the active timeline, switch to the first remaining
-        activeTimelineId: p.activeTimelineId === timelineId ? remaining[0].id : p.activeTimelineId,
-        updatedAt: Date.now(),
-      }
-    }))
-  }, [])
-  
-  const renameTimeline = useCallback((projectId: string, timelineId: string, name: string) => {
-    setProjects(prev => prev.map(p => 
-      p.id === projectId 
-        ? {
-            ...p,
-            timelines: (p.timelines || []).map(t => 
-              t.id === timelineId ? { ...t, name } : t
-            ),
-            updatedAt: Date.now(),
-          }
-        : p
-    ))
-  }, [])
-  
-  const duplicateTimeline = useCallback((projectId: string, timelineId: string): Timeline | null => {
-    const project = projects.find(p => p.id === projectId)
-    const source = project?.timelines?.find(t => t.id === timelineId)
-    if (!source) return null
-    
-    const newTimeline: Timeline = {
-      ...source,
-      id: `timeline-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: `${source.name} (copy)`,
-      createdAt: Date.now(),
-      tracks: source.tracks.map(t => ({ ...t })),
-      clips: source.clips.map(c => ({ 
-        ...c, 
-        id: `clip-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` 
-      })),
-      subtitles: source.subtitles?.map(s => ({
-        ...s,
-        id: `sub-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-      })),
-    }
-    
-    setProjects(prev => prev.map(p => 
-      p.id === projectId 
-        ? { 
-            ...p, 
-            timelines: [...(p.timelines || []), newTimeline],
-            activeTimelineId: newTimeline.id,
-            updatedAt: Date.now(),
-          }
-        : p
-    ))
-    return newTimeline
-  }, [projects])
-  
-  const setActiveTimeline = useCallback((projectId: string, timelineId: string) => {
-    setProjects(prev => prev.map(p => 
-      p.id === projectId ? { ...p, activeTimelineId: timelineId } : p
-    ))
-  }, [])
-  
-  const updateTimeline = useCallback((projectId: string, timelineId: string, updates: Partial<Pick<Timeline, 'tracks' | 'clips' | 'subtitles'>>) => {
-    setProjects(prev => prev.map(p => 
-      p.id === projectId 
-        ? {
-            ...p,
-            timelines: (p.timelines || []).map(t => 
-              t.id === timelineId ? { ...t, ...updates } : t
-            ),
-            updatedAt: Date.now(),
-          }
-        : p
-    ))
-  }, [])
-  
-  const getActiveTimeline = useCallback((projectId: string): Timeline | null => {
-    const project = projects.find(p => p.id === projectId)
-    if (!project || !project.timelines || project.timelines.length === 0) return null
-    
-    // Find the active timeline, or fall back to the first one
-    const active = project.timelines.find(t => t.id === project.activeTimelineId)
-    return active || project.timelines[0]
-  }, [projects])
-  
   const openProject = useCallback((id: string) => {
     setCurrentProjectId(id)
     setCurrentView('project')
@@ -488,10 +329,6 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const goHome = useCallback(() => {
     setCurrentView('home')
     setCurrentProjectId(null)
-  }, [])
-  
-  const openPlayground = useCallback(() => {
-    setCurrentView('playground')
   }, [])
   
   return (
@@ -504,6 +341,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       setCurrentTab,
       projects,
       currentProject,
+      setCurrentProject,
       createProject,
       deleteProject,
       renameProject,
@@ -514,22 +352,14 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       deleteTakeFromAsset,
       setAssetActiveTake,
       toggleFavorite,
-      addTimeline,
-      deleteTimeline,
-      renameTimeline,
-      duplicateTimeline,
-      setActiveTimeline,
-      updateTimeline,
-      getActiveTimeline,
       openProject,
       goHome,
-      openPlayground,
-      genSpaceEditImageUrl,
-      setGenSpaceEditImageUrl,
+      genSpaceEditImagePath,
+      setGenSpaceEditImagePath,
       genSpaceEditMode,
       setGenSpaceEditMode,
-      genSpaceAudioUrl,
-      setGenSpaceAudioUrl,
+      genSpaceAudioPath,
+      setGenSpaceAudioPath,
       genSpaceRetakeSource,
       setGenSpaceRetakeSource,
       pendingRetakeUpdate,

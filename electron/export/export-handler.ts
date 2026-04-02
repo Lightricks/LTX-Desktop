@@ -1,46 +1,36 @@
-import { ipcMain } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import { getAllowedRoots } from '../config'
 import { logger } from '../logger'
 import { validatePath } from '../path-validation'
-import { findFfmpegPath, runFfmpeg, urlToFilePath, stopExportProcess } from './ffmpeg-utils'
+import { findFfmpegPath, runFfmpeg, stopExportProcess } from './ffmpeg-utils'
 import { flattenTimeline } from './timeline'
-import type { ExportClip } from './timeline'
-import type { ExportSubtitle } from './video-filter'
 import { buildVideoFilterGraph } from './video-filter'
 import { mixAudioToPcm } from './audio-mix'
+import { handle } from '../ipc/typed-handle'
 
 export function registerExportHandlers(): void {
-  ipcMain.handle('export-native', async (_event, data: {
-    clips: ExportClip[]; outputPath: string; codec: string; width: number; height: number; fps: number; quality: number;
-    letterbox?: { ratio: number; color: string; opacity: number };
-    subtitles?: ExportSubtitle[];
-  }) => {
+  handle('exportNative', async ({ clips, outputPath, codec, width, height, fps, quality, letterbox, subtitles }) => {
     const ffmpegPath = findFfmpegPath()
-    if (!ffmpegPath) return { error: 'FFmpeg not found' }
+    if (!ffmpegPath) return { success: false, error: 'FFmpeg not found' }
 
-    const { clips, outputPath, codec, width, height, fps, quality, letterbox, subtitles } = data
-
-    // Validate output path and all clip source paths
     try {
       validatePath(outputPath, getAllowedRoots())
       for (const clip of clips) {
-        const fp = urlToFilePath(clip.url)
+        const fp = clip.path
         if (fp) validatePath(fp, getAllowedRoots())
       }
     } catch (err) {
-      return { error: String(err) }
+      return { success: false, error: String(err) }
     }
 
     const segments = flattenTimeline(clips)
-    if (segments.length === 0) return { error: 'No clips to export' }
+    if (segments.length === 0) return { success: false, error: 'No clips to export' }
 
-    // Verify source files exist
     for (const seg of segments) {
       if (seg.filePath && !fs.existsSync(seg.filePath)) {
-        return { error: `Source file not found: ${path.basename(seg.filePath)}` }
+        return { success: false, error: `Source file not found: ${path.basename(seg.filePath)}` }
       }
     }
 
@@ -54,7 +44,6 @@ export function registerExportHandlers(): void {
     }
 
     try {
-      // STEP 1: Export video-only (simple concat, no audio complexity)
       logger.info( `[Export] Step 1: Video-only export (${segments.length} segments)`)
       {
         const { inputs, filterScript } = buildVideoFilterGraph(segments, { width, height, fps, letterbox, subtitles })
@@ -67,17 +56,16 @@ export function registerExportHandlers(): void {
           '-map', '[outv]', '-an', '-c:v', 'libx264', '-preset', 'fast', '-crf', '16', '-pix_fmt', 'yuv420p', tmpVideo
         ])
         try { fs.unlinkSync(filterFile) } catch {}
-        if (!r.success) { cleanup(); return { error: r.error } }
+        if (!r.success) { cleanup(); return { success: false, error: r.error } }
       }
 
-      // STEP 2: Audio mixdown (PCM buffer approach)
       logger.info( '[Export] Step 2: Audio mixdown (PCM buffer approach)')
       let totalDuration = segments.reduce((max, s) => Math.max(max, s.startTime + s.duration), 0)
       for (const c of clips) {
         totalDuration = Math.max(totalDuration, c.startTime + c.duration)
       }
 
-      const { pcmBuffer, sampleRate, channels } = await mixAudioToPcm(clips, totalDuration, ffmpegPath)
+      const { pcmBuffer, sampleRate, channels: audioChannels } = await mixAudioToPcm(clips, totalDuration, ffmpegPath)
 
       const tmpRawPcm = path.join(tmpDir, `ltx-pcm-${ts}.raw`)
       fs.writeFileSync(tmpRawPcm, pcmBuffer)
@@ -85,14 +73,13 @@ export function registerExportHandlers(): void {
 
       {
         const r = await runFfmpeg(ffmpegPath, [
-          '-y', '-f', 's16le', '-ar', String(sampleRate), '-ac', String(channels),
+          '-y', '-f', 's16le', '-ar', String(sampleRate), '-ac', String(audioChannels),
           '-i', tmpRawPcm, '-c:a', 'pcm_s16le', tmpAudio,
         ])
         try { fs.unlinkSync(tmpRawPcm) } catch {}
-        if (!r.success) { cleanup(); return { error: r.error } }
+        if (!r.success) { cleanup(); return { success: false, error: r.error } }
       }
 
-      // STEP 3: Combine video + audio (no re-encode of video)
       logger.info( '[Export] Step 3: Combining video + audio')
       let videoCodecArgs: string[]
       let audioCodecArgs: string[]
@@ -107,10 +94,9 @@ export function registerExportHandlers(): void {
         audioCodecArgs = ['-c:a', 'libopus', '-b:a', '128k']
       } else {
         cleanup()
-        return { error: `Unknown codec: ${codec}` }
+        return { success: false, error: `Unknown codec: ${codec}` }
       }
 
-      // If final codec matches temp video (h264), just copy video stream
       const canCopyVideo = codec === 'h264'
       const r = await runFfmpeg(ffmpegPath, [
         '-y', '-i', tmpVideo, '-i', tmpAudio,
@@ -120,17 +106,17 @@ export function registerExportHandlers(): void {
       ])
 
       cleanup()
-      if (!r.success) return { error: r.error }
+      if (!r.success) return { success: false, error: r.error }
       logger.info( `[Export] Done: ${outputPath}`)
       return { success: true }
     } catch (err) {
       cleanup()
-      return { error: String(err) }
+      return { success: false, error: String(err) }
     }
   })
 
-  ipcMain.handle('export-cancel', async () => {
+  handle('exportCancel', () => {
     stopExportProcess()
-    return { ok: true }
+    return { success: true }
   })
 }

@@ -11,7 +11,6 @@ def _set_video_pipeline(state):
             warmth=VideoPipelineWarmth.COLD,
             is_compiled=False,
         ),
-        generation=None,
     )
 
 

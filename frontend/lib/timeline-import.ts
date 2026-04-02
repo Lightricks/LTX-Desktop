@@ -13,15 +13,14 @@
 export interface ParsedMediaRef {
   id: string
   name: string
-  pathUrl: string        // Original path from the XML
-  resolvedPath: string   // Resolved local path (may need relinking)
+  path: string           // Effective local file path used for import
+  bigThumbnailPath?: string
+  smallThumbnailPath?: string
   duration: number       // in seconds
   type: 'video' | 'audio' | 'image'
   width?: number
   height?: number
   fps?: number
-  found: boolean         // whether the file exists on disk
-  relinkedPath?: string  // user-provided relinked path
 }
 
 export interface ParsedClip {
@@ -286,10 +285,11 @@ function parseFcp7Xml(doc: Document): ParsedTimeline | null {
     if (!fileId || mediaRefs.has(fileId)) return
     
     // Some file elements are just references (no children) - skip those
-    const pathUrl = getChildText(fileEl, 'pathurl')
-    if (!pathUrl && fileEl.children.length === 0) return
+    const xmlPath = getChildText(fileEl, 'pathurl')
+    if (!xmlPath && fileEl.children.length === 0) return
     
-    const fileName = getChildText(fileEl, 'name') || pathUrl.split('/').pop() || 'Unknown'
+    const decodedPath = decodePathUrl(xmlPath)
+    const fileName = getChildText(fileEl, 'name') || decodedPath.split(/[/\\]/).pop() || 'Unknown'
     const fileFps = getTimebase(fileEl)
     const fileDuration = getChildNumber(fileEl, 'duration') / (fileFps || fps)
     
@@ -298,20 +298,17 @@ function parseFcp7Xml(doc: Document): ParsedTimeline | null {
     const width = mediaVideo ? getChildNumber(mediaVideo, 'width') : undefined
     const height = mediaVideo ? getChildNumber(mediaVideo, 'height') : undefined
     
-    const resolvedPath = decodePathUrl(pathUrl)
     const type = detectMediaType(fileName)
     
     mediaRefs.set(fileId, {
       id: fileId,
       name: fileName,
-      pathUrl,
-      resolvedPath,
+      path: decodedPath,
       duration: fileDuration,
       type,
       width,
       height,
       fps: fileFps,
-      found: false, // will be checked later via Electron
     })
   })
   
@@ -345,17 +342,15 @@ function parseFcp7Xml(doc: Document): ParsedTimeline | null {
       } else if (fileEl && mediaRefId) {
         // Full file definition inline - make sure it's in our map
         if (!mediaRefs.has(mediaRefId)) {
-          const pathUrl = getChildText(fileEl, 'pathurl')
-          const fileName = getChildText(fileEl, 'name') || pathUrl.split('/').pop() || clipName
-          const resolvedPath = decodePathUrl(pathUrl)
+          const xmlPath = getChildText(fileEl, 'pathurl')
+          const decodedPath = decodePathUrl(xmlPath)
+          const fileName = getChildText(fileEl, 'name') || decodedPath.split(/[/\\]/).pop() || clipName
           mediaRefs.set(mediaRefId, {
             id: mediaRefId,
             name: fileName,
-            pathUrl,
-            resolvedPath,
+            path: decodedPath,
             duration: (outFrame - inFrame) / clipFps,
             type: detectMediaType(fileName),
-            found: false,
           })
         }
       }
@@ -692,20 +687,18 @@ function parseFcpXml(doc: Document): ParsedTimeline | null {
       }
     }
     
-    const resolvedPath = decodePathUrl(src)
+    const decodedPath = decodePathUrl(src)
     const type = !hasVideo && hasAudio ? 'audio' : detectMediaType(assetName || src)
     
     mediaRefs.set(assetId, {
       id: assetId,
       name: assetName || src.split('/').pop() || 'Unknown',
-      pathUrl: src,
-      resolvedPath,
+      path: decodedPath,
       duration: dur,
       type,
       width,
       height,
       fps,
-      found: false,
     })
   })
   

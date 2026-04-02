@@ -1,7 +1,19 @@
 import { useEffect, useRef } from 'react'
 import { resolveAction, type ActionId } from '../../lib/keyboard-shortcuts'
-import type { TimelineClip, Track } from '../../types/project'
-import type { ToolType } from './video-editor-utils'
+import type { EditorState } from './editor-state'
+import type { SourceKeyboardAction } from './VideoEditorSourceMonitor'
+import {
+  selectActiveFocusArea,
+  selectActiveTimelineInPoint,
+  selectActiveTimelineOutPoint,
+  selectClips,
+  selectKeyboardCommandContext,
+  selectSelectedGap,
+  selectSelectedSubtitleId,
+  selectShuttleSpeed,
+  selectTracks,
+} from './editor-selectors'
+import { useEditorActions } from './editor-store'
 
 // Frame duration at 24fps
 const FRAME_DURATION = 1 / 24
@@ -12,32 +24,15 @@ const REVERSE_SPEEDS = [-1, -2, -4, -8]
 interface KeyboardRefs {
   kbLayoutRef: React.MutableRefObject<any>
   isKbEditorOpenRef: React.MutableRefObject<boolean>
-  activePanelRef: React.MutableRefObject<'source' | 'timeline'>
-  keyboardStateRef: React.MutableRefObject<{
-    clips: TimelineClip[]
-    selectedClipIds: Set<string>
-    totalDuration: number
-    selectedAssetIds: Set<string>
-    currentTime: number
-    inPoint: number | null
-    outPoint: number | null
-  }>
-  clipsRef: React.MutableRefObject<TimelineClip[]>
-  tracksRef: React.MutableRefObject<Track[]>
+  getState: () => EditorState
   playbackTimeRef: React.MutableRefObject<number>
-  sourceVideoRef: React.MutableRefObject<HTMLVideoElement | null>
-  sourceIsPlayingRef: React.MutableRefObject<boolean>
-  sourceTimeRef: React.MutableRefObject<number>
+  sourceDispatchRef: React.MutableRefObject<(action: SourceKeyboardAction) => void>
+  sourcePauseRef: React.MutableRefObject<() => void>
   centerOnPlayheadRef: React.MutableRefObject<boolean>
   getMinZoomRef: React.MutableRefObject<() => number>
   gapGenerateModeRef: React.MutableRefObject<'text-to-video' | 'image-to-video' | 'text-to-image' | null>
-  undoRef: React.MutableRefObject<() => void>
-  redoRef: React.MutableRefObject<() => void>
-  copyRef: React.MutableRefObject<() => void>
-  pasteRef: React.MutableRefObject<() => void>
-  cutRef: React.MutableRefObject<() => void>
-  pushUndoRef: React.MutableRefObject<() => void>
-  pushAssetUndoRef: React.MutableRefObject<() => void>
+  clearSelectedGapRef: React.MutableRefObject<() => void>
+  closeSelectedGapRef: React.MutableRefObject<() => void>
   fitToViewRef: React.MutableRefObject<() => void>
   toggleFullscreenRef: React.MutableRefObject<() => void>
   insertEditRef: React.MutableRefObject<() => void>
@@ -45,49 +40,23 @@ interface KeyboardRefs {
   matchFrameRef: React.MutableRefObject<() => void>
 }
 
-interface KeyboardSetters {
-  setActiveTool: React.Dispatch<React.SetStateAction<ToolType>>
-  setLastTrimTool: React.Dispatch<React.SetStateAction<ToolType>>
-  setIsPlaying: React.Dispatch<React.SetStateAction<boolean>>
-  setShuttleSpeed: React.Dispatch<React.SetStateAction<number>>
-  setCurrentTime: React.Dispatch<React.SetStateAction<number>>
-  setSelectedClipIds: React.Dispatch<React.SetStateAction<Set<string>>>
-  setClips: React.Dispatch<React.SetStateAction<TimelineClip[]>>
-  setSourceIsPlaying: (v: boolean) => void
-  setSourceTime: (v: number) => void
-  setSourceIn: React.Dispatch<React.SetStateAction<number | null>>
-  setSourceOut: React.Dispatch<React.SetStateAction<number | null>>
-  setInPoint: (updater: (prev: number | null) => number | null) => void
-  setOutPoint: (updater: (prev: number | null) => number | null) => void
-  clearInOut: () => void
-  setZoom: React.Dispatch<React.SetStateAction<number>>
-  setSnapEnabled: React.Dispatch<React.SetStateAction<boolean>>
-  setGapGenerateMode: React.Dispatch<React.SetStateAction<'text-to-video' | 'image-to-video' | 'text-to-image' | null>>
-  setSelectedGap: (v: any) => void
-  setSelectedAssetIds: React.Dispatch<React.SetStateAction<Set<string>>>
-}
-
 interface KeyboardContext {
-  selectedGap: { trackIndex: number; startTime: number; endTime: number } | null
-  selectedSubtitleId: string | null
-  editingSubtitleId: string | null
-  currentProjectId: string | null
-  deleteSubtitleRef: React.MutableRefObject<(id: string) => void>
-  deleteAsset: (projectId: string, assetId: string) => void
-  deleteGapRef: React.MutableRefObject<(gap: { trackIndex: number; startTime: number; endTime: number }) => void>
+  deleteAssetActionRef: React.MutableRefObject<() => void>
 }
 
 export interface UseEditorKeyboardParams {
   refs: KeyboardRefs
-  setters: KeyboardSetters
   context: KeyboardContext
 }
 
 export function useEditorKeyboard(params: UseEditorKeyboardParams) {
-  const { refs, setters, context } = params
+  const { refs, context } = params
+  const actions = useEditorActions()
   const kHeldRef = useRef(false)
   const contextRef = useRef(context)
+  const actionsRef = useRef(actions)
   contextRef.current = context
+  actionsRef.current = actions
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -95,209 +64,190 @@ export function useEditorKeyboard(params: UseEditorKeyboardParams) {
       if (refs.isKbEditorOpenRef.current) return
 
       const context = contextRef.current
-      const { clips: c, selectedClipIds: sel, totalDuration: td, selectedAssetIds: selAssets } = refs.keyboardStateRef.current
+      const state = refs.getState()
+      const commandContext = selectKeyboardCommandContext(state)
+      const sel = commandContext.selectedClipIds
+      const td = commandContext.totalDuration
+      const focusArea = selectActiveFocusArea(state)
 
       const action: ActionId | null = resolveAction(refs.kbLayoutRef.current, e)
       if (!action) return
 
       e.preventDefault()
+      const editorActions = actionsRef.current
 
       switch (action) {
         // Tools
-        case 'tool.select':       setters.setActiveTool('select'); break
-        case 'tool.blade':        setters.setActiveTool('blade'); break
-        case 'tool.ripple':       setters.setActiveTool('ripple'); setters.setLastTrimTool('ripple'); break
-        case 'tool.roll':         setters.setActiveTool('roll'); setters.setLastTrimTool('roll'); break
-        case 'tool.slide':        setters.setActiveTool('slide'); setters.setLastTrimTool('slide'); break
-        case 'tool.slip':         setters.setActiveTool('slip'); setters.setLastTrimTool('slip'); break
-        case 'tool.trackForward': setters.setActiveTool('trackForward'); break
+        case 'tool.select':       editorActions.setActiveTool('select'); break
+        case 'tool.blade':        editorActions.setActiveTool('blade'); break
+        case 'tool.ripple':       editorActions.setActiveTool('ripple'); editorActions.setLastTrimTool('ripple'); break
+        case 'tool.roll':         editorActions.setActiveTool('roll'); editorActions.setLastTrimTool('roll'); break
+        case 'tool.slide':        editorActions.setActiveTool('slide'); editorActions.setLastTrimTool('slide'); break
+        case 'tool.slip':         editorActions.setActiveTool('slip'); editorActions.setLastTrimTool('slip'); break
+        case 'tool.trackForward': editorActions.setActiveTool('trackForward'); break
 
         // Transport — panel-aware
         case 'transport.playPause':
-          if (refs.activePanelRef.current === 'source') {
-            // Stop timeline playback when starting source playback
-            setters.setIsPlaying(false)
-            setters.setShuttleSpeed(0)
-            if (refs.sourceIsPlayingRef.current) {
-              refs.sourceVideoRef.current?.pause()
-              setters.setSourceIsPlaying(false)
-            } else {
-              if (refs.sourceVideoRef.current) refs.sourceVideoRef.current.play().catch(() => {})
-              setters.setSourceIsPlaying(true)
-            }
+          if (focusArea === 'source') {
+            editorActions.pause()
+            editorActions.stopShuttle()
+            refs.sourceDispatchRef.current('transport.playPause')
           } else {
-            // Stop source playback when starting timeline playback
-            if (refs.sourceIsPlayingRef.current) {
-              refs.sourceVideoRef.current?.pause()
-              setters.setSourceIsPlaying(false)
-            }
-            setters.setShuttleSpeed(0)
-            setters.setIsPlaying(p => !p)
+            refs.sourcePauseRef.current()
+            const wasPlaying = state.session.transport.isPlaying
+            const hadShuttle = state.session.transport.shuttleSpeed !== 0
+            editorActions.stopShuttle()
+            if (wasPlaying || hadShuttle) editorActions.pause()
+            else editorActions.play()
           }
           break
 
         case 'transport.shuttleReverse':
-          if (refs.activePanelRef.current === 'source') {
-            if (refs.sourceVideoRef.current) {
-              refs.sourceVideoRef.current.pause()
-              setters.setSourceIsPlaying(false)
-              refs.sourceVideoRef.current.currentTime = Math.max(0, refs.sourceVideoRef.current.currentTime - FRAME_DURATION)
-              setters.setSourceTime(refs.sourceVideoRef.current.currentTime)
-            }
+          if (focusArea === 'source') {
+            refs.sourceDispatchRef.current('transport.shuttleReverse')
           } else {
+            refs.sourcePauseRef.current()
             if (kHeldRef.current) {
-              setters.setIsPlaying(false); setters.setShuttleSpeed(0)
-              setters.setCurrentTime(prev => Math.max(0, prev - FRAME_DURATION))
+              editorActions.pause()
+              editorActions.stopShuttle()
+              editorActions.stepCurrentTime(-FRAME_DURATION)
             } else {
-              setters.setShuttleSpeed(prev => {
-                if (prev > 0) return -1
-                const idx = REVERSE_SPEEDS.indexOf(prev)
-                const nextIdx = idx >= 0 ? Math.min(idx + 1, REVERSE_SPEEDS.length - 1) : 0
-                return REVERSE_SPEEDS[nextIdx]
-              })
-              setters.setIsPlaying(true)
+              const currentSpeed = selectShuttleSpeed(state)
+              const nextSpeed = currentSpeed > 0
+                ? -1
+                : REVERSE_SPEEDS[Math.max(0, Math.min(REVERSE_SPEEDS.length - 1, REVERSE_SPEEDS.indexOf(currentSpeed) + 1 || 0))]
+              editorActions.setShuttleSpeed(nextSpeed)
+              editorActions.play()
             }
           }
           break
 
         case 'transport.shuttleStop':
-          if (refs.activePanelRef.current === 'source') {
-            refs.sourceVideoRef.current?.pause()
-            setters.setSourceIsPlaying(false)
+          if (focusArea === 'source') {
+            refs.sourceDispatchRef.current('transport.shuttleStop')
           } else {
             kHeldRef.current = true
-            setters.setShuttleSpeed(0)
-            setters.setIsPlaying(false)
+            editorActions.pause()
+            editorActions.stopShuttle()
           }
           break
 
         case 'transport.shuttleForward':
-          if (refs.activePanelRef.current === 'source') {
-            if (refs.sourceVideoRef.current) {
-              if (kHeldRef.current) {
-                refs.sourceVideoRef.current.pause()
-                setters.setSourceIsPlaying(false)
-                refs.sourceVideoRef.current.currentTime = Math.min(refs.sourceVideoRef.current.duration || 0, refs.sourceVideoRef.current.currentTime + FRAME_DURATION)
-                setters.setSourceTime(refs.sourceVideoRef.current.currentTime)
-              } else {
-                refs.sourceVideoRef.current.play().catch(() => {})
-                setters.setSourceIsPlaying(true)
-              }
-            }
+          if (focusArea === 'source') {
+            refs.sourceDispatchRef.current(kHeldRef.current ? 'transport.stepForward' : 'transport.shuttleForward')
           } else {
+            refs.sourcePauseRef.current()
             if (kHeldRef.current) {
-              setters.setIsPlaying(false); setters.setShuttleSpeed(0)
-              setters.setCurrentTime(prev => Math.min(td, prev + FRAME_DURATION))
+              editorActions.pause()
+              editorActions.stopShuttle()
+              editorActions.stepCurrentTime(FRAME_DURATION)
             } else {
-              setters.setShuttleSpeed(prev => {
-                if (prev < 0) return 1
-                const idx = FORWARD_SPEEDS.indexOf(prev)
-                const nextIdx = idx >= 0 ? Math.min(idx + 1, FORWARD_SPEEDS.length - 1) : 0
-                return FORWARD_SPEEDS[nextIdx]
-              })
-              setters.setIsPlaying(true)
+              const currentSpeed = selectShuttleSpeed(state)
+              const nextSpeed = currentSpeed < 0
+                ? 1
+                : FORWARD_SPEEDS[Math.max(0, Math.min(FORWARD_SPEEDS.length - 1, FORWARD_SPEEDS.indexOf(currentSpeed) + 1 || 0))]
+              editorActions.setShuttleSpeed(nextSpeed)
+              editorActions.play()
             }
           }
           break
 
         case 'transport.stepBackward':
-          if (refs.activePanelRef.current === 'source' && refs.sourceVideoRef.current) {
-            refs.sourceVideoRef.current.currentTime = Math.max(0, refs.sourceVideoRef.current.currentTime - FRAME_DURATION)
-            setters.setSourceTime(refs.sourceVideoRef.current.currentTime)
+          if (focusArea === 'source') {
+            refs.sourceDispatchRef.current('transport.stepBackward')
           } else {
-            setters.setCurrentTime(prev => Math.max(0, prev - FRAME_DURATION))
+            editorActions.stepCurrentTime(-FRAME_DURATION)
           }
           break
 
         case 'transport.stepForward':
-          if (refs.activePanelRef.current === 'source' && refs.sourceVideoRef.current) {
-            refs.sourceVideoRef.current.currentTime = Math.min(refs.sourceVideoRef.current.duration || 0, refs.sourceVideoRef.current.currentTime + FRAME_DURATION)
-            setters.setSourceTime(refs.sourceVideoRef.current.currentTime)
+          if (focusArea === 'source') {
+            refs.sourceDispatchRef.current('transport.stepForward')
           } else {
-            setters.setCurrentTime(prev => Math.min(td, prev + FRAME_DURATION))
+            const nextTime = Math.min(commandContext.totalDuration, commandContext.currentTime + FRAME_DURATION)
+            editorActions.setCurrentTime(nextTime)
           }
           break
 
         case 'transport.jumpBackward':
-          if (refs.activePanelRef.current === 'source' && refs.sourceVideoRef.current) {
-            refs.sourceVideoRef.current.currentTime = Math.max(0, refs.sourceVideoRef.current.currentTime - 1)
-            setters.setSourceTime(refs.sourceVideoRef.current.currentTime)
+          if (focusArea === 'source') {
+            refs.sourceDispatchRef.current('transport.jumpBackward')
           } else {
-            setters.setCurrentTime(prev => Math.max(0, prev - 1))
+            editorActions.stepCurrentTime(-1)
           }
           break
 
         case 'transport.jumpForward':
-          if (refs.activePanelRef.current === 'source' && refs.sourceVideoRef.current) {
-            refs.sourceVideoRef.current.currentTime = Math.min(refs.sourceVideoRef.current.duration || 0, refs.sourceVideoRef.current.currentTime + 1)
-            setters.setSourceTime(refs.sourceVideoRef.current.currentTime)
+          if (focusArea === 'source') {
+            refs.sourceDispatchRef.current('transport.jumpForward')
           } else {
-            setters.setCurrentTime(prev => Math.min(td, prev + 1))
+            const nextTime = Math.min(commandContext.totalDuration, commandContext.currentTime + 1)
+            editorActions.setCurrentTime(nextTime)
           }
           break
 
         case 'transport.goToStart':
-          setters.setCurrentTime(0); setters.setIsPlaying(false); setters.setShuttleSpeed(0)
+          editorActions.pause()
+          editorActions.stopShuttle()
+          editorActions.setCurrentTime(0)
           break
         case 'transport.goToEnd':
-          setters.setCurrentTime(td); setters.setIsPlaying(false); setters.setShuttleSpeed(0)
+          editorActions.pause()
+          editorActions.stopShuttle()
+          editorActions.setCurrentTime(td)
           break
         case 'transport.goToIn': {
-          const { inPoint, clips } = refs.keyboardStateRef.current
+          const { inPoint, clips } = commandContext
           const target = inPoint ?? (clips.length > 0 ? Math.min(...clips.map(c => c.startTime)) : 0)
-          setters.setIsPlaying(false); setters.setShuttleSpeed(0); setters.setCurrentTime(target)
+          editorActions.pause()
+          editorActions.stopShuttle()
+          editorActions.setCurrentTime(target)
           break
         }
         case 'transport.goToOut': {
-          const { outPoint, clips: clipsOut, totalDuration: tdOut } = refs.keyboardStateRef.current
+          const { outPoint, clips: clipsOut, totalDuration: tdOut } = commandContext
           const target = outPoint ?? (clipsOut.length > 0 ? Math.max(...clipsOut.map(c => c.startTime + c.duration)) : tdOut)
-          setters.setIsPlaying(false); setters.setShuttleSpeed(0); setters.setCurrentTime(target)
+          editorActions.pause()
+          editorActions.stopShuttle()
+          editorActions.setCurrentTime(target)
           break
         }
 
         // Editing
-        case 'edit.undo':    refs.undoRef.current(); break
-        case 'edit.redo':    refs.redoRef.current(); break
-        case 'edit.cut':     refs.cutRef.current(); break
-        case 'edit.copy':    refs.copyRef.current(); break
-        case 'edit.paste':   refs.pasteRef.current(); break
+        case 'edit.undo':    editorActions.undo(); break
+        case 'edit.redo':    editorActions.redo(); break
+        case 'edit.cut':     editorActions.cutSelection(); break
+        case 'edit.copy':    editorActions.copySelection(); break
+        case 'edit.paste':   editorActions.pasteSelection(); break
         case 'edit.selectAll':
-          setters.setSelectedClipIds(new Set(c.map(cl => cl.id)))
+          editorActions.selectAllClips()
           break
         case 'edit.deselect':
           if (refs.gapGenerateModeRef.current) {
-            setters.setGapGenerateMode(null); setters.setSelectedGap(null)
+            refs.clearSelectedGapRef.current()
           } else {
-            setters.setSelectedClipIds(new Set())
+            editorActions.clearClipSelection()
           }
           break
         case 'edit.delete':
           if (sel.size > 0) {
-            refs.pushUndoRef.current()
             const deleteIds = new Set<string>()
             for (const id of sel) {
-              const clip = refs.clipsRef.current.find(cl => cl.id === id)
-              if (clip && refs.tracksRef.current[clip.trackIndex]?.locked) continue
+              const clip = selectClips(state).find(cl => cl.id === id)
+              if (clip && selectTracks(state)[clip.trackIndex]?.locked) continue
               deleteIds.add(id)
               if (clip?.linkedClipIds) {
                 const allLinkedSelected = clip.linkedClipIds.every(lid => sel.has(lid))
                 if (allLinkedSelected) clip.linkedClipIds.forEach(lid => deleteIds.add(lid))
               }
             }
-            setters.setClips(prev => prev.filter(cl => !deleteIds.has(cl.id)).map(cl => {
-              if (!cl.linkedClipIds) return cl
-              const remaining = cl.linkedClipIds.filter(lid => !deleteIds.has(lid))
-              return { ...cl, linkedClipIds: remaining.length ? remaining : undefined }
-            }))
-            setters.setSelectedClipIds(new Set())
-          } else if (context.selectedGap) {
-            refs.pushUndoRef.current(); context.deleteGapRef.current(context.selectedGap)
-          } else if (context.selectedSubtitleId && !context.editingSubtitleId) {
-            context.deleteSubtitleRef.current(context.selectedSubtitleId)
-          } else if (selAssets.size > 0 && context.currentProjectId) {
-            refs.pushAssetUndoRef.current()
-            selAssets.forEach(id => context.deleteAsset(context.currentProjectId!, id))
-            setters.setSelectedAssetIds(new Set())
+            editorActions.deleteClips([...deleteIds])
+          } else if (selectSelectedGap(state)) {
+            refs.closeSelectedGapRef.current()
+          } else if (selectSelectedSubtitleId(state)) {
+            editorActions.deleteSubtitle(selectSelectedSubtitleId(state)!)
+          } else {
+            context.deleteAssetActionRef.current()
           }
           break
         case 'edit.insertEdit':    refs.insertEditRef.current(); break
@@ -306,100 +256,68 @@ export function useEditorKeyboard(params: UseEditorKeyboardParams) {
 
         // Marking — panel-aware
         case 'mark.setIn':
-          if (refs.activePanelRef.current === 'source') {
-            const st = refs.sourceTimeRef.current
-            setters.setSourceIn(prev => prev !== null && Math.abs(prev - st) < 0.01 ? null : st)
+          if (focusArea === 'source') {
+            refs.sourceDispatchRef.current('mark.setIn')
           } else {
-            setters.setInPoint(prev => {
-              const { currentTime: ct } = refs.keyboardStateRef.current
-              if (prev !== null && Math.abs(prev - ct) < 0.01) return null
-              return ct
-            })
+            const ct = commandContext.currentTime
+            const currentIn = selectActiveTimelineInPoint(state)
+            editorActions.setTimelineInPoint(currentIn !== null && Math.abs(currentIn - ct) < 0.01 ? null : ct)
           }
           break
         case 'mark.setOut':
-          if (refs.activePanelRef.current === 'source') {
-            const st = refs.sourceTimeRef.current
-            setters.setSourceOut(prev => prev !== null && Math.abs(prev - st) < 0.01 ? null : st)
+          if (focusArea === 'source') {
+            refs.sourceDispatchRef.current('mark.setOut')
           } else {
-            setters.setOutPoint(prev => {
-              const { currentTime: ct } = refs.keyboardStateRef.current
-              if (prev !== null && Math.abs(prev - ct) < 0.01) return null
-              return ct
-            })
+            const ct = commandContext.currentTime
+            const currentOut = selectActiveTimelineOutPoint(state)
+            editorActions.setTimelineOutPoint(currentOut !== null && Math.abs(currentOut - ct) < 0.01 ? null : ct)
           }
           break
         case 'mark.clearIn':
-          if (refs.activePanelRef.current === 'source') {
-            setters.setSourceIn(null)
+          if (focusArea === 'source') {
+            refs.sourceDispatchRef.current('mark.clearIn')
           } else {
-            setters.setInPoint(() => null)
+            editorActions.clearTimelineInPoint()
           }
           break
         case 'mark.clearOut':
-          if (refs.activePanelRef.current === 'source') {
-            setters.setSourceOut(null)
+          if (focusArea === 'source') {
+            refs.sourceDispatchRef.current('mark.clearOut')
           } else {
-            setters.setOutPoint(() => null)
+            editorActions.clearTimelineOutPoint()
           }
           break
         case 'mark.clearInOut':
-          if (refs.activePanelRef.current === 'source') {
-            setters.setSourceIn(null); setters.setSourceOut(null)
+          if (focusArea === 'source') {
+            refs.sourceDispatchRef.current('mark.clearInOut')
           } else {
-            setters.clearInOut()
+            editorActions.clearTimelineMarks()
           }
           break
 
         // Timeline
         case 'timeline.zoomIn':
           refs.centerOnPlayheadRef.current = true
-          setters.setZoom(prev => Math.min(4, +(prev + 0.25).toFixed(2)))
+          editorActions.setZoom(Math.min(4, +(state.session.tools.zoom + 0.25).toFixed(2)))
           break
         case 'timeline.zoomOut':
           refs.centerOnPlayheadRef.current = true
-          setters.setZoom(prev => Math.max(refs.getMinZoomRef.current(), +(prev - 0.25).toFixed(2)))
+          editorActions.setZoom(Math.max(refs.getMinZoomRef.current(), +(state.session.tools.zoom - 0.25).toFixed(2)))
           break
         case 'timeline.fitToView':
           refs.fitToViewRef.current()
           break
         case 'timeline.toggleSnap':
-          setters.setSnapEnabled(prev => !prev)
+          editorActions.toggleSnap()
           break
-        case 'nav.prevEdit': {
-          const editPts = new Set<number>()
-          editPts.add(0)
-          for (const cl of refs.clipsRef.current) {
-            editPts.add(Math.round(cl.startTime * 1000) / 1000)
-            editPts.add(Math.round((cl.startTime + cl.duration) * 1000) / 1000)
-          }
-          const sortedPrev = Array.from(editPts).sort((a, b) => a - b)
-          const ct = Math.round(refs.playbackTimeRef.current * 1000) / 1000
-          let prev = sortedPrev[0]
-          for (const ep of sortedPrev) {
-            if (ep < ct - 0.01) prev = ep
-            else break
-          }
-          setters.setIsPlaying(false)
-          setters.setCurrentTime(prev)
+        case 'nav.prevEdit':
+          editorActions.pause()
+          editorActions.goToPrevEdit(state.session.transport.isPlaying ? refs.playbackTimeRef.current : state.session.transport.currentTime)
           break
-        }
-        case 'nav.nextEdit': {
-          const editPts2 = new Set<number>()
-          for (const cl of refs.clipsRef.current) {
-            editPts2.add(Math.round(cl.startTime * 1000) / 1000)
-            editPts2.add(Math.round((cl.startTime + cl.duration) * 1000) / 1000)
-          }
-          const sortedNext = Array.from(editPts2).sort((a, b) => a - b)
-          const ct2 = Math.round(refs.playbackTimeRef.current * 1000) / 1000
-          let next = sortedNext[sortedNext.length - 1]
-          for (const ep of sortedNext) {
-            if (ep > ct2 + 0.01) { next = ep; break }
-          }
-          setters.setIsPlaying(false)
-          setters.setCurrentTime(next)
+        case 'nav.nextEdit':
+          editorActions.pause()
+          editorActions.goToNextEdit(state.session.transport.isPlaying ? refs.playbackTimeRef.current : state.session.transport.currentTime)
           break
-        }
         case 'view.fullscreen':
           refs.toggleFullscreenRef.current()
           break

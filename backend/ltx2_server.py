@@ -24,6 +24,10 @@ import threading
 # Note: expandable_segments is not supported on all platforms
 
 import torch
+
+import services.patches.record_stream_fix as _record_stream_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core includes the fix
+del _record_stream_fix
+
 from state.app_settings import AppSettings
 
 # ============================================================
@@ -212,6 +216,7 @@ runtime_config = RuntimeConfig(
     use_sage_attention=use_sage_attention,
     camera_motion_prompts=CAMERA_MOTION_PROMPTS,
     default_negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+    dev_mode=os.environ.get("LTX_DEV_MODE") == "1",
 )
 
 handler = build_initial_state(runtime_config, DEFAULT_APP_SETTINGS)

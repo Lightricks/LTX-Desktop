@@ -102,7 +102,7 @@ class AppHandler:
             },
             downloading_session=None,
             gpu_slot=None,
-            api_generation=None,
+            active_generation=None,
             cpu_slot=None,
             text_encoder=TextEncoderState(service=text_encoder),
             startup=StartupPending(message="Not started"),

@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain } from 'electron'
+import { app, dialog } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { checkGPU } from '../gpu'
@@ -6,6 +6,7 @@ import { isPythonReady, downloadPythonEmbed } from '../python-setup'
 import { getBackendHealthStatus, getBackendUrl, getAuthToken, getAdminToken, startPythonBackend } from '../python-backend'
 import { getMainWindow } from '../window'
 import { getAnalyticsState, setAnalyticsEnabled, sendAnalyticsEvent } from '../analytics'
+import { handle } from './typed-handle'
 
 function getModelsPath(): string {
   const modelsPath = path.join(app.getPath('userData'), 'models')
@@ -67,19 +68,19 @@ function markLicenseAccepted(settingsPath: string): void {
 }
 
 export function registerAppHandlers(): void {
-  ipcMain.handle('get-backend', () => {
+  handle('getBackend', () => {
     return { url: getBackendUrl() ?? '', token: getAuthToken() ?? '' }
   })
 
-  ipcMain.handle('get-models-path', () => {
+  handle('getModelsPath', () => {
     return getModelsPath()
   })
 
-  ipcMain.handle('check-gpu', async () => {
+  handle('checkGpu', async () => {
     return await checkGPU()
   })
 
-  ipcMain.handle('get-app-info', () => {
+  handle('getAppInfo', () => {
     return {
       version: app.getVersion(),
       isPackaged: app.isPackaged,
@@ -88,28 +89,28 @@ export function registerAppHandlers(): void {
     }
   })
 
-  ipcMain.handle('get-downloads-path', () => {
+  handle('getDownloadsPath', () => {
     return app.getPath('downloads')
   })
 
-  ipcMain.handle('check-first-run', () => {
+  handle('checkFirstRun', () => {
     const settingsPath = path.join(app.getPath('userData'), 'app_state.json')
     return getSetupStatus(settingsPath)
   })
 
-  ipcMain.handle('accept-license', () => {
+  handle('acceptLicense', () => {
     const settingsPath = path.join(app.getPath('userData'), 'app_state.json')
     markLicenseAccepted(settingsPath)
     return true
   })
 
-  ipcMain.handle('complete-setup', () => {
+  handle('completeSetup', () => {
     const settingsPath = path.join(app.getPath('userData'), 'app_state.json')
     markSetupComplete(settingsPath)
     return true
   })
 
-  ipcMain.handle('fetch-license-text', async () => {
+  handle('fetchLicenseText', async () => {
     const resp = await fetch('https://huggingface.co/Lightricks/LTX-2.3/raw/main/LICENSE')
     if (!resp.ok) {
       throw new Error(`Failed to fetch license (HTTP ${resp.status})`)
@@ -117,49 +118,49 @@ export function registerAppHandlers(): void {
     return await resp.text()
   })
 
-  ipcMain.handle('get-notices-text', async () => {
+  handle('getNoticesText', async () => {
     const noticesPath = path.join(app.getAppPath(), 'NOTICES.md')
     return fs.readFileSync(noticesPath, 'utf-8')
   })
 
-  ipcMain.handle('get-resource-path', () => {
+  handle('getResourcePath', () => {
     if (!app.isPackaged) {
       return null
     }
     return process.resourcesPath
   })
 
-  ipcMain.handle('check-python-ready', () => {
+  handle('checkPythonReady', () => {
     return isPythonReady()
   })
 
-  ipcMain.handle('start-python-setup', async () => {
+  handle('startPythonSetup', async () => {
     await downloadPythonEmbed((progress) => {
       getMainWindow()?.webContents.send('python-setup-progress', progress)
     })
   })
 
-  ipcMain.handle('start-python-backend', async () => {
+  handle('startPythonBackend', async () => {
     await startPythonBackend()
   })
 
-  ipcMain.handle('get-backend-health-status', () => {
+  handle('getBackendHealthStatus', () => {
     return getBackendHealthStatus()
   })
 
-  ipcMain.handle('get-analytics-state', () => {
+  handle('getAnalyticsState', () => {
     return getAnalyticsState()
   })
 
-  ipcMain.handle('set-analytics-enabled', (_event, enabled: boolean) => {
+  handle('setAnalyticsEnabled', ({ enabled }) => {
     setAnalyticsEnabled(enabled)
   })
 
-  ipcMain.handle('send-analytics-event', async (_event, eventName: string, extraDetails?: Record<string, unknown> | null) => {
+  handle('sendAnalyticsEvent', async ({ eventName, extraDetails }) => {
     await sendAnalyticsEvent(eventName, extraDetails)
   })
 
-  ipcMain.handle('open-models-dir-change-dialog', async () => {
+  handle('openModelsDirChangeDialog', async () => {
     const mainWindow = getMainWindow()
     if (!mainWindow) return { success: false, error: 'No window' }
 

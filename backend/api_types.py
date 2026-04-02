@@ -1,11 +1,11 @@
-"""Pydantic request/response models and TypedDicts for ltx2_server."""
+"""Pydantic request/response models and typed aliases for ltx2_server."""
 
 from __future__ import annotations
 
-from typing import Literal, NamedTuple, TypeAlias, TypedDict
 from typing import Annotated
+from typing import Literal, NamedTuple, TypeAlias
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 NonEmptyPrompt = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 ModelFileType = Literal[
@@ -27,23 +27,6 @@ class ImageConditioningInput(NamedTuple):
     path: str
     frame_idx: int
     strength: float
-
-
-# ============================================================
-# TypedDicts for module-level state globals
-# ============================================================
-
-
-class GenerationState(TypedDict):
-    id: str | None
-    cancelled: bool
-    result: str | list[str] | None
-    error: str | None
-    status: str  # "idle" | "running" | "complete" | "cancelled" | "error"
-    phase: str
-    progress: int
-    current_step: int
-    total_steps: int
 
 
 JsonObject: TypeAlias = dict[str, object]
@@ -79,7 +62,7 @@ class GpuTelemetry(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    status: str
+    status: Literal["ok"]
     models_loaded: bool
     active_model: str | None
     gpu_info: GpuTelemetry
@@ -101,7 +84,7 @@ class RuntimePolicyResponse(BaseModel):
 
 
 class GenerationProgressResponse(BaseModel):
-    status: str
+    status: Literal["idle", "running", "complete", "cancelled", "error"]
     phase: str
     progress: int
     currentStep: int | None
@@ -146,8 +129,8 @@ class ModelsStatusResponse(BaseModel):
     use_local_text_encoder: bool
 
 
-class DownloadProgressResponse(BaseModel):
-    status: str
+class DownloadProgressRunningResponse(BaseModel):
+    status: Literal["downloading"]
     current_downloading_file: ModelFileType | None
     current_file_progress: float
     total_progress: float
@@ -155,58 +138,119 @@ class DownloadProgressResponse(BaseModel):
     expected_total_bytes: int
     completed_files: set[ModelFileType]
     all_files: set[ModelFileType]
-    error: str | None
+    error: None = None
     speed_bytes_per_sec: float
 
 
+class DownloadProgressCompleteResponse(BaseModel):
+    status: Literal["complete"]
+
+
+class DownloadProgressErrorResponse(BaseModel):
+    status: Literal["error"]
+    error: str
+
+
+DownloadProgressResponse: TypeAlias = (
+    DownloadProgressRunningResponse | DownloadProgressCompleteResponse | DownloadProgressErrorResponse
+)
+
+
 class SuggestGapPromptResponse(BaseModel):
-    status: str = "success"
+    status: Literal["success"] = "success"
     suggested_prompt: str
 
 
-class GenerateVideoResponse(BaseModel):
-    status: str
-    video_path: str | None = None
+class GenerateVideoCompleteResponse(BaseModel):
+    status: Literal["complete"]
+    video_path: str
 
 
-class GenerateImageResponse(BaseModel):
-    status: str
-    image_paths: list[str] | None = None
+class GenerateVideoCancelledResponse(BaseModel):
+    status: Literal["cancelled"]
 
 
-class CancelResponse(BaseModel):
-    status: str
-    id: str | None = None
+GenerateVideoResponse: TypeAlias = GenerateVideoCompleteResponse | GenerateVideoCancelledResponse
 
 
-class RetakeResponse(BaseModel):
-    status: str
-    video_path: str | None = None
-    result: JsonObject | None = None
+class GenerateImageCompleteResponse(BaseModel):
+    status: Literal["complete"]
+    image_paths: list[str]
+
+
+class GenerateImageCancelledResponse(BaseModel):
+    status: Literal["cancelled"]
+
+
+GenerateImageResponse: TypeAlias = GenerateImageCompleteResponse | GenerateImageCancelledResponse
+
+
+class CancelCancellingResponse(BaseModel):
+    status: Literal["cancelling"]
+    id: str
+
+
+class CancelNoActiveGenerationResponse(BaseModel):
+    status: Literal["no_active_generation"]
+
+
+CancelResponse: TypeAlias = CancelCancellingResponse | CancelNoActiveGenerationResponse
+
+
+class RetakeVideoResponse(BaseModel):
+    status: Literal["complete"]
+    video_path: str
+
+
+class RetakePayloadResponse(BaseModel):
+    status: Literal["complete"]
+    result: JsonObject
+
+
+class RetakeCancelledResponse(BaseModel):
+    status: Literal["cancelled"]
+
+
+RetakeResponse: TypeAlias = RetakeVideoResponse | RetakePayloadResponse | RetakeCancelledResponse
 
 
 class IcLoraExtractResponse(BaseModel):
     conditioning: str
     original: str
-    conditioning_type: Literal["canny", "depth"]
+    conditioning_type: ConditioningType
     frame_time: float
 
 
-class IcLoraGenerateResponse(BaseModel):
-    status: str
-    video_path: str | None = None
+class IcLoraGenerateCompleteResponse(BaseModel):
+    status: Literal["complete"]
+    video_path: str
+
+
+class IcLoraGenerateCancelledResponse(BaseModel):
+    status: Literal["cancelled"]
+
+
+IcLoraGenerateResponse: TypeAlias = IcLoraGenerateCompleteResponse | IcLoraGenerateCancelledResponse
 
 
 class ModelDownloadStartResponse(BaseModel):
-    status: str
-    message: str | None = None
-    sessionId: str | None = None
+    status: Literal["started"]
+    message: str
+    sessionId: str
 
 
-class TextEncoderDownloadResponse(BaseModel):
-    status: str
-    message: str | None = None
-    sessionId: str | None = None
+class TextEncoderDownloadStartedResponse(BaseModel):
+    status: Literal["started"]
+    message: str
+    sessionId: str
+
+
+class TextEncoderAlreadyDownloadedResponse(BaseModel):
+    status: Literal["already_downloaded"]
+    message: str
+
+
+TextEncoderDownloadResponse: TypeAlias = TextEncoderDownloadStartedResponse | TextEncoderAlreadyDownloadedResponse
 
 
 class StatusResponse(BaseModel):
@@ -223,26 +267,40 @@ class ErrorResponse(BaseModel):
 # ============================================================
 
 
+VideoResolution: TypeAlias = Literal["540p", "720p", "1080p", "1440p", "2160p"]
+VideoModel: TypeAlias = Literal["fast", "pro"]
+
+
 class GenerateVideoRequest(BaseModel):
+    model_config = ConfigDict(strict=True)
+
     prompt: NonEmptyPrompt
-    resolution: str = "512p"
-    model: str = "fast"
+    resolution: VideoResolution = "1080p"
+    model: VideoModel = "fast"
     cameraMotion: VideoCameraMotion = "none"
     negativePrompt: str = ""
-    duration: str = "2"
-    fps: str = "24"
-    audio: str = "false"
+    duration: int = Field(default=2, ge=1)
+    fps: int = Field(default=24, ge=1)
+    audio: bool = False
     imagePath: str | None = None
     audioPath: str | None = None
     aspectRatio: Literal["16:9", "9:16"] = "16:9"
 
+    @model_validator(mode="after")
+    def _validate_a2v_model(self) -> "GenerateVideoRequest":
+        if self.audioPath is not None and self.model != "pro":
+            raise ValueError("audioPath requires model='pro'")
+        return self
+
 
 class GenerateImageRequest(BaseModel):
+    model_config = ConfigDict(strict=True)
+
     prompt: NonEmptyPrompt
-    width: int = 1024
-    height: int = 1024
-    numSteps: int = 4
-    numImages: int = 1
+    width: int = Field(default=1024, ge=16)
+    height: int = Field(default=1024, ge=16)
+    numSteps: int = Field(default=4, ge=1)
+    numImages: int = Field(default=1, ge=1)
 
 
 def _default_model_types() -> set[ModelFileType]:
@@ -257,31 +315,54 @@ class RequiredModelsResponse(BaseModel):
     modelTypes: list[ModelFileType]
 
 
+GapPromptMode: TypeAlias = Literal["text-to-video", "image-to-video", "text-to-image"]
+
+
 class SuggestGapPromptRequest(BaseModel):
+    model_config = ConfigDict(strict=True)
+
     beforePrompt: str = ""
     afterPrompt: str = ""
     beforeFrame: str | None = None
     afterFrame: str | None = None
     gapDuration: float = 5
-    mode: str = "t2v"
+    mode: GapPromptMode = "text-to-video"
     inputImage: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_input_image_mode(self) -> "SuggestGapPromptRequest":
+        if self.inputImage is not None and self.mode != "image-to-video":
+            raise ValueError("inputImage is only valid for image-to-video mode")
+        return self
+
+
+RetakeMode: TypeAlias = Literal["replace_audio_and_video", "replace_video", "replace_audio"]
 
 
 class RetakeRequest(BaseModel):
+    model_config = ConfigDict(strict=True)
+
     video_path: str
     start_time: float
     duration: float
     prompt: str = ""
-    mode: str = "replace_audio_and_video"
+    mode: RetakeMode = "replace_audio_and_video"
+
+
+ConditioningType: TypeAlias = Literal["canny", "depth"]
 
 
 class IcLoraExtractRequest(BaseModel):
+    model_config = ConfigDict(strict=True)
+
     video_path: str
-    conditioning_type: Literal["canny", "depth"] = "canny"
+    conditioning_type: ConditioningType = "canny"
     frame_time: float = 0
 
 
 class IcLoraImageInput(BaseModel):
+    model_config = ConfigDict(strict=True)
+
     path: str
     frame: int = 0
     strength: float = 1.0
@@ -292,8 +373,9 @@ def _default_ic_lora_images() -> list[IcLoraImageInput]:
 
 
 class IcLoraGenerateRequest(BaseModel):
+    model_config = ConfigDict(strict=True)
     video_path: str
-    conditioning_type: Literal["canny", "depth"]
+    conditioning_type: ConditioningType
     prompt: NonEmptyPrompt
     conditioning_strength: float = 1.0
     num_inference_steps: int = 30

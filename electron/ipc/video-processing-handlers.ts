@@ -1,59 +1,16 @@
-import { ipcMain } from 'electron'
-import { spawnSync } from 'child_process'
-import os from 'os'
-import path from 'path'
-import fs from 'fs'
-import { findFfmpegPath, urlToFilePath } from '../export/ffmpeg-utils'
-import { logger } from '../logger'
+import { extractVideoFrameToFile } from '../export/ffmpeg-utils'
+import { handle } from './typed-handle'
 
 export function registerVideoProcessingHandlers(): void {
-  ipcMain.handle(
-    'extract-video-frame',
-    async (
-      _event,
-      videoUrl: string,
-      seekTime: number,
-      width?: number,
-      quality?: number,
-    ): Promise<{ path: string; url: string }> => {
-      const ffmpeg = findFfmpegPath()
-      if (!ffmpeg) {
-        throw new Error('ffmpeg not found')
-      }
-
-      const inputPath = urlToFilePath(videoUrl)
-      if (!fs.existsSync(inputPath)) {
-        throw new Error(`Video file not found: ${inputPath}`)
-      }
-
-      const outputName = `ltx_frame_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`
-      const outputPath = path.join(os.tmpdir(), outputName)
-
-      const args: string[] = [
-        '-ss', String(Math.max(0, seekTime)),
-        '-i', inputPath,
-        ...(width ? ['-vf', `scale=${width}:-2`] : []),
-        '-frames:v', '1',
-        '-q:v', String(quality ?? 2),
-        '-y',
-        outputPath,
-      ]
-
-      logger.info(`[extract-frame] ${args.join(' ').slice(0, 300)}`)
-
-      const result = spawnSync(ffmpeg, args, { timeout: 10000 })
-
-      if (result.status !== 0) {
-        const stderr = result.stderr?.toString().slice(-300) || ''
-        throw new Error(`ffmpeg frame extraction failed (code ${result.status}): ${stderr}`)
-      }
-
-      if (!fs.existsSync(outputPath)) {
-        throw new Error('ffmpeg produced no output file')
-      }
-
-      const fileUrl = `file://${outputPath}`
-      return { path: outputPath, url: fileUrl }
-    },
-  )
+  handle('extractVideoFrame', async ({ videoPath, seekTime, width, quality }) => {
+    return {
+      path: extractVideoFrameToFile({
+        videoPath,
+        seekTime,
+        width,
+        quality: quality ?? 2,
+        timeoutMs: 10000,
+      }),
+    }
+  })
 }

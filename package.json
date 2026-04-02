@@ -1,6 +1,6 @@
 {
   "name": "ltx-desktop",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "LTX-2 Video Generation - Desktop App",
   "type": "module",
   "main": "dist-electron/main.js",
@@ -19,6 +19,10 @@
     "typecheck": "concurrently \"pnpm run typecheck:ts\" \"pnpm run typecheck:py\"",
     "typecheck:ts": "tsc --noEmit",
     "typecheck:py": "cd backend && uv run pyright",
+    "openapi:export": "cd backend && uv run python export_openapi_schema.py",
+    "openapi:types": "openapi-typescript frontend/generated/backend-openapi.json -o frontend/generated/backend-openapi.ts",
+    "openapi:generate": "pnpm openapi:export && pnpm openapi:types",
+    "openapi:check": "pnpm openapi:generate && git diff --exit-code -- frontend/generated/backend-openapi.json frontend/generated/backend-openapi.ts",
     "backend:test": "cd backend && uv sync --frozen --extra test --extra dev && uv run pytest -v --tb=short",
     "build": "node scripts/run-script.js scripts/local-build",
     "build:skip-python": "node scripts/run-script.js scripts/local-build --skip-python",
@@ -36,8 +40,10 @@
     "lucide-react": "^0.400.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-dropzone": "^14.2.3",
-    "tailwind-merge": "^2.3.0"
+    "react-resizable-panels": "4.7.2",
+    "tailwind-merge": "^2.3.0",
+    "zod": "4.3.6",
+    "zustand": "5.0.12"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
@@ -51,6 +57,7 @@
     "cross-env": "^10.1.0",
     "electron": "^41.0.2",
     "electron-builder": "^26.8.1",
+    "openapi-typescript": "^7.10.1",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
     "typescript": "^5.4.5",

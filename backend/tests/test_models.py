@@ -6,7 +6,12 @@ from pathlib import Path
 from huggingface_hub import file_download
 
 from runtime_config.model_download_specs import resolve_downloading_dir, resolve_model_path
-from state.app_state_types import DownloadingSession, FileDownloadRunning
+from state.app_state_types import (
+    DownloadSessionComplete,
+    DownloadSessionError,
+    DownloadingSession,
+    FileDownloadRunning,
+)
 
 
 def _model_path(test_state, model_type: str) -> Path:
@@ -117,13 +122,13 @@ class TestDownloadProgress:
         assert data["current_downloading_file"] == "checkpoint"
 
     def test_completed_session(self, client, test_state):
-        test_state.state.completed_download_sessions["done-session"] = "complete"
+        test_state.state.completed_download_sessions["done-session"] = DownloadSessionComplete()
         r = client.get("/api/models/download/progress", params={"sessionId": "done-session"})
         data = r.json()
         assert data["status"] == "complete"
 
     def test_error_session(self, client, test_state):
-        test_state.state.completed_download_sessions["err-session"] = "network error"
+        test_state.state.completed_download_sessions["err-session"] = DownloadSessionError(error_message="network error")
         r = client.get("/api/models/download/progress", params={"sessionId": "err-session"})
         data = r.json()
         assert data["status"] == "error"

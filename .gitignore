@@ -24,7 +24,11 @@ backend/**/__pycache__/
 .eggs/
 
 # Claude Code
-.claude/
+.claude/*
+!.claude/
+!.claude/skills/
+!.claude/skills/video-editor-development/
+!.claude/skills/video-editor-development/SKILL.md
 
 # IDE
 .idea/
@@ -64,6 +68,13 @@ coverage/
 models/*
 !models/README.md
 backend/models/
+
+# Profiling scripts and results
+backend/scripts/
+backend/profile_results/
+
+# Temporary working directory
+backend/tmp/
 
 # Generated outputs (videos and images)
 backend/outputs/*.mp4

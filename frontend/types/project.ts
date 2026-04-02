@@ -25,9 +25,11 @@ export interface GenerationParams {
 
 // A single "take" (version) of a generated asset
 export interface AssetTake {
-  url: string
   path: string
-  thumbnail?: string
+  bigThumbnailPath?: string
+  smallThumbnailPath?: string
+  width?: number
+  height?: number
   createdAt: number
 }
 
@@ -35,12 +37,14 @@ export interface Asset {
   id: string
   type: 'image' | 'video' | 'audio' | 'adjustment'
   path: string
-  url: string
+  bigThumbnailPath?: string
+  smallThumbnailPath?: string
+  width?: number
+  height?: number
   prompt: string
   resolution: string
   duration?: number // For videos
   createdAt: number
-  thumbnail?: string
   favorite?: boolean
   bin?: string // Bin/folder name for organization (undefined = no bin)
   // Regeneration support
@@ -369,7 +373,6 @@ export interface TimelineClip {
   volume: number
   trackIndex: number
   asset: Asset | null
-  importedUrl?: string
   importedName?: string
   // Effects
   flipH: boolean
@@ -407,12 +410,11 @@ export interface Project {
   createdAt: number
   updatedAt: number
   assets: Asset[]
-  thumbnail?: string
   timelines: Timeline[]
   activeTimelineId?: string
 }
 
-export type ViewType = 'home' | 'project' | 'playground'
+export type ViewType = 'home' | 'project'
 export type ProjectTab = 'gen-space' | 'video-editor'
 
 // Default tracks for new timelines

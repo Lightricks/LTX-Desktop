@@ -1,0 +1,4 @@
+interface:
+  display_name: "LTX Video Editor Development"
+  short_description: "Guidance for editing the LTX Desktop video editor safely"
+  default_prompt: "Use $ltx-video-editor-development to implement or review changes in the LTX Desktop video editor."

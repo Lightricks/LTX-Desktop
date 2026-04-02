@@ -195,13 +195,13 @@ class TestRetake:
                 "start_time": 2.0,
                 "duration": 4.0,
                 "prompt": "epic explosion",
-                "mode": "replace_video_only",
+                "mode": "replace_video",
             },
         )
 
         retake_call = test_state.ltx_api_client.retake_calls[-1]
         assert retake_call["prompt"] == "epic explosion"
-        assert retake_call["mode"] == "replace_video_only"
+        assert retake_call["mode"] == "replace_video"
 
     def test_local_retake_happy_path(self, client, test_state, create_fake_model_files):
         create_fake_model_files(include_zit=False)
@@ -228,7 +228,7 @@ class TestRetake:
                 "start_time": 2.0,
                 "duration": 4.0,
                 "prompt": "epic explosion",
-                "mode": "replace_video_only",
+                "mode": "replace_video",
             },
         )
         retake_call = fake_services.retake_pipeline.generate_calls[-1]

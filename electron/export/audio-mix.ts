@@ -2,7 +2,7 @@ import { spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import { logger } from '../logger'
-import { fileHasAudio, urlToFilePath } from './ffmpeg-utils'
+import { fileHasAudio } from './ffmpeg-utils'
 import type { ExportClip } from './timeline'
 
 const SAMPLE_RATE = 48000
@@ -69,7 +69,7 @@ export async function mixAudioToPcm(
 
   for (const c of clips) {
     if (c.muted || c.volume <= 0) continue
-    const fp = urlToFilePath(c.url)
+    const fp = c.path
     if (!fp || !fs.existsSync(fp)) continue
 
     if (c.type === 'audio') {

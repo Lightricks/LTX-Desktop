@@ -9,7 +9,11 @@
     "services/depth_processor_pipeline/depth_anything_v2",
     ".venv",
     "node_modules",
-    "dist"
+    "dist",
+    "tmp",
+    "scripts",
+    "profile_results",
+    "services/patches"
   ],
   "reportMissingImports": "warning",
   "reportMissingTypeStubs": false,

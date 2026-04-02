@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Film, Play, Pause, Volume2, VolumeX, Loader2, Upload, Trash2, RefreshCw } from 'lucide-react'
 import { logger } from '../lib/logger'
-import { fileUrlToPath } from '../lib/url-to-path'
+import { pathToFileUrl } from '../lib/file-url'
 
 interface RetakePanelProps {
-  initialVideoUrl?: string | null
   initialVideoPath?: string | null
   initialDuration?: number
   resetKey?: number
@@ -12,7 +11,6 @@ interface RetakePanelProps {
   processingStatus?: string
   fillHeight?: boolean
   onChange?: (data: {
-    videoUrl: string | null
     videoPath: string | null
     startTime: number
     duration: number
@@ -29,13 +27,8 @@ function formatTimecode(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${s.toFixed(2).padStart(5, '0')}`
 }
 
-function pathToFileUrl(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, '/')
-  return normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
-}
 
 export function RetakePanel({
-  initialVideoUrl,
   initialVideoPath,
   initialDuration,
   resetKey,
@@ -46,8 +39,8 @@ export function RetakePanel({
 }: RetakePanelProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const filmstripRef = useRef<HTMLDivElement>(null)
-  const [videoUrl, setVideoUrl] = useState<string | null>(initialVideoUrl || null)
   const [videoPath, setVideoPath] = useState<string | null>(initialVideoPath || null)
+  const videoUrl = videoPath ? pathToFileUrl(videoPath) : null
   const [videoDuration, setVideoDuration] = useState<number>(initialDuration || 0)
 
   const [isPlaying, setIsPlaying] = useState(false)
@@ -67,7 +60,6 @@ export function RetakePanel({
 
   useEffect(() => {
     if (resetKey === undefined) return
-    setVideoUrl(initialVideoUrl || null)
     setVideoPath(initialVideoPath || null)
     setVideoDuration(initialDuration || 0)
     setIsPlaying(false)
@@ -77,7 +69,7 @@ export function RetakePanel({
     setThumbnails([])
     extractingRef.current = false
     initialSelectionAppliedRef.current = false
-  }, [resetKey, initialVideoUrl, initialVideoPath, initialDuration])
+  }, [resetKey, initialVideoPath, initialDuration])
 
   useEffect(() => {
     if (!videoUrl) {
@@ -104,7 +96,6 @@ export function RetakePanel({
   useEffect(() => {
     const ready = !!videoPath && (selEnd - selStart) >= MIN_DURATION
     onChange?.({
-      videoUrl,
       videoPath,
       startTime: selStart,
       duration: selEnd - selStart,
@@ -326,14 +317,12 @@ export function RetakePanel({
     if (paths && paths.length > 0) {
       const filePath = paths[0]
       setVideoPath(filePath)
-      setVideoUrl(pathToFileUrl(filePath))
       setThumbnails([])
       extractingRef.current = false
     }
   }, [])
 
   const handleClear = useCallback(() => {
-    setVideoUrl(null)
     setVideoPath(null)
     setVideoDuration(0)
     setIsPlaying(false)
@@ -352,11 +341,9 @@ export function RetakePanel({
     const assetData = e.dataTransfer.getData('asset')
     if (assetData) {
       try {
-        const asset = JSON.parse(assetData) as { type?: string; url?: string; path?: string }
-        if (asset.type === 'video' && asset.url) {
-          const path = asset.path || fileUrlToPath(asset.url) || null
-          setVideoUrl(asset.url)
-          setVideoPath(path)
+        const asset = JSON.parse(assetData) as { type?: string; path?: string }
+        if (asset.type === 'video' && asset.path) {
+          setVideoPath(asset.path)
           setThumbnails([])
           extractingRef.current = false
           return
@@ -368,10 +355,9 @@ export function RetakePanel({
 
     const file = e.dataTransfer.files?.[0]
     if (file) {
-      const filePath = (file as any).path as string | undefined
+      const filePath = window.electronAPI?.getPathForFile(file)
       if (filePath) {
         setVideoPath(filePath)
-        setVideoUrl(pathToFileUrl(filePath))
         setThumbnails([])
         extractingRef.current = false
       }

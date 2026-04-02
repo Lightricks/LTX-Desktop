@@ -1,62 +1,114 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { logger } from '../lib/logger'
-import { 
-  X, FileVideo, FileAudio, Image, Check, AlertTriangle, 
-  FolderOpen, RefreshCw, Loader2, FileText, Link2, 
+import { addGenericAssetToProject, addVisualAssetToProject } from '../lib/asset-copy'
+import {
+  X, FileVideo, FileAudio, Image, Check, AlertTriangle,
+  FolderOpen, RefreshCw, Loader2, FileText, Link2,
   ChevronDown, ChevronRight, Upload
 } from 'lucide-react'
 import type { ParsedTimeline, ParsedMediaRef } from '../lib/timeline-import'
 import { parseTimelineXml } from '../lib/timeline-import'
+import { selectShowImportTimelineModal } from '../views/editor/editor-selectors'
+import { useEditorActions, useEditorStore } from '../views/editor/editor-store'
 
 interface ImportTimelineModalProps {
-  isOpen: boolean
-  onClose: () => void
-  onImport: (timeline: ParsedTimeline) => void
+  projectId: string | null
 }
 
-export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelineModalProps) {
-  const [step, setStep] = useState<'select' | 'parsing' | 'relink' | 'error'>('select')
+type ImportStep = 'select' | 'parsing' | 'relink' | 'error'
+type MediaImportStatus = 'missing' | 'ready' | 'copying' | 'copied' | 'skipped' | 'error'
+
+interface ImportProgressState {
+  total: number
+  completed: number
+  skipped: number
+  currentName: string
+}
+
+function getFilenameFromPath(filePath: string): string {
+  const parts = filePath.split(/[/\\]/)
+  return parts[parts.length - 1] || ''
+}
+
+export function ImportTimelineModal({ projectId }: ImportTimelineModalProps) {
+  const { closeImportTimelineModal, importParsedTimeline } = useEditorActions()
+  const isOpen = useEditorStore(selectShowImportTimelineModal)
+  const [step, setStep] = useState<ImportStep>('select')
   const [parsedTimeline, setParsedTimeline] = useState<ParsedTimeline | null>(null)
   const [mediaRefs, setMediaRefs] = useState<ParsedMediaRef[]>([])
+  const [mediaStatus, setMediaStatus] = useState<Record<string, MediaImportStatus>>({})
   const [error, setError] = useState<string>('')
+  const [importError, setImportError] = useState<string>('')
   const [expandedInfo, setExpandedInfo] = useState(true)
   const [expandedMedia, setExpandedMedia] = useState(true)
   const [isChecking, setIsChecking] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const [importProgress, setImportProgress] = useState<ImportProgressState>({
+    total: 0,
+    completed: 0,
+    skipped: 0,
+    currentName: '',
+  })
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const closeModal = useCallback(() => {
+    closeImportTimelineModal()
+  }, [closeImportTimelineModal])
 
   // Reset when modal opens
   useEffect(() => {
-    if (isOpen) {
-      setStep('select')
-      setParsedTimeline(null)
-      setMediaRefs([])
-      setError('')
-    }
+    if (!isOpen) return
+    setStep('select')
+    setParsedTimeline(null)
+    setMediaRefs([])
+    setMediaStatus({})
+    setError('')
+    setImportError('')
+    setIsChecking(false)
+    setIsSearching(false)
+    setIsImporting(false)
+    setImportProgress({ total: 0, completed: 0, skipped: 0, currentName: '' })
   }, [isOpen])
 
+  const applyAvailabilityToStatus = useCallback((refs: ParsedMediaRef[], availabilityById: Record<string, boolean>) => {
+    const nextStatus: Record<string, MediaImportStatus> = {}
+    for (const ref of refs) {
+      nextStatus[ref.id] = availabilityById[ref.id] ? 'ready' : 'missing'
+    }
+    setMediaStatus(nextStatus)
+  }, [])
+
   // Check file existence for all media refs
-  const checkMediaFiles = useCallback(async (refs: ParsedMediaRef[]) => {
+  const checkMediaFiles = useCallback(async (refs: ParsedMediaRef[]): Promise<Record<string, boolean>> => {
+    const availabilityById: Record<string, boolean> = {}
     if (!window.electronAPI?.checkFilesExist) {
-      // Not in Electron - mark all as not found
-      return refs.map(r => ({ ...r, found: false }))
+      refs.forEach(ref => {
+        availabilityById[ref.id] = false
+      })
+      return availabilityById
     }
 
     setIsChecking(true)
     try {
-      const paths = refs
-        .filter(r => r.resolvedPath && r.resolvedPath !== '')
-        .map(r => r.resolvedPath)
-      
-      const results = await window.electronAPI.checkFilesExist(paths)
-      
-      return refs.map(r => ({
-        ...r,
-        found: r.resolvedPath ? (results[r.resolvedPath] || false) : false,
-      }))
+      const uniquePaths = Array.from(new Set(
+        refs
+          .map(r => r.path?.trim())
+          .filter((p): p is string => Boolean(p))
+      ))
+
+      const results = await window.electronAPI.checkFilesExist({ filePaths: uniquePaths })
+      refs.forEach(ref => {
+        const path = ref.path?.trim()
+        availabilityById[ref.id] = path ? (results[path] || false) : false
+      })
+      return availabilityById
     } catch (err) {
       logger.error(`Error checking files: ${err}`)
-      return refs
+      refs.forEach(ref => {
+        availabilityById[ref.id] = false
+      })
+      return availabilityById
     } finally {
       setIsChecking(false)
     }
@@ -84,6 +136,7 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
     }
 
     setStep('parsing')
+    setImportError('')
 
     try {
       const content = await file.text()
@@ -94,11 +147,10 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
       }
 
       setParsedTimeline(timeline)
+      setMediaRefs(timeline.mediaRefs)
 
-      // Check which media files exist
-      const checkedRefs = await checkMediaFiles(timeline.mediaRefs)
-      setMediaRefs(checkedRefs)
-
+      const availabilityById = await checkMediaFiles(timeline.mediaRefs)
+      applyAvailabilityToStatus(timeline.mediaRefs, availabilityById)
       setStep('relink')
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -107,11 +159,11 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
 
     // Reset input
     if (fileInputRef.current) fileInputRef.current.value = ''
-  }, [checkMediaFiles])
+  }, [applyAvailabilityToStatus, checkMediaFiles])
 
   // Relink a single media file
   const handleRelinkFile = useCallback(async (mediaRefId: string) => {
-    if (!window.electronAPI?.showOpenFileDialog) return
+    if (isImporting || !window.electronAPI?.showOpenFileDialog) return
 
     const filePaths = await window.electronAPI.showOpenFileDialog({
       title: 'Relink Media File',
@@ -124,30 +176,33 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
     if (!filePaths || filePaths.length === 0) return
 
     const newPath = filePaths[0]
+    setImportError('')
     setMediaRefs(prev => prev.map(r =>
       r.id === mediaRefId
-        ? { ...r, relinkedPath: newPath, resolvedPath: newPath, found: true }
+        ? { ...r, path: newPath }
         : r
     ))
-  }, [])
+    setMediaStatus(prev => ({ ...prev, [mediaRefId]: 'ready' }))
+  }, [isImporting])
 
   // Search a directory for all missing files
   const handleSearchDirectory = useCallback(async () => {
-    if (!window.electronAPI?.showOpenDirectoryDialog) return
+    if (isImporting || !window.electronAPI?.showOpenDirectoryDialog) return
 
     const dir = await window.electronAPI.showOpenDirectoryDialog({ title: 'Select folder to search for media files' })
     if (!dir) return
 
     setIsSearching(true)
+    setImportError('')
 
     try {
-      const missingRefs = mediaRefs.filter(r => !r.found)
+      const missingRefs = mediaRefs.filter(r => mediaStatus[r.id] === 'missing')
       if (missingRefs.length === 0) return
 
       // Build list of filenames to search for
       const filenames: string[] = []
       for (const ref of missingRefs) {
-        const filename = ref.name || ref.pathUrl.split('/').pop() || ''
+        const filename = ref.name || getFilenameFromPath(ref.path)
         if (filename) filenames.push(filename)
       }
 
@@ -155,20 +210,31 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
 
       // Use recursive directory search (searches subdirectories up to 10 levels deep)
       if (window.electronAPI.searchDirectoryForFiles) {
-        const results = await window.electronAPI.searchDirectoryForFiles(dir, filenames)
-        // results is { "filename.mp4" (lowercase): "C:\full\path\filename.mp4" }
+        const results = await window.electronAPI.searchDirectoryForFiles({ directory: dir, filenames })
+        // results is { "filename.mp4" (lowercase): "C:\\full\\path\\filename.mp4" }
 
         setMediaRefs(prev => prev.map(ref => {
-          if (ref.found) return ref
-
-          const filename = ref.name || ref.pathUrl.split('/').pop() || ''
-          const foundPath = results[filename.toLowerCase()]
+          if (mediaStatus[ref.id] !== 'missing') return ref
+          const filename = ref.name || getFilenameFromPath(ref.path)
+          const foundPath = filename ? results[filename.toLowerCase()] : undefined
 
           if (foundPath) {
-            return { ...ref, relinkedPath: foundPath, resolvedPath: foundPath, found: true }
+            return { ...ref, path: foundPath }
           }
           return ref
         }))
+
+        setMediaStatus(prev => {
+          const next = { ...prev }
+          for (const ref of missingRefs) {
+            const filename = ref.name || getFilenameFromPath(ref.path)
+            const foundPath = filename ? results[filename.toLowerCase()] : undefined
+            if (foundPath) {
+              next[ref.id] = 'ready'
+            }
+          }
+          return next
+        })
       } else {
         // Fallback: check direct paths only (no recursive search)
         const searchPaths: string[] = []
@@ -177,53 +243,203 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
           searchPaths.push(`${dir}${separator}${filename}`)
         }
 
-        const results = await window.electronAPI.checkFilesExist(searchPaths)
+        const results = await window.electronAPI.checkFilesExist({ filePaths: searchPaths })
 
         setMediaRefs(prev => prev.map(ref => {
-          if (ref.found) return ref
-
-          const filename = ref.name || ref.pathUrl.split('/').pop() || ''
+          if (mediaStatus[ref.id] !== 'missing') return ref
+          const filename = ref.name || getFilenameFromPath(ref.path)
           const separator = dir.includes('\\') ? '\\' : '/'
-          const testPath = `${dir}${separator}${filename}`
+          const testPath = filename ? `${dir}${separator}${filename}` : ''
 
-          if (results[testPath]) {
-            return { ...ref, relinkedPath: testPath, resolvedPath: testPath, found: true }
+          if (testPath && results[testPath]) {
+            return { ...ref, path: testPath }
           }
           return ref
         }))
+
+        setMediaStatus(prev => {
+          const next = { ...prev }
+          for (const ref of missingRefs) {
+            const filename = ref.name || getFilenameFromPath(ref.path)
+            const separator = dir.includes('\\') ? '\\' : '/'
+            const testPath = filename ? `${dir}${separator}${filename}` : ''
+            if (testPath && results[testPath]) {
+              next[ref.id] = 'ready'
+            }
+          }
+          return next
+        })
       }
     } catch (err) {
       logger.error(`Error searching directory: ${err}`)
     } finally {
       setIsSearching(false)
     }
-  }, [mediaRefs])
+  }, [isImporting, mediaRefs, mediaStatus])
 
   // Recheck all paths
   const handleRecheckAll = useCallback(async () => {
-    const checked = await checkMediaFiles(mediaRefs)
-    setMediaRefs(checked)
-  }, [mediaRefs, checkMediaFiles])
+    if (isImporting) return
+    const availabilityById = await checkMediaFiles(mediaRefs)
+    applyAvailabilityToStatus(mediaRefs, availabilityById)
+  }, [applyAvailabilityToStatus, checkMediaFiles, isImporting, mediaRefs])
 
   // Confirm import
-  const handleConfirmImport = useCallback(() => {
-    if (!parsedTimeline) return
-
-    // Update the timeline with relinked paths
-    const updatedTimeline: ParsedTimeline = {
-      ...parsedTimeline,
-      mediaRefs: mediaRefs,
+  const handleConfirmImport = useCallback(async () => {
+    if (!parsedTimeline || isImporting) return
+    if (!projectId) {
+      setImportError('Cannot import timeline: no active project.')
+      return
     }
 
-    onImport(updatedTimeline)
-    onClose()
-  }, [parsedTimeline, mediaRefs, onImport, onClose])
+    setImportError('')
+    setIsImporting(true)
 
-  if (!isOpen) return null
+    const refsToImport = mediaRefs.map(ref => ({ ...ref }))
+    const copiedAssetBySource = new Map<string, {
+      path: string
+      bigThumbnailPath?: string
+      smallThumbnailPath?: string
+      width?: number
+      height?: number
+    }>()
+    const total = refsToImport.length
+    let completed = 0
+    let skipped = 0
 
-  const foundCount = mediaRefs.filter(r => r.found).length
+    setImportProgress({ total, completed: 0, skipped: 0, currentName: '' })
+
+    try {
+      for (const ref of refsToImport) {
+        const sourcePath = ref.path?.trim() || ''
+        const displayName = ref.name || getFilenameFromPath(sourcePath) || 'Unnamed media'
+        const currentStatus = mediaStatus[ref.id] || 'missing'
+
+        setImportProgress({
+          total,
+          completed,
+          skipped,
+          currentName: displayName,
+        })
+
+        if (!sourcePath || currentStatus === 'missing') {
+          skipped += 1
+          completed += 1
+          setMediaStatus(prev => ({ ...prev, [ref.id]: 'skipped' }))
+          setImportProgress({
+            total,
+            completed,
+            skipped,
+            currentName: displayName,
+          })
+          continue
+        }
+
+        const existingCopiedAsset = copiedAssetBySource.get(sourcePath)
+        if (existingCopiedAsset) {
+          ref.path = existingCopiedAsset.path
+          ref.bigThumbnailPath = existingCopiedAsset.bigThumbnailPath
+          ref.smallThumbnailPath = existingCopiedAsset.smallThumbnailPath
+          ref.width = existingCopiedAsset.width
+          ref.height = existingCopiedAsset.height
+          completed += 1
+          setMediaStatus(prev => ({ ...prev, [ref.id]: 'copied' }))
+          setMediaRefs(prev => prev.map(item => (
+            item.id === ref.id
+              ? {
+                  ...item,
+                  path: existingCopiedAsset.path,
+                  bigThumbnailPath: existingCopiedAsset.bigThumbnailPath,
+                  smallThumbnailPath: existingCopiedAsset.smallThumbnailPath,
+                  width: existingCopiedAsset.width,
+                  height: existingCopiedAsset.height,
+                }
+              : item
+          )))
+          setImportProgress({
+            total,
+            completed,
+            skipped,
+            currentName: displayName,
+          })
+          continue
+        }
+
+        setMediaStatus(prev => ({ ...prev, [ref.id]: 'copying' }))
+        let copiedAsset: {
+          path: string
+          bigThumbnailPath?: string
+          smallThumbnailPath?: string
+          width?: number
+          height?: number
+        } | null = null
+        if (ref.type === 'video' || ref.type === 'image') {
+          const copied = await addVisualAssetToProject(sourcePath, projectId, ref.type)
+          if (!copied) {
+            setMediaStatus(prev => ({ ...prev, [ref.id]: 'error' }))
+            throw new Error(`Failed to copy media into project assets: ${displayName}`)
+          }
+          copiedAsset = copied
+        } else {
+          const copied = await addGenericAssetToProject(sourcePath, projectId)
+          if (!copied?.path) {
+            setMediaStatus(prev => ({ ...prev, [ref.id]: 'error' }))
+            throw new Error(`Failed to copy media into project assets: ${displayName}`)
+          }
+          copiedAsset = { path: copied.path }
+        }
+
+        ref.path = copiedAsset.path
+        ref.bigThumbnailPath = copiedAsset.bigThumbnailPath
+        ref.smallThumbnailPath = copiedAsset.smallThumbnailPath
+        ref.width = copiedAsset.width
+        ref.height = copiedAsset.height
+        copiedAssetBySource.set(sourcePath, copiedAsset)
+        completed += 1
+
+        setMediaStatus(prev => ({ ...prev, [ref.id]: 'copied' }))
+        setMediaRefs(prev => prev.map(item => (
+          item.id === ref.id
+            ? {
+                ...item,
+                path: copiedAsset.path,
+                bigThumbnailPath: copiedAsset.bigThumbnailPath,
+                smallThumbnailPath: copiedAsset.smallThumbnailPath,
+                width: copiedAsset.width,
+                height: copiedAsset.height,
+              }
+            : item
+        )))
+        setImportProgress({
+          total,
+          completed,
+          skipped,
+          currentName: displayName,
+        })
+      }
+
+      // Update timeline refs with copied/updated paths
+      const updatedTimeline: ParsedTimeline = {
+        ...parsedTimeline,
+        mediaRefs: refsToImport,
+      }
+
+      importParsedTimeline(updatedTimeline)
+      closeModal()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setImportError(message)
+      logger.error(`Import timeline copy failed: ${message}`)
+    } finally {
+      setIsImporting(false)
+    }
+  }, [closeModal, importParsedTimeline, isImporting, mediaRefs, mediaStatus, parsedTimeline, projectId])
+
+  const readyCount = mediaRefs.filter(r => (mediaStatus[r.id] || 'missing') !== 'missing').length
   const totalCount = mediaRefs.length
-  const allFound = foundCount === totalCount && totalCount > 0
+  const allFound = readyCount === totalCount && totalCount > 0
+  const interactionDisabled = isImporting
+  const importPercent = importProgress.total > 0 ? (importProgress.completed / importProgress.total) * 100 : 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
@@ -241,13 +457,17 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors">
+          <button
+            onClick={closeModal}
+            disabled={interactionDisabled}
+            className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-auto p-6">
+        <div className={`flex-1 overflow-auto p-6 ${interactionDisabled ? 'pointer-events-none opacity-60' : ''}`}>
           {/* Step 1: File Selection */}
           {step === 'select' && (
             <div className="space-y-6">
@@ -375,12 +595,12 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
                     className="flex items-center gap-2 text-xs font-semibold text-zinc-400 uppercase tracking-wider hover:text-zinc-300"
                   >
                     {expandedMedia ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                    Media Files ({foundCount}/{totalCount} linked)
+                    Media Files ({readyCount}/{totalCount} linked)
                   </button>
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={handleSearchDirectory}
-                      disabled={isSearching || allFound}
+                      disabled={isSearching || allFound || interactionDisabled}
                       className="px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-400 text-[10px] hover:bg-zinc-700 hover:text-zinc-300 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                       title="Search a folder for missing media"
                     >
@@ -389,7 +609,7 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
                     </button>
                     <button
                       onClick={handleRecheckAll}
-                      disabled={isChecking}
+                      disabled={isChecking || interactionDisabled}
                       className="px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-400 text-[10px] hover:bg-zinc-700 hover:text-zinc-300 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                       title="Recheck all file paths"
                     >
@@ -399,12 +619,12 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
                   </div>
                 </div>
 
-                {/* Status bar */}
+                {/* Availability bar */}
                 <div className="mb-2">
                   <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-300 ${allFound ? 'bg-green-500' : foundCount > 0 ? 'bg-amber-500' : 'bg-red-500'}`}
-                      style={{ width: `${totalCount > 0 ? (foundCount / totalCount) * 100 : 0}%` }}
+                      className={`h-full rounded-full transition-all duration-300 ${allFound ? 'bg-green-500' : readyCount > 0 ? 'bg-amber-500' : 'bg-red-500'}`}
+                      style={{ width: `${totalCount > 0 ? (readyCount / totalCount) * 100 : 0}%` }}
                     />
                   </div>
                 </div>
@@ -413,6 +633,13 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
                   <div className="space-y-1 max-h-[300px] overflow-auto rounded-lg border border-zinc-800">
                     {mediaRefs.map((ref, i) => {
                       const TypeIcon = ref.type === 'video' ? FileVideo : ref.type === 'audio' ? FileAudio : Image
+                      const status = mediaStatus[ref.id] || 'missing'
+                      const isPositive = status === 'ready' || status === 'copied'
+                      const isMissing = status === 'missing'
+                      const isCopying = status === 'copying'
+                      const isSkipped = status === 'skipped'
+                      const isErrored = status === 'error'
+
                       return (
                         <div
                           key={ref.id}
@@ -421,27 +648,34 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
                           <TypeIcon className={`h-3.5 w-3.5 flex-shrink-0 ${
                             ref.type === 'video' ? 'text-blue-400' : ref.type === 'audio' ? 'text-green-400' : 'text-blue-400'
                           }`} />
-                          
+
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
-                              {ref.found ? (
+                              {isCopying ? (
+                                <Loader2 className="h-3 w-3 text-blue-400 flex-shrink-0 animate-spin" />
+                              ) : isPositive ? (
                                 <Check className="h-3 w-3 text-green-400 flex-shrink-0" />
+                              ) : isSkipped ? (
+                                <AlertTriangle className="h-3 w-3 text-amber-400 flex-shrink-0" />
                               ) : (
-                                <AlertTriangle className="h-3 w-3 text-red-400 flex-shrink-0" />
+                                <AlertTriangle className={`h-3 w-3 flex-shrink-0 ${isErrored ? 'text-red-400' : 'text-red-400'}`} />
                               )}
-                              <span className={`truncate font-medium ${ref.found ? 'text-zinc-300' : 'text-red-300'}`}>
+                              <span className={`truncate font-medium ${
+                                isPositive ? 'text-zinc-300' : isSkipped ? 'text-amber-300' : 'text-red-300'
+                              }`}>
                                 {ref.name}
                               </span>
                             </div>
                             <p className="text-[9px] text-zinc-600 truncate mt-0.5">
-                              {ref.relinkedPath || ref.resolvedPath || ref.pathUrl}
+                              {ref.path || '(no path)'}
                             </p>
                           </div>
-                          
-                          {!ref.found && (
+
+                          {isMissing && (
                             <button
                               onClick={() => handleRelinkFile(ref.id)}
-                              className="flex-shrink-0 px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-[10px] flex items-center gap-1 transition-colors"
+                              disabled={interactionDisabled}
+                              className="flex-shrink-0 px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-[10px] flex items-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                               title="Relink this file"
                             >
                               <Link2 className="h-3 w-3" />
@@ -451,7 +685,7 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
                         </div>
                       )
                     })}
-                    
+
                     {mediaRefs.length === 0 && (
                       <div className="p-4 text-center text-xs text-zinc-600">
                         No media files referenced in this timeline.
@@ -466,36 +700,68 @@ export function ImportTimelineModal({ isOpen, onClose, onImport }: ImportTimelin
 
         {/* Footer */}
         {step === 'relink' && (
-          <div className="px-6 py-4 border-t border-zinc-800 flex items-center justify-between bg-zinc-900">
-            <div className="text-[11px] text-zinc-500">
-              {!allFound && totalCount > 0 && (
-                <span className="text-amber-400">
-                  {totalCount - foundCount} missing file{totalCount - foundCount !== 1 ? 's' : ''} — clips with missing media will be placeholders
-                </span>
-              )}
-              {allFound && totalCount > 0 && (
-                <span className="text-green-400">All media files found</span>
-              )}
-              {totalCount === 0 && (
-                <span>No media references to link</span>
-              )}
+          <>
+            <div className={`px-6 py-4 border-t border-zinc-800 flex items-center justify-between bg-zinc-900 ${interactionDisabled ? 'pointer-events-none opacity-60' : ''}`}>
+              <div className="text-[11px] text-zinc-500">
+                {importError && (
+                  <span className="text-red-400">{importError}</span>
+                )}
+                {!importError && !allFound && totalCount > 0 && (
+                  <span className="text-amber-400">
+                    {totalCount - readyCount} missing file{totalCount - readyCount !== 1 ? 's' : ''} — clips with missing media will be placeholders
+                  </span>
+                )}
+                {!importError && allFound && totalCount > 0 && (
+                  <span className="text-green-400">All media files found</span>
+                )}
+                {!importError && totalCount === 0 && (
+                  <span>No media references to link</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={closeModal}
+                  disabled={interactionDisabled}
+                  className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-300 text-sm hover:bg-zinc-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmImport}
+                  disabled={interactionDisabled}
+                  className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors font-medium flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Import Timeline
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={onClose}
-                className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-300 text-sm hover:bg-zinc-700 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmImport}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors font-medium flex items-center gap-2"
-              >
-                <Upload className="h-3.5 w-3.5" />
-                Import Timeline
-              </button>
-            </div>
-          </div>
+
+            {isImporting && (
+              <div className="px-6 py-3 border-t border-zinc-800 bg-zinc-900/95">
+                <div className="flex items-center justify-between mb-1.5 text-[11px]">
+                  <span className="text-blue-300 flex items-center gap-1.5">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Copying media {importProgress.completed}/{importProgress.total}
+                  </span>
+                  <span className="text-zinc-500">
+                    {importProgress.skipped} skipped
+                  </span>
+                </div>
+                <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-blue-500 transition-all duration-200"
+                    style={{ width: `${importPercent}%` }}
+                  />
+                </div>
+                {importProgress.currentName && (
+                  <p className="text-[10px] text-zinc-500 truncate mt-1.5">
+                    {importProgress.currentName}
+                  </p>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

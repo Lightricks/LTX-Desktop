@@ -14,8 +14,8 @@ import { useIcLora } from '../hooks/use-ic-lora'
 import type { ICLoraConditioningType } from '../components/ICLoraPanel'
 import type { Asset } from '../types/project'
 import { GenerationErrorDialog } from '../components/GenerationErrorDialog'
-import { copyToAssetFolder } from '../lib/asset-copy'
-import { fileUrlToPath } from '../lib/url-to-path'
+import { addVisualAssetToProject } from '../lib/asset-copy'
+import { pathToFileUrl } from '../lib/file-url'
 import {
   FORCED_API_VIDEO_FPS,
   FORCED_API_VIDEO_RESOLUTIONS,
@@ -47,27 +47,27 @@ function AssetCard({
   onIcLora?: (asset: Asset) => void
   onToggleFavorite?: () => void
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const hoverVideoRef = useRef<HTMLVideoElement>(null)
   const [isHovered, setIsHovered] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [isMuted, setIsMuted] = useState(true)
   const isFavorite = asset.favorite || false
 
   useEffect(() => {
-    if (asset.type === 'video' && videoRef.current) {
-      if (isHovered) {
-        videoRef.current.play().catch(() => {})
-      } else {
-        videoRef.current.pause()
-        videoRef.current.currentTime = 0
-        setCurrentTime(0)
-      }
+    if (asset.type !== 'video') return
+    if (!isHovered) {
+      setCurrentTime(0)
+      return
     }
-  }, [isHovered, asset.type])
+    if (hoverVideoRef.current) {
+      hoverVideoRef.current.muted = isMuted
+      hoverVideoRef.current.play().catch(() => {})
+    }
+  }, [asset.type, isHovered, isMuted])
 
   const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime)
+    if (hoverVideoRef.current) {
+      setCurrentTime(hoverVideoRef.current.currentTime)
     }
   }
 
@@ -80,7 +80,7 @@ function AssetCard({
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation()
     const a = document.createElement('a')
-    a.href = asset.url
+    a.href = pathToFileUrl(asset.path)
     a.download = asset.path.split('/').pop() || `${asset.type}-${asset.id}`
     a.click()
   }
@@ -89,22 +89,41 @@ function AssetCard({
     <div
       className="relative group cursor-pointer rounded-xl overflow-hidden bg-zinc-900"
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseLeave={() => {
+        setIsHovered(false)
+        setCurrentTime(0)
+      }}
       onClick={onPlay}
       draggable={asset.type === 'image'}
       onDragStart={(e) => asset.type === 'image' && onDragStart(e, asset)}
     >
       {asset.type === 'video' ? (
-        <video 
-          ref={videoRef}
-          src={asset.url} 
-          className="w-full aspect-video object-contain"
-          muted={isMuted}
-          loop
-          onTimeUpdate={handleTimeUpdate}
-        />
+        <div className="relative w-full aspect-video bg-zinc-900">
+          {asset.bigThumbnailPath && (
+            <img
+              src={pathToFileUrl(asset.bigThumbnailPath)}
+              alt=""
+              className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-150 ${
+                isHovered ? 'opacity-0' : 'opacity-100'
+              }`}
+            />
+          )}
+          {isHovered && (
+            <video
+              ref={hoverVideoRef}
+              src={pathToFileUrl(asset.path)}
+              className="absolute inset-0 w-full h-full object-contain"
+              muted={isMuted}
+              loop
+              autoPlay
+              playsInline
+              preload="metadata"
+              onTimeUpdate={handleTimeUpdate}
+            />
+          )}
+        </div>
       ) : (
-        <img src={asset.url} alt="" className="w-full aspect-video object-contain" />
+        <img src={pathToFileUrl(asset.path)} alt="" className="w-full aspect-video object-contain" />
       )}
       
       {/* Favorite heart - always visible when favorited */}
@@ -352,9 +371,9 @@ function PromptBar({
   buttonLabel: string
   buttonIcon: React.ReactNode
   inputImage: string | null
-  onInputImageChange: (url: string | null) => void
+  onInputImageChange: (path: string | null) => void
   inputAudio: string | null
-  onInputAudioChange: (url: string | null) => void
+  onInputAudioChange: (path: string | null) => void
   settings: {
     model: string
     duration: number
@@ -396,7 +415,7 @@ function PromptBar({
     if (assetData) {
       const asset = JSON.parse(assetData) as Asset
       if (asset.type === 'image') {
-        onInputImageChange(asset.url)
+        onInputImageChange(asset.path)
       }
     }
   }
@@ -409,7 +428,7 @@ function PromptBar({
     if (assetData) {
       const asset = JSON.parse(assetData) as Asset
       if (asset.type === 'audio') {
-        onInputAudioChange(asset.url)
+        onInputAudioChange(asset.path)
       }
     }
 
@@ -418,11 +437,9 @@ function PromptBar({
     if (file) {
       const ext = file.name.split('.').pop()?.toLowerCase()
       if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext || '')) {
-        const filePath = (file as any).path as string | undefined
+        const filePath = window.electronAPI?.getPathForFile(file)
         if (filePath) {
-          const normalized = filePath.replace(/\\/g, '/')
-          const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
-          onInputAudioChange(fileUrl)
+          onInputAudioChange(filePath)
         }
       }
     }
@@ -431,11 +448,9 @@ function PromptBar({
   const handleAudioFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      const filePath = (file as any).path as string | undefined
+      const filePath = window.electronAPI?.getPathForFile(file)
       if (filePath) {
-        const normalized = filePath.replace(/\\/g, '/')
-        const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
-        onInputAudioChange(fileUrl)
+        onInputAudioChange(filePath)
       }
     }
   }
@@ -443,12 +458,9 @@ function PromptBar({
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file && file.type.startsWith('image/')) {
-      // In Electron, File objects have a .path property with the full filesystem path
-      const filePath = (file as any).path as string | undefined
+      const filePath = window.electronAPI?.getPathForFile(file)
       if (filePath) {
-        const normalized = filePath.replace(/\\/g, '/')
-        const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
-        onInputImageChange(fileUrl)
+        onInputImageChange(filePath)
       } else {
         const url = URL.createObjectURL(file)
         onInputImageChange(url)
@@ -480,7 +492,7 @@ function PromptBar({
           >
             {inputImage ? (
               <>
-                <img src={inputImage} alt="" className="w-full h-full object-cover rounded-md" />
+                <img src={pathToFileUrl(inputImage)} alt="" className="w-full h-full object-cover rounded-md" />
                 <button
                   onClick={(e) => { e.stopPropagation(); onInputImageChange(null) }}
                   className="absolute -top-1 -right-1 p-0.5 rounded-full bg-zinc-800 text-zinc-400 hover:text-white z-10"
@@ -855,11 +867,11 @@ export function GenSpace() {
     addTakeToAsset,
     deleteAsset,
     toggleFavorite,
-    genSpaceEditImageUrl,
-    setGenSpaceEditImageUrl,
+    genSpaceEditImagePath,
+    setGenSpaceEditImagePath,
     setGenSpaceEditMode,
-    genSpaceAudioUrl,
-    setGenSpaceAudioUrl,
+    genSpaceAudioPath,
+    setGenSpaceAudioPath,
     genSpaceRetakeSource,
     setGenSpaceRetakeSource,
     setPendingRetakeUpdate,
@@ -912,9 +924,7 @@ export function GenSpace() {
     isGenerating,
     progress,
     statusMessage,
-    videoUrl,
     videoPath,
-    imageUrls,
     imagePaths,
     error,
     reset,
@@ -930,7 +940,6 @@ export function GenSpace() {
   } = useRetake()
 
   const [retakeInput, setRetakeInput] = useState({
-    videoUrl: null as string | null,
     videoPath: null as string | null,
     startTime: 0,
     duration: 0,
@@ -939,17 +948,15 @@ export function GenSpace() {
   })
   const [retakePanelKey, setRetakePanelKey] = useState(0)
   const [retakeInitial, setRetakeInitial] = useState<{
-    videoUrl: string | null
     videoPath: string | null
     duration?: number
-  }>({ videoUrl: null, videoPath: null, duration: undefined })
+  }>({ videoPath: null, duration: undefined })
   const [activeRetakeSource, setActiveRetakeSource] = useState<GenSpaceRetakeSource | null>(null)
   const [activeIcLoraSource, setActiveIcLoraSource] = useState<{
     assetId?: string
     linkedClipIds?: string[]
   } | null>(null)
   const [icLoraInput, setIcLoraInput] = useState({
-    videoUrl: null as string | null,
     videoPath: null as string | null,
     conditioningType: 'canny' as ICLoraConditioningType,
     conditioningStrength: 1.0,
@@ -959,9 +966,8 @@ export function GenSpace() {
   const [icLoraCondType, setIcLoraCondType] = useState<ICLoraConditioningType>('canny')
   const [icLoraStrength, setIcLoraStrength] = useState(1.0)
   const [icLoraInitial, setIcLoraInitial] = useState<{
-    videoUrl: string | null
     videoPath: string | null
-  }>({ videoUrl: null, videoPath: null })
+  }>({ videoPath: null })
 
   const {
     submitIcLora,
@@ -974,24 +980,24 @@ export function GenSpace() {
   
   // Handle incoming frame from the Video Editor for editing
   useEffect(() => {
-    if (genSpaceEditImageUrl) {
+    if (genSpaceEditImagePath) {
       setMode('video')
-      setInputImage(genSpaceEditImageUrl)
+      setInputImage(genSpaceEditImagePath)
       setPrompt('')
-      setGenSpaceEditImageUrl(null)
+      setGenSpaceEditImagePath(null)
       setGenSpaceEditMode(null)
     }
-  }, [genSpaceEditImageUrl, setGenSpaceEditImageUrl, setGenSpaceEditMode])
+  }, [genSpaceEditImagePath, setGenSpaceEditImagePath, setGenSpaceEditMode])
 
   // Handle incoming audio from the Video Editor for A2V
   useEffect(() => {
-    if (genSpaceAudioUrl) {
+    if (genSpaceAudioPath) {
       setMode('video')
-      setInputAudio(genSpaceAudioUrl)
+      setInputAudio(genSpaceAudioPath)
       setPrompt('')
-      setGenSpaceAudioUrl(null)
+      setGenSpaceAudioPath(null)
     }
-  }, [genSpaceAudioUrl, setGenSpaceAudioUrl])
+  }, [genSpaceAudioPath, setGenSpaceAudioPath])
 
   useEffect(() => {
     if (!genSpaceRetakeSource) return
@@ -999,7 +1005,6 @@ export function GenSpace() {
     setPrompt('')
     setActiveRetakeSource(genSpaceRetakeSource)
     setRetakeInitial({
-      videoUrl: genSpaceRetakeSource.videoUrl,
       videoPath: genSpaceRetakeSource.videoPath,
       duration: genSpaceRetakeSource.duration,
     })
@@ -1020,7 +1025,6 @@ export function GenSpace() {
       linkedClipIds: genSpaceIcLoraSource.linkedClipIds,
     })
     setIcLoraInitial({
-      videoUrl: genSpaceIcLoraSource.videoUrl,
       videoPath: genSpaceIcLoraSource.videoPath,
     })
     setIcLoraPanelKey((prev) => prev + 1)
@@ -1063,9 +1067,9 @@ export function GenSpace() {
   
   // When video generation completes, add to project assets
   useEffect(() => {
-    if (!videoUrl || !videoPath || !currentProjectId || isGenerating) return
+    if (!videoPath || !currentProjectId || isGenerating) return
 
-    const generationKey = `${videoUrl}|${videoPath}`
+    const generationKey = videoPath
     if (persistedVideoKeyRef.current === generationKey) return
     persistedVideoKeyRef.current = generationKey
 
@@ -1076,13 +1080,15 @@ export function GenSpace() {
 
     ;(async () => {
       try {
-        const copied = await copyToAssetFolder(videoPath, currentProjectId)
-        const finalPath = copied?.path ?? videoPath
-        const finalUrl = copied?.url ?? videoUrl
+        const copied = await addVisualAssetToProject(videoPath, currentProjectId, 'video')
+        if (!copied) throw new Error('Could not persist generated video to project storage')
         addAsset(currentProjectId, {
           type: 'video',
-          path: finalPath,
-          url: finalUrl,
+          path: copied.path,
+          bigThumbnailPath: copied.bigThumbnailPath,
+          smallThumbnailPath: copied.smallThumbnailPath,
+          width: copied.width,
+          height: copied.height,
           prompt: lastPrompt,
           resolution: savedVideoSettings.videoResolution,
           duration: savedVideoSettings.duration,
@@ -1101,8 +1107,11 @@ export function GenSpace() {
             inputAudioUrl: inputAudio || undefined,
           },
           takes: [{
-            url: finalUrl,
-            path: finalPath,
+            path: copied.path,
+            bigThumbnailPath: copied.bigThumbnailPath,
+            smallThumbnailPath: copied.smallThumbnailPath,
+            width: copied.width,
+            height: copied.height,
             createdAt: Date.now(),
           }],
           activeTakeIndex: 0,
@@ -1113,7 +1122,7 @@ export function GenSpace() {
         logger.error(`Failed to persist generated video asset: ${err}`)
       }
     })()
-  }, [videoUrl, videoPath, currentProjectId, isGenerating, applyForcedVideoSettings, settings, inputImage, inputAudio, lastPrompt, addAsset, reset])
+  }, [videoPath, currentProjectId, isGenerating, applyForcedVideoSettings, settings, inputImage, inputAudio, lastPrompt, addAsset, reset])
 
   // When retake completes, add as take or new asset
   useEffect(() => {
@@ -1125,17 +1134,25 @@ export function GenSpace() {
     ;(async () => {
       const usedPrompt = submission.prompt
       const usedInput = submission.input
-      const copied = await copyToAssetFolder(retakeResult.videoPath, currentProjectId)
-      const finalPath = copied?.path ?? retakeResult.videoPath
-      const finalUrl = copied?.url ?? retakeResult.videoUrl
+      const copied = await addVisualAssetToProject(retakeResult.videoPath, currentProjectId, 'video')
+      if (!copied) {
+        logger.error('Could not persist retake result to project storage')
+        setLocalError('Failed to save retake output to project storage.')
+        setActiveRetakeSource(null)
+        resetRetake()
+        return
+      }
 
       if (activeRetakeSource?.assetId) {
         const sourceAsset = currentProject?.assets?.find(a => a.id === activeRetakeSource.assetId)
         if (sourceAsset) {
           const newTakeIndex = sourceAsset.takes ? sourceAsset.takes.length : 1
           addTakeToAsset(currentProjectId, sourceAsset.id, {
-            url: finalUrl,
-            path: finalPath,
+            path: copied.path,
+            bigThumbnailPath: copied.bigThumbnailPath,
+            smallThumbnailPath: copied.smallThumbnailPath,
+            width: copied.width,
+            height: copied.height,
             createdAt: Date.now(),
           })
           if (activeRetakeSource.linkedClipIds?.length) {
@@ -1149,8 +1166,11 @@ export function GenSpace() {
       } else {
         addAsset(currentProjectId, {
           type: 'video',
-          path: finalPath,
-          url: finalUrl,
+          path: copied.path,
+          bigThumbnailPath: copied.bigThumbnailPath,
+          smallThumbnailPath: copied.smallThumbnailPath,
+          width: copied.width,
+          height: copied.height,
           prompt: usedPrompt,
           resolution: '',
           duration: usedInput.duration,
@@ -1163,12 +1183,19 @@ export function GenSpace() {
             fps: 24,
             audio: true,
             cameraMotion: 'none',
-            retakeVideoPath: finalPath,
+            retakeVideoPath: copied.path,
             retakeStartTime: usedInput.startTime,
             retakeDuration: usedInput.duration,
             retakeMode: 'replace_audio_and_video',
           },
-          takes: [{ url: finalUrl, path: finalPath, createdAt: Date.now() }],
+          takes: [{
+            path: copied.path,
+            bigThumbnailPath: copied.bigThumbnailPath,
+            smallThumbnailPath: copied.smallThumbnailPath,
+            width: copied.width,
+            height: copied.height,
+            createdAt: Date.now(),
+          }],
           activeTakeIndex: 0,
         })
         setMode('video')
@@ -1186,17 +1213,25 @@ export function GenSpace() {
     icLoraSubmissionRef.current = null
 
     ;(async () => {
-      const copied = await copyToAssetFolder(icLoraResult.videoPath, currentProjectId)
-      const finalPath = copied?.path ?? icLoraResult.videoPath
-      const finalUrl = copied?.url ?? icLoraResult.videoUrl
+      const copied = await addVisualAssetToProject(icLoraResult.videoPath, currentProjectId, 'video')
+      if (!copied) {
+        logger.error('Could not persist IC-LoRA result to project storage')
+        setLocalError('Failed to save IC-LoRA output to project storage.')
+        setActiveIcLoraSource(null)
+        resetIcLora()
+        return
+      }
 
       if (activeIcLoraSource?.assetId) {
         const sourceAsset = currentProject?.assets?.find(a => a.id === activeIcLoraSource.assetId)
         if (sourceAsset) {
           const newTakeIndex = sourceAsset.takes ? sourceAsset.takes.length : 1
           addTakeToAsset(currentProjectId, sourceAsset.id, {
-            url: finalUrl,
-            path: finalPath,
+            path: copied.path,
+            bigThumbnailPath: copied.bigThumbnailPath,
+            smallThumbnailPath: copied.smallThumbnailPath,
+            width: copied.width,
+            height: copied.height,
             createdAt: Date.now(),
           })
           if (activeIcLoraSource.linkedClipIds?.length) {
@@ -1210,8 +1245,11 @@ export function GenSpace() {
       } else {
         addAsset(currentProjectId, {
           type: 'video',
-          path: finalPath,
-          url: finalUrl,
+          path: copied.path,
+          bigThumbnailPath: copied.bigThumbnailPath,
+          smallThumbnailPath: copied.smallThumbnailPath,
+          width: copied.width,
+          height: copied.height,
           prompt: submission.prompt,
           resolution: '',
           generationParams: {
@@ -1227,7 +1265,14 @@ export function GenSpace() {
             icLoraConditioningType: submission.input.conditioningType,
             icLoraConditioningStrength: submission.input.conditioningStrength,
           },
-          takes: [{ url: finalUrl, path: finalPath, createdAt: Date.now() }],
+          takes: [{
+            path: copied.path,
+            bigThumbnailPath: copied.bigThumbnailPath,
+            smallThumbnailPath: copied.smallThumbnailPath,
+            width: copied.width,
+            height: copied.height,
+            createdAt: Date.now(),
+          }],
           activeTakeIndex: 0,
         })
       }
@@ -1238,21 +1283,25 @@ export function GenSpace() {
   
   // When image generation/editing completes, add all images to project assets
   useEffect(() => {
-    if (imageUrls.length > 0 && currentProjectId && !isGenerating) {
+    if (imagePaths.length > 0 && currentProjectId && !isGenerating) {
       const genMode = 'text-to-image'
       ;(async () => {
-        for (let i = 0; i < imageUrls.length; i++) {
-          const imageUrl = imageUrls[i]
-          const imgPath = imagePaths[i] || null
-          const exists = assets.some(a => a.url === imageUrl)
+        for (let i = 0; i < imagePaths.length; i++) {
+          const imgPath = imagePaths[i]
+          const exists = assets.some(a => a.path === imgPath)
           if (!exists) {
-            const copied = imgPath ? await copyToAssetFolder(imgPath, currentProjectId) : null
-            const finalPath = copied?.path ?? imgPath ?? imageUrl
-            const finalUrl = copied?.url ?? imageUrl
+            const copied = await addVisualAssetToProject(imgPath, currentProjectId, 'image')
+            if (!copied) {
+              logger.error(`Could not persist generated image to project storage: ${imgPath}`)
+              continue
+            }
             addAsset(currentProjectId, {
               type: 'image',
-              path: finalPath,
-              url: finalUrl,
+              path: copied.path,
+              bigThumbnailPath: copied.bigThumbnailPath,
+              smallThumbnailPath: copied.smallThumbnailPath,
+              width: copied.width,
+              height: copied.height,
               prompt: lastPrompt,
               resolution: settings.imageResolution,
               generationParams: {
@@ -1268,8 +1317,11 @@ export function GenSpace() {
                 imageSteps: 4,
               },
               takes: [{
-                url: finalUrl,
-                path: finalPath,
+                path: copied.path,
+                bigThumbnailPath: copied.bigThumbnailPath,
+                smallThumbnailPath: copied.smallThumbnailPath,
+                width: copied.width,
+                height: copied.height,
                 createdAt: Date.now(),
               }],
               activeTakeIndex: 0,
@@ -1278,7 +1330,7 @@ export function GenSpace() {
         }
       })()
     }
-  }, [imageUrls, imagePaths, currentProjectId, isGenerating])
+  }, [imagePaths, currentProjectId, isGenerating])
   
   const handleGenerate = async () => {
     if (mode === 'ic-lora') {
@@ -1344,9 +1396,8 @@ export function GenSpace() {
       )
     } else {
       // Generate video (t2v if no image/audio, i2v if image, a2v if audio)
-      // Extract filesystem path from the file:// URL for the backend
-      const imagePath = inputImage ? fileUrlToPath(inputImage) : null
-      const audioPath = inputAudio ? fileUrlToPath(inputAudio) : null
+      const imagePath = inputImage || null
+      const audioPath = inputAudio || null
       const videoSettings = applyForcedVideoSettings(settings)
       if (audioPath) videoSettings.model = 'pro'
 
@@ -1384,7 +1435,7 @@ export function GenSpace() {
   
   const handleCreateVideo = (imageAsset: Asset) => {
     setMode('video')
-    setInputImage(imageAsset.url)
+    setInputImage(imageAsset.path)
     setPrompt(`${imageAsset.prompt || 'The scene comes to life...'}`)
   }
 
@@ -1393,7 +1444,6 @@ export function GenSpace() {
     setPrompt('')
     setActiveRetakeSource(null)
     setRetakeInitial({
-      videoUrl: videoAsset.url,
       videoPath: videoAsset.path,
       duration: videoAsset.duration,
     })
@@ -1405,7 +1455,7 @@ export function GenSpace() {
     setMode('ic-lora')
     setPrompt('')
     setActiveIcLoraSource(null)
-    setIcLoraInitial({ videoUrl: videoAsset.url, videoPath: videoAsset.path })
+    setIcLoraInitial({ videoPath: videoAsset.path })
     setIcLoraPanelKey((prev) => prev + 1)
   }
 
@@ -1603,7 +1653,6 @@ export function GenSpace() {
       {mode === 'retake' && (
         <div className="absolute inset-x-0 top-0 bottom-[160px] px-4 pt-4 pb-4 flex flex-col overflow-hidden">
           <RetakePanel
-            initialVideoUrl={retakeInitial.videoUrl}
             initialVideoPath={retakeInitial.videoPath}
             initialDuration={retakeInitial.duration}
             resetKey={retakePanelKey}
@@ -1618,7 +1667,6 @@ export function GenSpace() {
       {mode === 'ic-lora' && !forceApiGenerations && (
         <div className="absolute inset-x-0 top-0 bottom-[160px] px-4 pt-4 pb-4 flex flex-col overflow-hidden">
           <ICLoraPanel
-            initialVideoUrl={icLoraInitial.videoUrl}
             initialVideoPath={icLoraInitial.videoPath}
             resetKey={icLoraPanelKey}
             fillHeight
@@ -1628,7 +1676,6 @@ export function GenSpace() {
             onConditioningTypeChange={setIcLoraCondType}
             conditioningStrength={icLoraStrength}
             onConditioningStrengthChange={setIcLoraStrength}
-            outputVideoUrl={icLoraResult?.videoUrl || null}
             outputVideoPath={icLoraResult?.videoPath || null}
             onChange={setIcLoraInput}
           />
@@ -1720,7 +1767,7 @@ export function GenSpace() {
             {selectedAsset.type === 'video' ? (
               <video
                 key={selectedAsset.id}
-                src={selectedAsset.url}
+                src={pathToFileUrl(selectedAsset.path)}
                 controls
                 autoPlay
                 className="w-full rounded-xl object-contain max-h-[75vh]"
@@ -1728,7 +1775,7 @@ export function GenSpace() {
             ) : (
               <img
                 key={selectedAsset.id}
-                src={selectedAsset.url}
+                src={pathToFileUrl(selectedAsset.path)}
                 alt=""
                 className="w-full rounded-xl object-contain max-h-[75vh]"
               />

@@ -13,6 +13,8 @@ from api_types import (
     ModelInfo,
     ModelsStatusResponse,
     RequiredModelsResponse,
+    TextEncoderAlreadyDownloadedResponse,
+    TextEncoderDownloadStartedResponse,
     TextEncoderDownloadResponse,
 )
 from _routes._errors import HTTPError
@@ -81,10 +83,10 @@ def route_text_encoder_download(handler: AppHandler = Depends(get_state_service)
 
     files = handler.models.refresh_available_files()
     if files["text_encoder"] is not None:
-        return TextEncoderDownloadResponse(status="already_downloaded", message="Text encoder already downloaded")
+        return TextEncoderAlreadyDownloadedResponse(status="already_downloaded", message="Text encoder already downloaded")
 
     session_id = handler.downloads.start_text_encoder_download()
     if session_id:
-        return TextEncoderDownloadResponse(status="started", message="Text encoder download started", sessionId=session_id)
+        return TextEncoderDownloadStartedResponse(status="started", message="Text encoder download started", sessionId=session_id)
 
     raise HTTPError(400, "Failed to start download")

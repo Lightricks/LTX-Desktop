@@ -25,6 +25,7 @@ from state.app_state_types import (
     A2VPipelineState,
     AppState,
     CpuSlot,
+    GpuGeneration,
     GenerationRunning,
     GpuSlot,
     ICLoraState,
@@ -68,8 +69,8 @@ class PipelinesHandler(StateHandlerBase):
         self._runtime_device = get_device_type(self.config.device)
 
     def _ensure_no_running_generation(self) -> None:
-        match self.state.gpu_slot:
-            case GpuSlot(generation=GenerationRunning()):
+        match self.state.active_generation:
+            case GpuGeneration(state=GenerationRunning()) if self.state.gpu_slot is not None:
                 raise RuntimeError("Generation already running; cannot swap pipelines")
             case _:
                 return
@@ -82,17 +83,14 @@ class PipelinesHandler(StateHandlerBase):
                 return False
 
     def _assert_invariants(self) -> None:
-        gpu_is_zit = False
         match self.state.gpu_slot:
-            case GpuSlot(active_pipeline=VideoPipelineState() | ICLoraState() | A2VPipelineState() | RetakePipelineState()):
-                gpu_is_zit = False
-            case GpuSlot():
-                gpu_is_zit = True
+            case GpuSlot(active_pipeline=active_pipeline):
+                gpu_has_image_generation_pipeline = isinstance(active_pipeline, ImageGenerationPipeline)
             case _:
-                gpu_is_zit = False
+                gpu_has_image_generation_pipeline = False
 
-        if gpu_is_zit and self.state.cpu_slot is not None:
-            raise RuntimeError("Invariant violation: ZIT cannot be in both GPU and CPU slots")
+        if gpu_has_image_generation_pipeline and self.state.cpu_slot is not None:
+            raise RuntimeError("Invariant violation: image generation pipeline cannot be in both GPU and CPU slots")
 
     def _install_text_patches_if_needed(self) -> None:
         te = self.state.text_encoder
@@ -143,67 +141,68 @@ class PipelinesHandler(StateHandlerBase):
             self._assert_invariants()
         self._gpu_cleaner.cleanup()
 
-    def park_zit_on_cpu(self) -> None:
-        zit: ImageGenerationPipeline | None = None
+    def park_image_generation_pipeline_on_cpu(self) -> None:
+        image_generation_pipeline: ImageGenerationPipeline | None = None
 
         with self._lock:
             if self.state.gpu_slot is None:
                 return
 
             active = self.state.gpu_slot.active_pipeline
-            if isinstance(active, (VideoPipelineState, ICLoraState, A2VPipelineState, RetakePipelineState)):
+            if not isinstance(active, ImageGenerationPipeline):
                 return
 
-            generation = self.state.gpu_slot.generation
-            if isinstance(generation, GenerationRunning):
-                raise RuntimeError("Cannot park ZIT while generation is running")
+            if isinstance(self.state.active_generation, GpuGeneration) and isinstance(
+                self.state.active_generation.state, GenerationRunning
+            ):
+                raise RuntimeError("Cannot park image generation pipeline while generation is running")
 
-            zit = active
+            image_generation_pipeline = active
             self.state.gpu_slot = None
 
-        assert zit is not None
-        zit.to("cpu")
+        assert image_generation_pipeline is not None
+        image_generation_pipeline.to("cpu")
         self._gpu_cleaner.cleanup()
 
         with self._lock:
-            self.state.cpu_slot = CpuSlot(active_pipeline=zit)
+            self.state.cpu_slot = CpuSlot(active_pipeline=image_generation_pipeline)
             self._assert_invariants()
 
-    def load_zit_to_gpu(self) -> ImageGenerationPipeline:
+    def load_image_generation_pipeline_to_gpu(self) -> ImageGenerationPipeline:
         with self._lock:
             if self.state.gpu_slot is not None:
                 active = self.state.gpu_slot.active_pipeline
-                if not isinstance(active, (VideoPipelineState, ICLoraState, A2VPipelineState, RetakePipelineState)):
+                if isinstance(active, ImageGenerationPipeline):
                     return active
                 self._ensure_no_running_generation()
 
-        zit_service: ImageGenerationPipeline | None = None
+        image_generation_pipeline: ImageGenerationPipeline | None = None
 
         with self._lock:
             match self.state.cpu_slot:
                 case CpuSlot(active_pipeline=stored):
-                    zit_service = stored
+                    image_generation_pipeline = stored
                     self.state.cpu_slot = None
                 case _:
-                    zit_service = None
+                    image_generation_pipeline = None
 
-        if zit_service is None:
+        if image_generation_pipeline is None:
             zit_path = resolve_model_path(self.models_dir, self.config.model_download_specs,"zit")
             if not (zit_path.exists() and any(zit_path.iterdir())):
                 raise RuntimeError("Z-Image-Turbo model not downloaded. Please download the AI models first using the Model Status menu.")
-            zit_service = self._image_generation_pipeline_class.create(str(zit_path), self._runtime_device)
+            image_generation_pipeline = self._image_generation_pipeline_class.create(str(zit_path), self._runtime_device)
         else:
-            zit_service.to(self._runtime_device)
+            image_generation_pipeline.to(self._runtime_device)
 
         self._gpu_cleaner.cleanup()
 
         with self._lock:
-            self.state.gpu_slot = GpuSlot(active_pipeline=zit_service, generation=None)
+            self.state.gpu_slot = GpuSlot(active_pipeline=image_generation_pipeline)
             self._assert_invariants()
 
-        return zit_service
+        return image_generation_pipeline
 
-    def preload_zit_to_cpu(self) -> ImageGenerationPipeline:
+    def preload_image_generation_pipeline_to_cpu(self) -> ImageGenerationPipeline:
         with self._lock:
             match self.state.cpu_slot:
                 case CpuSlot(active_pipeline=existing):
@@ -215,16 +214,16 @@ class PipelinesHandler(StateHandlerBase):
         if not (zit_path.exists() and any(zit_path.iterdir())):
             raise RuntimeError("Z-Image-Turbo model not downloaded. Please download the AI models first using the Model Status menu.")
 
-        zit_service = self._image_generation_pipeline_class.create(str(zit_path), None)
+        image_generation_pipeline = self._image_generation_pipeline_class.create(str(zit_path), None)
         with self._lock:
             if self.state.cpu_slot is None:
-                self.state.cpu_slot = CpuSlot(active_pipeline=zit_service)
+                self.state.cpu_slot = CpuSlot(active_pipeline=image_generation_pipeline)
                 self._assert_invariants()
-                return zit_service
+                return image_generation_pipeline
             return self.state.cpu_slot.active_pipeline
 
     def _evict_gpu_pipeline_for_swap(self) -> None:
-        should_park_zit = False
+        should_park_image_generation_pipeline = False
         should_cleanup = False
 
         with self._lock:
@@ -233,15 +232,15 @@ class PipelinesHandler(StateHandlerBase):
                 return
 
             active = self.state.gpu_slot.active_pipeline
-            if isinstance(active, (VideoPipelineState, ICLoraState, A2VPipelineState, RetakePipelineState)):
+            if isinstance(active, ImageGenerationPipeline):
+                should_park_image_generation_pipeline = True
+            else:
                 self.state.gpu_slot = None
                 self._assert_invariants()
                 should_cleanup = True
-            else:
-                should_park_zit = True
 
-        if should_park_zit:
-            self.park_zit_on_cpu()
+        if should_park_image_generation_pipeline:
+            self.park_image_generation_pipeline_on_cpu()
         elif should_cleanup:
             self._gpu_cleaner.cleanup()
 
@@ -261,7 +260,7 @@ class PipelinesHandler(StateHandlerBase):
             self._evict_gpu_pipeline_for_swap()
             state = self._create_video_pipeline(model_type)
             with self._lock:
-                self.state.gpu_slot = GpuSlot(active_pipeline=state, generation=None)
+                self.state.gpu_slot = GpuSlot(active_pipeline=state)
                 self._assert_invariants()
 
         if should_warm and state.warmth == VideoPipelineWarmth.COLD:
@@ -315,7 +314,7 @@ class PipelinesHandler(StateHandlerBase):
         )
 
         with self._lock:
-            self.state.gpu_slot = GpuSlot(active_pipeline=state, generation=None)
+            self.state.gpu_slot = GpuSlot(active_pipeline=state)
             self._assert_invariants()
         return state
 
@@ -340,7 +339,7 @@ class PipelinesHandler(StateHandlerBase):
         state = A2VPipelineState(pipeline=pipeline)
 
         with self._lock:
-            self.state.gpu_slot = GpuSlot(active_pipeline=state, generation=None)
+            self.state.gpu_slot = GpuSlot(active_pipeline=state)
             self._assert_invariants()
         return state
 
@@ -373,7 +372,7 @@ class PipelinesHandler(StateHandlerBase):
         state = RetakePipelineState(pipeline=pipeline, distilled=distilled, quantized=quantized)
 
         with self._lock:
-            self.state.gpu_slot = GpuSlot(active_pipeline=state, generation=None)
+            self.state.gpu_slot = GpuSlot(active_pipeline=state)
             self._assert_invariants()
         return state
 

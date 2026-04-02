@@ -12,19 +12,8 @@ from app_factory import create_app
 from state import RuntimeConfig, build_initial_state, set_state_service_for_tests
 from app_handler import ServiceBundle
 from runtime_config.model_download_specs import DEFAULT_MODEL_DOWNLOAD_SPECS, DEFAULT_REQUIRED_MODEL_TYPES, resolve_model_path
+from tests.fake_camera_motion_prompts import FAKE_CAMERA_MOTION_PROMPTS
 from tests.fakes.services import FakeServices
-
-CAMERA_MOTION_PROMPTS = {
-    "none": "",
-    "static": ", static camera, locked off shot, no camera movement",
-    "focus_shift": ", focus shift, rack focus, changing focal point",
-    "dolly_in": ", dolly in, camera pushing forward, smooth forward movement",
-    "dolly_out": ", dolly out, camera pulling back, smooth backward movement",
-    "dolly_left": ", dolly left, camera tracking left, lateral movement",
-    "dolly_right": ", dolly right, camera tracking right, lateral movement",
-    "jib_up": ", jib up, camera rising up, upward crane movement",
-    "jib_down": ", jib down, camera lowering down, downward crane movement",
-}
 
 DEFAULT_NEGATIVE_PROMPT = (
     "blurry, out of focus, overexposed, underexposed, low contrast, washed out colors, "
@@ -59,8 +48,9 @@ def test_state(tmp_path: Path, fake_services: FakeServices):
         ltx_api_base_url="https://api.ltx.video",
         force_api_generations=False,
         use_sage_attention=False,
-        camera_motion_prompts=CAMERA_MOTION_PROMPTS,
+        camera_motion_prompts=FAKE_CAMERA_MOTION_PROMPTS,
         default_negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+        dev_mode=False,
     )
 
     bundle = ServiceBundle(

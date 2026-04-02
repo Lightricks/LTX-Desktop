@@ -34,13 +34,19 @@ class LTXFastVideoPipeline:
         from ltx_core.quantization import QuantizationPolicy
         from ltx_pipelines.distilled import DistilledPipeline
 
+        self._checkpoint_path = checkpoint_path
+        self._gemma_root = gemma_root
+        self._upsampler_path = upsampler_path
+        self._device = device
+        self._quantization = QuantizationPolicy.fp8_cast() if device_supports_fp8(device) else None
+
         self.pipeline = DistilledPipeline(
             distilled_checkpoint_path=checkpoint_path,
             gemma_root=cast(str, gemma_root),
             spatial_upsampler_path=upsampler_path,
             loras=[],
             device=device,
-            quantization=QuantizationPolicy.fp8_cast() if device_supports_fp8(device) else None,
+            quantization=self._quantization,
         )
 
     def _run_inference(
@@ -65,6 +71,7 @@ class LTXFastVideoPipeline:
             frame_rate=frame_rate,
             images=[_LtxImageInput(img.path, img.frame_idx, img.strength) for img in images],
             tiling_config=tiling_config,
+            streaming_prefetch_count=2,
         )
 
     @torch.inference_mode()
@@ -116,10 +123,14 @@ class LTXFastVideoPipeline:
                 os.unlink(output_path)
 
     def compile_transformer(self) -> None:
-        transformer = self.pipeline.model_ledger.transformer()
+        from ltx_pipelines.distilled import DistilledPipeline
 
-        compiled = cast(
-            torch.nn.Module,
-            torch.compile(transformer, mode="reduce-overhead", fullgraph=False),  # type: ignore[reportUnknownMemberType]
+        self.pipeline = DistilledPipeline(
+            distilled_checkpoint_path=self._checkpoint_path,
+            gemma_root=cast(str, self._gemma_root),
+            spatial_upsampler_path=self._upsampler_path,
+            loras=[],
+            device=self._device,
+            quantization=self._quantization,
+            torch_compile=True,
         )
-        setattr(self.pipeline.model_ledger, "transformer", lambda: compiled)

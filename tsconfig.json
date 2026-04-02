@@ -20,6 +20,6 @@
       "@/*": ["frontend/*"]
     }
   },
-  "include": ["frontend"],
+  "include": ["frontend", "shared"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

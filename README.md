@@ -30,10 +30,10 @@ LTX Desktop is an open-source desktop app for generating videos with LTX models 
 
 | Platform / hardware | Generation mode | Notes |
 | --- | --- | --- |
-| Windows + CUDA GPU with **≥32GB VRAM** | Local generation | Downloads model weights locally |
-| Windows (no CUDA, <32GB VRAM, or unknown VRAM) | API-only | **LTX API key required** |
-| Linux + CUDA GPU with **≥32GB VRAM** | Local generation | Downloads model weights locally |
-| Linux (no CUDA, <32GB VRAM, or unknown VRAM) | API-only | **LTX API key required** |
+| Windows + CUDA GPU with **≥16GB VRAM** | Local generation | Downloads model weights locally |
+| Windows (no CUDA, <16GB VRAM, or unknown VRAM) | API-only | **LTX API key required** |
+| Linux + CUDA GPU with **≥16GB VRAM** | Local generation | Downloads model weights locally |
+| Linux (no CUDA, <16GB VRAM, or unknown VRAM) | API-only | **LTX API key required** |
 | macOS (Apple Silicon builds) | API-only | **LTX API key required** |
 
 In API-only mode, available resolutions/durations may be limited to what the API supports.
@@ -43,14 +43,14 @@ In API-only mode, available resolutions/durations may be limited to what the API
 ### Windows (local generation)
 
 - Windows 10/11 (x64)
-- NVIDIA GPU with CUDA support and **≥32GB VRAM** (more is better)
+- NVIDIA GPU with CUDA support and **≥16GB VRAM** (more is better)
 - 16GB+ RAM (32GB recommended)
 - **160GB+ free disk space** (for model weights, Python environment, and outputs)
 
 ### Linux (local generation)
 
 - Ubuntu 22.04+ or similar distro (x64 or arm64)
-- NVIDIA GPU with CUDA support and **≥32GB VRAM** (more is better)
+- NVIDIA GPU with CUDA support and **≥16GB VRAM** (more is better)
 - NVIDIA driver installed (PyTorch bundles the CUDA runtime)
 - 16GB+ RAM (32GB recommended)
 - Plenty of free disk space for model weights and outputs

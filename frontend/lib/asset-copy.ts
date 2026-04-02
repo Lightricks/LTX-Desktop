@@ -1,25 +1,56 @@
 import { logger } from './logger'
 
+export type ProjectAssetType = 'video' | 'image'
+
+export interface ProjectAssetCopyResult {
+  path: string
+  bigThumbnailPath: string
+  smallThumbnailPath: string
+  width: number
+  height: number
+}
+
 /**
- * Copy a generated file to the global project assets folder via a single IPC call.
- * Electron handles path validation, directory creation, and file copy.
- * Returns the new { path, url } if successful, or null on failure — callers handle fallback.
+ * Copy a video/image file to project storage and return precomputed thumbnail paths.
  */
-export async function copyToAssetFolder(
+export async function addVisualAssetToProject(
   srcPath: string,
   projectId: string,
-): Promise<{ path: string; url: string } | null> {
-  if (!srcPath || !projectId || !window.electronAPI) return null
+  type: ProjectAssetType,
+): Promise<ProjectAssetCopyResult | null> {
   try {
-    const result = await window.electronAPI.copyToProjectAssets(srcPath, projectId)
-    if (result.success && result.path && result.url) {
-      return { path: result.path, url: result.url }
+    const result = await window.electronAPI.addVisualAssetToProject({ srcPath, projectId, type })
+    if (result.success) {
+      return {
+        path: result.path,
+        bigThumbnailPath: result.bigThumbnailPath,
+        smallThumbnailPath: result.smallThumbnailPath,
+        width: result.width,
+        height: result.height,
+      }
     }
-    if (result.error) {
-      logger.warn(`Failed to copy asset to project folder: ${result.error}`)
-    }
+    logger.warn(`Failed to add asset to project folder: ${result.error}`)
   } catch (e) {
-    logger.warn(`Failed to copy asset to project folder: ${e}`)
+    logger.warn(`Failed to add asset to project folder: ${e}`)
+  }
+  return null
+}
+
+/**
+ * Copy a file to project storage without thumbnail generation (audio path).
+ */
+export async function addGenericAssetToProject(
+  srcPath: string,
+  projectId: string,
+): Promise<{ path: string } | null> {
+  try {
+    const result = await window.electronAPI.addGenericAssetToProject({ srcPath, projectId })
+    if (result.success) {
+      return { path: result.path }
+    }
+    logger.warn(`Failed to copy file to project folder: ${result.error}`)
+  } catch (e) {
+    logger.warn(`Failed to copy file to project folder: ${e}`)
   }
   return null
 }

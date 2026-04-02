@@ -1,28 +1,20 @@
 import { useState, useCallback, useRef } from 'react'
 import type { GenerationSettings } from '../components/SettingsPanel'
-import { backendFetch } from '../lib/backend'
+import { ApiClient } from '../lib/api-client'
 import { useAppSettings } from '../contexts/AppSettingsContext'
 
 interface GenerationState {
   isGenerating: boolean
   progress: number
   statusMessage: string
-  videoUrl: string | null
-  videoPath: string | null  // Original file path for upscaling
-  imageUrl: string | null
-  imagePath: string | null  // Original file path for first image
-  imageUrls: string[]  // For multiple image variations
-  imagePaths: string[]  // Original file paths for all images
+  videoPath: string | null
+  imagePath: string | null
+  imagePaths: string[]
   error: string | null
 }
 
-interface GenerationProgress {
-  status: string
-  phase: string
-  progress: number
-  currentStep: number | null
-  totalSteps: number | null
-}
+type GenerateVideoRequest = Parameters<typeof ApiClient.generateVideo>[0]
+type GenerateImageRequest = Parameters<typeof ApiClient.generateImage>[0]
 
 interface UseGenerationReturn extends GenerationState {
   generate: (prompt: string, imagePath: string | null, settings: GenerationSettings, audioPath?: string | null) => Promise<void>
@@ -95,11 +87,8 @@ export function useGeneration(): UseGenerationReturn {
     isGenerating: false,
     progress: 0,
     statusMessage: '',
-    videoUrl: null,
     videoPath: null,
-    imageUrl: null,
     imagePath: null,
-    imageUrls: [],
     imagePaths: [],
     error: null,
   })
@@ -120,11 +109,8 @@ export function useGeneration(): UseGenerationReturn {
       isGenerating: true,
       progress: 0,
       statusMessage: statusMsg,
-      videoUrl: null,
       videoPath: null,
-      imageUrl: null,
       imagePath: null,
-      imageUrls: [],
       imagePaths: [],
       error: null,
     })
@@ -138,11 +124,12 @@ export function useGeneration(): UseGenerationReturn {
       const body: Record<string, unknown> = {
         prompt,
         model: settings.model,
-        duration: String(settings.duration),
+        duration: settings.duration,
         resolution: settings.videoResolution,
-        fps: String(settings.fps),
-        audio: String(settings.audio),
+        fps: settings.fps,
+        audio: settings.audio,
         cameraMotion: settings.cameraMotion,
+        negativePrompt: (settings as { negativePrompt?: string }).negativePrompt ?? '',
         aspectRatio: settings.aspectRatio || '16:9',
       }
       if (imagePath) {
@@ -161,40 +148,37 @@ export function useGeneration(): UseGenerationReturn {
       const pollProgress = async () => {
         if (!shouldApplyPollingUpdates) return
         try {
-          const res = await backendFetch('/api/generation/progress')
-          if (res.ok) {
-            const data: GenerationProgress = await res.json()
-            if (!shouldApplyPollingUpdates) return
+          const data = await ApiClient.getGenerationProgress()
+          if (!shouldApplyPollingUpdates) return
 
-            let displayProgress = data.progress
-            let statusMessage = getPhaseMessage(data.phase)
-            
-            // Time-based interpolation during inference phase
-            if (data.phase === 'inference') {
-              if (lastPhase !== 'inference') {
-                inferenceStartTime = Date.now()
-              }
-              const elapsed = (Date.now() - inferenceStartTime) / 1000
-              // Interpolate from 15% to 95% based on estimated time
-              const inferenceProgress = Math.min(elapsed / estimatedInferenceTime, 0.95)
-              displayProgress = 15 + Math.floor(inferenceProgress * 80)
+          let displayProgress = data.progress
+          let statusMessage = getPhaseMessage(data.phase)
+          
+          // Time-based interpolation during inference phase
+          if (data.phase === 'inference') {
+            if (lastPhase !== 'inference') {
+              inferenceStartTime = Date.now()
             }
-
-            // Keep API/local completion as a terminal response state, not polling state.
-            // Polling complete means backend state is finalized, but request can still be in-flight.
-            if (data.phase === 'complete' || data.status === 'complete') {
-              displayProgress = 95
-              statusMessage = 'Finalizing...'
-            }
-            
-            lastPhase = data.phase
-            
-            setState(prev => ({
-              ...prev,
-              progress: displayProgress,
-              statusMessage,
-            }))
+            const elapsed = (Date.now() - inferenceStartTime) / 1000
+            // Interpolate from 15% to 95% based on estimated time
+            const inferenceProgress = Math.min(elapsed / estimatedInferenceTime, 0.95)
+            displayProgress = 15 + Math.floor(inferenceProgress * 80)
           }
+
+          // Keep API/local completion as a terminal response state, not polling state.
+          // Polling complete means backend state is finalized, but request can still be in-flight.
+          if (data.phase === 'complete' || data.status === 'complete') {
+            displayProgress = 95
+            statusMessage = 'Finalizing...'
+          }
+          
+          lastPhase = data.phase
+          
+          setState(prev => ({
+            ...prev,
+            progress: displayProgress,
+            statusMessage,
+          }))
         } catch {
           // Ignore polling errors
         }
@@ -203,46 +187,29 @@ export function useGeneration(): UseGenerationReturn {
       progressInterval = setInterval(pollProgress, 500)
 
       // Start generation (HTTP POST - synchronous, returns when done)
-      const response = await backendFetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+      const payload = await ApiClient.generateVideo(body as unknown as GenerateVideoRequest, {
         signal: abortControllerRef.current.signal,
       })
       shouldApplyPollingUpdates = false
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(errorText || 'Generation failed')
-      }
-
-      const result = await response.json()
-      
-      if (result.status === 'complete' && result.video_path) {
-        // Convert Windows path to proper file:// URL
-        const videoPathNormalized = result.video_path.replace(/\\/g, '/')
-        const fileUrl = videoPathNormalized.startsWith('/') ? `file://${videoPathNormalized}` : `file:///${videoPathNormalized}`
-        
+      if (payload.status === 'complete') {
         setState({
           isGenerating: false,
           progress: 100,
           statusMessage: 'Complete!',
-          videoUrl: fileUrl,
-          videoPath: result.video_path,  // Keep original path for API calls
-          imageUrl: null,
+          videoPath: payload.video_path,
           imagePath: null,
-          imageUrls: [],
           imagePaths: [],
           error: null,
         })
-      } else if (result.status === 'cancelled') {
+      } else if (payload.status === 'cancelled') {
         setState(prev => ({
           ...prev,
           isGenerating: false,
           statusMessage: 'Cancelled',
         }))
-      } else if (result.error) {
-        throw new Error(result.error)
+      } else {
+        throw new Error('Unexpected response from /api/generate')
       }
 
     } catch (error) {
@@ -273,7 +240,7 @@ export function useGeneration(): UseGenerationReturn {
     
     // Also tell the backend to cancel
     try {
-      await backendFetch('/api/generate/cancel', { method: 'POST' })
+      await ApiClient.cancelGeneration()
     } catch {
       // Ignore errors from cancel request
     }
@@ -291,21 +258,18 @@ export function useGeneration(): UseGenerationReturn {
   ) => {
     if (forceApiGenerations) {
       try {
-        const response = await backendFetch('/api/settings')
-        if (response.ok) {
-          const payload = await response.json()
-          if (!payload?.hasFalApiKey) {
-            void refreshSettings()
-            window.dispatchEvent(new CustomEvent('open-api-gateway', {
-              detail: {
-                requiredKeys: ['fal'],
-                title: 'Connect FAL AI',
-                description: 'FAL AI is required for generating images with Z Image Turbo when API generations are enabled.',
-                blocking: false,
-              },
-            }))
-            return
-          }
+        const payload = await ApiClient.getSettings()
+        if (!payload.hasFalApiKey) {
+          void refreshSettings()
+          window.dispatchEvent(new CustomEvent('open-api-gateway', {
+            detail: {
+              requiredKeys: ['fal'],
+              title: 'Connect FAL AI',
+              description: 'FAL AI is required for generating images with Z Image Turbo when API generations are enabled.',
+              blocking: false,
+            },
+          }))
+          return
         }
       } catch {
         if (!appSettings.hasFalApiKey) {
@@ -328,11 +292,8 @@ export function useGeneration(): UseGenerationReturn {
       isGenerating: true,
       progress: 0,
       statusMessage: numImages > 1 ? `Generating ${numImages} images...` : 'Generating image...',
-      videoUrl: null,
       videoPath: null,
-      imageUrl: null,
       imagePath: null,
-      imageUrls: [],
       imagePaths: [],
       error: null,
     })
@@ -349,25 +310,22 @@ export function useGeneration(): UseGenerationReturn {
       // Poll for progress
       const pollProgress = async () => {
         try {
-          const res = await backendFetch('/api/generation/progress')
-          if (res.ok) {
-            const data = await res.json()
-            const currentImage = data.currentStep || 0
-            const totalImages = data.totalSteps || numImages
-            setState(prev => ({
-              ...prev,
-              progress: data.progress,
-              statusMessage: data.phase === 'loading_model' 
-                ? 'Loading Z-Image Turbo model...' 
-                : data.phase === 'inference'
-                  ? numImages > 1 
-                    ? `Generating image ${currentImage + 1}/${totalImages}...`
-                    : 'Generating image...'
-                  : data.phase === 'complete'
-                    ? 'Complete!'
-                    : 'Generating...',
-            }))
-          }
+          const data = await ApiClient.getGenerationProgress()
+          const currentImage = data.currentStep || 0
+          const totalImages = data.totalSteps || numImages
+          setState(prev => ({
+            ...prev,
+            progress: data.progress,
+            statusMessage: data.phase === 'loading_model' 
+              ? 'Loading Z-Image Turbo model...' 
+              : data.phase === 'inference'
+                ? numImages > 1 
+                  ? `Generating image ${currentImage + 1}/${totalImages}...`
+                  : 'Generating image...'
+                : data.phase === 'complete'
+                  ? 'Complete!'
+                  : 'Generating...',
+          }))
         } catch {
           // Ignore polling errors
         }
@@ -375,65 +333,42 @@ export function useGeneration(): UseGenerationReturn {
       
       const progressInterval = setInterval(pollProgress, 500)
 
-      const response = await backendFetch('/api/generate-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: finalPrompt,
-          width: dims.width,
-          height: dims.height,
-          numSteps,
-          numImages,
-        }),
+      const imageRequest: GenerateImageRequest = {
+        prompt: finalPrompt,
+        width: dims.width,
+        height: dims.height,
+        numSteps,
+        numImages,
+      }
+      const payload = await ApiClient.generateImage(imageRequest, {
         signal: abortControllerRef.current.signal,
       })
 
       clearInterval(progressInterval)
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(errorText || 'Image generation failed')
-      }
+      if (payload.status === 'complete') {
+        const rawPaths = payload.image_paths
+        if (rawPaths.length === 0) {
+          throw new Error('Image generation completed without output images')
+        }
 
-      const result = await response.json()
-      
-      if (result.status === 'complete') {
-        // Handle both new format (image_paths array) and old format (single image_path)
-        let rawPaths: string[] = []
-        if (result.image_paths && Array.isArray(result.image_paths)) {
-          rawPaths = result.image_paths
-        } else if (result.image_path) {
-          rawPaths = [result.image_path]
-        }
-        
-        if (rawPaths.length > 0) {
-          // Convert all paths to file URLs
-          const fileUrls = rawPaths.map((path: string) => {
-            const imagePath = path.replace(/\\/g, '/')
-            return imagePath.startsWith('/') ? `file://${imagePath}` : `file:///${imagePath}`
-          })
-          
-          setState({
-            isGenerating: false,
-            progress: 100,
-            statusMessage: 'Complete!',
-            videoUrl: null,
-            videoPath: null,
-            imageUrl: fileUrls[0],  // First image for backwards compatibility
-            imagePath: rawPaths[0],  // First image path
-            imageUrls: fileUrls,    // All images
-            imagePaths: rawPaths,   // All image paths
-            error: null,
-          })
-        }
-      } else if (result.status === 'cancelled') {
+        setState({
+          isGenerating: false,
+          progress: 100,
+          statusMessage: 'Complete!',
+          videoPath: null,
+          imagePath: rawPaths[0],
+          imagePaths: rawPaths,
+          error: null,
+        })
+      } else if (payload.status === 'cancelled') {
         setState(prev => ({
           ...prev,
           isGenerating: false,
           statusMessage: 'Cancelled',
         }))
-      } else if (result.error) {
-        throw new Error(result.error)
+      } else {
+        throw new Error('Unexpected response from /api/generate-image')
       }
 
     } catch (error) {
@@ -458,11 +393,8 @@ export function useGeneration(): UseGenerationReturn {
       isGenerating: false,
       progress: 0,
       statusMessage: '',
-      videoUrl: null,
       videoPath: null,
-      imageUrl: null,
       imagePath: null,
-      imageUrls: [],
       imagePaths: [],
       error: null,
     })

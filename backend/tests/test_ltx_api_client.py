@@ -321,7 +321,7 @@ def test_retake_json_video_url_downloads_bytes(tmp_path) -> None:
         start_time=2.0,
         duration=4.0,
         prompt="test",
-        mode="replace_video_only",
+        mode="replace_video",
     )
 
     assert result.video_bytes == b"downloaded-retake"

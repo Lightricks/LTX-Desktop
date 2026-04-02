@@ -74,6 +74,7 @@ class LTXa2vPipeline:
             audio_start_time=audio_start_time,
             audio_max_duration=audio_max_duration,
             tiling_config=tiling_config,
+            streaming_prefetch_count=2,
         )
 
     @torch.inference_mode()

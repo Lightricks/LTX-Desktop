@@ -2,6 +2,18 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import type { Asset, TimelineClip, Track } from '../../types/project'
 import { resolveOverlaps, migrateClip, type ToolType } from './video-editor-utils'
 
+interface DragPreviewPosition {
+  startTime: number
+  trackIndex: number
+}
+
+interface DragPreviewNode {
+  el: HTMLElement
+  transform: string
+  zIndex: string
+  willChange: string
+}
+
 export interface DraggingClipState {
   clipId: string
   startX: number
@@ -61,8 +73,7 @@ interface UseTimelineDragParams {
   setCurrentTime: (time: number) => void
   setIsPlaying: (playing: boolean) => void
   snapEnabled: boolean
-  pushUndo: (c?: any) => void
-  resolveClipSrc: (clip: TimelineClip | null) => string
+  resolveClipPath: (clip: TimelineClip | null) => string
   getMaxClipDuration: (clip: TimelineClip) => number
   addClipToTimeline: (asset: Asset, trackIndex: number, startTime?: number) => void
   assets: Asset[]
@@ -72,7 +83,6 @@ interface UseTimelineDragParams {
   timelineRef: React.RefObject<HTMLDivElement>
   trackContainerRef: React.RefObject<HTMLDivElement>
   orderedTracks: { track: Track; realIndex: number; displayRow: number }[]
-  trackDisplayRow: Map<number, number>
   getTrackHeight: (trackIndex: number) => number
   trackTopPx: (realTrackIndex: number, padding?: number) => number
   cutPoints: any[]
@@ -91,10 +101,10 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
     clips, setClips, tracks,
     selectedClipIds, setSelectedClipIds,
     currentTime, setCurrentTime, setIsPlaying,
-    snapEnabled, pushUndo, getMaxClipDuration, addClipToTimeline,
+    snapEnabled, getMaxClipDuration, addClipToTimeline,
     assets, timelines, activeTimeline,
     timelineRef, trackContainerRef,
-    orderedTracks, trackDisplayRow, getTrackHeight, trackTopPx,
+    orderedTracks, getTrackHeight, trackTopPx,
     splitClipAtPlayhead, setSelectedSubtitleId, setSelectedGap,
     audioTrackHeight, videoTrackHeight, subtitleTrackHeight,
   } = params
@@ -104,6 +114,23 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
   const [slipSlideClip, setSlipSlideClip] = useState<SlipSlideClipState | null>(null)
   const [lassoRect, setLassoRect] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
   const lassoOriginRef = useRef<{ scrollLeft: number; containerLeft: number; containerTop: number } | null>(null)
+  const dragPreviewRef = useRef<Record<string, DragPreviewPosition> | null>(null)
+  const dragPreviewNodesRef = useRef<Map<string, DragPreviewNode>>(new Map())
+  const dragPreviewRafRef = useRef<number | null>(null)
+
+  const clearDragPreviewDom = useCallback(() => {
+    if (dragPreviewRafRef.current !== null) {
+      cancelAnimationFrame(dragPreviewRafRef.current)
+      dragPreviewRafRef.current = null
+    }
+    for (const node of dragPreviewNodesRef.current.values()) {
+      node.el.style.transform = node.transform
+      node.el.style.zIndex = node.zIndex
+      node.el.style.willChange = node.willChange
+    }
+    dragPreviewNodesRef.current.clear()
+    dragPreviewRef.current = null
+  }, [])
 
   // --- Ruler scrub: click + drag to scrub playhead ---
   
@@ -203,7 +230,6 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
     // --- Slip tool: shift source content within clip ---
     if (activeTool === 'slip') {
       setSelectedClipIds(expandWithLinkedClips(new Set([clip.id])))
-      pushUndo()
       setSlipSlideClip({
         clipId: clip.id,
         tool: 'slip',
@@ -219,7 +245,6 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
     // --- Slide tool: move clip, adjust neighbors ---
     if (activeTool === 'slide') {
       setSelectedClipIds(expandWithLinkedClips(new Set([clip.id])))
-      pushUndo()
       
       // Find the previous and next clips on the same track
       const sameTrack = clips
@@ -263,7 +288,6 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
       setSelectedGap(null)
       
       // Start drag so the user can slide the whole forward selection
-      pushUndo()
       const originalPositions: Record<string, { startTime: number; trackIndex: number }> = {}
       clips.filter(c => forwardIds.has(c.id)).forEach(c => {
         originalPositions[c.id] = { startTime: c.startTime, trackIndex: c.trackIndex }
@@ -309,8 +333,6 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
         setSelectedClipIds(effectiveSelection)
       }
       
-      // Record undo before drag begins
-      pushUndo()
       // Only drag clips that are in the effective (visual) selection.
       // This allows moving just the video or audio part of a linked clip
       // when only that part is selected (e.g. via Alt+lasso). Links are preserved.
@@ -498,19 +520,48 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
       return newTrackIndex
     }
     
-    setClips(prev => prev.map(c => {
-      const orig = origPositions[c.id]
-      if (!orig) return c
-      
-      const newTrackIndex = resolveTrackForClip(orig.trackIndex)
-      
-      return {
-        ...c,
+    const previewById: Record<string, DragPreviewPosition> = {}
+    for (const [clipId, orig] of Object.entries(origPositions)) {
+      previewById[clipId] = {
         startTime: orig.startTime + timeDelta,
-        trackIndex: newTrackIndex,
+        trackIndex: resolveTrackForClip(orig.trackIndex),
       }
-    }))
-  }, [draggingClip, clips, pixelsPerSecond, snapEnabled, tracks, currentTime, lassoRect, trackDisplayRow, orderedTracks])
+    }
+    dragPreviewRef.current = previewById
+
+    if (dragPreviewRafRef.current === null) {
+      dragPreviewRafRef.current = requestAnimationFrame(() => {
+        dragPreviewRafRef.current = null
+        if (!trackContainerRef.current) return
+        const preview = dragPreviewRef.current
+        if (!preview) return
+
+        for (const [clipId, target] of Object.entries(preview)) {
+          const original = origPositions[clipId]
+          if (!original) continue
+
+          let node = dragPreviewNodesRef.current.get(clipId)
+          if (!node || !node.el.isConnected) {
+            const el = trackContainerRef.current.querySelector(`[data-clip-id="${clipId}"]`) as HTMLElement | null
+            if (!el) continue
+            node = {
+              el,
+              transform: el.style.transform,
+              zIndex: el.style.zIndex,
+              willChange: el.style.willChange,
+            }
+            dragPreviewNodesRef.current.set(clipId, node)
+          }
+
+          const xPx = (target.startTime - original.startTime) * pixelsPerSecond
+          const yPx = trackTopPx(target.trackIndex, 4) - trackTopPx(original.trackIndex, 4)
+          node.el.style.transform = `translate3d(${xPx}px, ${yPx}px, 0)`
+          node.el.style.zIndex = '40'
+          node.el.style.willChange = 'transform'
+        }
+      })
+    }
+  }, [draggingClip, clips, pixelsPerSecond, snapEnabled, tracks, currentTime, lassoRect, orderedTracks, trackContainerRef, trackTopPx])
   
   const handleMouseUp = useCallback((e?: MouseEvent | Event) => {
     // Finalize lasso selection
@@ -551,11 +602,24 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
       lassoOriginRef.current = null
     }
     
-    // Resolve overlaps after drag or resize completes.
-    // Skip if it was an Alt+click with no actual drag (altHeld still true = duplicates never created).
-    if (draggingClip && !draggingClip.altHeld) {
-      const movedIds = new Set(Object.keys(draggingClip.originalPositions))
-      setClips(prev => resolveOverlaps(prev, movedIds))
+    // Commit drag result once (positions + overlap resolution) so history records one drag step.
+    if (draggingClip) {
+      const preview = dragPreviewRef.current
+      const originalPositions = draggingClip.originalPositions
+      const movedIds = new Set(Object.keys(originalPositions))
+      setClips(prev => {
+        const positioned = prev.map(clip => {
+          const target = preview?.[clip.id]
+          if (!target) return clip
+          return {
+            ...clip,
+            startTime: target.startTime,
+            trackIndex: target.trackIndex,
+          }
+        })
+        return resolveOverlaps(positioned, movedIds)
+      })
+      clearDragPreviewDom()
     }
     if (resizingClip) {
       setClips(prev => resolveOverlaps(prev, new Set([resizingClip.clipId])))
@@ -563,7 +627,7 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
     
     setDraggingClip(null)
     setResizingClip(null)
-  }, [lassoRect, clips, pixelsPerSecond, draggingClip, resizingClip])
+  }, [lassoRect, clips, pixelsPerSecond, draggingClip, resizingClip, setClips, getTrackHeight, trackTopPx, clearDragPreviewDom])
   
   const handleResizeMove = useCallback((e: MouseEvent) => {
     if (!resizingClip) return
@@ -850,6 +914,12 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
       }
     }
   }, [draggingClip, lassoRect, handleMouseMove, handleMouseUp])
+
+  useEffect(() => {
+    return () => {
+      clearDragPreviewDom()
+    }
+  }, [clearDragPreviewDom])
   
   useEffect(() => {
     if (resizingClip) {
@@ -984,7 +1054,6 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
         trackIndex: Math.min(trackIndex + srcClip.trackIndex, tracks.length - 1),
       }))
       
-      pushUndo()
       setClips(prev => [...prev, ...newClips])
       return
     }

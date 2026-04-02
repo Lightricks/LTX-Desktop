@@ -25,6 +25,7 @@ class RuntimeConfig:
     use_sage_attention: bool
     camera_motion_prompts: dict[str, str]
     default_negative_prompt: str
+    dev_mode: bool
 
     def spec_for(self, model_type: ModelFileType) -> ModelFileDownloadSpec:
         return self.model_download_specs[model_type]

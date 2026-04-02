@@ -3,42 +3,13 @@ import {
   Upload, Loader2, Film, Sparkles,
   RefreshCw, Download, AlertCircle, Trash2,
 } from 'lucide-react'
-import { backendFetch } from '../lib/backend'
+import { ApiClient } from '../lib/api-client'
 import { logger } from '../lib/logger'
-import { fileUrlToPath } from '../lib/url-to-path'
+import { pathToFileUrl } from '../lib/file-url'
 
 export type ICLoraConditioningType = 'canny' | 'depth'
 
-type DownloadStatus = 'idle' | 'downloading' | 'complete' | 'error'
-
-interface IcLoraDownloadProgress {
-  status: DownloadStatus
-  current_downloading_file: string | null
-  current_file_progress: number
-  total_progress: number
-  completed_files: string[]
-  all_files: string[]
-  error: string | null
-}
-
-interface ModelDownloadStartResponse {
-  status?: string
-  error?: string
-  message?: string
-  sessionId?: string
-}
-
-interface ModelsStatusModel {
-  id: string
-  downloaded: boolean
-}
-
-interface ModelsStatusResponse {
-  models: ModelsStatusModel[]
-}
-
 interface ICLoraPanelProps {
-  initialVideoUrl?: string | null
   initialVideoPath?: string | null
   resetKey?: number
   fillHeight?: boolean
@@ -48,10 +19,8 @@ interface ICLoraPanelProps {
   onConditioningTypeChange?: (type: ICLoraConditioningType) => void
   conditioningStrength?: number
   onConditioningStrengthChange?: (strength: number) => void
-  outputVideoUrl?: string | null
   outputVideoPath?: string | null
   onChange?: (data: {
-    videoUrl: string | null
     videoPath: string | null
     conditioningType: ICLoraConditioningType
     conditioningStrength: number
@@ -77,13 +46,8 @@ const EMPTY_IC_MODEL_STATUS: Record<IcLoraModelId, boolean> = {
   depth_processor: false,
 }
 
-function pathToFileUrl(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, '/')
-  return normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
-}
 
 export function ICLoraPanel({
-  initialVideoUrl,
   initialVideoPath,
   resetKey,
   fillHeight = false,
@@ -93,13 +57,12 @@ export function ICLoraPanel({
   onConditioningTypeChange,
   conditioningStrength: conditioningStrengthProp,
   onConditioningStrengthChange,
-  outputVideoUrl,
   outputVideoPath: _outputVideoPath,
   onChange,
 }: ICLoraPanelProps) {
   const inputVideoRef = useRef<HTMLVideoElement>(null)
-  const [inputVideoUrl, setInputVideoUrl] = useState<string | null>(initialVideoUrl || null)
   const [inputVideoPath, setInputVideoPath] = useState<string | null>(initialVideoPath || null)
+  const inputVideoUrl = inputVideoPath ? pathToFileUrl(inputVideoPath) : null
   const [inputTime, setInputTime] = useState(0)
 
   const [internalCondType, setInternalCondType] = useState<ICLoraConditioningType>('canny')
@@ -112,7 +75,7 @@ export function ICLoraPanel({
   const [icModelDownloaded, setIcModelDownloaded] = useState<Record<IcLoraModelId, boolean>>({ ...EMPTY_IC_MODEL_STATUS })
   const [isCheckingIcLora, setIsCheckingIcLora] = useState(false)
   const [isDownloadingIcLora, setIsDownloadingIcLora] = useState(false)
-  const [downloadProgress, setDownloadProgress] = useState<IcLoraDownloadProgress | null>(null)
+  const [downloadProgress, setDownloadProgress] = useState<Awaited<ReturnType<typeof ApiClient.getModelDownloadProgress>> | null>(null)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [downloadSessionId, setDownloadSessionId] = useState<string | null>(null)
   const [extractError, setExtractError] = useState<string | null>(null)
@@ -121,7 +84,6 @@ export function ICLoraPanel({
 
   useEffect(() => {
     if (resetKey === undefined) return
-    setInputVideoUrl(initialVideoUrl || null)
     setInputVideoPath(initialVideoPath || null)
     setInputTime(0)
     setInternalCondType('canny')
@@ -130,12 +92,11 @@ export function ICLoraPanel({
     onConditioningStrengthChange?.(1.0)
     setConditioningPreview(null)
     setExtractError(null)
-  }, [resetKey, initialVideoUrl, initialVideoPath]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [resetKey, initialVideoPath]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const ready = !!inputVideoPath && icLoraReady
     onChange?.({
-      videoUrl: inputVideoUrl,
       videoPath: inputVideoPath,
       conditioningType,
       conditioningStrength,
@@ -146,13 +107,7 @@ export function ICLoraPanel({
   const checkIcLoraAvailability = useCallback(async () => {
     setIsCheckingIcLora(true)
     try {
-      const statusResponse = await backendFetch('/api/models/status')
-      if (!statusResponse.ok) {
-        setDownloadError(`Failed to fetch model status (${statusResponse.status})`)
-        return
-      }
-
-      const statusPayload = await statusResponse.json() as ModelsStatusResponse
+      const statusPayload = await ApiClient.getModelsStatus()
       const nextStatus: Record<IcLoraModelId, boolean> = { ...EMPTY_IC_MODEL_STATUS }
       IC_LORA_MODEL_IDS.forEach(modelId => {
         nextStatus[modelId] = statusPayload.models.some(model => model.id === modelId && model.downloaded)
@@ -183,12 +138,7 @@ export function ICLoraPanel({
 
     const pollProgress = async () => {
       try {
-        const progressResponse = await backendFetch(`/api/models/download/progress?sessionId=${downloadSessionId}`)
-        if (!progressResponse.ok) {
-          return
-        }
-
-        const progressPayload = await progressResponse.json() as IcLoraDownloadProgress
+        const progressPayload = await ApiClient.getModelDownloadProgress({ sessionId: downloadSessionId })
         setDownloadProgress(progressPayload)
 
         if (progressPayload.status === 'error') {
@@ -216,23 +166,11 @@ export function ICLoraPanel({
     setDownloadError(null)
 
     try {
-      const response = await backendFetch('/api/models/download', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ modelTypes: [...IC_LORA_MODEL_IDS] }),
+      const startedPayload = await ApiClient.startModelDownload({
+        modelTypes: [...IC_LORA_MODEL_IDS],
       })
-
-      const payload = await response.json().catch(() => ({})) as ModelDownloadStartResponse
-      if (!response.ok) {
-        const errorMessage = payload.error || payload.message || `Download request failed (${response.status})`
-        setDownloadError(errorMessage)
-        return
-      }
-
-      if (payload.status === 'started') {
-        if (payload.sessionId) {
-          setDownloadSessionId(payload.sessionId)
-        }
+      if (startedPayload.status === 'started') {
+        setDownloadSessionId(startedPayload.sessionId)
         setIsDownloadingIcLora(true)
         return
       }
@@ -251,22 +189,12 @@ export function ICLoraPanel({
     setIsExtracting(true)
     setExtractError(null)
     try {
-      const response = await backendFetch('/api/ic-lora/extract-conditioning', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          video_path: inputVideoPath,
-          conditioning_type: conditioningType,
-          frame_time: inputTime,
-        }),
+      const payload = await ApiClient.extractIcLoraConditioning({
+        video_path: inputVideoPath,
+        conditioning_type: conditioningType,
+        frame_time: inputTime,
       })
-      if (response.ok) {
-        const payload = await response.json()
-        setConditioningPreview(payload.conditioning)
-        return
-      }
-      const payload = await response.json().catch(() => ({} as { error?: string }))
-      setExtractError(payload.error || `Failed to extract conditioning (${response.status})`)
+      setConditioningPreview(payload.conditioning)
     } catch (e) {
       logger.warn(`Failed to extract conditioning: ${e}`)
       setExtractError((e as Error).message)
@@ -309,7 +237,7 @@ export function ICLoraPanel({
     if (paths && paths.length > 0) {
       const filePath = paths[0]
       setInputVideoPath(filePath)
-      setInputVideoUrl(pathToFileUrl(filePath))
+      
       setConditioningPreview(null)
       setExtractError(null)
     }
@@ -317,7 +245,7 @@ export function ICLoraPanel({
 
   const handleClear = useCallback(() => {
     setInputVideoPath(null)
-    setInputVideoUrl(null)
+
     setInputTime(0)
     setConditioningPreview(null)
     setExtractError(null)
@@ -330,11 +258,9 @@ export function ICLoraPanel({
     const assetData = e.dataTransfer.getData('asset')
     if (assetData) {
       try {
-        const asset = JSON.parse(assetData) as { type?: string; url?: string; path?: string }
-        if (asset.type === 'video' && asset.url) {
-          const path = asset.path || fileUrlToPath(asset.url) || null
-          setInputVideoUrl(asset.url)
-          setInputVideoPath(path)
+        const asset = JSON.parse(assetData) as { type?: string; path?: string }
+        if (asset.type === 'video' && asset.path) {
+          setInputVideoPath(asset.path)
           setConditioningPreview(null)
           setExtractError(null)
           return
@@ -346,10 +272,10 @@ export function ICLoraPanel({
 
     const file = e.dataTransfer.files?.[0]
     if (file) {
-      const filePath = (file as unknown as { path?: string }).path
+      const filePath = window.electronAPI?.getPathForFile(file)
       if (filePath) {
         setInputVideoPath(filePath)
-        setInputVideoUrl(pathToFileUrl(filePath))
+        
         setConditioningPreview(null)
         setExtractError(null)
       }
@@ -357,11 +283,13 @@ export function ICLoraPanel({
   }, [])
 
   const showDownloadGate = isCheckingIcLora || !icLoraReady
+  const runningDownloadProgress =
+    downloadProgress?.status === 'downloading' ? downloadProgress : null
   const gateItems = IC_LORA_MODEL_IDS.map(modelId => {
     const downloaded = icModelDownloaded[modelId]
-    const isCompleted = downloadProgress?.completed_files?.includes(modelId) ?? false
-    const isCurrentDownload = isDownloadingIcLora && downloadProgress?.current_downloading_file === modelId
-    const progress = downloaded ? 100 : (isCompleted ? 100 : (isCurrentDownload ? (downloadProgress?.current_file_progress ?? 0) : 0))
+    const isCompleted = runningDownloadProgress?.completed_files?.includes(modelId) ?? false
+    const isCurrentDownload = isDownloadingIcLora && runningDownloadProgress?.current_downloading_file === modelId
+    const progress = downloaded ? 100 : (isCompleted ? 100 : (isCurrentDownload ? (runningDownloadProgress?.current_file_progress ?? 0) : 0))
     const status = downloaded ? 'Ready' : (isCompleted ? 'Complete' : (isCurrentDownload ? 'Downloading' : 'Missing'))
     return { id: modelId, label: IC_LORA_MODEL_LABELS[modelId], downloaded, progress, status }
   })
@@ -553,9 +481,9 @@ export function ICLoraPanel({
               <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Output</span>
             </div>
             <div className="flex-1 bg-black flex items-center justify-center min-h-0 relative">
-              {outputVideoUrl ? (
+              {_outputVideoPath ? (
                 <video
-                  src={outputVideoUrl}
+                  src={pathToFileUrl(_outputVideoPath)}
                   className="w-full h-full object-contain"
                   controls
                 />

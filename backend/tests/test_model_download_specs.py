@@ -36,6 +36,7 @@ def _build_config(tmp_path):
         use_sage_attention=False,
         camera_motion_prompts={},
         default_negative_prompt="",
+        dev_mode=False,
     )
 
 
