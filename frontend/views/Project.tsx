@@ -152,9 +152,10 @@ export function Project() {
       </header>
       
       <main className="flex-1 overflow-hidden relative">
-        {currentTab === 'gen-space' ? (
+        <div className={currentTab === 'gen-space' ? 'h-full' : 'hidden h-full'}>
           <GenSpace />
-        ) : (
+        </div>
+        <div className={currentTab === 'video-editor' ? 'h-full' : 'hidden h-full'}>
           <VideoEditor
             key={currentProject.id}
             currentProject={currentProject}
@@ -162,7 +163,7 @@ export function Project() {
             pendingRetakeUpdate={pendingRetakeUpdate}
             pendingIcLoraUpdate={pendingIcLoraUpdate}
           />
-        )}
+        </div>
       </main>
     </div>
   )
