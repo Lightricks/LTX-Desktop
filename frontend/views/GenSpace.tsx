@@ -359,6 +359,11 @@ function PromptBar({
   onIcLoraCondTypeChange,
   icLoraStrength,
   onIcLoraStrengthChange,
+  seedLocked,
+  lockedSeed,
+  onSeedLockedChange,
+  onLockedSeedChange,
+  onRandomizeSeed,
 }: {
   mode: 'image' | 'video' | 'retake' | 'ic-lora'
   onModeChange: (mode: 'image' | 'video' | 'retake' | 'ic-lora') => void
@@ -390,6 +395,11 @@ function PromptBar({
   onIcLoraCondTypeChange?: (type: ICLoraConditioningType) => void
   icLoraStrength?: number
   onIcLoraStrengthChange?: (strength: number) => void
+  seedLocked: boolean
+  lockedSeed: number
+  onSeedLockedChange: (locked: boolean) => void
+  onLockedSeedChange: (seed: number) => void
+  onRandomizeSeed: () => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
@@ -406,6 +416,51 @@ function PromptBar({
     ? (inputAudio ? ['1080p'] : [...FORCED_API_VIDEO_RESOLUTIONS])
     : ['540p', '720p', '1080p']
   const videoFpsOptions = shouldVideoGenerateWithLtxApi ? [...FORCED_API_VIDEO_FPS] : [24, 25, 50]
+
+  const seedControls = (
+    <>
+      <div className="w-px h-4 bg-zinc-700 mx-0.5" />
+      <SettingsDropdown
+        title="SEED"
+        value={seedLocked ? 'fixed' : 'random'}
+        onChange={(value) => onSeedLockedChange(value === 'fixed')}
+        options={[
+          { value: 'random', label: 'Random Seed' },
+          { value: 'fixed', label: 'Fixed Seed' },
+        ]}
+        trigger={
+          <>
+            <span className="text-zinc-500 text-[10px]">SEED</span>
+            <span className="text-zinc-300 font-medium">{seedLocked ? 'Fixed' : 'Random'}</span>
+            <ChevronUp className="h-3 w-3 text-zinc-500" />
+          </>
+        }
+      />
+      {seedLocked && (
+        <div className="flex items-center gap-1 ml-1 rounded-md bg-zinc-800/50 px-1 py-1">
+          <input
+            type="number"
+            min="0"
+            max="2147483647"
+            value={lockedSeed}
+            onChange={(e) => onLockedSeedChange(parseInt(e.target.value, 10) || 0)}
+            className="w-12 bg-transparent text-zinc-300 font-medium focus:outline-none"
+            placeholder="S"
+          />
+          <button
+            type="button"
+            onClick={onRandomizeSeed}
+            className="rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-white"
+            title="Generate random seed"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16" />
+            </svg>
+          </button>
+        </div>
+      )}
+    </>
+  )
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -569,7 +624,7 @@ function PromptBar({
       </div>
       
       {/* Bottom row: Mode selector + Settings */}
-      <div className="flex items-center gap-0.5 px-1.5 py-1.5 border-t border-zinc-800/60 text-xs text-zinc-400">
+      <div className="flex flex-nowrap items-center gap-0.5 px-1.5 py-1.5 border-t border-zinc-800/60 text-xs text-zinc-400">
         {/* Mode dropdown */}
         <SettingsDropdown
           title="MODE"
@@ -593,7 +648,10 @@ function PromptBar({
         <div className="flex-1" />
         
         {isRetake ? (
-          <div className="text-[10px] text-zinc-500 pr-2">Trim in the panel above, then retake</div>
+          <>
+            <div className="text-[10px] text-zinc-500 pr-2">Trim in the panel above, then retake</div>
+            {seedControls}
+          </>
         ) : isIcLora ? (
           <>
             <SettingsDropdown
@@ -629,6 +687,7 @@ function PromptBar({
                 </>
               }
             />
+            {seedControls}
           </>
         ) : mode === 'image' ? (
           <>
@@ -673,7 +732,7 @@ function PromptBar({
                 </>
               }
             />
-            
+            {seedControls}
           </>
         ) : (
           <>
@@ -771,7 +830,7 @@ function PromptBar({
                 </>
               }
             />
-            
+            {seedControls}
           </>
         )}
         
@@ -879,7 +938,7 @@ export function GenSpace() {
     setGenSpaceIcLoraSource,
     setPendingIcLoraUpdate,
   } = useProjects()
-  const { shouldVideoGenerateWithLtxApi, forceApiGenerations, settings: appSettings } = useAppSettings()
+  const { shouldVideoGenerateWithLtxApi, forceApiGenerations, settings: appSettings, updateSettings } = useAppSettings()
   const [mode, setMode] = useState<'image' | 'video' | 'retake' | 'ic-lora'>('video')
   const [prompt, setPrompt] = useState('')
   const [inputImage, setInputImage] = useState<string | null>(null)
@@ -910,6 +969,22 @@ export function GenSpace() {
     }
   } | null>(null)
   const [settings, setSettings] = useState(() => ({ ...DEFAULT_VIDEO_SETTINGS }))
+  const handleSeedLockedChange = useCallback((seedLocked: boolean) => {
+    updateSettings((prev) => ({ ...prev, seedLocked }))
+  }, [updateSettings])
+  const handleLockedSeedChange = useCallback((lockedSeed: number) => {
+    updateSettings((prev) => ({
+      ...prev,
+      lockedSeed: Math.max(0, Math.min(2147483647, lockedSeed)),
+    }))
+  }, [updateSettings])
+  const handleRandomizeSeed = useCallback(() => {
+    updateSettings((prev) => ({
+      ...prev,
+      seedLocked: true,
+      lockedSeed: Math.floor(Math.random() * 2147483647),
+    }))
+  }, [updateSettings])
   const applyForcedVideoSettings = useCallback(
     (next: { model: string; duration: number; videoResolution: string; fps: number; audio: boolean; aspectRatio: string; imageResolution: string; variations: number }) => {
       if (!shouldVideoGenerateWithLtxApi || mode !== 'video') return next
@@ -1714,6 +1789,11 @@ export function GenSpace() {
           onIcLoraCondTypeChange={setIcLoraCondType}
           icLoraStrength={icLoraStrength}
           onIcLoraStrengthChange={setIcLoraStrength}
+          seedLocked={appSettings.seedLocked}
+          lockedSeed={appSettings.lockedSeed}
+          onSeedLockedChange={handleSeedLockedChange}
+          onLockedSeedChange={handleLockedSeedChange}
+          onRandomizeSeed={handleRandomizeSeed}
         />
       </div>
       
