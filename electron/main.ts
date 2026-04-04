@@ -8,6 +8,7 @@ import { registerFileHandlers } from './ipc/file-handlers'
 import { registerLogHandlers } from './ipc/log-handlers'
 import { registerVideoProcessingHandlers } from './ipc/video-processing-handlers'
 import { initSessionLog } from './logging-management'
+import { startProjectBridge, stopProjectBridge } from './project-bridge'
 import { stopPythonBackend } from './python-backend'
 import { initAutoUpdater } from './updater'
 import { createWindow, getMainWindow } from './window'
@@ -56,6 +57,7 @@ if (!gotLock) {
     setupCSP()
     createWindow()
     initAutoUpdater()
+    startProjectBridge()
     // Python setup + backend start are now driven by the renderer via IPC
 
     // Fire analytics event (no-op if user hasn't opted in)
@@ -77,6 +79,7 @@ if (!gotLock) {
 
   app.on('before-quit', () => {
     stopExportProcess()
+    stopProjectBridge()
     stopPythonBackend()
   })
 }
