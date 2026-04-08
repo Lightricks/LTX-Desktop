@@ -17,6 +17,10 @@ function getModelsPath(): string {
 }
 
 function getSetupStatus(settingsPath: string): { needsSetup: boolean; needsLicense: boolean } {
+  if (process.env.LTX_BYPASS_MODEL_CHECK === '1') {
+    return { needsSetup: false, needsLicense: false }
+  }
+
   if (!fs.existsSync(settingsPath)) {
     return { needsSetup: true, needsLicense: true }
   }
