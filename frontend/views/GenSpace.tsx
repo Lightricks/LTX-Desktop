@@ -3,7 +3,7 @@ import {
   Trash2, Download, Image, Video, X,
   Heart, Film, Volume2, VolumeX, Sparkles,
   Clock, Monitor, ChevronUp, Scissors, Music,
-  ChevronLeft, ChevronRight, Copy, Check
+  ChevronLeft, ChevronRight, Copy, Check, Layers
 } from 'lucide-react'
 import { useProjects } from '../contexts/ProjectContext'
 import type { GenSpaceRetakeSource } from '../contexts/ProjectContext'
@@ -229,22 +229,28 @@ function AssetCard({
 }
 
 // Dropdown component for settings
-function SettingsDropdown({ 
-  trigger, 
-  options, 
-  value, 
+function SettingsDropdown({
+  trigger,
+  options,
+  value,
   onChange,
-  title 
-}: { 
+  title,
+  allowCustomInput,
+  customInputSuffix,
+}: {
   trigger: React.ReactNode
   options: { value: string; label: string; disabled?: boolean; tooltip?: string; icon?: React.ReactNode }[]
   value: string
   onChange: (value: string) => void
   title: string
+  allowCustomInput?: boolean
+  customInputSuffix?: string
 }) {
   const [isOpen, setIsOpen] = useState(false)
+  const [customInput, setCustomInput] = useState('')
   const dropdownRef = useRef<HTMLDivElement>(null)
-  
+  const customInputRef = useRef<HTMLInputElement>(null)
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -256,16 +262,35 @@ function SettingsDropdown({
     }
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [isOpen])
-  
+
+  // Clear custom input when dropdown opens
+  useEffect(() => {
+    if (isOpen && allowCustomInput) {
+      setCustomInput('')
+      setTimeout(() => customInputRef.current?.focus(), 50)
+    }
+  }, [isOpen, allowCustomInput])
+
+  const commitCustomInput = () => {
+    const n = parseInt(customInput, 10)
+    if (!isNaN(n) && n >= 1) {
+      onChange(String(n))
+      setIsOpen(false)
+    }
+    setCustomInput('')
+  }
+
+  const isCustomValue = allowCustomInput && !options.some(o => o.value === value)
+
   return (
     <div ref={dropdownRef} className="relative">
-      <button 
+      <button
         onClick={() => setIsOpen(!isOpen)}
         className={`flex shrink-0 items-center gap-1 whitespace-nowrap px-2 py-1.5 rounded-md transition-colors ${isOpen ? 'bg-zinc-700 hover:bg-zinc-700' : 'hover:bg-zinc-800'}`}
       >
         {trigger}
       </button>
-      
+
       {isOpen && (
         <div className="absolute bottom-full left-0 mb-2 bg-zinc-800 border border-zinc-700 rounded-md p-2 min-w-[160px] shadow-xl z-[9999]">
           <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">{title}</div>
@@ -281,8 +306,8 @@ function SettingsDropdown({
                   }`}
                 >
                   <span className={`flex items-center gap-2.5 text-sm ${
-                    option.disabled 
-                      ? 'text-zinc-600' 
+                    option.disabled
+                      ? 'text-zinc-600'
                       : value === option.value ? 'text-white' : 'text-zinc-400'
                   }`}>
                     {option.icon && <span className="flex-shrink-0">{option.icon}</span>}
@@ -301,6 +326,49 @@ function SettingsDropdown({
                 )}
               </div>
             ))}
+            {allowCustomInput && (
+              <>
+                {isCustomValue && (
+                  <div className="flex items-center justify-between px-2 py-2 rounded-md bg-white/20">
+                    <span className="text-sm text-white">{value}{customInputSuffix}</span>
+                    <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                )}
+                <div className="pt-1 mt-1 border-t border-zinc-700">
+                  <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-zinc-700/50">
+                    <input
+                      ref={customInputRef}
+                      type="text"
+                      inputMode="numeric"
+                      value={customInput}
+                      placeholder="Custom…"
+                      maxLength={5}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9]/g, '').slice(0, 5)
+                        setCustomInput(v)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); commitCustomInput() }
+                        if (e.key === 'Escape') { setIsOpen(false) }
+                      }}
+                      className="flex-1 bg-transparent text-sm text-white placeholder:text-zinc-500 focus:outline-none w-0 min-w-0"
+                    />
+                    {customInputSuffix && customInput && (
+                      <span className="text-sm text-zinc-400 shrink-0">{customInputSuffix}</span>
+                    )}
+                    <button
+                      onClick={commitCustomInput}
+                      disabled={!customInput || parseInt(customInput, 10) < 1}
+                      className="shrink-0 text-xs px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Set
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -359,6 +427,9 @@ function PromptBar({
   onIcLoraCondTypeChange,
   icLoraStrength,
   onIcLoraStrengthChange,
+  batchCount,
+  onBatchCountChange,
+  batchRemaining,
 }: {
   mode: 'image' | 'video' | 'retake' | 'ic-lora'
   onModeChange: (mode: 'image' | 'video' | 'retake' | 'ic-lora') => void
@@ -390,6 +461,9 @@ function PromptBar({
   onIcLoraCondTypeChange?: (type: ICLoraConditioningType) => void
   icLoraStrength?: number
   onIcLoraStrengthChange?: (strength: number) => void
+  batchCount: number
+  onBatchCountChange: (n: number) => void
+  batchRemaining: number
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
@@ -771,10 +845,31 @@ function PromptBar({
                 </>
               }
             />
-            
+
           </>
         )}
-        
+
+        {/* Batch count dropdown - image/video modes only */}
+        {!isRetake && !isIcLora && (
+          <SettingsDropdown
+            title="BATCH"
+            value={String(batchCount)}
+            onChange={(v) => onBatchCountChange(parseInt(v))}
+            options={[100, 50, 20, 15, 10, 5, 4, 3, 2, 1].map(n => ({
+              value: String(n),
+              label: `${n}×`,
+            }))}
+            allowCustomInput
+            customInputSuffix="×"
+            trigger={
+              <>
+                <Layers className="h-3.5 w-3.5" />
+                <span>{batchRemaining > 0 ? batchRemaining : batchCount}×</span>
+              </>
+            }
+          />
+        )}
+
         {/* Generate button */}
         <button
           onClick={onGenerate}
@@ -910,6 +1005,8 @@ export function GenSpace() {
     }
   } | null>(null)
   const [settings, setSettings] = useState(() => ({ ...DEFAULT_VIDEO_SETTINGS }))
+  const [batchCount, setBatchCount] = useState(1)
+  const [batchRemaining, setBatchRemaining] = useState(0)
   const applyForcedVideoSettings = useCallback(
     (next: { model: string; duration: number; videoResolution: string; fps: number; audio: boolean; aspectRatio: string; imageResolution: string; variations: number }) => {
       if (!shouldVideoGenerateWithLtxApi || mode !== 'video') return next
@@ -1378,47 +1475,108 @@ export function GenSpace() {
     // Save the prompt before generation starts
     setLastPrompt(prompt)
 
-    if (mode === 'image') {
-      generateImage(
-        prompt,
-        {
-          model: 'fast' as 'fast' | 'pro',
-          duration: 5,
-          videoResolution: settings.videoResolution,
-          fps: 24,
-          audio: false,
-          cameraMotion: 'none',
-          imageResolution: settings.imageResolution,
-          imageAspectRatio: settings.aspectRatio,
-          imageSteps: 4,
-          variations: settings.variations,
-        }
-      )
-    } else {
-      // Generate video (t2v if no image/audio, i2v if image, a2v if audio)
-      const imagePath = inputImage || null
-      const audioPath = inputAudio || null
-      const videoSettings = applyForcedVideoSettings(settings)
-      if (audioPath) videoSettings.model = 'pro'
+    const totalBatch = batchCount
+    for (let i = totalBatch; i >= 1; i--) {
+      setBatchRemaining(i)
 
-      generate(
-        prompt,
-        imagePath,
-        {
-          model: videoSettings.model as 'fast' | 'pro',
-          duration: videoSettings.duration,
-          videoResolution: videoSettings.videoResolution,
-          fps: videoSettings.fps,
-          audio: videoSettings.audio || false,
-          cameraMotion: 'none',
-          aspectRatio: videoSettings.aspectRatio,
-          imageResolution: videoSettings.imageResolution,
-          imageAspectRatio: videoSettings.aspectRatio,
-          imageSteps: 4,
-        },
-        audioPath,
-      )
+      if (mode === 'image') {
+        const result = await generateImage(
+          prompt,
+          {
+            model: 'fast' as 'fast' | 'pro',
+            duration: 5,
+            videoResolution: settings.videoResolution,
+            fps: 24,
+            audio: false,
+            cameraMotion: 'none',
+            imageResolution: settings.imageResolution,
+            imageAspectRatio: settings.aspectRatio,
+            imageSteps: 4,
+            variations: settings.variations,
+          }
+        )
+        if (!result.success) break
+      } else {
+        // Generate video (t2v if no image/audio, i2v if image, a2v if audio)
+        const imagePath = inputImage || null
+        const audioPath = inputAudio || null
+        const videoSettings = applyForcedVideoSettings(settings)
+        if (audioPath) videoSettings.model = 'pro'
+
+        const result = await generate(
+          prompt,
+          imagePath,
+          {
+            model: videoSettings.model as 'fast' | 'pro',
+            duration: videoSettings.duration,
+            videoResolution: videoSettings.videoResolution,
+            fps: videoSettings.fps,
+            audio: videoSettings.audio || false,
+            cameraMotion: 'none',
+            aspectRatio: videoSettings.aspectRatio,
+            imageResolution: videoSettings.imageResolution,
+            imageAspectRatio: videoSettings.aspectRatio,
+            imageSteps: 4,
+          },
+          audioPath,
+        )
+
+        if (!result.success) break
+
+        // Persist asset immediately so each batch video is saved before the next
+        // generation clears videoPath from state. Mark key so the useEffect skips it.
+        if (result.videoPath && currentProjectId) {
+          persistedVideoKeyRef.current = result.videoPath
+          const genMode = audioPath
+            ? 'audio-to-video'
+            : imagePath ? 'image-to-video' : 'text-to-video'
+          const savedVideoSettings = applyForcedVideoSettings(settings)
+          try {
+            const copied = await addVisualAssetToProject(result.videoPath, currentProjectId, 'video')
+            if (!copied) throw new Error('Could not persist generated video to project storage')
+            addAsset(currentProjectId, {
+              type: 'video',
+              path: copied.path,
+              bigThumbnailPath: copied.bigThumbnailPath,
+              smallThumbnailPath: copied.smallThumbnailPath,
+              width: copied.width,
+              height: copied.height,
+              prompt,
+              resolution: savedVideoSettings.videoResolution,
+              duration: savedVideoSettings.duration,
+              generationParams: {
+                mode: genMode as 'text-to-video' | 'image-to-video' | 'audio-to-video',
+                prompt,
+                model: savedVideoSettings.model,
+                duration: savedVideoSettings.duration,
+                resolution: savedVideoSettings.videoResolution,
+                fps: savedVideoSettings.fps,
+                audio: savedVideoSettings.audio || false,
+                cameraMotion: 'none',
+                imageAspectRatio: savedVideoSettings.aspectRatio,
+                imageSteps: 4,
+                inputImageUrl: inputImage || undefined,
+                inputAudioUrl: inputAudio || undefined,
+              },
+              takes: [{
+                path: copied.path,
+                bigThumbnailPath: copied.bigThumbnailPath,
+                smallThumbnailPath: copied.smallThumbnailPath,
+                width: copied.width,
+                height: copied.height,
+                createdAt: Date.now(),
+              }],
+              activeTakeIndex: 0,
+            })
+            reset()
+          } catch (err) {
+            persistedVideoKeyRef.current = null
+            logger.error(`Failed to persist generated video asset: ${err}`)
+          }
+        }
+      }
     }
+    setBatchRemaining(0)
   }
   
   const handleDelete = (assetId: string) => {
@@ -1714,9 +1872,12 @@ export function GenSpace() {
           onIcLoraCondTypeChange={setIcLoraCondType}
           icLoraStrength={icLoraStrength}
           onIcLoraStrengthChange={setIcLoraStrength}
+          batchCount={batchCount}
+          onBatchCountChange={setBatchCount}
+          batchRemaining={batchRemaining}
         />
       </div>
-      
+
       {/* Asset preview modal */}
       {selectedAsset && (
         <div 

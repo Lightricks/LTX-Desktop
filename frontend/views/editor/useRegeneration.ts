@@ -78,8 +78,8 @@ function resolveAssetPreviewPath(assets: Asset[], clips: TimelineClip[], asset: 
 export interface UseRegenerationParams {
   projectId: string
   // Generation hook values
-  regenGenerate: (prompt: string, imagePath: string | null, settings: GenerationSettings) => Promise<void>
-  regenGenerateImage: (prompt: string, settings: GenerationSettings) => Promise<void>
+  regenGenerate: (prompt: string, imagePath: string | null, settings: GenerationSettings) => Promise<{ success: boolean; videoPath: string | null }>
+  regenGenerateImage: (prompt: string, settings: GenerationSettings) => Promise<{ success: boolean }>
   regenVideoPath: string | null
   regenImagePath: string | null
   isRegenerating: boolean
