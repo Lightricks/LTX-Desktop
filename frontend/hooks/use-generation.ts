@@ -17,8 +17,8 @@ type GenerateVideoRequest = Parameters<typeof ApiClient.generateVideo>[0]
 type GenerateImageRequest = Parameters<typeof ApiClient.generateImage>[0]
 
 interface UseGenerationReturn extends GenerationState {
-  generate: (prompt: string, imagePath: string | null, settings: GenerationSettings, audioPath?: string | null) => Promise<void>
-  generateImage: (prompt: string, settings: GenerationSettings) => Promise<void>
+  generate: (prompt: string, imagePath: string | null, settings: GenerationSettings, audioPath?: string | null) => Promise<{ success: boolean; videoPath: string | null }>
+  generateImage: (prompt: string, settings: GenerationSettings) => Promise<{ success: boolean }>
   cancel: () => void
   reset: () => void
 }
@@ -100,7 +100,7 @@ export function useGeneration(): UseGenerationReturn {
     imagePath: string | null,
     settings: GenerationSettings,
     audioPath?: string | null,
-  ) => {
+  ): Promise<{ success: boolean; videoPath: string | null }> => {
     const statusMsg = settings.model === 'pro'
       ? 'Loading Pro model & generating...'
       : 'Generating video...'
@@ -118,6 +118,8 @@ export function useGeneration(): UseGenerationReturn {
     abortControllerRef.current = new AbortController()
     let progressInterval: ReturnType<typeof setInterval> | null = null
     let shouldApplyPollingUpdates = true
+    let succeeded = false
+    let resultVideoPath: string | null = null
 
     try {
       // Prepare JSON body
@@ -193,6 +195,7 @@ export function useGeneration(): UseGenerationReturn {
       shouldApplyPollingUpdates = false
 
       if (payload.status === 'complete') {
+        resultVideoPath = payload.video_path
         setState({
           isGenerating: false,
           progress: 100,
@@ -202,6 +205,7 @@ export function useGeneration(): UseGenerationReturn {
           imagePaths: [],
           error: null,
         })
+        succeeded = true
       } else if (payload.status === 'cancelled') {
         setState(prev => ({
           ...prev,
@@ -232,6 +236,7 @@ export function useGeneration(): UseGenerationReturn {
         clearInterval(progressInterval)
       }
     }
+    return { success: succeeded, videoPath: resultVideoPath }
   }, [])
 
   const cancel = useCallback(async () => {
@@ -255,7 +260,7 @@ export function useGeneration(): UseGenerationReturn {
   const generateImage = useCallback(async (
     prompt: string,
     settings: GenerationSettings
-  ) => {
+  ): Promise<{ success: boolean }> => {
     if (forceApiGenerations) {
       try {
         const payload = await ApiClient.getSettings()
@@ -269,7 +274,7 @@ export function useGeneration(): UseGenerationReturn {
               blocking: false,
             },
           }))
-          return
+          return { success: false }
         }
       } catch {
         if (!appSettings.hasFalApiKey) {
@@ -281,7 +286,7 @@ export function useGeneration(): UseGenerationReturn {
               blocking: false,
             },
           }))
-          return
+          return { success: false }
         }
       }
     }
@@ -299,6 +304,7 @@ export function useGeneration(): UseGenerationReturn {
     })
 
     abortControllerRef.current = new AbortController()
+    let succeeded = false
 
     try {
       // Skip prompt enhancement for T2I - use original prompt directly
@@ -361,6 +367,7 @@ export function useGeneration(): UseGenerationReturn {
           imagePaths: rawPaths,
           error: null,
         })
+        succeeded = true
       } else if (payload.status === 'cancelled') {
         setState(prev => ({
           ...prev,
@@ -386,6 +393,7 @@ export function useGeneration(): UseGenerationReturn {
         }))
       }
     }
+    return { success: succeeded }
   }, [appSettings.hasFalApiKey, forceApiGenerations, refreshSettings])
 
   const reset = useCallback(() => {
