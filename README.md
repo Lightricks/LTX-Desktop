@@ -1,6 +1,6 @@
 # LTX Desktop
 
-LTX Desktop is an open-source desktop app for generating videos with LTX models — locally on supported Windows/Linux NVIDIA GPUs, with an API mode for unsupported hardware and macOS.
+LTX Desktop is an open-source desktop app for generating videos with LTX models — locally on supported Windows/Linux NVIDIA GPUs and Apple Silicon Macs, with an API mode for unsupported hardware.
 
 > **Status: Beta.** Expect breaking changes.
 > Frontend architecture is under active refactor; large UI PRs may be declined for now (see [`CONTRIBUTING.md`](docs/CONTRIBUTING.md)).
@@ -34,7 +34,8 @@ LTX Desktop is an open-source desktop app for generating videos with LTX models 
 | Windows (no CUDA, <16GB VRAM, or unknown VRAM) | API-only | **LTX API key required** |
 | Linux + CUDA GPU with **≥16GB VRAM** | Local generation | Downloads model weights locally |
 | Linux (no CUDA, <16GB VRAM, or unknown VRAM) | API-only | **LTX API key required** |
-| macOS (Apple Silicon builds) | API-only | **LTX API key required** |
+| macOS + Apple Silicon with **≥15GB unified memory** | Local generation | Downloads model weights locally |
+| macOS + Apple Silicon with <15GB unified memory | API-only | **LTX API key required** |
 
 In API-only mode, available resolutions/durations may be limited to what the API supports.
 
@@ -55,9 +56,15 @@ In API-only mode, available resolutions/durations may be limited to what the API
 - 16GB+ RAM (32GB recommended)
 - Plenty of free disk space for model weights and outputs
 
+### macOS (local generation)
+
+- Apple Silicon (arm64) with **≥15GB unified memory**
+- macOS 13+ (Ventura)
+- **160GB+ free disk space** (for model weights, Python environment, and outputs)
+
 ### macOS (API-only)
 
-- Apple Silicon (arm64)
+- Apple Silicon (arm64) with <15GB unified memory
 - macOS 13+ (Ventura)
 - Stable internet connection
 
@@ -91,10 +98,10 @@ Text encoding: to generate videos you must configure text encoding:
 The LTX API is used for:
 
 - **Cloud text encoding and prompt enhancement** — **FREE**; text encoding is highly recommended to speed up inference and save memory
-- API-based video generations (required on macOS and on unsupported Windows hardware) — paid
+- API-based video generations (required on unsupported hardware and low-memory Apple Silicon Macs) — paid
 - Retake — paid
 
-An LTX API key is required in API-only mode, but optional on Windows/Linux local mode if you enable the Local Text Encoder.
+An LTX API key is required in API-only mode, but optional on Windows/Linux/macOS local mode if you enable the Local Text Encoder.
 
 Generate a FREE API key at the [LTX Console](https://console.ltx.video/). Text encoding is free; video generation API usage is paid. [Read more](https://ltx.io/model/model-blog/ltx-2-better-control-for-real-workflows).
 

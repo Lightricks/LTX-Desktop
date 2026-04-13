@@ -100,7 +100,15 @@ def _patched_load(
             expected_name = name if sd_ops is None else sd_ops.apply_to_key(name)
             if expected_name is None:
                 continue
-            value = value.to(device=device, non_blocking=True, copy=False)
+            # copy=False is not valid when moving from CPU mmap storage to a
+            # non-CPU device (e.g. MPS): the devices must match for in-place
+            # storage reuse.  Always copy when crossing device boundaries.
+            # non_blocking=True is also unsafe on MPS with mmap-backed tensors:
+            # MPS has no equivalent of CUDA's pinned-memory DMA, so the async
+            # transfer can read freed/remapped mmap pages → segfault.
+            needs_copy = value.device != device
+            non_blocking = device.type == "cuda"
+            value = value.to(device=device, non_blocking=non_blocking, copy=needs_copy)
             key_value_pairs = ((expected_name, value),)
             if sd_ops is not None:
                 key_value_pairs = sd_ops.apply_to_key_value(expected_name, value)

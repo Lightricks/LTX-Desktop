@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from threading import RLock
 from typing import TYPE_CHECKING
 
@@ -256,6 +257,21 @@ class PipelinesHandler(StateHandlerBase):
                     case _:
                         pass
 
+        # If the pipeline is currently warming, wait for it to finish before
+        # proceeding.  We poll without holding the lock so the warmup thread
+        # can continue running and write the final WARM/COLD state.
+        # No timeout — warmup always terminates (success sets WARM, failure sets COLD).
+        if state is not None and state.warmth == VideoPipelineWarmth.WARMING:
+            while state.warmth == VideoPipelineWarmth.WARMING:
+                time.sleep(1.0)
+            # After warmup, re-read state under lock in case it was replaced.
+            with self._lock:
+                match self.state.gpu_slot:
+                    case GpuSlot(active_pipeline=VideoPipelineState() as refreshed):
+                        state = refreshed
+                    case _:
+                        state = None
+
         if state is None:
             self._evict_gpu_pipeline_for_swap()
             state = self._create_video_pipeline(model_type)
@@ -377,6 +393,19 @@ class PipelinesHandler(StateHandlerBase):
         return state
 
     def warmup_pipeline(self, model_type: VideoPipelineModelType) -> None:
-        state = self.load_gpu_pipeline(model_type, should_warm=False)
+        # Read the already-loaded pipeline state directly without going through
+        # load_gpu_pipeline's warmup-wait loop, which would deadlock when the
+        # caller has already set state.warmth = WARMING before calling us.
+        with self._lock:
+            match self.state.gpu_slot:
+                case GpuSlot(active_pipeline=VideoPipelineState() as existing_state):
+                    state: VideoPipelineState | None = existing_state
+                case _:
+                    state = None
+
+        if state is None or not self._pipeline_matches_model_type(model_type):
+            # Pipeline not loaded yet — fall back to loading it first.
+            state = self.load_gpu_pipeline(model_type, should_warm=False)
+
         warmup_path = self.config.outputs_dir / f"_warmup_{model_type}.mp4"
         state.pipeline.warmup(output_path=str(warmup_path))
