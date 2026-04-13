@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, ClassVar, Literal, Protocol
 
 from api_types import ImageConditioningInput
@@ -32,6 +33,7 @@ class FastVideoPipeline(Protocol):
         frame_rate: float,
         images: list[ImageConditioningInput],
         output_path: str,
+        progress_callback: Callable[[int, int], None] | None = None,
     ) -> None:
         ...
 

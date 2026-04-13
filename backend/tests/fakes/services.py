@@ -507,6 +507,7 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
         frame_rate: float,
         images: list[ImageConditioningInput],
         output_path: str,
+        progress_callback: Callable[[int, int], None] | None = None,
     ) -> None:
         self._record_generate(
             {

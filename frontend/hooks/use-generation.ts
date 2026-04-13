@@ -56,7 +56,10 @@ function getImageDimensions(settings: GenerationSettings): { width: number; heig
 }
 
 // Map phase to user-friendly message
-function getPhaseMessage(phase: string): string {
+function getPhaseMessage(phase: string, currentStep?: number | null, totalSteps?: number | null): string {
+  const steps = currentStep != null && totalSteps != null && totalSteps > 0
+    ? ` (${currentStep}/${totalSteps})`
+    : ''
   switch (phase) {
     case 'validating_request':
       return 'Validating request...'
@@ -69,7 +72,7 @@ function getPhaseMessage(phase: string): string {
     case 'encoding_text':
       return 'Encoding prompt...'
     case 'inference':
-      return 'Generating...'
+      return `Generating...${steps}`
     case 'downloading_output':
       return 'Downloading output...'
     case 'decoding':
@@ -101,9 +104,7 @@ export function useGeneration(): UseGenerationReturn {
     settings: GenerationSettings,
     audioPath?: string | null,
   ) => {
-    const statusMsg = settings.model === 'pro'
-      ? 'Loading Pro model & generating...'
-      : 'Generating video...'
+    const statusMsg = 'Loading model...'
 
     setState({
       isGenerating: true,
@@ -141,29 +142,34 @@ export function useGeneration(): UseGenerationReturn {
 
       // Poll for real progress from backend with time-based interpolation
       let lastPhase = ''
-      let inferenceStartTime = 0
-      // Estimated inference time in seconds based on model
-      const estimatedInferenceTime = settings.model === 'pro' ? 120 : 45
-      
+      let loadingModelStartTime = 0
+      // Estimated loading time in seconds based on model
+      const estimatedLoadingTime = settings.model === 'pro' ? 60 : 30
+
       const pollProgress = async () => {
         if (!shouldApplyPollingUpdates) return
         try {
           const data = await ApiClient.getGenerationProgress()
           if (!shouldApplyPollingUpdates) return
 
+          // Ignore idle responses (phase="" means backend hasn't started yet)
+          if (!data.phase || data.status === 'idle') return
+
           let displayProgress = data.progress
-          let statusMessage = getPhaseMessage(data.phase)
-          
-          // Time-based interpolation during inference phase
-          if (data.phase === 'inference') {
-            if (lastPhase !== 'inference') {
-              inferenceStartTime = Date.now()
+          let statusMessage = getPhaseMessage(data.phase, data.currentStep, data.totalSteps)
+
+          // Time-based interpolation during loading_model phase
+          if (data.phase === 'loading_model') {
+            if (lastPhase !== 'loading_model') {
+              loadingModelStartTime = Date.now()
             }
-            const elapsed = (Date.now() - inferenceStartTime) / 1000
-            // Interpolate from 15% to 95% based on estimated time
-            const inferenceProgress = Math.min(elapsed / estimatedInferenceTime, 0.95)
-            displayProgress = 15 + Math.floor(inferenceProgress * 80)
+            const elapsed = (Date.now() - loadingModelStartTime) / 1000
+            // Interpolate from 5% to 12% based on estimated loading time
+            const loadingProgress = Math.min(elapsed / estimatedLoadingTime, 0.95)
+            displayProgress = 5 + Math.floor(loadingProgress * 7)
           }
+
+          // inference: use real progress from backend (set by _on_denoising_step callback)
 
           // Keep API/local completion as a terminal response state, not polling state.
           // Polling complete means backend state is finalized, but request can still be in-flight.
