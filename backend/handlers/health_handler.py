@@ -12,6 +12,7 @@ from runtime_config.model_download_specs import resolve_model_path
 from handlers.pipelines_handler import PipelinesHandler
 from logging_policy import log_background_exception
 from services.interfaces import GpuInfo
+from services.services_utils import get_device_type
 from state.app_state_types import AppState, GpuSlot, StartupError, StartupLoading, StartupPending, StartupReady, VideoPipelineState, VideoPipelineWarmth
 
 if TYPE_CHECKING:
@@ -108,14 +109,30 @@ class HealthHandler(StateHandlerBase):
             self.set_startup_loading("Loading Fast pipeline", 30)
             self._pipelines.load_gpu_pipeline("fast", should_warm=False)
 
-            self.set_startup_loading("Warming Fast pipeline", 60)
-            self._pipelines.warmup_pipeline("fast")
-            with self._lock:
-                match self.state.gpu_slot:
-                    case GpuSlot(active_pipeline=VideoPipelineState() as state):
-                        state.warmth = VideoPipelineWarmth.WARM
-                    case _:
-                        pass
+            if get_device_type(self.config.device) != "mps":
+                self.set_startup_loading("Warming Fast pipeline", 60)
+                with self._lock:
+                    match self.state.gpu_slot:
+                        case GpuSlot(active_pipeline=VideoPipelineState() as state):
+                            state.warmth = VideoPipelineWarmth.WARMING
+                        case _:
+                            pass
+                try:
+                    self._pipelines.warmup_pipeline("fast")
+                except Exception:
+                    with self._lock:
+                        match self.state.gpu_slot:
+                            case GpuSlot(active_pipeline=VideoPipelineState() as state) if state.warmth == VideoPipelineWarmth.WARMING:
+                                state.warmth = VideoPipelineWarmth.COLD
+                            case _:
+                                pass
+                    raise
+                with self._lock:
+                    match self.state.gpu_slot:
+                        case GpuSlot(active_pipeline=VideoPipelineState() as state):
+                            state.warmth = VideoPipelineWarmth.WARM
+                        case _:
+                            pass
 
             zit_models_path = resolve_model_path(self.models_dir, self.config.model_download_specs,"zit")
             zit_exists = zit_models_path.exists() and any(zit_models_path.iterdir())

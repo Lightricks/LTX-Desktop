@@ -64,8 +64,14 @@ class LTXRetakePipeline:
             VideoDecoder,
         )
 
+        from services.services_utils import get_device_type
         self.device = device
         self.dtype = torch.bfloat16
+        # MPS does not support CUDA streams or pin_memory(), so prefetch_count must be 0
+        # (synchronous layer streaming) rather than None (no streaming — loads the full
+        # transformer into GPU memory at once, which causes OOM on large generations).
+        # The mps_layer_streaming_fix patch makes synchronous streaming safe on MPS.
+        self._streaming_prefetch_count: int | None = 1 if get_device_type(device) == "mps" else 2
 
         self.prompt_encoder = PromptEncoder(
             checkpoint_path=checkpoint_path,
@@ -284,7 +290,7 @@ class LTXRetakePipeline:
             regenerate_audio=regenerate_audio,
             enhance_prompt=enhance_prompt,
             distilled=distilled,
-            streaming_prefetch_count=2,
+            streaming_prefetch_count=self._streaming_prefetch_count,
         )
         audio_out: Audio | None = audio
         tiling_config = TilingConfig.default()

@@ -136,10 +136,8 @@ class VideoGenerationHandler(StateHandlerBase):
         seed = self._resolve_seed()
 
         try:
-            self._pipelines.load_gpu_pipeline("fast", should_warm=False)
-            self._generation.start_generation(generation_id)
-
             output_path = self.generate_video(
+                generation_id=generation_id,
                 prompt=req.prompt,
                 image=image,
                 height=height,
@@ -164,6 +162,7 @@ class VideoGenerationHandler(StateHandlerBase):
 
     def generate_video(
         self,
+        generation_id: str,
         prompt: str,
         image: Image.Image | None,
         height: int,
@@ -186,12 +185,13 @@ class VideoGenerationHandler(StateHandlerBase):
 
         total_steps = 8
 
-        self._generation.update_progress("loading_model", 5, 0, total_steps)
         t_load_start = time.perf_counter()
         pipeline_state = self._pipelines.load_gpu_pipeline("fast", should_warm=False)
         t_load_end = time.perf_counter()
         logger.info("[%s] Pipeline load: %.2fs", gen_mode, t_load_end - t_load_start)
 
+        self._generation.start_generation(generation_id)
+        self._generation.update_progress("loading_model", 5, 0, total_steps)
         self._generation.update_progress("encoding_text", 10, 0, total_steps)
 
         enhanced_prompt = prompt + self.config.camera_motion_prompts.get(camera_motion, "")
@@ -224,6 +224,10 @@ class VideoGenerationHandler(StateHandlerBase):
             height = round(height / 64) * 64
             width = round(width / 64) * 64
 
+            def _on_denoising_step(current_step: int, denoising_total: int) -> None:
+                pct = 15 + int(75 * current_step / denoising_total)
+                self._generation.update_progress("inference", pct, current_step, denoising_total)
+
             t_inference_start = time.perf_counter()
             pipeline_state.pipeline.generate(
                 prompt=enhanced_prompt,
@@ -234,6 +238,7 @@ class VideoGenerationHandler(StateHandlerBase):
                 frame_rate=fps,
                 images=images,
                 output_path=str(output_path),
+                progress_callback=_on_denoising_step,
             )
             t_inference_end = time.perf_counter()
             logger.info("[%s] Inference: %.2fs", gen_mode, t_inference_end - t_inference_start)
@@ -286,6 +291,7 @@ class VideoGenerationHandler(StateHandlerBase):
         try:
             a2v_state = self._pipelines.load_a2v_pipeline()
             self._generation.start_generation(generation_id)
+            self._generation.update_progress("loading_model", 5, 0, 11)
 
             enhanced_prompt = req.prompt + self.config.camera_motion_prompts.get(req.cameraMotion, "")
             neg = req.negativePrompt if req.negativePrompt else self.config.default_negative_prompt
@@ -306,8 +312,6 @@ class VideoGenerationHandler(StateHandlerBase):
                 a2v_enhance = a2v_use_api and a2v_settings.prompt_enhancer_enabled_i2v
             else:
                 a2v_enhance = a2v_use_api and a2v_settings.prompt_enhancer_enabled_t2v
-
-            self._generation.update_progress("loading_model", 5, 0, total_steps)
             self._generation.update_progress("encoding_text", 10, 0, total_steps)
             self._text.prepare_text_encoding(enhanced_prompt, enhance_prompt=a2v_enhance)
             self._generation.update_progress("inference", 15, 0, total_steps)

@@ -9,7 +9,7 @@ import torch
 
 from api_types import ImageConditioningInput
 from services.ltx_pipeline_common import default_tiling_config, encode_video_output, video_chunks_number
-from services.services_utils import AudioOrNone, TilingConfigType, device_supports_fp8
+from services.services_utils import AudioOrNone, TilingConfigType, device_supports_fp8, get_device_type
 
 
 class LTXa2vPipeline:
@@ -45,6 +45,11 @@ class LTXa2vPipeline:
             device=device,
             quantization=QuantizationPolicy.fp8_cast() if device_supports_fp8(device) else None,
         )
+        # MPS does not support CUDA streams or pin_memory(), so prefetch_count must be 0
+        # (synchronous layer streaming) rather than None (no streaming — loads the full
+        # transformer into GPU memory at once, which causes OOM on large generations).
+        # The mps_layer_streaming_fix patch makes synchronous streaming safe on MPS.
+        self._streaming_prefetch_count: int | None = 1 if get_device_type(device) == "mps" else 2
 
     def _run_inference(
         self,
@@ -74,7 +79,7 @@ class LTXa2vPipeline:
             audio_start_time=audio_start_time,
             audio_max_duration=audio_max_duration,
             tiling_config=tiling_config,
-            streaming_prefetch_count=2,
+            streaming_prefetch_count=self._streaming_prefetch_count,
         )
 
     @torch.inference_mode()

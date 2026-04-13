@@ -34,6 +34,14 @@ import services.patches.safetensors_loader_fix as _safetensors_loader_fix  # pyr
 del _safetensors_loader_fix
 import services.patches.safetensors_metadata_fix as _safetensors_metadata_fix  # pyright: ignore[reportUnusedImport]  # Remove once safetensors supports read-only mmap
 del _safetensors_metadata_fix
+import services.patches.mps_layer_streaming_fix as _mps_layer_streaming_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core adds MPS awareness to _LayerStore
+del _mps_layer_streaming_fix
+import services.patches.mps_gpu_model_fix as _mps_gpu_model_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-pipelines adds MPS awareness to gpu_model
+del _mps_gpu_model_fix
+import services.patches.mps_vocoder_fix as _mps_vocoder_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core adds MPS awareness to VocoderWithBWE
+del _mps_vocoder_fix
+import services.patches.mps_chunked_attention_fix as _mps_chunked_attention_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core ships a memory-efficient attention path for MPS
+del _mps_chunked_attention_fix
 
 from state.app_settings import AppSettings
 

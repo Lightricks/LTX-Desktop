@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from threading import RLock
 from typing import TYPE_CHECKING
 
@@ -256,6 +257,16 @@ class PipelinesHandler(StateHandlerBase):
                     case _:
                         pass
 
+        if state is not None and state.warmth == VideoPipelineWarmth.WARMING:
+            while state.warmth == VideoPipelineWarmth.WARMING:
+                time.sleep(1.0)
+            with self._lock:
+                match self.state.gpu_slot:
+                    case GpuSlot(active_pipeline=VideoPipelineState() as refreshed):
+                        state = refreshed
+                    case _:
+                        state = None
+
         if state is None:
             self._evict_gpu_pipeline_for_swap()
             state = self._create_video_pipeline(model_type)
@@ -377,6 +388,15 @@ class PipelinesHandler(StateHandlerBase):
         return state
 
     def warmup_pipeline(self, model_type: VideoPipelineModelType) -> None:
-        state = self.load_gpu_pipeline(model_type, should_warm=False)
+        with self._lock:
+            match self.state.gpu_slot:
+                case GpuSlot(active_pipeline=VideoPipelineState() as existing_state):
+                    state: VideoPipelineState | None = existing_state
+                case _:
+                    state = None
+
+        if state is None or not self._pipeline_matches_model_type(model_type):
+            state = self.load_gpu_pipeline(model_type, should_warm=False)
+
         warmup_path = self.config.outputs_dir / f"_warmup_{model_type}.mp4"
         state.pipeline.warmup(output_path=str(warmup_path))

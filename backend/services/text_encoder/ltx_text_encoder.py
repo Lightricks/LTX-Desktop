@@ -126,9 +126,11 @@ class LTXTextEncoder:
             return
 
         try:
+            import gc
+
             from ltx_pipelines.utils import helpers as ltx_utils
 
-            original_cleanup_memory = ltx_utils.cleanup_memory
+            device = self.device
 
             def patched_cleanup_memory() -> None:
                 state = state_getter()
@@ -138,7 +140,16 @@ class LTXTextEncoder:
                         te_state.cached_encoder.to(torch.device("cpu"))
                     except Exception:
                         logger.warning("Failed to move cached text encoder to CPU", exc_info=True)
-                original_cleanup_memory()
+                # Inline a device-aware cleanup instead of delegating to the
+                # original cleanup_memory (which calls torch.cuda.synchronize()
+                # unconditionally and crashes on MPS / CPU-only builds).
+                gc.collect()
+                if device.type == "cuda":
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                elif device.type == "mps":
+                    torch.mps.empty_cache()
+                    torch.mps.synchronize()
 
             setattr(ltx_utils, "cleanup_memory", patched_cleanup_memory)
 
@@ -150,7 +161,6 @@ class LTXTextEncoder:
                 "ltx_pipelines.ic_lora",
                 "ltx_pipelines.a2vid_two_stage",
                 "ltx_pipelines.retake",
-                "ltx_pipelines.retake_pipeline",
             ):
                 try:
                     module = __import__(module_name, fromlist=["cleanup_memory"])
