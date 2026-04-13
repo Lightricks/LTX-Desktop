@@ -13,10 +13,10 @@ from api_types import ImageConditioningInput
 from services.ltx_pipeline_common import default_tiling_config, encode_video_output, video_chunks_number
 from services.services_utils import AudioOrNone, TilingConfigType, device_supports_fp8
 
-# Stage 1: 8 denoising steps, Stage 2: 3 denoising steps.
-_STAGE1_STEPS = 8
-_STAGE2_STEPS = 3
-_TOTAL_DENOISING_STEPS = _STAGE1_STEPS + _STAGE2_STEPS
+def total_denoising_steps() -> int:
+    from ltx_pipelines.utils.constants import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
+
+    return (len(DISTILLED_SIGMA_VALUES) - 1) + (len(STAGE_2_DISTILLED_SIGMA_VALUES) - 1)
 
 StepCallback = Callable[[int, int], None]  # (current_step, total_steps)
 
@@ -32,6 +32,7 @@ def _tqdm_progress_interceptor(callback: StepCallback) -> Iterator[None]:
     import ltx_pipelines.utils.samplers as _samplers_module
 
     _step_counter: list[int] = [0]
+    total_steps = total_denoising_steps()
 
     original_tqdm = _samplers_module.tqdm
 
@@ -44,7 +45,7 @@ def _tqdm_progress_interceptor(callback: StepCallback) -> Iterator[None]:
             for item in self._tqdm:
                 yield item
                 _step_counter[0] += 1
-                callback(_step_counter[0], _TOTAL_DENOISING_STEPS)
+                callback(_step_counter[0], total_steps)
 
         def __len__(self) -> int:
             return len(self._items)

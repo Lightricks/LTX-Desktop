@@ -184,7 +184,8 @@ class VideoGenerationHandler(StateHandlerBase):
         if not resolve_model_path(self.models_dir, self.config.model_download_specs,"checkpoint").exists():
             raise RuntimeError("Models not downloaded. Please download the AI models first using the Model Status menu.")
 
-        total_steps = 8
+        from services.fast_video_pipeline.ltx_fast_video_pipeline import total_denoising_steps
+        total_steps = total_denoising_steps()
 
         self._generation.update_progress("loading_model", 5, 0, total_steps)
         t_load_start = time.perf_counter()
@@ -226,7 +227,10 @@ class VideoGenerationHandler(StateHandlerBase):
 
             def _on_denoising_step(current_step: int, denoising_total: int) -> None:
                 pct = 15 + int(75 * current_step / denoising_total)
-                self._generation.update_progress("inference", pct, current_step, denoising_total)
+                if current_step >= denoising_total:
+                    self._generation.update_progress("decoding", pct, None, None)
+                else:
+                    self._generation.update_progress("inference", pct, current_step, denoising_total)
 
             t_inference_start = time.perf_counter()
             pipeline_state.pipeline.generate(
