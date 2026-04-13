@@ -40,6 +40,8 @@ import services.patches.mps_gpu_model_fix as _mps_gpu_model_fix  # pyright: igno
 del _mps_gpu_model_fix
 import services.patches.mps_vocoder_fix as _mps_vocoder_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core adds MPS awareness to VocoderWithBWE
 del _mps_vocoder_fix
+import services.patches.mps_chunked_attention_fix as _mps_chunked_attention_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core ships a memory-efficient attention path for MPS
+del _mps_chunked_attention_fix
 
 from state.app_settings import AppSettings
 
