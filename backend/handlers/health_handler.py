@@ -109,10 +109,6 @@ class HealthHandler(StateHandlerBase):
             self.set_startup_loading("Loading Fast pipeline", 30)
             self._pipelines.load_gpu_pipeline("fast", should_warm=False)
 
-            # Skip warmup on MPS: a full inference pass during startup blocks all
-            # incoming generation requests (which must wait for WARMING to clear)
-            # and can take many minutes on a cold Metal device.  The pipeline is
-            # already loaded and ready; the first real generation acts as warmup.
             if get_device_type(self.config.device) != "mps":
                 self.set_startup_loading("Warming Fast pipeline", 60)
                 with self._lock:
@@ -124,7 +120,6 @@ class HealthHandler(StateHandlerBase):
                 try:
                     self._pipelines.warmup_pipeline("fast")
                 except Exception:
-                    # Clear WARMING so waiting generation requests don't poll forever.
                     with self._lock:
                         match self.state.gpu_slot:
                             case GpuSlot(active_pipeline=VideoPipelineState() as state) if state.warmth == VideoPipelineWarmth.WARMING:
