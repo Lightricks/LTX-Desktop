@@ -328,6 +328,23 @@ class DownloadHandler(StateHandlerBase):
         )
         return session_id
 
+    def download_missing_sync(self, cp_ids: set[ModelCheckpointID]) -> DownloadSessionId:
+        if self.config.force_api_generations:
+            raise HTTPError(409, "LOCAL_MODEL_DOWNLOADS_DISABLED_IN_FORCE_API_MODE")
+
+        with self._lock:
+            if self.state.downloading_session is not None:
+                raise HTTPError(409, "DOWNLOAD_ALREADY_RUNNING")
+
+        ordered_cp_ids = self._discover_download_cp_ids(cp_ids)
+        session_id = self.start_download(set(ordered_cp_ids))
+        try:
+            self._download_worker(ordered_cp_ids, atomic_commit=False)
+        except Exception as exc:
+            self.fail_download(str(exc))
+            raise
+        return session_id
+
     def check_model_access(self, cp_ids: set[ModelCheckpointID]) -> CheckModelAccessResponse:
         repo_ids = {get_model_cp_spec(cp_id).repo_id for cp_id in cp_ids}
 

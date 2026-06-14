@@ -47,6 +47,7 @@ def _fake_running_generation_state(test_state) -> None:
     test_state.state.gpu_slot = GpuSlot(
         active_pipeline=VideoPipelineState(
             pipeline=pipeline,
+            model_id="ltx-2.3-22b-distilled-1.1",
             is_compiled=False,
         ),
     )
@@ -522,6 +523,66 @@ class TestForcedApiGenerate:
         assert call["fps"] == 50.0
         assert call["generate_audio"] is True
         assert call["camera_motion"] == "dolly_in"
+
+    def test_t2v_routes_to_private_runpod_api(self, client, test_state, fake_services):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.video_generation_provider = "runpod"
+        test_state.state.app_settings.runpod_api_url = "https://pod.example"
+        test_state.state.app_settings.runpod_api_token = "runpod-token"
+        test_state.state.app_settings.prompt_enhancer_enabled_t2v = True
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A mountain lake",
+                "resolution": "720p",
+                "model": "fast",
+                "duration": 10,
+                "fps": 24,
+                "audio": True,
+                "cameraMotion": "dolly_in",
+                "aspectRatio": "9:16",
+            },
+        )
+
+        assert r.status_code == 200
+        assert r.json()["status"] == "complete"
+        assert len(fake_services.ltx_api_client.ensure_remote_model_downloaded_calls) == 1
+        download_call = fake_services.ltx_api_client.ensure_remote_model_downloaded_calls[0]
+        assert download_call["api_key"] == "runpod-token"
+        assert download_call["base_url"] == "https://pod.example"
+        assert download_call["cp_ids"] == {
+            "ltx-2.3-22b-distilled-1.1",
+            "ltx-2.3-spatial-upscaler-x2-1.1",
+            "gemma-3-12b-it-qat-q4_0-unquantized",
+        }
+        assert len(fake_services.ltx_api_client.text_to_video_calls) == 1
+        call = fake_services.ltx_api_client.text_to_video_calls[0]
+        assert call["api_key"] == "runpod-token"
+        assert call["base_url"] == "https://pod.example"
+        assert call["model"] == "fast"
+        assert call["resolution"] == "720p"
+        assert call["aspect_ratio"] == "9:16"
+        assert call["enhance_prompt"] is True
+
+    def test_runpod_mode_uses_local_model_specs(self, client, test_state):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.video_generation_provider = "runpod"
+        test_state.state.app_settings.runpod_api_url = "https://pod.example"
+        test_state.state.app_settings.runpod_api_token = "runpod-token"
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A mountain lake",
+                "resolution": "2160p",
+                "model": "pro",
+                "duration": 8,
+                "fps": 24,
+            },
+        )
+
+        assert r.status_code == 422
 
     def test_i2v_routes_to_ltx_api(self, client, test_state, fake_services, make_test_image, tmp_path):
         test_state.config.local_generations_mode = "unsupported"
@@ -1105,8 +1166,9 @@ class TestGenerateModelSpecs:
 
         assert r.status_code == 200
         data = r.json()
-        assert [item["pipeline"] for item in data["local_models"]] == ["fast"]
-        assert data["local_models"][0]["spec"]["display_name"] == "LTX 2.3 Fast"
+        assert [item["pipeline"] for item in data["local_models"]] == ["fast", "fast_legacy"]
+        assert data["local_models"][0]["spec"]["display_name"] == "LTX 2.3 Fast (Distilled 1.1)"
+        assert data["local_models"][1]["spec"]["display_name"] == "LTX 2.3 Fast (Distilled 1.0)"
         assert list(data["local_models"][0]["spec"]["supported_resolutions_durations"]["540p"]["fps_to_durations"].keys()) == ["24"]
         assert [item["pipeline"] for item in data["api_models"]] == ["fast", "pro"]
         assert list(data["api_models"][0]["spec"]["a2v_supported_resolutions_durations"].keys()) == ["1080p"]
@@ -1355,3 +1417,4 @@ class TestEnhancePromptFlag:
         assert r.status_code == 200
 
         assert len(fake_services.text_encoder.encode_calls) == 0
+        assert fake_services.fast_video_pipeline.generate_calls[0]["enhance_prompt"] is True

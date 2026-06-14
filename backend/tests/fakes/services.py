@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from PIL import Image
-from api_types import ImageConditioningInput, VideoCameraMotion
+from api_types import ImageConditioningInput, ModelCheckpointID, VideoCameraMotion
 from services.interfaces import VideoInfoPayload
 from services.ltx_api_client.ltx_api_client import LTXRetakeResult
 from tests.fakes.fake_gpu_info import FakeGpuInfo
@@ -114,12 +114,14 @@ class FakeTaskRunner:
 
 class FakeLTXAPIClient:
     def __init__(self) -> None:
+        self.ensure_remote_model_downloaded_calls: list[dict[str, Any]] = []
         self.upload_file_calls: list[dict[str, Any]] = []
         self.text_to_video_calls: list[dict[str, Any]] = []
         self.image_to_video_calls: list[dict[str, Any]] = []
         self.audio_to_video_calls: list[dict[str, Any]] = []
         self.retake_calls: list[dict[str, Any]] = []
         self.raise_on_upload_file: Exception | None = None
+        self.raise_on_ensure_remote_model_downloaded: Exception | None = None
         self.raise_on_text_to_video: Exception | None = None
         self.raise_on_image_to_video: Exception | None = None
         self.raise_on_audio_to_video: Exception | None = None
@@ -130,16 +132,37 @@ class FakeLTXAPIClient:
         self.retake_result = LTXRetakeResult(video_bytes=b"fake-ltx-api-retake-video", result_payload=None)
         self.upload_file_results: dict[str, str] = {}
 
+    def ensure_remote_model_downloaded(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        cp_ids: set[ModelCheckpointID],
+        poll_interval_seconds: float = 5.0,
+    ) -> None:
+        self.ensure_remote_model_downloaded_calls.append(
+            {
+                "api_key": api_key,
+                "base_url": base_url,
+                "cp_ids": set(cp_ids),
+                "poll_interval_seconds": poll_interval_seconds,
+            }
+        )
+        if self.raise_on_ensure_remote_model_downloaded is not None:
+            raise self.raise_on_ensure_remote_model_downloaded
+
     def upload_file(
         self,
         *,
         api_key: str,
         file_path: str,
+        base_url: str | None = None,
     ) -> str:
         self.upload_file_calls.append(
             {
                 "api_key": api_key,
                 "file_path": file_path,
+                "base_url": base_url,
             }
         )
         if self.raise_on_upload_file is not None:
@@ -158,6 +181,9 @@ class FakeLTXAPIClient:
         fps: float,
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
+        aspect_ratio: str | None = None,
+        enhance_prompt: bool | None = None,
+        base_url: str | None = None,
     ) -> bytes:
         self.text_to_video_calls.append(
             {
@@ -169,6 +195,9 @@ class FakeLTXAPIClient:
                 "fps": fps,
                 "generate_audio": generate_audio,
                 "camera_motion": camera_motion,
+                "aspect_ratio": aspect_ratio,
+                "enhance_prompt": enhance_prompt,
+                "base_url": base_url,
             }
         )
         if self.raise_on_text_to_video is not None:
@@ -187,6 +216,9 @@ class FakeLTXAPIClient:
         fps: float,
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
+        aspect_ratio: str | None = None,
+        enhance_prompt: bool | None = None,
+        base_url: str | None = None,
     ) -> bytes:
         self.image_to_video_calls.append(
             {
@@ -199,6 +231,9 @@ class FakeLTXAPIClient:
                 "fps": fps,
                 "generate_audio": generate_audio,
                 "camera_motion": camera_motion,
+                "aspect_ratio": aspect_ratio,
+                "enhance_prompt": enhance_prompt,
+                "base_url": base_url,
             }
         )
         if self.raise_on_image_to_video is not None:
@@ -214,6 +249,11 @@ class FakeLTXAPIClient:
         image_uri: str | None,
         model: str,
         resolution: str,
+        duration: float | None = None,
+        fps: float | None = None,
+        aspect_ratio: str | None = None,
+        enhance_prompt: bool | None = None,
+        base_url: str | None = None,
     ) -> bytes:
         self.audio_to_video_calls.append(
             {
@@ -223,6 +263,11 @@ class FakeLTXAPIClient:
                 "image_uri": image_uri,
                 "model": model,
                 "resolution": resolution,
+                "duration": duration,
+                "fps": fps,
+                "aspect_ratio": aspect_ratio,
+                "enhance_prompt": enhance_prompt,
+                "base_url": base_url,
             }
         )
         if self.raise_on_audio_to_video is not None:
@@ -238,6 +283,7 @@ class FakeLTXAPIClient:
         duration: float,
         prompt: str,
         mode: str,
+        base_url: str | None = None,
     ) -> LTXRetakeResult:
         self.retake_calls.append(
             {
@@ -247,6 +293,7 @@ class FakeLTXAPIClient:
                 "duration": duration,
                 "prompt": prompt,
                 "mode": mode,
+                "base_url": base_url,
             }
         )
         if self.raise_on_retake is not None:
@@ -510,6 +557,7 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
         frame_rate: float,
         images: list[ImageConditioningInput],
         output_path: str,
+        enhance_prompt: bool = False,
     ) -> None:
         self._record_generate(
             {
@@ -521,6 +569,7 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
                 "frame_rate": frame_rate,
                 "images": images,
                 "output_path": output_path,
+                "enhance_prompt": enhance_prompt,
             }
         )
 

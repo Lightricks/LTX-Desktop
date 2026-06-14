@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NewType, Protocol
 
-from api_types import ModelCheckpointID
+from api_types import LTXLocalModelId, ModelCheckpointID
 from state.conditioning_cache import ConditioningCache
 
 if TYPE_CHECKING:
@@ -101,6 +101,7 @@ class TextEncoderState:
 @dataclass
 class VideoPipelineState:
     pipeline: FastVideoPipeline
+    model_id: LTXLocalModelId
     is_compiled: bool
 
 
@@ -124,6 +125,7 @@ class ICLoraState:
 @dataclass
 class A2VPipelineState:
     pipeline: A2VPipeline
+    model_id: LTXLocalModelId
 
 
 @dataclass

@@ -180,9 +180,18 @@ function AppContent() {
 
   const isForcedFirstRun =
     setupState !== 'loading' && setupState.needsSetup && !setupState.needsLicense && forceApiGenerations
+  const isOfficialLtxProvider = settings.videoGenerationProvider === 'ltx_api'
+    || (settings.videoGenerationProvider === 'local' && settings.userPrefersLtxApiVideoGenerations)
+  const isRunpodProviderConfigured = settings.videoGenerationProvider === 'runpod'
+    && Boolean(settings.runpodApiUrl)
+    && settings.hasRunpodApiToken
 
   const shouldAutoFinalizeForcedFirstRun =
-    isForcedFirstRun && isLoaded && settings.hasLtxApiKey && !isFinalizingFirstRun && !firstRunFinalizeError
+    isForcedFirstRun
+    && isLoaded
+    && (settings.hasLtxApiKey || isRunpodProviderConfigured)
+    && !isFinalizingFirstRun
+    && !firstRunFinalizeError
 
   const areRequiredModelsDownloaded = useCallback(async () => {
     const [ltxResult, imgGenResult] = await Promise.all([
@@ -344,8 +353,8 @@ function AppContent() {
 
   const showGlobalControls = currentView !== 'home' && connected && setupState !== 'loading' && !setupState.needsSetup
   const shouldBlockUntilSettingsLoaded = forceApiGenerations && !isLoaded
-  const shouldShowForcedFirstRunUpsell = isForcedFirstRun && isLoaded && !settings.hasLtxApiKey
-  const shouldShowGlobalForcedUpsell = forceApiGenerations && setupState !== 'loading' && !setupState.needsSetup && isLoaded && !settings.hasLtxApiKey
+  const shouldShowForcedFirstRunUpsell = isForcedFirstRun && isLoaded && isOfficialLtxProvider && !settings.hasLtxApiKey
+  const shouldShowGlobalForcedUpsell = forceApiGenerations && setupState !== 'loading' && !setupState.needsSetup && isLoaded && isOfficialLtxProvider && !settings.hasLtxApiKey
   const shouldBlockForLtxKey = shouldShowForcedFirstRunUpsell || shouldShowGlobalForcedUpsell
 
   useEffect(() => {
@@ -413,6 +422,10 @@ function AppContent() {
     saveLtxApiKey,
     settings.hasFalApiKey,
     settings.hasLtxApiKey,
+    settings.hasRunpodApiToken,
+    settings.runpodApiUrl,
+    settings.userPrefersLtxApiVideoGenerations,
+    settings.videoGenerationProvider,
   ])
 
   if (pythonReady === null) {

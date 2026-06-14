@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, TypeGuard, TypeVar, cast, get_args
+from typing import Any, Literal, TypeGuard, TypeVar, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator
 
@@ -49,6 +49,9 @@ class AppSettings(SettingsBaseModel):
     use_torch_compile: bool = False
     ltx_api_key: str = ""
     user_prefers_ltx_api_video_generations: bool = False
+    video_generation_provider: Literal["local", "ltx_api", "runpod"] = "local"
+    runpod_api_url: str = ""
+    runpod_api_token: str = ""
     fal_api_key: str = ""
     use_local_text_encoder: bool = False
     prompt_cache_size: int = 100
@@ -118,6 +121,9 @@ class SettingsResponse(SettingsBaseModel):
     use_torch_compile: bool = False
     has_ltx_api_key: bool = False
     user_prefers_ltx_api_video_generations: bool = False
+    video_generation_provider: Literal["local", "ltx_api", "runpod"] = "local"
+    runpod_api_url: str = ""
+    has_runpod_api_token: bool = False
     has_fal_api_key: bool = False
     use_local_text_encoder: bool = False
     prompt_cache_size: int = 100
@@ -132,17 +138,44 @@ class SettingsResponse(SettingsBaseModel):
 def to_settings_response(settings: AppSettings) -> SettingsResponse:
     data = settings.model_dump(by_alias=False)
     ltx_key = data.pop("ltx_api_key", "")
+    runpod_token = data.pop("runpod_api_token", "")
     fal_key = data.pop("fal_api_key", "")
     gemini_key = data.pop("gemini_api_key", "")
     data["has_ltx_api_key"] = bool(ltx_key)
+    data["has_runpod_api_token"] = bool(runpod_token)
     data["has_fal_api_key"] = bool(fal_key)
     data["has_gemini_api_key"] = bool(gemini_key)
     # models_dir passes through as-is (not secret)
     return SettingsResponse.model_validate(data)
 
 
-def should_video_generate_with_ltx_api(*, force_api_generations: bool, settings: AppSettings) -> bool:
+VideoGenerationProvider = Literal["local", "ltx_api", "runpod"]
+
+
+def resolve_video_generation_provider(*, force_api_generations: bool, settings: AppSettings) -> VideoGenerationProvider:
+    configured_provider = settings.video_generation_provider
+    if configured_provider == "runpod":
+        return "runpod"
+    if configured_provider == "ltx_api":
+        return "ltx_api"
+
     has_ltx_api_key = bool(settings.ltx_api_key.strip())
-    return force_api_generations or (
-        settings.user_prefers_ltx_api_video_generations and has_ltx_api_key
-    )
+    if force_api_generations:
+        return "ltx_api"
+    if settings.user_prefers_ltx_api_video_generations and has_ltx_api_key:
+        return "ltx_api"
+    return "local"
+
+
+def should_video_generate_with_ltx_api(*, force_api_generations: bool, settings: AppSettings) -> bool:
+    return resolve_video_generation_provider(
+        force_api_generations=force_api_generations,
+        settings=settings,
+    ) == "ltx_api"
+
+
+def should_video_generate_with_remote_api(*, force_api_generations: bool, settings: AppSettings) -> bool:
+    return resolve_video_generation_provider(
+        force_api_generations=force_api_generations,
+        settings=settings,
+    ) in ("ltx_api", "runpod")

@@ -67,6 +67,29 @@ class LTXLocalModelSpec:
     supported_pipelines: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], ...]
 
 
+def _fast_spec(display_name: str) -> LTXVideoGenerationSpec:
+    return LTXVideoGenerationSpec(
+        display_name=display_name,
+        supported_resolutions_durations={
+            "540p": _local_resolution_spec(
+                fps_to_durations={
+                    24: (5, 6, 8, 10, 20),
+                },
+            ),
+            "720p": _local_resolution_spec(
+                fps_to_durations={
+                    24: (5, 6, 8, 10),
+                },
+            ),
+            "1080p": _local_resolution_spec(
+                fps_to_durations={
+                    24: (5,),
+                },
+            ),
+        },
+    )
+
+
 def _local_resolution_spec(
     *,
     fps_to_durations: dict[LTXVideoGenFps, tuple[LTXVideoGenDuration, ...]],
@@ -93,7 +116,15 @@ def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
                 expected_size_bytes=43_000_000_000,
                 is_folder=False,
                 repo_id="Lightricks/LTX-2.3",
-                description="Main transformer model",
+                description="LTX 2.3 Distilled 1.0 transformer model",
+            )
+        case "ltx-2.3-22b-distilled-1.1":
+            return ModelCheckpointSpec(
+                relative_path=Path("ltx-2.3-22b-distilled-1.1.safetensors"),
+                expected_size_bytes=43_000_000_000,
+                is_folder=False,
+                repo_id="Lightricks/LTX-2.3",
+                description="LTX 2.3 Distilled 1.1 transformer model",
             )
         case "ltx-2.3-spatial-upscaler-x2-1.0":
             return ModelCheckpointSpec(
@@ -101,7 +132,15 @@ def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
                 expected_size_bytes=1_900_000_000,
                 is_folder=False,
                 repo_id="Lightricks/LTX-2.3",
-                description="2x upscaler",
+                description="2x spatial upscaler 1.0",
+            )
+        case "ltx-2.3-spatial-upscaler-x2-1.1":
+            return ModelCheckpointSpec(
+                relative_path=Path("ltx-2.3-spatial-upscaler-x2-1.1.safetensors"),
+                expected_size_bytes=1_900_000_000,
+                is_folder=False,
+                repo_id="Lightricks/LTX-2.3",
+                description="2x spatial upscaler 1.1",
             )
         case "ltx-2.3-22b-ic-lora-union-control-ref0.5":
             return ModelCheckpointSpec(
@@ -167,30 +206,33 @@ def get_ltx_model_spec(model_id: LTXLocalModelId) -> LTXLocalModelSpec:
                     canny_cp="ltx-2.3-22b-ic-lora-union-control-ref0.5",
                     pose_cp="ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 ),
-                relevance=LTXLocalModelRelevant(upgrade_messages={}),
+                relevance=LTXLocalModelDeprecated(),
+                supported_pipelines=(
+                    (
+                        "fast_legacy",
+                        _fast_spec("LTX 2.3 Fast (Distilled 1.0)"),
+                    ),
+                ),
+            )
+        case "ltx-2.3-22b-distilled-1.1":
+            return LTXLocalModelSpec(
+                model_cp="ltx-2.3-22b-distilled-1.1",
+                upscale_cp="ltx-2.3-spatial-upscaler-x2-1.1",
+                text_encoder_cp="gemma-3-12b-it-qat-q4_0-unquantized",
+                ic_loras_spec=LtxIcLorasSpec(
+                    depth_cp="ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                    canny_cp="ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                    pose_cp="ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                ),
+                relevance=LTXLocalModelRelevant(
+                    upgrade_messages={
+                        "ltx-2.3-22b-distilled": "LTX 2.3 Distilled 1.1 is available with matching updated upscaler weights.",
+                    },
+                ),
                 supported_pipelines=(
                     (
                         "fast",
-                        LTXVideoGenerationSpec(
-                            display_name="LTX 2.3 Fast",
-                            supported_resolutions_durations={
-                                "540p": _local_resolution_spec(
-                                    fps_to_durations={
-                                        24: (5, 6, 8, 10, 20),
-                                    },
-                                ),
-                                "720p": _local_resolution_spec(
-                                    fps_to_durations={
-                                        24: (5, 6, 8, 10),
-                                    },
-                                ),
-                                "1080p": _local_resolution_spec(
-                                    fps_to_durations={
-                                        24: (5,),
-                                    },
-                                ),
-                            },
-                        ),
+                        _fast_spec("LTX 2.3 Fast (Distilled 1.1)"),
                     ),
                 ),
             )
@@ -218,6 +260,16 @@ def get_latest_ltx_model_id() -> LTXLocalModelId:
 def get_ltx_model_id_for_cp(cp_id: ModelCheckpointID) -> LTXLocalModelId | None:
     for model_id in ALL_LTX_LOCAL_MODEL_IDS:
         if get_ltx_model_spec(model_id).model_cp == cp_id:
+            return model_id
+    return None
+
+
+def get_ltx_model_id_for_pipeline(pipeline: LTXVideoGenPipeline) -> LTXLocalModelId | None:
+    if pipeline == "pro":
+        return None
+    for model_id in ALL_LTX_LOCAL_MODEL_IDS:
+        spec = get_ltx_model_spec(model_id)
+        if any(candidate_pipeline == pipeline for candidate_pipeline, _ in spec.supported_pipelines):
             return model_id
     return None
 

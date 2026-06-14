@@ -5,6 +5,64 @@ LTX Desktop is an open-source desktop app for generating videos with LTX models 
 > **Status: Beta.** Expect breaking changes.
 > Frontend architecture is under active refactor; large UI PRs may be declined for now (see [`CONTRIBUTING.md`](docs/CONTRIBUTING.md)).
 
+## Start here: choose your setup
+
+LTX Desktop can run generation in three ways. Pick one before setup:
+
+| Mode | Best for | Where generation runs | Sends media to third parties? |
+| --- | --- | --- | --- |
+| Local GPU | A workstation with enough VRAM | Your own computer | No |
+| Private RunPod API | A low-VRAM computer with a private cloud GPU | Your RunPod Pod | No, only your own Pod |
+| Official LTX API | Quick managed cloud setup | LTX official servers | Yes |
+
+### Option A: Private RunPod API setup
+
+Use this when your desktop computer does not have enough GPU memory, but you do
+not want prompts, images, audio, or videos sent to the official LTX API.
+
+1. Create a RunPod Pod with a CUDA GPU. Recommended for LTX 2.3: **A100 80 GB**, **112 GB+ RAM**, and **150 GB+ disk** for ephemeral testing.
+2. Expose HTTP port `8000` on the Pod.
+3. Build and push the RunPod image from this repo:
+
+   ```bash
+   docker build -f runpod/Dockerfile -t ltx-desktop-runpod:latest .
+   ```
+
+4. Set these Pod environment variables:
+
+   ```bash
+   RUNPOD_PRIVATE_API_TOKEN=change-this-long-random-token
+   LTX_APP_DATA_DIR=/workspace/ltx-data
+   LTX_PORT=8000
+   ```
+
+5. Start the Pod with the image. The server listens on:
+
+   ```text
+   https://<pod-id>-8000.proxy.runpod.net
+   ```
+
+6. Open LTX Desktop, then go to **Settings > General** and choose **Private RunPod API**.
+7. Go to **Settings > API Keys**, paste the RunPod URL, and save the same token from `RUNPOD_PRIVATE_API_TOKEN`.
+8. Generate normally. The desktop app uploads inputs to your Pod, the Pod downloads any selected model variation if missing, runs generation, then returns the output video to your local outputs folder.
+
+Full RunPod details: [`docs/runpod-private-api.md`](docs/runpod-private-api.md).
+
+### Option B: Local GPU setup
+
+1. Use Windows or Linux with an NVIDIA CUDA GPU and **16 GB+ VRAM**.
+2. Install the app or run from source.
+3. Complete first-run setup.
+4. Download the required local models when prompted.
+5. Optional: enable **Local Text Encoder** for fully local prompt encoding and prompt enhancement.
+
+### Option C: Official LTX API setup
+
+1. Create an LTX API key from the [LTX Console](https://console.ltx.video/).
+2. Open **Settings > General** and choose the official LTX API mode.
+3. Open **Settings > API Keys** and save the LTX API key.
+4. Generate normally. API-backed features send prompts and input media to the official LTX service.
+
 <p align="center">
   <img src="images/gen-space.png" alt="Gen Space" width="70%">
 </p>
@@ -31,12 +89,13 @@ LTX Desktop is an open-source desktop app for generating videos with LTX models 
 | Platform / hardware | Generation mode | Notes |
 | --- | --- | --- |
 | Windows + CUDA GPU with **≥16GB VRAM** | Local generation | Downloads model weights locally |
-| Windows (no CUDA, <16GB VRAM, or unknown VRAM) | API-only | **LTX API key required** |
+| Windows (no CUDA, <16GB VRAM, or unknown VRAM) | Private RunPod API or official LTX API | RunPod keeps media on your own Pod; official LTX API requires an LTX API key |
 | Linux + CUDA GPU with **≥16GB VRAM** | Local generation | Downloads model weights locally |
-| Linux (no CUDA, <16GB VRAM, or unknown VRAM) | API-only | **LTX API key required** |
-| macOS (Apple Silicon builds) | API-only | **LTX API key required** |
+| Linux (no CUDA, <16GB VRAM, or unknown VRAM) | Private RunPod API or official LTX API | RunPod keeps media on your own Pod; official LTX API requires an LTX API key |
+| macOS (Apple Silicon builds) | Private RunPod API or official LTX API | RunPod keeps media on your own Pod; official LTX API requires an LTX API key |
 
-In API-only mode, available resolutions/durations may be limited to what the API supports.
+In official API mode, available resolutions/durations may be limited to what the API supports.
+In Private RunPod API mode, available options follow the local LTX pipeline exposed by the Pod.
 
 ## System requirements
 
@@ -55,7 +114,7 @@ In API-only mode, available resolutions/durations may be limited to what the API
 - 16GB+ RAM (32GB recommended)
 - Plenty of free disk space for model weights and outputs
 
-### macOS (API-only)
+### macOS (remote generation)
 
 - Apple Silicon (arm64)
 - macOS 13+ (Ventura)
@@ -91,14 +150,23 @@ Text encoding: to generate videos you must configure text encoding:
 The LTX API is used for:
 
 - **Cloud text encoding and prompt enhancement** — **FREE**; text encoding is highly recommended to speed up inference and save memory
-- API-based video generations (required on macOS and on unsupported Windows hardware) — paid
+- Official API-based video generations — paid
 - Retake — paid
 
-An LTX API key is required in API-only mode, but optional on Windows/Linux local mode if you enable the Local Text Encoder.
+An LTX API key is required only when using the official LTX API mode. It is not required for Private RunPod API mode.
 
 Generate a FREE API key at the [LTX Console](https://console.ltx.video/). Text encoding is free; video generation API usage is paid. [Read more](https://ltx.io/model/model-blog/ltx-2-better-control-for-real-workflows).
 
 When you use API-backed features, prompts and media inputs are sent to the API service. Your API key is stored locally in your app data folder — treat it like a secret.
+
+### Private RunPod API token
+
+Used when **Settings > General > Video Generation Provider** is set to **Private RunPod API**.
+
+The desktop app sends prompts and media only to the RunPod URL you configure.
+The Pod runs the same local backend pipeline, downloads selected model variations
+when missing, and returns generated video bytes to your desktop app. Store the
+RunPod bearer token securely; anyone with the URL and token can use your Pod.
 
 ### fal API key (optional)
 
@@ -185,6 +253,7 @@ LTX Desktop collects minimal, anonymous usage analytics (app version, platform, 
 
 ## Docs
 
+- [`runpod-private-api.md`](docs/runpod-private-api.md) — private RunPod setup
 - [`INSTALLER.md`](docs/INSTALLER.md) — building installers
 - [`TELEMETRY.md`](docs/TELEMETRY.md) — telemetry and privacy
 - [`backend/architecture.md`](backend/architecture.md) — backend architecture

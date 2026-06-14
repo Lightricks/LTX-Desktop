@@ -251,6 +251,26 @@ class TestRetake:
         assert len(test_state.ltx_api_client.retake_calls) == 1
         assert len(fake_services.retake_pipeline.generate_calls) == 0
 
+    def test_runpod_provider_routes_retake_to_private_api(self, client, test_state, fake_services):
+        test_state.config.local_generations_mode = "full_models_loading"
+        test_state.state.app_settings.video_generation_provider = "runpod"
+        test_state.state.app_settings.runpod_api_url = "https://pod.example"
+        test_state.state.app_settings.runpod_api_token = "runpod-token"
+        video_path = self._make_video(test_state)
+        test_state.ltx_api_client.retake_result = LTXRetakeResult(
+            video_bytes=b"\x00\x00\x00\x1cftypisom" + b"\x00" * 500,
+            result_payload=None,
+        )
+
+        r = client.post("/api/retake", json=self._base_payload(video_path))
+
+        assert r.status_code == 200
+        assert r.json()["status"] == "complete"
+        retake_call = test_state.ltx_api_client.retake_calls[-1]
+        assert retake_call["api_key"] == "runpod-token"
+        assert retake_call["base_url"] == "https://pod.example"
+        assert len(fake_services.retake_pipeline.generate_calls) == 0
+
     def test_prefers_api_video_without_key_falls_back_to_local_retake(
         self,
         client,

@@ -462,6 +462,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/audio-to-video": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Private Audio To Video */
+        post: operations["route_private_audio_to_video_v1_audio_to_video_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/image-to-video": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Private Image To Video */
+        post: operations["route_private_image_to_video_v1_image_to_video_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/retake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Private Retake */
+        post: operations["route_private_retake_v1_retake_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/text-to-video": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Private Text To Video */
+        post: operations["route_private_text_to_video_v1_text_to_video_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Private Upload Init */
+        post: operations["route_private_upload_init_v1_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/upload/{upload_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Route Private Upload Put */
+        put: operations["route_private_upload_put_v1_upload__upload_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -484,6 +586,10 @@ export interface components {
             promptEnhancerEnabledI2V?: boolean | null;
             /** Promptenhancerenabledt2V */
             promptEnhancerEnabledT2V?: boolean | null;
+            /** Runpodapitoken */
+            runpodApiToken?: string | null;
+            /** Runpodapiurl */
+            runpodApiUrl?: string | null;
             /** Seedlocked */
             seedLocked?: boolean | null;
             /** Uselocaltextencoder */
@@ -492,6 +598,8 @@ export interface components {
             useTorchCompile?: boolean | null;
             /** Userprefersltxapivideogenerations */
             userPrefersLtxApiVideoGenerations?: boolean | null;
+            /** Videogenerationprovider */
+            videoGenerationProvider?: ("local" | "ltx_api" | "runpod") | null;
         };
         /** CancelCancellingResponse */
         CancelCancellingResponse: {
@@ -514,7 +622,7 @@ export interface components {
         /** CheckModelAccessRequest */
         CheckModelAccessRequest: {
             /** Cp Ids */
-            cp_ids?: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            cp_ids?: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
         };
         /** CheckModelAccessResponse */
         CheckModelAccessResponse: {
@@ -544,11 +652,11 @@ export interface components {
         /** DownloadProgressRunningResponse */
         DownloadProgressRunningResponse: {
             /** All Files */
-            all_files: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            all_files: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
             /** Completed Files */
-            completed_files: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            completed_files: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
             /** Current Downloading File */
-            current_downloading_file: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo") | null;
+            current_downloading_file: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo") | null;
             /** Current File Progress */
             current_file_progress: number;
             /** Error */
@@ -662,6 +770,8 @@ export interface components {
              * @enum {integer}
              */
             duration: 5 | 6 | 8 | 10 | 12 | 14 | 16 | 18 | 20;
+            /** Enhanceprompt */
+            enhancePrompt?: boolean | null;
             /**
              * Fps
              * @default 24
@@ -675,7 +785,7 @@ export interface components {
              * @default fast
              * @enum {string}
              */
-            model: "fast" | "pro";
+            model: "fast" | "fast_legacy" | "pro";
             /**
              * Negativeprompt
              * @default
@@ -890,7 +1000,7 @@ export interface components {
         /** ImageGenRecommendationResponse */
         ImageGenRecommendationResponse: {
             /** Cp To Download */
-            cp_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo") | null;
+            cp_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo") | null;
         };
         /** LTXVideoGenerationModelSpecItem */
         LTXVideoGenerationModelSpecItem: {
@@ -898,7 +1008,7 @@ export interface components {
              * Pipeline
              * @enum {string}
              */
-            pipeline: "fast" | "pro";
+            pipeline: "fast" | "fast_legacy" | "pro";
             spec: components["schemas"]["LTXVideoGenerationSpec"];
         };
         /** LTXVideoGenerationResolutionSpec */
@@ -924,7 +1034,7 @@ export interface components {
         /** LtxDownloadRecommendationResponse */
         LtxDownloadRecommendationResponse: {
             /** Cps To Download */
-            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
             /**
              * Status
              * @constant
@@ -934,7 +1044,7 @@ export interface components {
         /** LtxIcLoraRecommendationResponse */
         LtxIcLoraRecommendationResponse: {
             /** Cps To Download */
-            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
         };
         /** LtxInsufficientFundsErrorResponse */
         LtxInsufficientFundsErrorResponse: {
@@ -957,14 +1067,14 @@ export interface components {
         /** LtxUpgradeRecommendationResponse */
         LtxUpgradeRecommendationResponse: {
             /** Cps To Delete */
-            cps_to_delete: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            cps_to_delete: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
             /** Cps To Download */
-            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
             /**
              * Ltx Model Id
-             * @constant
+             * @enum {string}
              */
-            ltx_model_id: "ltx-2.3-22b-distilled";
+            ltx_model_id: "ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1";
             /**
              * Status
              * @constant
@@ -976,12 +1086,12 @@ export interface components {
         /** ModelDeleteRequest */
         ModelDeleteRequest: {
             /** Cp Ids */
-            cp_ids?: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            cp_ids?: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
         };
         /** ModelDownloadRequest */
         ModelDownloadRequest: {
             /** Cp Ids */
-            cp_ids?: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            cp_ids?: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
             /**
              * Type
              * @default download
@@ -1011,6 +1121,171 @@ export interface components {
             loaded: boolean;
             /** Name */
             name: string;
+        };
+        /** PrivateAudioToVideoRequest */
+        PrivateAudioToVideoRequest: {
+            /**
+             * Aspect Ratio
+             * @default 16:9
+             */
+            aspect_ratio: string;
+            /** Audio Uri */
+            audio_uri: string;
+            /**
+             * Duration
+             * @default 5
+             */
+            duration: number;
+            /**
+             * Enhance Prompt
+             * @default false
+             */
+            enhance_prompt: boolean;
+            /**
+             * Fps
+             * @default 24
+             */
+            fps: number;
+            /** Image Uri */
+            image_uri?: string | null;
+            /**
+             * Model
+             * @default fast
+             */
+            model: string;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Resolution
+             * @default 1080p
+             */
+            resolution: string;
+        };
+        /** PrivateImageToVideoRequest */
+        PrivateImageToVideoRequest: {
+            /**
+             * Aspect Ratio
+             * @default 16:9
+             */
+            aspect_ratio: string;
+            /**
+             * Camera Motion
+             * @default none
+             */
+            camera_motion: string;
+            /**
+             * Duration
+             * @default 5
+             */
+            duration: number;
+            /**
+             * Enhance Prompt
+             * @default false
+             */
+            enhance_prompt: boolean;
+            /**
+             * Fps
+             * @default 24
+             */
+            fps: number;
+            /**
+             * Generate Audio
+             * @default false
+             */
+            generate_audio: boolean;
+            /** Image Uri */
+            image_uri: string;
+            /**
+             * Model
+             * @default fast
+             */
+            model: string;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Resolution
+             * @default 1080p
+             */
+            resolution: string;
+        };
+        /** PrivateRetakeRequest */
+        PrivateRetakeRequest: {
+            /** Duration */
+            duration: number;
+            /**
+             * Mode
+             * @default replace_audio_and_video
+             * @enum {string}
+             */
+            mode: "replace_audio_and_video" | "replace_video" | "replace_audio";
+            /**
+             * Prompt
+             * @default
+             */
+            prompt: string;
+            /** Start Time */
+            start_time: number;
+            /** Video Uri */
+            video_uri: string;
+        };
+        /** PrivateTextToVideoRequest */
+        PrivateTextToVideoRequest: {
+            /**
+             * Aspect Ratio
+             * @default 16:9
+             */
+            aspect_ratio: string;
+            /**
+             * Camera Motion
+             * @default none
+             */
+            camera_motion: string;
+            /**
+             * Duration
+             * @default 5
+             */
+            duration: number;
+            /**
+             * Enhance Prompt
+             * @default false
+             */
+            enhance_prompt: boolean;
+            /**
+             * Fps
+             * @default 24
+             */
+            fps: number;
+            /**
+             * Generate Audio
+             * @default false
+             */
+            generate_audio: boolean;
+            /**
+             * Model
+             * @default fast
+             */
+            model: string;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Resolution
+             * @default 1080p
+             */
+            resolution: string;
+        };
+        /** PrivateUploadInitResponse */
+        PrivateUploadInitResponse: {
+            /**
+             * Required Headers
+             * @default {}
+             */
+            required_headers: {
+                [key: string]: string;
+            };
+            /** Storage Uri */
+            storage_uri: string;
+            /** Upload Url */
+            upload_url: string;
         };
         /** RetakeCancelledResponse */
         RetakeCancelledResponse: {
@@ -1085,6 +1360,11 @@ export interface components {
              */
             hasLtxApiKey: boolean;
             /**
+             * Hasrunpodapitoken
+             * @default false
+             */
+            hasRunpodApiToken: boolean;
+            /**
              * Lockedseed
              * @default 42
              */
@@ -1110,6 +1390,11 @@ export interface components {
              */
             promptEnhancerEnabledT2V: boolean;
             /**
+             * Runpodapiurl
+             * @default
+             */
+            runpodApiUrl: string;
+            /**
              * Seedlocked
              * @default false
              */
@@ -1129,6 +1414,12 @@ export interface components {
              * @default false
              */
             userPrefersLtxApiVideoGenerations: boolean;
+            /**
+             * Videogenerationprovider
+             * @default local
+             * @enum {string}
+             */
+            videoGenerationProvider: "local" | "ltx_api" | "runpod";
         };
         /** StatusResponse */
         StatusResponse: {
@@ -1179,7 +1470,7 @@ export interface components {
         /** TextEncoderRecommendationResponse */
         TextEncoderRecommendationResponse: {
             /** Cp To Download */
-            cp_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo") | null;
+            cp_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo") | null;
             /** Expected Size Bytes */
             expected_size_bytes: number;
             /** Expected Size Gb */
@@ -2255,6 +2546,254 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_private_audio_to_video_v1_audio_to_video_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrivateAudioToVideoRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_private_image_to_video_v1_image_to_video_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrivateImageToVideoRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_private_retake_v1_retake_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrivateRetakeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_private_text_to_video_v1_text_to_video_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrivateTextToVideoRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_private_upload_init_v1_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrivateUploadInitResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_private_upload_put_v1_upload__upload_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
             /** @description Client Error */

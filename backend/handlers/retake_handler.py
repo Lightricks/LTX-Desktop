@@ -25,7 +25,7 @@ from runtime_config.runtime_config import RuntimeConfig
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError
 from services.interfaces import LTXAPIClient
 from state.app_state_types import AppState
-from state.app_settings import should_video_generate_with_ltx_api
+from state.app_settings import VideoGenerationProvider, resolve_video_generation_provider
 
 
 class RetakeHandler(StateHandlerBase):
@@ -61,16 +61,18 @@ class RetakeHandler(StateHandlerBase):
         if not video_file.exists():
             raise HTTPError(400, f"Video file not found: {video_path}")
 
-        if should_video_generate_with_ltx_api(
+        provider = resolve_video_generation_provider(
             force_api_generations=self.config.force_api_generations,
             settings=self.state.app_settings,
-        ):
+        )
+        if provider != "local":
             return self._run_api_retake(
                 video_file=video_file,
                 start_time=start_time,
                 duration=duration,
                 prompt=prompt,
                 mode=mode,
+                provider=provider,
             )
 
         return self._run_local_retake(
@@ -89,10 +91,9 @@ class RetakeHandler(StateHandlerBase):
         duration: float,
         prompt: str,
         mode: RetakeMode,
+        provider: VideoGenerationProvider,
     ) -> RetakeResponse:
-        api_key = self.state.app_settings.ltx_api_key
-        if not api_key:
-            raise HTTPError(400, "LTX API key not configured. Set it in Settings.")
+        api_key, base_url = self._resolve_remote_api_credentials(provider)
 
         try:
             result = self._ltx_api_client.retake(
@@ -102,6 +103,7 @@ class RetakeHandler(StateHandlerBase):
                 duration=duration,
                 prompt=prompt,
                 mode=mode,
+                base_url=base_url,
             )
         except LTXAPIClientError as exc:
             raise HTTPError(exc.status_code, exc.detail) from exc
@@ -116,6 +118,25 @@ class RetakeHandler(StateHandlerBase):
             return RetakePayloadResponse(status="complete", result=result.result_payload)
 
         raise HTTPError(500, "Retake API returned no result")
+
+    def _resolve_remote_api_credentials(self, provider: VideoGenerationProvider) -> tuple[str, str | None]:
+        settings = self.state.app_settings
+        if provider == "ltx_api":
+            api_key = settings.ltx_api_key.strip()
+            if not api_key:
+                raise HTTPError(400, "LTX API key not configured. Set it in Settings.")
+            return api_key, None
+
+        if provider == "runpod":
+            api_key = settings.runpod_api_token.strip()
+            base_url = settings.runpod_api_url.strip().rstrip("/")
+            if not base_url:
+                raise HTTPError(400, "RUNPOD_API_URL_REQUIRED")
+            if not api_key:
+                raise HTTPError(400, "RUNPOD_API_TOKEN_REQUIRED")
+            return api_key, base_url
+
+        raise HTTPError(500, "INVALID_REMOTE_PROVIDER_CONFIG")
 
     def _run_local_retake(
         self,

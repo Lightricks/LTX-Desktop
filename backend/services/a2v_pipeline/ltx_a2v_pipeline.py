@@ -65,6 +65,7 @@ class LTXa2vPipeline:
         audio_start_time: float,
         audio_max_duration: float | None,
         tiling_config: TilingConfigType,
+        enhance_prompt: bool,
     ) -> tuple[torch.Tensor | Iterator[torch.Tensor], AudioOrNone]:
         return self.pipeline(
             prompt=prompt,
@@ -78,6 +79,7 @@ class LTXa2vPipeline:
             audio_start_time=audio_start_time,
             audio_max_duration=audio_max_duration,
             tiling_config=tiling_config,
+            enhance_prompt=enhance_prompt,
             streaming_prefetch_count=self._streaming_prefetch_count,
         )
 
@@ -97,6 +99,7 @@ class LTXa2vPipeline:
         audio_start_time: float,
         audio_max_duration: float | None,
         output_path: str,
+        enhance_prompt: bool = False,
     ) -> None:
         tiling_config = default_tiling_config()
         video, audio = self._run_inference(
@@ -113,6 +116,7 @@ class LTXa2vPipeline:
             audio_start_time=audio_start_time,
             audio_max_duration=audio_max_duration,
             tiling_config=tiling_config,
+            enhance_prompt=enhance_prompt,
         )
         chunks = video_chunks_number(num_frames, tiling_config)
         encode_video_output(video=video, audio=audio, fps=int(frame_rate), output_path=output_path, video_chunks_number_value=chunks)

@@ -21,6 +21,8 @@ from api_types import (
     GenerateVideoRequest,
     GenerateVideoResponse,
     ImageConditioningInput,
+    ModelCheckpointID,
+    LTXVideoGenPipeline,
     VideoCameraMotion,
 )
 from _routes._errors import HTTPError
@@ -32,6 +34,7 @@ from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
 from handlers.text_handler import TextHandler
+from runtime_config.model_download_specs import get_ltx_model_id_for_pipeline, get_ltx_model_spec
 from server_utils.media_validation import (
     normalize_optional_path,
     validate_audio_file,
@@ -40,7 +43,7 @@ from server_utils.media_validation import (
 from services.interfaces import LTXAPIClient
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError
 from state.app_state_types import AppState
-from state.app_settings import should_video_generate_with_ltx_api
+from state.app_settings import VideoGenerationProvider, resolve_video_generation_provider
 
 if TYPE_CHECKING:
     from runtime_config.runtime_config import RuntimeConfig
@@ -81,16 +84,17 @@ class VideoGenerationHandler(StateHandlerBase):
         return build_generate_video_model_specs_response()
 
     def generate(self, req: GenerateVideoRequest) -> GenerateVideoResponse:
-        use_api_specs = should_video_generate_with_ltx_api(
+        provider = resolve_video_generation_provider(
             force_api_generations=self.config.force_api_generations,
             settings=self.state.app_settings,
         )
+        use_api_specs = provider == "ltx_api"
         validation_error = validate_generate_video_request(req, use_api_specs=use_api_specs)
         if validation_error is not None:
             raise HTTPError(422, validation_error, code="INVALID_VIDEO_GENERATION_SPEC")
 
-        if use_api_specs:
-            return self._generate_forced_api(req)
+        if provider != "local":
+            return self._generate_remote_api(req, provider=provider)
 
         if self._generation.is_generation_running():
             raise HTTPError(409, "Generation already in progress")
@@ -139,11 +143,12 @@ class VideoGenerationHandler(StateHandlerBase):
         seed = self._resolve_seed()
 
         try:
-            self._pipelines.load_gpu_pipeline("fast")
+            self._pipelines.load_gpu_pipeline(req.model)
             self._generation.start_generation(generation_id)
 
             output_path = self.generate_video(
                 prompt=req.prompt,
+                model=req.model,
                 image=image,
                 height=height,
                 width=width,
@@ -152,6 +157,7 @@ class VideoGenerationHandler(StateHandlerBase):
                 seed=seed,
                 camera_motion=req.cameraMotion,
                 negative_prompt=req.negativePrompt,
+                requested_enhance_prompt=req.enhancePrompt,
             )
 
             self._generation.complete_generation(output_path)
@@ -171,6 +177,7 @@ class VideoGenerationHandler(StateHandlerBase):
     def generate_video(
         self,
         prompt: str,
+        model: LTXVideoGenPipeline,
         image: Image.Image | None,
         height: int,
         width: int,
@@ -179,10 +186,11 @@ class VideoGenerationHandler(StateHandlerBase):
         seed: int,
         camera_motion: VideoCameraMotion,
         negative_prompt: str,
+        requested_enhance_prompt: bool | None,
     ) -> str:
         t_total_start = time.perf_counter()
         gen_mode = "i2v" if image is not None else "t2v"
-        logger.info("[%s] Generation started (model=fast, %dx%d, %d frames, %d fps)", gen_mode, width, height, num_frames, int(fps))
+        logger.info("[%s] Generation started (model=%s, %dx%d, %d frames, %d fps)", gen_mode, model, width, height, num_frames, int(fps))
 
         if self._generation.is_generation_cancelled():
             raise RuntimeError("Generation was cancelled")
@@ -191,7 +199,7 @@ class VideoGenerationHandler(StateHandlerBase):
 
         self._generation.update_progress("loading_model", 5, 0, total_steps)
         t_load_start = time.perf_counter()
-        pipeline_state = self._pipelines.load_gpu_pipeline("fast")
+        pipeline_state = self._pipelines.load_gpu_pipeline(model)
         t_load_end = time.perf_counter()
         logger.info("[%s] Pipeline load: %.2fs", gen_mode, t_load_end - t_load_start)
 
@@ -211,10 +219,12 @@ class VideoGenerationHandler(StateHandlerBase):
         try:
             settings = self.state.app_settings
             use_api_encoding = not self._text.should_use_local_encoding()
-            if image is not None:
-                enhance = use_api_encoding and settings.prompt_enhancer_enabled_i2v
+            if requested_enhance_prompt is not None:
+                enhance = requested_enhance_prompt
+            elif image is not None:
+                enhance = settings.prompt_enhancer_enabled_i2v
             else:
-                enhance = use_api_encoding and settings.prompt_enhancer_enabled_t2v
+                enhance = settings.prompt_enhancer_enabled_t2v
 
             encoding_method = "api" if use_api_encoding else "local"
             t_text_start = time.perf_counter()
@@ -237,6 +247,7 @@ class VideoGenerationHandler(StateHandlerBase):
                 frame_rate=fps,
                 images=images,
                 output_path=str(output_path),
+                enhance_prompt=enhance,
             )
             t_inference_end = time.perf_counter()
             logger.info("[%s] Inference: %.2fs", gen_mode, t_inference_end - t_inference_start)
@@ -289,7 +300,7 @@ class VideoGenerationHandler(StateHandlerBase):
         generation_id = self._make_generation_id()
 
         try:
-            a2v_state = self._pipelines.load_a2v_pipeline()
+            a2v_state = self._pipelines.load_a2v_pipeline(req.model)
             self._generation.start_generation(generation_id)
 
             enhanced_prompt = req.prompt + self.config.camera_motion_prompts.get(req.cameraMotion, "")
@@ -306,11 +317,12 @@ class VideoGenerationHandler(StateHandlerBase):
             total_steps = 11  # distilled: 8 steps (stage 1) + 3 steps (stage 2)
 
             a2v_settings = self.state.app_settings
-            a2v_use_api = not self._text.should_use_local_encoding()
-            if image is not None:
-                a2v_enhance = a2v_use_api and a2v_settings.prompt_enhancer_enabled_i2v
+            if req.enhancePrompt is not None:
+                a2v_enhance = req.enhancePrompt
+            elif image is not None:
+                a2v_enhance = a2v_settings.prompt_enhancer_enabled_i2v
             else:
-                a2v_enhance = a2v_use_api and a2v_settings.prompt_enhancer_enabled_t2v
+                a2v_enhance = a2v_settings.prompt_enhancer_enabled_t2v
 
             self._generation.update_progress("loading_model", 5, 0, total_steps)
             self._generation.update_progress("encoding_text", 10, 0, total_steps)
@@ -331,6 +343,7 @@ class VideoGenerationHandler(StateHandlerBase):
                 audio_start_time=0.0,
                 audio_max_duration=None,
                 output_path=str(output_path),
+                enhance_prompt=a2v_enhance,
             )
 
             if self._generation.is_generation_cancelled():
@@ -398,7 +411,7 @@ class VideoGenerationHandler(StateHandlerBase):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return self.config.outputs_dir / f"ltx2_video_{timestamp}_{self._make_generation_id()}.mp4"
 
-    def _generate_forced_api(self, req: GenerateVideoRequest) -> GenerateVideoResponse:
+    def _generate_remote_api(self, req: GenerateVideoRequest, *, provider: VideoGenerationProvider) -> GenerateVideoResponse:
         if self._generation.is_generation_running():
             raise HTTPError(409, "Generation already in progress")
 
@@ -413,28 +426,22 @@ class VideoGenerationHandler(StateHandlerBase):
         try:
             self._generation.update_progress("validating_request", 5, None, None)
 
-            api_key = self.state.app_settings.ltx_api_key.strip()
-            logger.info("Forced API generation route selected (key_present=%s)", bool(api_key))
-            if not api_key:
-                raise HTTPError(400, "PRO_API_KEY_REQUIRED")
+            api_key, base_url = self._resolve_remote_api_credentials(provider)
+            logger.info("Remote API generation route selected (provider=%s base_url=%s)", provider, base_url or self.config.ltx_api_base_url)
 
             requested_model = req.model
-            api_model_id = FORCED_API_MODEL_MAP.get(requested_model)
-            if api_model_id is None:
-                raise HTTPError(500, "INVALID_FORCED_API_MODEL_CONFIG")
-
-            resolution_label = req.resolution
-            resolution_by_aspect = FORCED_API_RESOLUTION_MAP.get(resolution_label)
-            if resolution_by_aspect is None:
-                raise HTTPError(500, "INVALID_FORCED_API_RESOLUTION_CONFIG")
-
-            aspect_ratio = req.aspectRatio
-            if aspect_ratio not in FORCED_API_ALLOWED_ASPECT_RATIOS:
-                raise HTTPError(400, "INVALID_FORCED_API_ASPECT_RATIO")
-
-            api_resolution = resolution_by_aspect[aspect_ratio]
+            api_model_id = self._map_remote_api_model(provider, requested_model)
+            api_resolution = self._map_remote_api_resolution(provider, req.resolution, req.aspectRatio)
 
             prompt = req.prompt
+            runpod_enhance_prompt = self._resolve_runpod_enhance_prompt(req) if provider == "runpod" else None
+            if provider == "runpod":
+                self._generation.update_progress("downloading_model", 10, None, None)
+                self._ltx_api_client.ensure_remote_model_downloaded(
+                    api_key=api_key,
+                    base_url=base_url or "",
+                    cp_ids=self._runpod_required_cp_ids(requested_model),
+                )
 
             if self._generation.is_generation_cancelled():
                 raise RuntimeError("Generation was cancelled")
@@ -449,6 +456,7 @@ class VideoGenerationHandler(StateHandlerBase):
                 audio_uri = self._ltx_api_client.upload_file(
                     api_key=api_key,
                     file_path=str(validated_audio_path),
+                    base_url=base_url,
                 )
                 image_uri: str | None = None
                 if validated_image_path is not None:
@@ -456,6 +464,7 @@ class VideoGenerationHandler(StateHandlerBase):
                     image_uri = self._ltx_api_client.upload_file(
                         api_key=api_key,
                         file_path=str(validated_image_path),
+                        base_url=base_url,
                     )
                 self._generation.update_progress("inference", 55, None, None)
                 video_bytes = self._ltx_api_client.generate_audio_to_video(
@@ -465,6 +474,11 @@ class VideoGenerationHandler(StateHandlerBase):
                     image_uri=image_uri,
                     model=api_model_id,
                     resolution=api_resolution,
+                    duration=float(req.duration) if provider == "runpod" else None,
+                    fps=float(req.fps) if provider == "runpod" else None,
+                    aspect_ratio=req.aspectRatio if provider == "runpod" else None,
+                    enhance_prompt=runpod_enhance_prompt,
+                    base_url=base_url,
                 )
                 self._generation.update_progress("downloading_output", 85, None, None)
             elif has_input_image:
@@ -478,6 +492,7 @@ class VideoGenerationHandler(StateHandlerBase):
                 image_uri = self._ltx_api_client.upload_file(
                     api_key=api_key,
                     file_path=str(validated_image_path),
+                    base_url=base_url,
                 )
                 self._generation.update_progress("inference", 55, None, None)
                 video_bytes = self._ltx_api_client.generate_image_to_video(
@@ -490,6 +505,9 @@ class VideoGenerationHandler(StateHandlerBase):
                     fps=float(fps),
                     generate_audio=generate_audio,
                     camera_motion=req.cameraMotion,
+                    aspect_ratio=req.aspectRatio if provider == "runpod" else None,
+                    enhance_prompt=runpod_enhance_prompt,
+                    base_url=base_url,
                 )
                 self._generation.update_progress("downloading_output", 85, None, None)
             else:
@@ -507,6 +525,9 @@ class VideoGenerationHandler(StateHandlerBase):
                     fps=float(fps),
                     generate_audio=generate_audio,
                     camera_motion=req.cameraMotion,
+                    aspect_ratio=req.aspectRatio if provider == "runpod" else None,
+                    enhance_prompt=runpod_enhance_prompt,
+                    base_url=base_url,
                 )
                 self._generation.update_progress("downloading_output", 85, None, None)
 
@@ -539,6 +560,61 @@ class VideoGenerationHandler(StateHandlerBase):
         output_path = self._make_output_path()
         output_path.write_bytes(video_bytes)
         return output_path
+
+    def _resolve_remote_api_credentials(self, provider: VideoGenerationProvider) -> tuple[str, str | None]:
+        settings = self.state.app_settings
+        if provider == "ltx_api":
+            api_key = settings.ltx_api_key.strip()
+            if not api_key:
+                raise HTTPError(400, "PRO_API_KEY_REQUIRED")
+            return api_key, None
+
+        if provider == "runpod":
+            api_key = settings.runpod_api_token.strip()
+            base_url = settings.runpod_api_url.strip().rstrip("/")
+            if not base_url:
+                raise HTTPError(400, "RUNPOD_API_URL_REQUIRED")
+            if not api_key:
+                raise HTTPError(400, "RUNPOD_API_TOKEN_REQUIRED")
+            return api_key, base_url
+
+        raise HTTPError(500, "INVALID_REMOTE_PROVIDER_CONFIG")
+
+    @staticmethod
+    def _map_remote_api_model(provider: VideoGenerationProvider, requested_model: str) -> str:
+        if provider == "runpod":
+            return requested_model
+
+        api_model_id = FORCED_API_MODEL_MAP.get(requested_model)
+        if api_model_id is None:
+            raise HTTPError(500, "INVALID_FORCED_API_MODEL_CONFIG")
+        return api_model_id
+
+    @staticmethod
+    def _map_remote_api_resolution(provider: VideoGenerationProvider, resolution_label: str, aspect_ratio: str) -> str:
+        if provider == "runpod":
+            return resolution_label
+
+        resolution_by_aspect = FORCED_API_RESOLUTION_MAP.get(resolution_label)
+        if resolution_by_aspect is None:
+            raise HTTPError(500, "INVALID_FORCED_API_RESOLUTION_CONFIG")
+        if aspect_ratio not in FORCED_API_ALLOWED_ASPECT_RATIOS:
+            raise HTTPError(400, "INVALID_FORCED_API_ASPECT_RATIO")
+        return resolution_by_aspect[aspect_ratio]
+
+    def _resolve_runpod_enhance_prompt(self, req: GenerateVideoRequest) -> bool:
+        if req.enhancePrompt is not None:
+            return req.enhancePrompt
+        settings = self.state.app_settings
+        return settings.prompt_enhancer_enabled_i2v if req.imagePath else settings.prompt_enhancer_enabled_t2v
+
+    @staticmethod
+    def _runpod_required_cp_ids(requested_model: LTXVideoGenPipeline) -> set[ModelCheckpointID]:
+        model_id = get_ltx_model_id_for_pipeline(requested_model)
+        if model_id is None:
+            raise HTTPError(422, "RUNPOD_PRIVATE_API_MODEL_NOT_AVAILABLE")
+        spec = get_ltx_model_spec(model_id)
+        return {spec.model_cp, spec.upscale_cp, spec.text_encoder_cp}
 
     @staticmethod
     def _map_ltx_api_generation_error(exc: LTXAPIClientError) -> HTTPError:

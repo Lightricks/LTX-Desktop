@@ -8,6 +8,7 @@ def _set_video_pipeline(state):
     state.state.gpu_slot = GpuSlot(
         active_pipeline=VideoPipelineState(
             pipeline=FakeFastVideoPipeline(),
+            model_id="ltx-2.3-22b-distilled-1.1",
             is_compiled=False,
         ),
     )
