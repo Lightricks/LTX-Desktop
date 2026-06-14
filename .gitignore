@@ -54,6 +54,9 @@ yarn-error.log*
 .env
 .env.local
 .env.*.local
+secret.txt
+secrets.txt
+runpod-private-token.txt
 
 # Testing
 coverage/

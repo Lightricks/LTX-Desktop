@@ -92,6 +92,28 @@
             ],
             "title": "Promptenhancerenabledt2V"
           },
+          "runpodApiToken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runpodapitoken"
+          },
+          "runpodApiUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runpodapiurl"
+          },
           "seedLocked": {
             "anyOf": [
               {
@@ -135,6 +157,22 @@
               }
             ],
             "title": "Userprefersltxapivideogenerations"
+          },
+          "videoGenerationProvider": {
+            "anyOf": [
+              {
+                "enum": [
+                  "local",
+                  "ltx_api",
+                  "runpod"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Videogenerationprovider"
           }
         },
         "title": "AppSettingsPatch",
@@ -179,7 +217,9 @@
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -256,7 +296,9 @@
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -274,7 +316,9 @@
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -293,7 +337,9 @@
               {
                 "enum": [
                   "ltx-2.3-22b-distilled",
+                  "ltx-2.3-22b-distilled-1.1",
                   "ltx-2.3-spatial-upscaler-x2-1.0",
+                  "ltx-2.3-spatial-upscaler-x2-1.1",
                   "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                   "dpt-hybrid-midas",
                   "yolox-l-torchscript",
@@ -543,6 +589,17 @@
             "title": "Duration",
             "type": "integer"
           },
+          "enhancePrompt": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enhanceprompt"
+          },
           "fps": {
             "default": 24,
             "enum": [
@@ -569,6 +626,7 @@
             "default": "fast",
             "enum": [
               "fast",
+              "fast_legacy",
               "pro"
             ],
             "title": "Model",
@@ -1044,7 +1102,9 @@
               {
                 "enum": [
                   "ltx-2.3-22b-distilled",
+                  "ltx-2.3-22b-distilled-1.1",
                   "ltx-2.3-spatial-upscaler-x2-1.0",
+                  "ltx-2.3-spatial-upscaler-x2-1.1",
                   "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                   "dpt-hybrid-midas",
                   "yolox-l-torchscript",
@@ -1072,6 +1132,7 @@
           "pipeline": {
             "enum": [
               "fast",
+              "fast_legacy",
               "pro"
             ],
             "title": "Pipeline",
@@ -1177,7 +1238,9 @@
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -1209,7 +1272,9 @@
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -1268,7 +1333,9 @@
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -1285,7 +1352,9 @@
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -1299,7 +1368,10 @@
             "type": "array"
           },
           "ltx_model_id": {
-            "const": "ltx-2.3-22b-distilled",
+            "enum": [
+              "ltx-2.3-22b-distilled",
+              "ltx-2.3-22b-distilled-1.1"
+            ],
             "title": "Ltx Model Id",
             "type": "string"
           },
@@ -1335,7 +1407,9 @@
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -1359,7 +1433,9 @@
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -1436,6 +1512,240 @@
           "downloaded"
         ],
         "title": "ModelStatusItem",
+        "type": "object"
+      },
+      "PrivateAudioToVideoRequest": {
+        "properties": {
+          "aspect_ratio": {
+            "default": "16:9",
+            "title": "Aspect Ratio",
+            "type": "string"
+          },
+          "audio_uri": {
+            "title": "Audio Uri",
+            "type": "string"
+          },
+          "duration": {
+            "default": 5,
+            "title": "Duration",
+            "type": "number"
+          },
+          "enhance_prompt": {
+            "default": false,
+            "title": "Enhance Prompt",
+            "type": "boolean"
+          },
+          "fps": {
+            "default": 24,
+            "title": "Fps",
+            "type": "number"
+          },
+          "image_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Uri"
+          },
+          "model": {
+            "default": "fast",
+            "title": "Model",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "resolution": {
+            "default": "1080p",
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt",
+          "audio_uri"
+        ],
+        "title": "PrivateAudioToVideoRequest",
+        "type": "object"
+      },
+      "PrivateImageToVideoRequest": {
+        "properties": {
+          "aspect_ratio": {
+            "default": "16:9",
+            "title": "Aspect Ratio",
+            "type": "string"
+          },
+          "camera_motion": {
+            "default": "none",
+            "title": "Camera Motion",
+            "type": "string"
+          },
+          "duration": {
+            "default": 5,
+            "title": "Duration",
+            "type": "number"
+          },
+          "enhance_prompt": {
+            "default": false,
+            "title": "Enhance Prompt",
+            "type": "boolean"
+          },
+          "fps": {
+            "default": 24,
+            "title": "Fps",
+            "type": "number"
+          },
+          "generate_audio": {
+            "default": false,
+            "title": "Generate Audio",
+            "type": "boolean"
+          },
+          "image_uri": {
+            "title": "Image Uri",
+            "type": "string"
+          },
+          "model": {
+            "default": "fast",
+            "title": "Model",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "resolution": {
+            "default": "1080p",
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt",
+          "image_uri"
+        ],
+        "title": "PrivateImageToVideoRequest",
+        "type": "object"
+      },
+      "PrivateRetakeRequest": {
+        "properties": {
+          "duration": {
+            "title": "Duration",
+            "type": "number"
+          },
+          "mode": {
+            "default": "replace_audio_and_video",
+            "enum": [
+              "replace_audio_and_video",
+              "replace_video",
+              "replace_audio"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "prompt": {
+            "default": "",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "number"
+          },
+          "video_uri": {
+            "title": "Video Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "video_uri",
+          "start_time",
+          "duration"
+        ],
+        "title": "PrivateRetakeRequest",
+        "type": "object"
+      },
+      "PrivateTextToVideoRequest": {
+        "properties": {
+          "aspect_ratio": {
+            "default": "16:9",
+            "title": "Aspect Ratio",
+            "type": "string"
+          },
+          "camera_motion": {
+            "default": "none",
+            "title": "Camera Motion",
+            "type": "string"
+          },
+          "duration": {
+            "default": 5,
+            "title": "Duration",
+            "type": "number"
+          },
+          "enhance_prompt": {
+            "default": false,
+            "title": "Enhance Prompt",
+            "type": "boolean"
+          },
+          "fps": {
+            "default": 24,
+            "title": "Fps",
+            "type": "number"
+          },
+          "generate_audio": {
+            "default": false,
+            "title": "Generate Audio",
+            "type": "boolean"
+          },
+          "model": {
+            "default": "fast",
+            "title": "Model",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "resolution": {
+            "default": "1080p",
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "title": "PrivateTextToVideoRequest",
+        "type": "object"
+      },
+      "PrivateUploadInitResponse": {
+        "properties": {
+          "required_headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Required Headers",
+            "type": "object"
+          },
+          "storage_uri": {
+            "title": "Storage Uri",
+            "type": "string"
+          },
+          "upload_url": {
+            "title": "Upload Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_url",
+          "storage_uri"
+        ],
+        "title": "PrivateUploadInitResponse",
         "type": "object"
       },
       "RetakeCancelledResponse": {
@@ -1559,6 +1869,11 @@
             "title": "Hasltxapikey",
             "type": "boolean"
           },
+          "hasRunpodApiToken": {
+            "default": false,
+            "title": "Hasrunpodapitoken",
+            "type": "boolean"
+          },
           "lockedSeed": {
             "default": 42,
             "title": "Lockedseed",
@@ -1584,6 +1899,11 @@
             "title": "Promptenhancerenabledt2V",
             "type": "boolean"
           },
+          "runpodApiUrl": {
+            "default": "",
+            "title": "Runpodapiurl",
+            "type": "string"
+          },
           "seedLocked": {
             "default": false,
             "title": "Seedlocked",
@@ -1603,6 +1923,16 @@
             "default": false,
             "title": "Userprefersltxapivideogenerations",
             "type": "boolean"
+          },
+          "videoGenerationProvider": {
+            "default": "local",
+            "enum": [
+              "local",
+              "ltx_api",
+              "runpod"
+            ],
+            "title": "Videogenerationprovider",
+            "type": "string"
           }
         },
         "title": "SettingsResponse",
@@ -1711,7 +2041,9 @@
               {
                 "enum": [
                   "ltx-2.3-22b-distilled",
+                  "ltx-2.3-22b-distilled-1.1",
                   "ltx-2.3-spatial-upscaler-x2-1.0",
+                  "ltx-2.3-spatial-upscaler-x2-1.1",
                   "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                   "dpt-hybrid-midas",
                   "yolox-l-torchscript",
@@ -3081,6 +3413,299 @@
         "summary": "Route Health",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/v1/audio-to-video": {
+      "post": {
+        "operationId": "route_private_audio_to_video_v1_audio_to_video_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrivateAudioToVideoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Private Audio To Video",
+        "tags": [
+          "private-ltx-api"
+        ]
+      }
+    },
+    "/v1/image-to-video": {
+      "post": {
+        "operationId": "route_private_image_to_video_v1_image_to_video_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrivateImageToVideoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Private Image To Video",
+        "tags": [
+          "private-ltx-api"
+        ]
+      }
+    },
+    "/v1/retake": {
+      "post": {
+        "operationId": "route_private_retake_v1_retake_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrivateRetakeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Private Retake",
+        "tags": [
+          "private-ltx-api"
+        ]
+      }
+    },
+    "/v1/text-to-video": {
+      "post": {
+        "operationId": "route_private_text_to_video_v1_text_to_video_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrivateTextToVideoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Private Text To Video",
+        "tags": [
+          "private-ltx-api"
+        ]
+      }
+    },
+    "/v1/upload": {
+      "post": {
+        "operationId": "route_private_upload_init_v1_upload_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivateUploadInitResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Private Upload Init",
+        "tags": [
+          "private-ltx-api"
+        ]
+      }
+    },
+    "/v1/upload/{upload_id}": {
+      "put": {
+        "operationId": "route_private_upload_put_v1_upload__upload_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Route Private Upload Put V1 Upload  Upload Id  Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Private Upload Put",
+        "tags": [
+          "private-ltx-api"
         ]
       }
     }

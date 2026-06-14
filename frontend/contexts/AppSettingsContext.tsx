@@ -6,6 +6,9 @@ export interface AppSettings {
   useTorchCompile: boolean
   hasLtxApiKey: boolean
   userPrefersLtxApiVideoGenerations: boolean
+  videoGenerationProvider: 'local' | 'ltx_api' | 'runpod'
+  runpodApiUrl: string
+  hasRunpodApiToken: boolean
   hasFalApiKey: boolean
   hasGeminiApiKey: boolean
   useLocalTextEncoder: boolean
@@ -21,6 +24,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   useTorchCompile: false,
   hasLtxApiKey: false,
   userPrefersLtxApiVideoGenerations: false,
+  videoGenerationProvider: 'local',
+  runpodApiUrl: '',
+  hasRunpodApiToken: false,
   hasFalApiKey: false,
   hasGeminiApiKey: false,
   useLocalTextEncoder: false,
@@ -41,10 +47,12 @@ interface AppSettingsContextValue {
   updateSettings: (patch: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)) => void
   refreshSettings: () => Promise<void>
   saveLtxApiKey: (value: string) => Promise<void>
+  saveRunpodApiToken: (value: string) => Promise<void>
   saveFalApiKey: (value: string) => Promise<void>
   saveGeminiApiKey: (value: string) => Promise<void>
   forceApiGenerations: boolean
   shouldVideoGenerateWithLtxApi: boolean
+  shouldVideoGenerateWithRemoteApi: boolean
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
@@ -66,6 +74,9 @@ function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
     useTorchCompile: data.useTorchCompile ?? DEFAULT_APP_SETTINGS.useTorchCompile,
     hasLtxApiKey: data.hasLtxApiKey ?? DEFAULT_APP_SETTINGS.hasLtxApiKey,
     userPrefersLtxApiVideoGenerations: data.userPrefersLtxApiVideoGenerations ?? DEFAULT_APP_SETTINGS.userPrefersLtxApiVideoGenerations,
+    videoGenerationProvider: data.videoGenerationProvider ?? DEFAULT_APP_SETTINGS.videoGenerationProvider,
+    runpodApiUrl: data.runpodApiUrl ?? DEFAULT_APP_SETTINGS.runpodApiUrl,
+    hasRunpodApiToken: data.hasRunpodApiToken ?? DEFAULT_APP_SETTINGS.hasRunpodApiToken,
     hasFalApiKey: data.hasFalApiKey ?? DEFAULT_APP_SETTINGS.hasFalApiKey,
     hasGeminiApiKey: data.hasGeminiApiKey ?? DEFAULT_APP_SETTINGS.hasGeminiApiKey,
     useLocalTextEncoder: data.useLocalTextEncoder ?? DEFAULT_APP_SETTINGS.useLocalTextEncoder,
@@ -194,7 +205,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isLoaded || backendProcessStatus !== 'alive') return
     const syncTimer = setTimeout(async () => {
-      const { hasLtxApiKey: _a, hasFalApiKey: _b, hasGeminiApiKey: _c, modelsDir: _d, ...syncPayload } = settings
+      const { hasLtxApiKey: _a, hasRunpodApiToken: _b, hasFalApiKey: _c, hasGeminiApiKey: _d, modelsDir: _e, ...syncPayload } = settings
       const result = await ApiClient.updateSettings(syncPayload)
       if (!result.ok) {
         // Best-effort settings sync.
@@ -219,6 +230,14 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     await refreshSettings()
   }, [refreshSettings])
 
+  const saveRunpodApiToken = useCallback(async (value: string) => {
+    const result = await ApiClient.updateSettings({ runpodApiToken: value })
+    if (!result.ok) {
+      throw new Error(result.error.message)
+    }
+    await refreshSettings()
+  }, [refreshSettings])
+
   const saveGeminiApiKey = useCallback(async (value: string) => {
     const result = await ApiClient.updateSettings({ geminiApiKey: value })
     if (!result.ok) {
@@ -236,7 +255,14 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   }, [refreshSettings])
 
   const shouldVideoGenerateWithLtxApi =
-    forceApiGenerations || (settings.userPrefersLtxApiVideoGenerations && settings.hasLtxApiKey)
+    settings.videoGenerationProvider === 'ltx_api'
+    || (settings.videoGenerationProvider === 'local' && forceApiGenerations)
+    || (
+      settings.videoGenerationProvider === 'local'
+      && settings.userPrefersLtxApiVideoGenerations
+      && settings.hasLtxApiKey
+    )
+  const shouldVideoGenerateWithRemoteApi = shouldVideoGenerateWithLtxApi || settings.videoGenerationProvider === 'runpod'
 
   const contextValue = useMemo<AppSettingsContextValue>(
     () => ({
@@ -246,12 +272,14 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       updateSettings,
       refreshSettings,
       saveLtxApiKey,
+      saveRunpodApiToken,
       saveFalApiKey,
       saveGeminiApiKey,
       forceApiGenerations,
       shouldVideoGenerateWithLtxApi,
+      shouldVideoGenerateWithRemoteApi,
     }),
-    [forceApiGenerations, isLoaded, refreshSettings, runtimePolicyLoaded, saveFalApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, updateSettings],
+    [forceApiGenerations, isLoaded, refreshSettings, runtimePolicyLoaded, saveFalApiKey, saveGeminiApiKey, saveLtxApiKey, saveRunpodApiToken, settings, shouldVideoGenerateWithLtxApi, shouldVideoGenerateWithRemoteApi, updateSettings],
   )
 
   return <AppSettingsContext.Provider value={contextValue}>{children}</AppSettingsContext.Provider>

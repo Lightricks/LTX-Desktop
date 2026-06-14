@@ -17,12 +17,14 @@ interface SettingsModalProps {
 type TabId = 'general' | 'apiKeys' | 'promptEnhancer' | 'about'
 
 export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
-  const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, forceApiGenerations } = useAppSettings()
+  const { settings, updateSettings, saveLtxApiKey, saveRunpodApiToken, saveFalApiKey, saveGeminiApiKey, forceApiGenerations } = useAppSettings()
   const onSettingsChange = (next: AppSettings) => updateSettings(next)
   const [activeTab, setActiveTab] = useState<TabId>('general')
   const [ltxApiKeyInput, setLtxApiKeyInput] = useState('')
   const ltxApiKeyInputRef = useRef<HTMLInputElement>(null)
   const [focusLtxApiKeyInputOnTabChange, setFocusLtxApiKeyInputOnTabChange] = useState(false)
+  const [runpodApiTokenInput, setRunpodApiTokenInput] = useState('')
+  const runpodApiTokenInputRef = useRef<HTMLInputElement>(null)
   const [falApiKeyInput, setFalApiKeyInput] = useState('')
   const falApiKeyInputRef = useRef<HTMLInputElement>(null)
   const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('')
@@ -252,6 +254,14 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     { id: 'promptEnhancer' as TabId, label: 'Prompt Enhancer', icon: Sparkles },
     { id: 'about' as TabId, label: 'About', icon: Info },
   ]
+  const promptEnhancerBackendLabel = settings.videoGenerationProvider === 'runpod'
+    ? 'your private RunPod server'
+    : settings.useLocalTextEncoder
+      ? 'the local text encoder'
+      : 'the LTX API'
+  const promptEnhancerAvailable = settings.videoGenerationProvider === 'runpod'
+    ? Boolean(settings.runpodApiUrl && settings.hasRunpodApiToken)
+    : settings.useLocalTextEncoder || settings.hasLtxApiKey
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -332,54 +342,73 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                 </div>
               </div>
 
-              {!forceApiGenerations && (
-                <div className="space-y-4">
+              <div className="space-y-4">
                   <div className="flex items-center gap-2">
                     <Film className="h-4 w-4 text-blue-400" />
                     <h3 className="text-sm font-semibold text-white">Videos Generation</h3>
                   </div>
 
-                  <div
-                    className={`bg-zinc-800/50 rounded-lg p-4 border-2 transition-colors cursor-pointer ${
-                      settings.userPrefersLtxApiVideoGenerations ? 'border-blue-500' : 'border-transparent hover:border-zinc-600'
-                    }`}
-                    onClick={() => {
-                      if (!settings.hasLtxApiKey) {
-                        openApiKeysAndFocusLtxInput()
-                        return
-                      }
-                      onSettingsChange({
-                        ...settings,
-                        userPrefersLtxApiVideoGenerations: !settings.userPrefersLtxApiVideoGenerations,
-                      })
-                    }}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <Zap className="h-4 w-4 text-blue-400" />
-                          <span className="text-sm font-medium text-white">Generate With API</span>
+                  <div className="space-y-2">
+                    {[
+                      {
+                        id: 'local' as const,
+                        title: 'Local GPU',
+                        description: 'Use this computer for video generation.',
+                        warning: forceApiGenerations ? 'Local video generation is not available on this computer.' : null,
+                      },
+                      {
+                        id: 'runpod' as const,
+                        title: 'Private RunPod API',
+                        description: 'Send video jobs to your self-hosted RunPod FastAPI server.',
+                        warning: (!settings.runpodApiUrl || !settings.hasRunpodApiToken)
+                          ? 'RunPod URL and token required — configure them in the API Keys tab.'
+                          : null,
+                      },
+                      {
+                        id: 'ltx_api' as const,
+                        title: 'Official LTX API',
+                        description: 'Use LTX cloud API for video generation.',
+                        warning: !settings.hasLtxApiKey ? 'LTX API key required — configure it in the API Keys tab.' : null,
+                      },
+                    ].map((provider) => (
+                      <div
+                        key={provider.id}
+                        className={`bg-zinc-800/50 rounded-lg p-4 border-2 transition-colors cursor-pointer ${
+                          settings.videoGenerationProvider === provider.id ? 'border-blue-500' : 'border-transparent hover:border-zinc-600'
+                        }`}
+                        onClick={() => {
+                          onSettingsChange({
+                            ...settings,
+                            videoGenerationProvider: provider.id,
+                            userPrefersLtxApiVideoGenerations: provider.id === 'ltx_api',
+                          })
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <Zap className="h-4 w-4 text-blue-400" />
+                              <span className="text-sm font-medium text-white">{provider.title}</span>
+                            </div>
+                            <p className="text-xs text-zinc-400 mt-1">{provider.description}</p>
+                          </div>
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                            settings.videoGenerationProvider === provider.id ? 'border-blue-500 bg-blue-500' : 'border-zinc-600'
+                          }`}>
+                            {settings.videoGenerationProvider === provider.id && <Check className="h-3 w-3 text-white" />}
+                          </div>
                         </div>
-                        <p className="text-xs text-zinc-400 mt-1">
-                          Use LTX API for video generation when an LTX API key is configured.
-                        </p>
-                      </div>
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                        settings.userPrefersLtxApiVideoGenerations ? 'border-blue-500 bg-blue-500' : 'border-zinc-600'
-                      }`}>
-                        {settings.userPrefersLtxApiVideoGenerations && <Check className="h-3 w-3 text-white" />}
-                      </div>
-                    </div>
 
-                    {!settings.hasLtxApiKey && (
-                      <div className="mt-2 text-xs text-amber-400 flex items-center gap-1.5">
-                        <AlertCircle className="h-3 w-3" />
-                        API key required — configure it in the API Keys tab.
+                        {provider.warning && (
+                          <div className="mt-2 text-xs text-amber-400 flex items-center gap-1.5">
+                            <AlertCircle className="h-3 w-3" />
+                            {provider.warning}
+                          </div>
+                        )}
                       </div>
-                    )}
+                    ))}
                   </div>
-                </div>
-              )}
+              </div>
 
               {/* Text Encoding Section */}
               {!forceApiGenerations && (
@@ -765,6 +794,70 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                 </div>
               </div>
 
+              {/* Private RunPod API Section */}
+              <div className="space-y-4 pt-4 border-t border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-emerald-400" />
+                  <h3 className="text-sm font-semibold text-white">Private RunPod API</h3>
+                </div>
+
+                <p className="text-xs text-zinc-500 leading-relaxed">
+                  Connect video generation and retake jobs to your self-hosted RunPod FastAPI server.
+                </p>
+
+                <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
+                  <input
+                    type="url"
+                    value={settings.runpodApiUrl}
+                    onChange={(e) => onSettingsChange({ ...settings, runpodApiUrl: e.target.value.trim() })}
+                    placeholder="https://your-runpod-url.proxy.runpod.net"
+                    onKeyDown={(e) => e.stopPropagation()}
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <div className="flex gap-2">
+                    <LtxApiKeyInput
+                      ref={runpodApiTokenInputRef}
+                      value={runpodApiTokenInput}
+                      onChange={(e) => setRunpodApiTokenInput(e.target.value)}
+                      placeholder={settings.hasRunpodApiToken ? 'Enter new token to replace...' : 'Enter your private server token...'}
+                      stopPropagation
+                      className="flex-1"
+                    />
+                    <button
+                      onClick={() => {
+                        const trimmed = runpodApiTokenInput.trim()
+                        if (!trimmed) return
+                        void saveRunpodApiToken(trimmed)
+                        setRunpodApiTokenInput('')
+                      }}
+                      disabled={!runpodApiTokenInput.trim()}
+                      className="px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                    >
+                      Save Token
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
+                      settings.runpodApiUrl && settings.hasRunpodApiToken
+                        ? 'bg-green-500/10 text-green-400'
+                        : 'bg-amber-500/10 text-amber-400'
+                    }`}>
+                      {settings.runpodApiUrl && settings.hasRunpodApiToken ? (
+                        <>
+                          <Check className="h-3 w-3" />
+                          Server configured
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="h-3 w-3" />
+                          URL and token required
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* FAL API Key Section */}
               <div className="space-y-4 pt-4 border-t border-zinc-800">
                 <div className="flex items-center gap-2">
@@ -957,20 +1050,23 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                 </div>
 
                 <p className="text-xs text-zinc-500 leading-relaxed">
-                  Automatically enhances your prompts via the LTX API with rich visual details, sound descriptions,
+                  Automatically enhances your prompts via {promptEnhancerBackendLabel} with rich visual details, sound descriptions,
                   and motion cues to help generate higher quality videos. Control independently for each generation type.
                 </p>
 
-                {!settings.hasLtxApiKey ? (
+                {!promptEnhancerAvailable ? (
                   <div className="space-y-4 mt-2">
                     <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-4 space-y-3">
                       <div className="flex items-start gap-2.5">
                         <AlertCircle className="h-4 w-4 text-amber-400 mt-0.5 flex-shrink-0" />
                         <div className="space-y-2">
-                          <p className="text-sm text-amber-300 font-medium">LTX API key required</p>
+                          <p className="text-sm text-amber-300 font-medium">
+                            {settings.videoGenerationProvider === 'runpod' ? 'RunPod server required' : 'Text encoder required'}
+                          </p>
                           <p className="text-xs text-zinc-400 leading-relaxed">
-                            Prompt enhancement runs server-side on the LTX API. To use this feature, you need to configure
-                            an API key in the API Keys tab.
+                            {settings.videoGenerationProvider === 'runpod'
+                              ? 'Prompt enhancement will run on your private server. Configure the RunPod URL and token in the API Keys tab.'
+                              : 'Prompt enhancement needs either the local text encoder or an LTX API key configured in the API Keys tab.'}
                           </p>
                         </div>
                       </div>
@@ -978,7 +1074,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                         onClick={() => setActiveTab('apiKeys')}
                         className="w-full mt-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
                       >
-                        Set API Key
+                        {settings.videoGenerationProvider === 'runpod' ? 'Configure RunPod' : 'Open API Keys'}
                       </button>
                     </div>
                   </div>

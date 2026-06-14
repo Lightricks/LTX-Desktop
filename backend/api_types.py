@@ -10,7 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 NonEmptyPrompt = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 ModelCheckpointID = Literal[
     "ltx-2.3-22b-distilled",
+    "ltx-2.3-22b-distilled-1.1",
     "ltx-2.3-spatial-upscaler-x2-1.0",
+    "ltx-2.3-spatial-upscaler-x2-1.1",
     "ltx-2.3-22b-ic-lora-union-control-ref0.5",
     "dpt-hybrid-midas",
     "yolox-l-torchscript",
@@ -18,7 +20,7 @@ ModelCheckpointID = Literal[
     "gemma-3-12b-it-qat-q4_0-unquantized",
     "z-image-turbo",
 ]
-LTXLocalModelId = Literal["ltx-2.3-22b-distilled"]
+LTXLocalModelId = Literal["ltx-2.3-22b-distilled", "ltx-2.3-22b-distilled-1.1"]
 
 
 class ImageConditioningInput(NamedTuple):
@@ -281,7 +283,7 @@ class LtxInsufficientFundsErrorResponse(BaseModel):
 LTXVideoGenResolution: TypeAlias = Literal["540p", "720p", "1080p", "1440p", "2160p"]
 LTXVideoGenDuration: TypeAlias = Literal[5, 6, 8, 10, 12, 14, 16, 18, 20]
 LTXVideoGenFps: TypeAlias = Literal[24, 25, 48, 50]
-LTXVideoGenPipeline: TypeAlias = Literal["fast", "pro"]
+LTXVideoGenPipeline: TypeAlias = Literal["fast", "fast_legacy", "pro"]
 
 
 class LTXVideoGenerationResolutionSpec(BaseModel):
@@ -318,6 +320,7 @@ class GenerateVideoRequest(BaseModel):
     imagePath: str | None = None
     audioPath: str | None = None
     aspectRatio: Literal["16:9", "9:16"] = "16:9"
+    enhancePrompt: bool | None = None
 
 
 class GenerateImageRequest(BaseModel):

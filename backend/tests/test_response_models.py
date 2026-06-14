@@ -12,6 +12,7 @@ class TestGenerationProgressCamelCaseKeys:
         test_state.state.gpu_slot = GpuSlot(
             active_pipeline=VideoPipelineState(
                 pipeline=pipeline,
+                model_id="ltx-2.3-22b-distilled-1.1",
                 is_compiled=False,
             ),
         )

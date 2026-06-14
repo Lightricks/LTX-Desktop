@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from services.a2v_pipeline.a2v_pipeline import A2VPipeline
 from services.depth_processor_pipeline.depth_processor_pipeline import DepthProcessorPipeline
 from services.fast_video_pipeline.fast_video_pipeline import FastVideoPipeline
@@ -22,7 +20,9 @@ from services.task_runner.task_runner import TaskRunner
 from services.text_encoder.text_encoder import TextEncoder
 from services.video_processor.video_processor import VideoInfoPayload, VideoProcessor
 
-VideoPipelineModelType = Literal["fast"]
+from api_types import LTXVideoGenPipeline
+
+VideoPipelineModelType = LTXVideoGenPipeline
 
 __all__ = [
     "A2VPipeline",

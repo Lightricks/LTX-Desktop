@@ -205,6 +205,75 @@ def test_upload_file_returns_storage_uri(tmp_path) -> None:
     assert http.calls[1].method == "put"
 
 
+def test_upload_file_rewrites_private_runpod_upload_url(tmp_path) -> None:
+    image_path = tmp_path / "input.png"
+    image_path.write_bytes(b"fake-image")
+
+    http = FakeHTTPClient()
+    http.queue(
+        "post",
+        FakeResponse(
+            status_code=200,
+            json_payload={
+                "upload_url": "http://100.65.29.114:60780/v1/upload/abc123.bin",
+                "storage_uri": "private-upload://abc123.bin",
+            },
+        ),
+    )
+    http.queue("put", FakeResponse(status_code=200, json_payload={"storage_uri": "private-upload://abc123.png"}))
+
+    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
+    out = client.upload_file(
+        api_key="test-key",
+        file_path=str(image_path),
+        base_url="https://ae5of3dwp6xlyx-8000.proxy.runpod.net",
+    )
+
+    assert out == "private-upload://abc123.png"
+    assert http.calls[0].url == "https://ae5of3dwp6xlyx-8000.proxy.runpod.net/v1/upload"
+    assert http.calls[1].url == "https://ae5of3dwp6xlyx-8000.proxy.runpod.net/v1/upload/abc123.bin"
+
+
+def test_ensure_remote_model_downloaded_starts_and_polls_download() -> None:
+    http = FakeHTTPClient()
+    http.queue(
+        "post",
+        FakeResponse(status_code=200, json_payload={"sessionId": "download-session"}),
+    )
+    http.queue(
+        "get",
+        FakeResponse(status_code=200, json_payload={"status": "downloading"}),
+        FakeResponse(status_code=200, json_payload={"status": "complete"}),
+    )
+
+    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
+    client.ensure_remote_model_downloaded(
+        api_key="runpod-token",
+        base_url="https://pod.example",
+        cp_ids={
+            "ltx-2.3-22b-distilled-1.1",
+            "ltx-2.3-spatial-upscaler-x2-1.1",
+        },
+        poll_interval_seconds=0,
+    )
+
+    assert len(http.calls) == 3
+    assert http.calls[0].url == "https://pod.example/api/models/download"
+    assert http.calls[0].headers == {
+        "Authorization": "Bearer runpod-token",
+        "Content-Type": "application/json",
+    }
+    assert http.calls[0].json_payload == {
+        "type": "download",
+        "cp_ids": [
+            "ltx-2.3-22b-distilled-1.1",
+            "ltx-2.3-spatial-upscaler-x2-1.1",
+        ],
+    }
+    assert http.calls[1].url == "https://pod.example/api/models/download/progress?sessionId=download-session"
+    assert http.calls[2].url == "https://pod.example/api/models/download/progress?sessionId=download-session"
+
+
 def test_generate_audio_to_video_with_audio_uri_downloads_video() -> None:
     http = FakeHTTPClient()
     http.queue(

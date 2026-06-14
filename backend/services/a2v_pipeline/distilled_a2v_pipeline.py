@@ -88,6 +88,7 @@ class DistilledA2VPipeline:
         audio_start_time: float = 0.0,
         audio_max_duration: float | None = None,
         tiling_config: TilingConfigType | None = None,
+        enhance_prompt: bool = False,
         streaming_prefetch_count: int | None = None,
     ) -> tuple[Iterator[torch.Tensor], AudioOrNone]:
         from ltx_core.components.noisers import GaussianNoiser
@@ -111,7 +112,13 @@ class DistilledA2VPipeline:
         dtype = torch.bfloat16
 
         # Text encode (positive only).
-        (ctx_p,) = self.prompt_encoder([prompt], streaming_prefetch_count=streaming_prefetch_count)
+        (ctx_p,) = self.prompt_encoder(
+            [prompt],
+            enhance_first_prompt=enhance_prompt,
+            enhance_prompt_image=ltx_images[0][0] if ltx_images else None,
+            enhance_prompt_seed=seed,
+            streaming_prefetch_count=streaming_prefetch_count,
+        )
         video_context = ctx_p.video_encoding
         audio_context = ctx_p.audio_encoding
         assert audio_context is not None, "A2V pipeline requires audio context from text encoder"

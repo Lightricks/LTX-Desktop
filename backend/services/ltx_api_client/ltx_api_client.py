@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from api_types import RetakeMode, VideoCameraMotion
+from api_types import ModelCheckpointID, RetakeMode, VideoCameraMotion
 
 
 @dataclass(frozen=True)
@@ -35,11 +35,22 @@ class LTXAPIClientError(RuntimeError):
 
 
 class LTXAPIClient(Protocol):
+    def ensure_remote_model_downloaded(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        cp_ids: set[ModelCheckpointID],
+        poll_interval_seconds: float = 5.0,
+    ) -> None:
+        ...
+
     def upload_file(
         self,
         *,
         api_key: str,
         file_path: str,
+        base_url: str | None = None,
     ) -> str:
         ...
 
@@ -54,6 +65,9 @@ class LTXAPIClient(Protocol):
         fps: float,
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
+        aspect_ratio: str | None = None,
+        enhance_prompt: bool | None = None,
+        base_url: str | None = None,
     ) -> bytes:
         ...
 
@@ -69,6 +83,9 @@ class LTXAPIClient(Protocol):
         fps: float,
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
+        aspect_ratio: str | None = None,
+        enhance_prompt: bool | None = None,
+        base_url: str | None = None,
     ) -> bytes:
         ...
 
@@ -81,6 +98,11 @@ class LTXAPIClient(Protocol):
         image_uri: str | None,
         model: str,
         resolution: str,
+        duration: float | None = None,
+        fps: float | None = None,
+        aspect_ratio: str | None = None,
+        enhance_prompt: bool | None = None,
+        base_url: str | None = None,
     ) -> bytes:
         ...
 
@@ -93,5 +115,6 @@ class LTXAPIClient(Protocol):
         duration: float,
         prompt: str,
         mode: RetakeMode,
+        base_url: str | None = None,
     ) -> LTXRetakeResult:
         ...

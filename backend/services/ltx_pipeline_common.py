@@ -102,6 +102,7 @@ class DistilledNativePipeline:
         frame_rate: float,
         images: list[ImageConditioningInput],
         tiling_config: TilingConfigType | None = None,
+        enhance_prompt: bool = False,
     ) -> tuple[torch.Tensor | Iterator[torch.Tensor], AudioOrNone]:
         from ltx_core.components.noisers import GaussianNoiser
         from ltx_pipelines.utils.args import ImageConditioningInput as _LtxImageInput
@@ -114,7 +115,12 @@ class DistilledNativePipeline:
         noiser = GaussianNoiser(generator=generator)
         dtype = torch.bfloat16
 
-        (ctx_p,) = self.prompt_encoder([prompt])
+        (ctx_p,) = self.prompt_encoder(
+            [prompt],
+            enhance_first_prompt=enhance_prompt,
+            enhance_prompt_image=images[0].path if images else None,
+            enhance_prompt_seed=seed,
+        )
         video_context, audio_context = ctx_p.video_encoding, ctx_p.audio_encoding
 
         sigmas = torch.Tensor(DISTILLED_SIGMA_VALUES).to(self.device)

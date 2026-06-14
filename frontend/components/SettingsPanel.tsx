@@ -5,12 +5,13 @@ import {
   resolveVideoGenerationOptions,
   sanitizeVideoGenerationSettings,
   type VideoGenerationModelSpecItem,
+  type VideoGenerationPipeline,
 } from '../lib/video-generation-model-specs'
 
 export type GenerationMode = 'text-to-video' | 'image-to-video' | 'text-to-image'
 
 export interface GenerationSettings {
-  model: 'fast' | 'pro'
+  model: VideoGenerationPipeline
   duration: number
   videoResolution: string
   fps: number

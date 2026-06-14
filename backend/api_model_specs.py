@@ -13,7 +13,7 @@ from api_types import (
     LTXVideoGenPipeline,
     LTXVideoGenResolution,
 )
-from runtime_config.model_download_specs import get_latest_ltx_model_id, get_ltx_model_spec
+from runtime_config.model_download_specs import ALL_LTX_LOCAL_MODEL_IDS, LTXLocalModelRelevant, get_ltx_model_spec
 
 def _resolution_spec(
     *,
@@ -125,8 +125,14 @@ def _pairs_to_items(
 
 
 def get_local_video_generation_model_specs() -> list[LTXVideoGenerationModelSpecItem]:
-    local_model_spec = get_ltx_model_spec(get_latest_ltx_model_id())
-    return _pairs_to_items(local_model_spec.supported_pipelines)
+    items: list[LTXVideoGenerationModelSpecItem] = []
+    ordered_model_ids = sorted(
+        ALL_LTX_LOCAL_MODEL_IDS,
+        key=lambda model_id: 0 if isinstance(get_ltx_model_spec(model_id).relevance, LTXLocalModelRelevant) else 1,
+    )
+    for model_id in ordered_model_ids:
+        items.extend(_pairs_to_items(get_ltx_model_spec(model_id).supported_pipelines))
+    return items
 
 
 def get_api_video_generation_model_specs() -> list[LTXVideoGenerationModelSpecItem]:

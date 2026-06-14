@@ -69,6 +69,7 @@ class LTXFastVideoPipeline:
         frame_rate: float,
         images: list[ImageConditioningInput],
         tiling_config: TilingConfigType,
+        enhance_prompt: bool,
     ) -> tuple[torch.Tensor | Iterator[torch.Tensor], AudioOrNone]:
         from ltx_pipelines.utils.args import ImageConditioningInput as _LtxImageInput
 
@@ -81,6 +82,7 @@ class LTXFastVideoPipeline:
             frame_rate=frame_rate,
             images=[_LtxImageInput(img.path, img.frame_idx, img.strength) for img in images],
             tiling_config=tiling_config,
+            enhance_prompt=enhance_prompt,
             streaming_prefetch_count=self._streaming_prefetch_count,
         )
 
@@ -95,6 +97,7 @@ class LTXFastVideoPipeline:
         frame_rate: float,
         images: list[ImageConditioningInput],
         output_path: str,
+        enhance_prompt: bool = False,
     ) -> None:
         tiling_config = default_tiling_config()
         video, audio = self._run_inference(
@@ -106,6 +109,7 @@ class LTXFastVideoPipeline:
             frame_rate=frame_rate,
             images=images,
             tiling_config=tiling_config,
+            enhance_prompt=enhance_prompt,
         )
         chunks = video_chunks_number(num_frames, tiling_config)
         encode_video_output(video=video, audio=audio, fps=int(frame_rate), output_path=output_path, video_chunks_number_value=chunks)
@@ -125,6 +129,7 @@ class LTXFastVideoPipeline:
                 frame_rate=8,
                 images=[],
                 tiling_config=tiling_config,
+                enhance_prompt=False,
             )
             chunks = video_chunks_number(warmup_frames, tiling_config)
             encode_video_output(video=video, audio=audio, fps=8, output_path=output_path, video_chunks_number_value=chunks)

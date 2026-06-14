@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import threading
 from dataclasses import dataclass
+from typing import Any
 
 from state.app_settings import AppSettings
 from handlers import (
@@ -248,7 +250,6 @@ def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
     from services.a2v_pipeline.ltx_a2v_pipeline import LTXa2vPipeline
     from services.depth_processor_pipeline.midas_dpt_pipeline import MidasDPTPipeline
     from services.ic_lora_pipeline.ltx_ic_lora_pipeline import LTXIcLoraPipeline
-    from services.image_generation_pipeline.zit_image_generation_pipeline import ZitImageGenerationPipeline
     from services.ltx_api_client.ltx_api_client_impl import LTXAPIClientImpl
     from services.model_downloader.hugging_face_downloader import HuggingFaceDownloader
     from services.retake_pipeline.ltx_retake_pipeline import LTXRetakePipeline
@@ -256,6 +257,25 @@ def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
     from services.task_runner.threading_runner import ThreadingRunner
     from services.text_encoder.ltx_text_encoder import LTXTextEncoder
     from services.video_processor.video_processor_impl import VideoProcessorImpl
+
+    if os.environ.get("LTX_VIDEO_ONLY_SERVER") == "1":
+        class VideoOnlyImageGenerationPipeline:
+            @staticmethod
+            def create(model_path: str, device: str | None = None) -> "VideoOnlyImageGenerationPipeline":
+                del model_path, device
+                return VideoOnlyImageGenerationPipeline()
+
+            def generate(self, *args: object, **kwargs: object) -> Any:
+                del args, kwargs
+                raise RuntimeError("Image generation is disabled on this video-only private server.")
+
+            def to(self, device: str) -> None:
+                del device
+
+        image_generation_pipeline_class: type[ImageGenerationPipeline] = VideoOnlyImageGenerationPipeline
+    else:
+        from services.image_generation_pipeline.zit_image_generation_pipeline import ZitImageGenerationPipeline
+        image_generation_pipeline_class = ZitImageGenerationPipeline
 
     http = HTTPClientImpl()
 
@@ -274,7 +294,7 @@ def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
         ltx_api_client=LTXAPIClientImpl(http=http, ltx_api_base_url=config.ltx_api_base_url),
         zit_api_client=ZitAPIClientImpl(http=http),
         fast_video_pipeline_class=LTXFastVideoPipeline,
-        image_generation_pipeline_class=ZitImageGenerationPipeline,
+        image_generation_pipeline_class=image_generation_pipeline_class,
         ic_lora_pipeline_class=LTXIcLoraPipeline,
         depth_processor_pipeline_class=MidasDPTPipeline,
         pose_processor_pipeline_class=DWPosePipeline,

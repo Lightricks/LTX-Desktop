@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import time
 from pathlib import Path
 from typing import Any, Literal, cast
+from urllib.parse import urlsplit, urlunsplit
 
-from api_types import RetakeMode, VideoCameraMotion
+from api_types import ModelCheckpointID, RetakeMode, VideoCameraMotion
 from pydantic import BaseModel, ConfigDict, ValidationError
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError, LTXRetakeResult
 from services.http_client.http_client import HTTPClient
@@ -71,6 +73,87 @@ class LTXAPIClientImpl:
         self._http = http
         self._base_url = ltx_api_base_url.rstrip("/")
 
+    def _resolve_base_url(self, base_url: str | None) -> str:
+        return (base_url or self._base_url).rstrip("/")
+
+    def ensure_remote_model_downloaded(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        cp_ids: set[ModelCheckpointID],
+        poll_interval_seconds: float = 5.0,
+    ) -> None:
+        if not cp_ids:
+            return
+
+        resolved_base_url = self._resolve_base_url(base_url)
+        deadline = time.monotonic() + 1800
+        while True:
+            cp_id_payload: list[JSONValue] = [str(cp_id) for cp_id in sorted(cp_ids)]
+            download_payload: dict[str, JSONValue] = {"type": "download", "cp_ids": cp_id_payload}
+            response = self._http.post(
+                f"{resolved_base_url}/api/models/download",
+                headers=self._json_headers(api_key),
+                json_payload=download_payload,
+                timeout=30,
+            )
+            if response.status_code == 200:
+                break
+            if response.status_code == 409 and "DOWNLOAD_ALREADY_RUNNING" in response.text and time.monotonic() < deadline:
+                time.sleep(poll_interval_seconds)
+                continue
+            err = response.text[:500] if response.text else "Unknown error"
+            raise LTXAPIClientError(
+                response.status_code,
+                f"RunPod model download start failed ({response.status_code}): {err}{self._fmt_request_id(response)}",
+                stage="model_download",
+            )
+
+        try:
+            payload = cast(dict[str, Any], response.json())
+            session_id = str(payload["sessionId"])
+        except Exception as exc:
+            raise LTXAPIClientError(
+                500,
+                f"Unexpected RunPod model download response format{self._fmt_request_id(response)}",
+                stage="model_download",
+            ) from exc
+
+        while True:
+            progress_response = self._http.get(
+                f"{resolved_base_url}/api/models/download/progress?sessionId={session_id}",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=30,
+            )
+            if progress_response.status_code != 200:
+                err = progress_response.text[:500] if progress_response.text else "Unknown error"
+                raise LTXAPIClientError(
+                    progress_response.status_code,
+                    f"RunPod model download progress failed ({progress_response.status_code}): {err}{self._fmt_request_id(progress_response)}",
+                    stage="model_download",
+                )
+
+            try:
+                progress_payload = cast(dict[str, Any], progress_response.json())
+            except Exception as exc:
+                raise LTXAPIClientError(
+                    500,
+                    f"Unexpected RunPod model download progress format{self._fmt_request_id(progress_response)}",
+                    stage="model_download",
+                ) from exc
+
+            status = progress_payload.get("status")
+            if status == "complete":
+                return
+            if status == "error":
+                error = progress_payload.get("error")
+                detail = error if isinstance(error, str) and error else "Unknown error"
+                raise LTXAPIClientError(500, f"RunPod model download failed: {detail}", stage="model_download")
+            if time.monotonic() >= deadline:
+                raise LTXAPIClientError(504, "RunPod model download timed out", stage="model_download")
+            time.sleep(poll_interval_seconds)
+
     def generate_text_to_video(
         self,
         *,
@@ -82,6 +165,9 @@ class LTXAPIClientImpl:
         fps: float,
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
+        aspect_ratio: str | None = None,
+        enhance_prompt: bool | None = None,
+        base_url: str | None = None,
     ) -> bytes:
         payload: dict[str, JSONValue] = {
             "prompt": prompt,
@@ -91,11 +177,15 @@ class LTXAPIClientImpl:
             "fps": fps,
             "generate_audio": generate_audio,
         }
+        if aspect_ratio is not None:
+            payload["aspect_ratio"] = aspect_ratio
+        if enhance_prompt is not None:
+            payload["enhance_prompt"] = enhance_prompt
         mapped_camera_motion = self._map_camera_motion(camera_motion)
         if mapped_camera_motion is not None:
             payload["camera_motion"] = mapped_camera_motion
         response = self._http.post(
-            f"{self._base_url}/v1/text-to-video",
+            f"{self._resolve_base_url(base_url)}/v1/text-to-video",
             headers=self._json_headers(api_key),
             json_payload=payload,
             timeout=1200,
@@ -114,6 +204,9 @@ class LTXAPIClientImpl:
         fps: float,
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
+        aspect_ratio: str | None = None,
+        enhance_prompt: bool | None = None,
+        base_url: str | None = None,
     ) -> bytes:
         payload: dict[str, JSONValue] = {
             "prompt": prompt,
@@ -124,11 +217,15 @@ class LTXAPIClientImpl:
             "fps": fps,
             "generate_audio": generate_audio,
         }
+        if aspect_ratio is not None:
+            payload["aspect_ratio"] = aspect_ratio
+        if enhance_prompt is not None:
+            payload["enhance_prompt"] = enhance_prompt
         mapped_camera_motion = self._map_camera_motion(camera_motion)
         if mapped_camera_motion is not None:
             payload["camera_motion"] = mapped_camera_motion
         response = self._http.post(
-            f"{self._base_url}/v1/image-to-video",
+            f"{self._resolve_base_url(base_url)}/v1/image-to-video",
             headers=self._json_headers(api_key),
             json_payload=payload,
             timeout=1200,
@@ -144,6 +241,11 @@ class LTXAPIClientImpl:
         image_uri: str | None,
         model: str,
         resolution: str,
+        duration: float | None = None,
+        fps: float | None = None,
+        aspect_ratio: str | None = None,
+        enhance_prompt: bool | None = None,
+        base_url: str | None = None,
     ) -> bytes:
         payload: dict[str, JSONValue] = {
             "prompt": prompt,
@@ -151,10 +253,18 @@ class LTXAPIClientImpl:
             "model": model,
             "resolution": resolution,
         }
+        if aspect_ratio is not None:
+            payload["aspect_ratio"] = aspect_ratio
+        if enhance_prompt is not None:
+            payload["enhance_prompt"] = enhance_prompt
+        if duration is not None:
+            payload["duration"] = duration
+        if fps is not None:
+            payload["fps"] = fps
         if image_uri is not None:
             payload["image_uri"] = image_uri
         response = self._http.post(
-            f"{self._base_url}/v1/audio-to-video",
+            f"{self._resolve_base_url(base_url)}/v1/audio-to-video",
             headers=self._json_headers(api_key),
             json_payload=payload,
             timeout=1200,
@@ -170,9 +280,10 @@ class LTXAPIClientImpl:
         duration: float,
         prompt: str,
         mode: RetakeMode,
+        base_url: str | None = None,
     ) -> LTXRetakeResult:
         try:
-            storage_uri = self.upload_file(api_key=api_key, file_path=video_path)
+            storage_uri = self.upload_file(api_key=api_key, file_path=video_path, base_url=base_url)
         except LTXAPIClientError as exc:
             if exc.stage == "upload_init":
                 err_text = self._extract_error_detail(exc.detail)
@@ -194,7 +305,7 @@ class LTXAPIClientImpl:
             payload["prompt"] = prompt
 
         response = self._http.post(
-            f"{self._base_url}/v1/retake",
+            f"{self._resolve_base_url(base_url)}/v1/retake",
             headers=self._json_headers(api_key),
             json_payload=payload,
             timeout=600,
@@ -232,9 +343,9 @@ class LTXAPIClientImpl:
         error_text = response.text[:500] if response.text else "Unknown error"
         raise LTXAPIClientError(response.status_code, f"Retake API error: {error_text}{rid}")
 
-    def upload_file(self, *, file_path: str, api_key: str) -> str:
+    def upload_file(self, *, file_path: str, api_key: str, base_url: str | None = None) -> str:
         upload_resp = self._http.post(
-            f"{self._base_url}/v1/upload",
+            f"{self._resolve_base_url(base_url)}/v1/upload",
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=30,
         )
@@ -260,7 +371,7 @@ class LTXAPIClientImpl:
         mime = mimetypes.guess_type(path_obj.name)[0] or "application/octet-stream"
         with open(path_obj, "rb") as media_file:
             put_resp = self._http.put(
-                upload_url,
+                self._normalize_upload_url(upload_url, base_url),
                 data=media_file,
                 headers={"Content-Type": mime, **required_headers},
                 timeout=300,
@@ -270,7 +381,32 @@ class LTXAPIClientImpl:
             rid = self._fmt_request_id(upload_resp)
             raise LTXAPIClientError(500, f"LTX upload failed ({put_resp.status_code}): {err}{rid}", stage="upload_put")
 
+        try:
+            put_payload = cast(dict[str, Any], put_resp.json())
+            final_storage_uri = put_payload.get("storage_uri")
+            if isinstance(final_storage_uri, str) and final_storage_uri:
+                return final_storage_uri
+        except Exception:
+            pass
+
         return storage_uri
+
+    def _normalize_upload_url(self, upload_url: str, base_url: str | None) -> str:
+        if base_url is None:
+            return upload_url
+
+        parsed_upload = urlsplit(upload_url)
+        if parsed_upload.path.startswith("/v1/upload/"):
+            parsed_base = urlsplit(self._resolve_base_url(base_url))
+            return urlunsplit((
+                parsed_base.scheme,
+                parsed_base.netloc,
+                parsed_upload.path,
+                parsed_upload.query,
+                parsed_upload.fragment,
+            ))
+
+        return upload_url
 
     def _extract_video_bytes(self, response: Any, api_key: str) -> bytes:
         rid = self._fmt_request_id(response)

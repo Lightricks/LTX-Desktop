@@ -14,6 +14,7 @@ from runtime_config.model_download_specs import (
     IMG_GEN_MODEL_CP_ID,
     get_downloaded_ltx_model_id,
     get_existing_cp_path,
+    get_ltx_model_id_for_pipeline,
     get_ltx_model_spec,
 )
 from runtime_config.runtime_policy import streaming_prefetch_count_for_mode
@@ -82,10 +83,10 @@ class PipelinesHandler(StateHandlerBase):
             case _:
                 return
 
-    def _pipeline_matches_model_type(self, model_type: VideoPipelineModelType) -> bool:
+    def _pipeline_matches_model_type(self, model_type: VideoPipelineModelType, model_id: LTXLocalModelId) -> bool:
         match self.state.gpu_slot:
-            case GpuSlot(active_pipeline=VideoPipelineState(pipeline=pipeline)):
-                return pipeline.pipeline_kind == model_type
+            case GpuSlot(active_pipeline=VideoPipelineState(pipeline=pipeline, model_id=active_model_id)):
+                return pipeline.pipeline_kind == "fast" and active_model_id == model_id
             case _:
                 return False
 
@@ -105,11 +106,22 @@ class PipelinesHandler(StateHandlerBase):
             return
         te.service.install_patches(lambda: self.state)
 
-    def _require_downloaded_ltx_model_id(self) -> LTXLocalModelId:
-        model_id = get_downloaded_ltx_model_id(self.models_dir)
+    def _model_id_for_video_pipeline(self, model_type: VideoPipelineModelType) -> LTXLocalModelId:
+        model_id = get_ltx_model_id_for_pipeline(model_type)
         if model_id is None:
-            raise HTTPError(409, "NO_DOWNLOADED_LTX_MODEL")
+            raise HTTPError(409, f"UNSUPPORTED_LOCAL_VIDEO_PIPELINE:{model_type}")
         return model_id
+
+    def _require_downloaded_ltx_model_id(self, model_id: LTXLocalModelId | None = None) -> LTXLocalModelId:
+        resolved_model_id = model_id or get_downloaded_ltx_model_id(self.models_dir)
+        if resolved_model_id is None:
+            raise HTTPError(409, "NO_DOWNLOADED_LTX_MODEL")
+        model_cp = get_ltx_model_spec(resolved_model_id).model_cp
+        try:
+            get_existing_cp_path(self.models_dir, model_cp)
+        except FileNotFoundError as exc:
+            raise HTTPError(409, "NO_DOWNLOADED_LTX_MODEL") from exc
+        return resolved_model_id
 
     def _compile_if_enabled(self, state: VideoPipelineState) -> VideoPipelineState:
         if not self.state.app_settings.use_torch_compile:
@@ -129,7 +141,7 @@ class PipelinesHandler(StateHandlerBase):
 
     def _create_video_pipeline(self, model_type: VideoPipelineModelType) -> VideoPipelineState:
         gemma_root = self._text_handler.resolve_gemma_root()
-        model_id = self._require_downloaded_ltx_model_id()
+        model_id = self._require_downloaded_ltx_model_id(self._model_id_for_video_pipeline(model_type))
         spec = get_ltx_model_spec(model_id)
         checkpoint_path = str(get_existing_cp_path(self.models_dir, spec.model_cp))
         upsampler_path = str(get_existing_cp_path(self.models_dir, spec.upscale_cp))
@@ -144,6 +156,7 @@ class PipelinesHandler(StateHandlerBase):
 
         state = VideoPipelineState(
             pipeline=pipeline,
+            model_id=model_id,
             is_compiled=False,
         )
         return self._compile_if_enabled(state)
@@ -238,10 +251,11 @@ class PipelinesHandler(StateHandlerBase):
 
     def load_gpu_pipeline(self, model_type: VideoPipelineModelType) -> VideoPipelineState:
         self._install_text_patches_if_needed()
+        model_id = self._model_id_for_video_pipeline(model_type)
 
         state: VideoPipelineState | None = None
         with self._lock:
-            if self._pipeline_matches_model_type(model_type):
+            if self._pipeline_matches_model_type(model_type, model_id):
                 match self.state.gpu_slot:
                     case GpuSlot(active_pipeline=VideoPipelineState() as existing_state):
                         state = existing_state
@@ -304,18 +318,19 @@ class PipelinesHandler(StateHandlerBase):
             self._assert_invariants()
         return state
 
-    def load_a2v_pipeline(self) -> A2VPipelineState:
+    def load_a2v_pipeline(self, model_type: VideoPipelineModelType) -> A2VPipelineState:
         self._install_text_patches_if_needed()
+        model_id = self._model_id_for_video_pipeline(model_type)
 
         with self._lock:
             match self.state.gpu_slot:
-                case GpuSlot(active_pipeline=A2VPipelineState() as state):
+                case GpuSlot(active_pipeline=A2VPipelineState(model_id=current_model_id) as state) if current_model_id == model_id:
                     return state
                 case _:
                     pass
 
         self._evict_gpu_pipeline_for_swap()
-        model_id = self._require_downloaded_ltx_model_id()
+        model_id = self._require_downloaded_ltx_model_id(model_id)
         model_spec = get_ltx_model_spec(model_id)
 
         pipeline = self._a2v_pipeline_class.create(
@@ -325,7 +340,7 @@ class PipelinesHandler(StateHandlerBase):
             self.config.device,
             streaming_prefetch_count_for_mode(self.config.local_generations_mode),
         )
-        state = A2VPipelineState(pipeline=pipeline)
+        state = A2VPipelineState(pipeline=pipeline, model_id=model_id)
 
         with self._lock:
             self.state.gpu_slot = GpuSlot(active_pipeline=state)
