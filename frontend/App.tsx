@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, AlertCircle, Settings, FileText } from 'lucide-react'
+import { I18nProvider, useT } from './lib/i18n'
 import { ApiClient, type ApiSuccessOf } from './lib/api-client'
 import { ProjectProvider } from './contexts/ProjectContext'
 import { ViewProvider, useView } from './contexts/ViewContext'
@@ -24,6 +25,7 @@ type LtxRecommendation = ApiSuccessOf<'getLtxRecommendation'>
 type LtxUpgradeRecommendation = Extract<LtxRecommendation, { status: 'upgrade' }>
 
 function AppContent() {
+  const { t } = useT()
   const { currentView } = useView()
   const { connected, processStatus, isLoading: backendLoading } = useBackend()
   const { settings, saveLtxApiKey, saveFalApiKey, forceApiGenerations, isLoaded, runtimePolicyLoaded } = useAppSettings()
@@ -73,8 +75,8 @@ function AppContent() {
       const requiredKeys = Array.isArray(detail.requiredKeys) ? detail.requiredKeys : ['ltx']
       setApiGatewayRequest({
         requiredKeys,
-        title: detail.title ?? 'Connect API Keys',
-        description: detail.description ?? 'Add the required API keys to continue.',
+        title: detail.title ?? t('app.connectApiKeys'),
+        description: detail.description ?? t('app.connectApiKeysDesc'),
         blocking: detail.blocking ?? false,
         includeOptionalMissing: detail.includeOptionalMissing ?? false,
       })
@@ -335,9 +337,9 @@ function AppContent() {
       <div className="rounded-lg border border-zinc-700 bg-zinc-900/95 px-6 py-4 text-center shadow-xl">
         <div className="flex items-center justify-center gap-2 text-zinc-100">
           <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="font-medium">Reconnecting...</span>
+          <span className="font-medium">{t('app.reconnecting')}</span>
         </div>
-        <p className="mt-2 text-sm text-zinc-400">The backend process stopped unexpectedly. Attempting to restart...</p>
+        <p className="mt-2 text-sm text-zinc-400">{t('app.reconnectingDesc')}</p>
       </div>
     </div>
   ) : null
@@ -352,8 +354,8 @@ function AppContent() {
     if (shouldBlockForLtxKey && apiGatewayRequest === null) {
       setApiGatewayRequest({
         requiredKeys: ['ltx'],
-        title: 'Connect API Keys',
-        description: 'This app is configured for API-only generation. Add your API key to continue.',
+        title: t('app.connectApiKeys'),
+        description: t('app.apiOnlyNotice'),
         blocking: true,
         includeOptionalMissing: true,
       })
@@ -433,14 +435,14 @@ function AppContent() {
         <div className="w-full max-w-5xl rounded-xl border border-zinc-700 bg-zinc-900/80 p-6 shadow-2xl">
           <div className="text-center">
             <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-foreground mb-2">The backend process crashed and could not be restarted</h2>
-            <p className="text-muted-foreground mb-4">Review the logs below and restart the application.</p>
+            <h2 className="text-xl font-semibold text-foreground mb-2">{t('app.crashed')}</h2>
+            <p className="text-muted-foreground mb-4">{t('app.crashedDesc')}</p>
           </div>
           <div className="h-[50vh]">
             <LogViewer isOpen={true} onClose={() => {}} embedded={true} />
           </div>
           <div className="mt-4 flex justify-center">
-            <Button onClick={() => window.location.reload()}>Restart Application</Button>
+            <Button onClick={() => window.location.reload()}>{t('app.restart')}</Button>
           </div>
         </div>
       </div>
@@ -460,8 +462,8 @@ function AppContent() {
         <div className="h-screen bg-background flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="h-12 w-12 text-primary animate-spin mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-foreground mb-2">Starting LTX Desktop...</h2>
-            <p className="text-muted-foreground">Initializing the inference engine</p>
+            <h2 className="text-xl font-semibold text-foreground mb-2">{t('app.loading')}</h2>
+            <p className="text-muted-foreground">{t('app.loadingSub')}</p>
           </div>
         </div>
         {restartingOverlay}
@@ -518,14 +520,14 @@ function AppContent() {
           <button
             onClick={() => setIsLogViewerOpen(true)}
             className="h-8 w-8 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-            title="View Backend Logs"
+            title={t('app.viewLogs')}
           >
             <FileText className="h-4 w-4" />
           </button>
           <button
             onClick={() => setIsSettingsOpen(true)}
             className="h-8 w-8 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-            title="Settings"
+            title={t('app.settings')}
           >
             <Settings className="h-4 w-4" />
           </button>
@@ -545,8 +547,8 @@ function AppContent() {
         isOpen={shouldShowGateway}
         blocking={apiGatewayRequest?.blocking}
         onClose={() => setApiGatewayRequest(null)}
-        title={apiGatewayRequest?.title ?? 'Connect API Keys'}
-        description={apiGatewayRequest?.description ?? 'Add the required API keys to continue.'}
+        title={apiGatewayRequest?.title ?? t('app.connectApiKeys')}
+        description={apiGatewayRequest?.description ?? t('app.connectApiKeysDesc')}
         sections={gatewaySections}
       />
       {ltxUpgradeRecommendation && (
@@ -561,7 +563,7 @@ function AppContent() {
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="flex items-center gap-2 text-sm text-zinc-200">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Loading settings...
+            {t('app.loadingSettings')}
           </div>
         </div>
       )}
@@ -570,7 +572,7 @@ function AppContent() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="flex items-center gap-2 text-sm text-zinc-200">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Finalizing setup...
+            {t('app.finalizingSetup')}
           </div>
         </div>
       )}
@@ -578,7 +580,7 @@ function AppContent() {
       {isForcedFirstRun && firstRunFinalizeError && (
         <div className="fixed inset-0 z-[61] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-5 text-zinc-100">
-            <h3 className="text-base font-semibold">Setup finalization failed</h3>
+            <h3 className="text-base font-semibold">{t('app.setupFailed')}</h3>
             <p className="mt-2 text-sm text-zinc-300">{firstRunFinalizeError}</p>
             <div className="mt-4 flex justify-end">
               <Button
@@ -588,7 +590,7 @@ function AppContent() {
                   })
                 }}
               >
-                Retry
+                {t('app.retry')}
               </Button>
             </div>
           </div>
@@ -602,15 +604,17 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ProjectProvider>
-      <ViewProvider>
-        <KeyboardShortcutsProvider>
-          <AppSettingsProvider>
-            <AppContent />
-            <KeyboardShortcutsModal />
-          </AppSettingsProvider>
-        </KeyboardShortcutsProvider>
-      </ViewProvider>
-    </ProjectProvider>
+    <I18nProvider>
+      <ProjectProvider>
+        <ViewProvider>
+          <KeyboardShortcutsProvider>
+            <AppSettingsProvider>
+              <AppContent />
+              <KeyboardShortcutsModal />
+            </AppSettingsProvider>
+          </KeyboardShortcutsProvider>
+        </ViewProvider>
+      </ProjectProvider>
+    </I18nProvider>
   )
 }

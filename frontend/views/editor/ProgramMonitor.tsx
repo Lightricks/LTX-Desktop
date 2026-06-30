@@ -7,6 +7,7 @@ import {
 import { Button } from '../../components/ui/button'
 import { Tooltip } from '../../components/ui/tooltip'
 import { AudioWaveform } from '../../components/AudioWaveform'
+import { useT } from '../../lib/i18n'
 import { pathToFileUrl } from '../../lib/file-url'
 import { DEFAULT_SUBTITLE_STYLE } from '../../types/project-model'
 import type { Asset, TimelineClip, Track, SubtitleClip } from '../../types/project-model'
@@ -425,6 +426,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
   setDraggingMarker,
   kbLayout,
 }: ProgramMonitorProps, ref) {
+  const { t } = useT()
   const {
     clearClipSelection,
     pause,
@@ -1170,9 +1172,9 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
               <div className="text-center">
                 <div className="w-48 h-28 border-2 border-dashed border-zinc-700 rounded-lg flex flex-col items-center justify-center mb-4 mx-auto">
                   <Layers className="h-8 w-8 text-zinc-600 mb-2" />
-                  <p className="text-zinc-500 text-xs">Drop clips here</p>
+                  <p className="text-zinc-500 text-xs">{t('timeline.dropClipsHere')}</p>
                 </div>
-                <p className="text-zinc-600 text-xs">Click assets or drag them to the timeline</p>
+                <p className="text-zinc-600 text-xs">{t('timeline.clickOrDrag')}</p>
               </div>
             </div>
           ) : (
@@ -1314,8 +1316,8 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                         <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center mx-auto mb-3">
                           <Video className="h-8 w-8 text-zinc-600" />
                         </div>
-                        <p className="text-zinc-500 text-sm">No clip at playhead</p>
-                        <p className="text-zinc-600 text-xs mt-1">Move playhead over a clip to preview</p>
+                        <p className="text-zinc-500 text-sm">{t('monitor.noClip')}</p>
+                        <p className="text-zinc-600 text-xs mt-1">{t('monitor.noClipHint')}</p>
                       </div>
                     ) : null
                   })()}
@@ -1668,7 +1670,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
             {previewZoomOpen && (
               <div className="absolute bottom-full left-0 mb-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl py-1 min-w-[100px] z-50">
                 {[
-                  { label: 'Fit', value: 'fit' as const },
+                  { label: t('monitor.fit'), value: 'fit' as const },
                   { label: '10%', value: 10 },
                   { label: '25%', value: 25 },
                   { label: '50%', value: 50 },
@@ -1699,7 +1701,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
           {/* Center: transport controls — Premiere-style 5-button strip */}
           <div className="flex-1 flex items-center justify-center gap-0.5">
             {/* Set In */}
-            <Tooltip content={`${inPoint !== null ? `In: ${formatTime(inPoint)} — ` : ''}${tooltipLabel('Set In point', getShortcutLabel(kbLayout, 'mark.setIn'))}`} side="top">
+            <Tooltip content={`${inPoint !== null ? `In: ${formatTime(inPoint)} — ` : ''}${tooltipLabel(t('monitor.setIn'), getShortcutLabel(kbLayout, 'mark.setIn'))}`} side="top">
               <Button
                 variant="ghost" size="icon"
                 className={`h-6 w-6 ${inPoint !== null ? 'text-yellow-400' : 'text-zinc-500'}`}
@@ -1714,7 +1716,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
             </Tooltip>
             <div className="w-px h-3 bg-zinc-700" />
             {/* Go to In */}
-            <Tooltip content={tooltipLabel('Go to In Point', getShortcutLabel(kbLayout, 'transport.goToIn'))} side="top">
+            <Tooltip content={tooltipLabel(t('monitor.goToIn'), getShortcutLabel(kbLayout, 'transport.goToIn'))} side="top">
               <Button
                 variant="ghost" size="icon"
                 className={`h-6 w-6 ${inPoint !== null ? 'text-zinc-400' : 'text-zinc-500'}`}
@@ -1733,7 +1735,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
               </Button>
             </Tooltip>
             {/* Step Back */}
-            <Tooltip content={tooltipLabel('Step Back', getShortcutLabel(kbLayout, 'transport.stepBackward'))} side="top">
+            <Tooltip content={tooltipLabel(t('monitor.stepBack'), getShortcutLabel(kbLayout, 'transport.stepBackward'))} side="top">
               <Button
                 variant="ghost" size="icon"
                 className="h-6 w-6 text-zinc-500"
@@ -1747,7 +1749,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
               </Button>
             </Tooltip>
             {/* Play/Pause toggle */}
-            <Tooltip content={isPlaying ? tooltipLabel('Pause', getShortcutLabel(kbLayout, 'transport.playPause')) : tooltipLabel('Play', getShortcutLabel(kbLayout, 'transport.playPause'))} side="top">
+            <Tooltip content={isPlaying ? tooltipLabel(t('monitor.pause'), getShortcutLabel(kbLayout, 'transport.playPause')) : tooltipLabel(t('monitor.play'), getShortcutLabel(kbLayout, 'transport.playPause'))} side="top">
               <Button
                 variant="ghost" size="icon"
                 onClick={() => {
@@ -1761,7 +1763,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
               </Button>
             </Tooltip>
             {/* Step Forward */}
-            <Tooltip content={tooltipLabel('Step Forward', getShortcutLabel(kbLayout, 'transport.stepForward'))} side="top">
+            <Tooltip content={tooltipLabel(t('monitor.stepForward'), getShortcutLabel(kbLayout, 'transport.stepForward'))} side="top">
               <Button
                 variant="ghost" size="icon"
                 className="h-6 w-6 text-zinc-500"
@@ -1775,7 +1777,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
               </Button>
             </Tooltip>
             {/* Go to Out */}
-            <Tooltip content={tooltipLabel('Go to Out Point', getShortcutLabel(kbLayout, 'transport.goToOut'))} side="top">
+            <Tooltip content={tooltipLabel(t('monitor.goToOut'), getShortcutLabel(kbLayout, 'transport.goToOut'))} side="top">
               <Button
                 variant="ghost" size="icon"
                 className={`h-6 w-6 ${outPoint !== null ? 'text-zinc-400' : 'text-zinc-500'}`}
@@ -1795,7 +1797,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
             </Tooltip>
             <div className="w-px h-3 bg-zinc-700" />
             {/* Set Out */}
-            <Tooltip content={`${outPoint !== null ? `Out: ${formatTime(outPoint)} — ` : ''}${tooltipLabel('Set Out point', getShortcutLabel(kbLayout, 'mark.setOut'))}`} side="top">
+            <Tooltip content={`${outPoint !== null ? `Out: ${formatTime(outPoint)} — ` : ''}${tooltipLabel(t('monitor.setOut'), getShortcutLabel(kbLayout, 'mark.setOut'))}`} side="top">
               <Button
                 variant="ghost" size="icon"
                 className={`h-6 w-6 ${outPoint !== null ? 'text-yellow-400' : 'text-zinc-500'}`}
@@ -1809,7 +1811,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
               </Button>
             </Tooltip>
             {/* Loop In/Out */}
-            <Tooltip content="Loop In/Out" side="top">
+            <Tooltip content={t('monitor.loopInOut')} side="top">
               <Button
                 variant="ghost" size="icon"
                 className={`h-6 w-6 ${playingInOut ? 'text-yellow-400 bg-yellow-400/10' : 'text-zinc-500'} ${inPoint === null || outPoint === null ? 'opacity-30 cursor-not-allowed' : ''}`}
@@ -1843,7 +1845,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                   ? 'bg-zinc-900 text-yellow-400 border-zinc-700 hover:border-zinc-600'
                   : 'bg-zinc-900 text-orange-400 border-zinc-700 hover:border-zinc-600'
               }`}
-              title="Playback resolution"
+              title={t('monitor.playbackRes')}
             >
               {playbackResolution === 1 ? 'Full' : playbackResolution === 0.5 ? '1/2' : '1/4'}
               <ChevronDown className="h-3 w-3" />
@@ -1851,9 +1853,9 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
             {playbackResOpen && (
               <div className="absolute bottom-full right-0 mb-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl py-1 min-w-[120px] z-50">
                 {([
-                  { label: 'Full (1:1)', value: 1 as const, desc: 'Highest quality' },
-                  { label: 'Half (1/2)', value: 0.5 as const, desc: 'Balanced' },
-                  { label: 'Quarter (1/4)', value: 0.25 as const, desc: 'Smoothest' },
+                  { label: t('monitor.fullRes'), value: 1 as const, desc: t('monitor.fullResDesc') },
+                  { label: t('monitor.halfRes'), value: 0.5 as const, desc: t('monitor.halfResDesc') },
+                  { label: t('monitor.quarterRes'), value: 0.25 as const, desc: t('monitor.quarterResDesc') },
                 ] as const).map(opt => (
                   <button
                     key={opt.label}
@@ -1876,7 +1878,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
           </div>
 
           {/* Fullscreen */}
-          <Tooltip content={isFullscreen ? tooltipLabel('Exit fullscreen', getShortcutLabel(kbLayout, 'view.fullscreen')) : tooltipLabel('Fullscreen', getShortcutLabel(kbLayout, 'view.fullscreen'))} side="top">
+          <Tooltip content={isFullscreen ? tooltipLabel(t('monitor.exitFullscreen'), getShortcutLabel(kbLayout, 'view.fullscreen')) : tooltipLabel(t('monitor.fullscreen'), getShortcutLabel(kbLayout, 'view.fullscreen'))} side="top">
             <button
               onClick={toggleFullscreen}
               className="p-1 rounded hover:bg-zinc-800 transition-colors text-zinc-500 hover:text-zinc-300"

@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { ApiClient, type ApiRequestBodyOf, type ApiSuccessOf } from '../lib/api-client'
 import { logger } from '../lib/logger'
 import { useHfAuth } from '../hooks/use-hf-auth'
 import { useHfModelAccess } from '../hooks/use-hf-model-access'
 import { useAppSettings } from '../contexts/AppSettingsContext'
+import { useT } from '../lib/i18n'
 import './FirstRunSetup.css'
 
 interface LaunchGateProps {
@@ -23,18 +24,6 @@ type DownloadStepSpec = {
   type: StartModelDownloadBody['type']
   cpIds: ModelCheckpointID[]
 }
-
-// Fun loading messages
-const INSTALL_MESSAGES = [
-  "Downloading model weights...",
-  "Teaching AI to dream in 4K...",
-  "Loading neural pathways...",
-  "Calibrating inference engine...",
-  "Almost there...",
-  "Unpacking the magic...",
-  "Configuring parameters...",
-  "Finalizing installation..."
-]
 
 function uniqueCpIds(cpIds: readonly ModelCheckpointID[]): ModelCheckpointID[] {
   return [...new Set(cpIds)]
@@ -78,6 +67,17 @@ export function LaunchGate({
   onComplete,
   onAcceptLicense,
 }: LaunchGateProps) {
+  const { t } = useT()
+  const INSTALL_MESSAGES = useMemo(() => [
+    t('firstRun.installMessages.0'),
+    t('firstRun.installMessages.1'),
+    t('firstRun.installMessages.2'),
+    t('firstRun.installMessages.3'),
+    t('firstRun.installMessages.4'),
+    t('firstRun.installMessages.5'),
+    t('firstRun.installMessages.6'),
+    t('firstRun.installMessages.7'),
+  ], [t])
   const [currentStep, setCurrentStep] = useState<Step>(showLicenseStep ? 'license' : 'location')
   const [installPath, setInstallPath] = useState('')
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null)
@@ -245,7 +245,7 @@ export function LaunchGate({
 
       if (progress.status === 'error') {
         downloadQueueRef.current = []
-        setDownloadError(progress.error || 'Download failed.')
+        setDownloadError(progress.error || t('firstRun.downloadFailed'))
       } else if (progress.status === 'complete') {
         const nextStep = downloadQueueRef.current.shift() ?? null
         if (nextStep) {
@@ -297,7 +297,7 @@ export function LaunchGate({
       await startDownloadStep(downloadSteps[0])
     } catch (e) {
       logger.error(`Download start error: ${e}`)
-      setDownloadError(e instanceof Error ? e.message : 'Failed to start model download.')
+      setDownloadError(e instanceof Error ? e.message : t('firstRun.failedStart'))
     }
   }
 
@@ -323,7 +323,7 @@ export function LaunchGate({
         }
         setCurrentStep('location')
       } catch (e) {
-        setActionError(e instanceof Error ? e.message : 'Failed to accept license.')
+        setActionError(e instanceof Error ? e.message : t('firstRun.failedAccept'))
       } finally {
         setIsActionPending(false)
       }
@@ -344,7 +344,7 @@ export function LaunchGate({
     try {
       await onComplete()
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'Failed to complete setup.')
+      setActionError(e instanceof Error ? e.message : t('firstRun.failedSetup'))
     } finally {
       setIsActionPending(false)
     }
@@ -352,10 +352,10 @@ export function LaunchGate({
 
   // Get button text
   const getNextButtonText = () => {
-    if (currentStep === 'license') return licenseOnly ? 'Accept' : 'Next'
-    if (currentStep === 'location') return 'Install'
-    if (currentStep === 'complete') return 'Finish'
-    return 'Continue'
+    if (currentStep === 'license') return licenseOnly ? t('firstRun.accept') : t('firstRun.next')
+    if (currentStep === 'location') return t('firstRun.install')
+    if (currentStep === 'complete') return t('firstRun.finish')
+    return t('firstRun.continue')
   }
 
   // Check if next button should be disabled
@@ -428,10 +428,10 @@ export function LaunchGate({
                 fontWeight: 700,
                 marginBottom: 6
               }}>
-                LTX-2 Model License
+                {t('firstRun.modelLicense')}
               </h2>
               <p style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 16 }}>
-                The LTX-2 model is subject to the following license agreement. Please review and accept before downloading.
+                {t('firstRun.licenseDesc')}
               </p>
 
               <div style={{
@@ -475,7 +475,7 @@ export function LaunchGate({
                           color: '#ffffff',
                         }}
                       >
-                        Retry
+                        {t('firstRun.retry')}
                       </button>
                     </div>
                   ) : licenseText === null ? (
@@ -489,7 +489,7 @@ export function LaunchGate({
                       <svg width="20" height="20" viewBox="0 0 24 24" style={{ animation: 'spin 1s linear infinite' }}>
                         <circle cx="12" cy="12" r="10" stroke="#6D28D9" strokeWidth="3" fill="none" strokeDasharray="31.4 31.4" strokeLinecap="round" />
                       </svg>
-                      <span style={{ color: '#a0a0a0', fontSize: 13 }}>Loading license...</span>
+                      <span style={{ color: '#a0a0a0', fontSize: 13 }}>{t('firstRun.loadingLicense')}</span>
                     </div>
                   ) : (
                     <div style={{
@@ -536,7 +536,7 @@ export function LaunchGate({
                       flexShrink: 0
                     }}
                   />
-                  <span>I have read and agree to the LTX-2 Community License Agreement</span>
+                  <span>{t('firstRun.acceptLicense')}</span>
                 </label>
               </div>
             </div>
@@ -551,10 +551,10 @@ export function LaunchGate({
                 fontWeight: 700,
                 marginBottom: 6
               }}>
-                Choose Location
+                {t('firstRun.chooseLocation')}
               </h2>
               <p style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 24 }}>
-                Select where to install the model files.
+                {t('firstRun.chooseLocationDesc')}
               </p>
 
               <div style={{
@@ -597,7 +597,7 @@ export function LaunchGate({
                       transition: 'all 0.2s ease'
                     }}
                   >
-                    Browse
+                    {t('firstRun.browse')}
                   </button>
                 </div>
 
@@ -608,7 +608,7 @@ export function LaunchGate({
                   color: '#a0a0a0',
                   marginTop: 10
                 }}>
-                  <span>Available: <strong style={{ color: '#fff' }}>{availableSpace}</strong></span>
+                  <span>{t('firstRun.available')}: <strong style={{ color: '#fff' }}>{availableSpace}</strong></span>
                 </div>
               </div>
 
@@ -621,14 +621,14 @@ export function LaunchGate({
               }}>
                 <div style={{ marginBottom: 8 }}>
                   <label style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>
-                    LTX API Key
+                    {t('firstRun.ltxApiKey')}
                     <span style={{
                       fontSize: 11,
                       color: '#A98BD9',
                       marginLeft: 8,
                       fontWeight: 400
                     }}>
-                      Optional - Saves ~25 GB download
+                      {t('firstRun.apiKeyOptional')}
                     </span>
                   </label>
                 </div>
@@ -636,7 +636,7 @@ export function LaunchGate({
                   type="password"
                   value={ltxApiKey}
                   onChange={(e) => setLtxApiKey(e.target.value)}
-                  placeholder="Enter API key to skip text encoder download..."
+                  placeholder={t('firstRun.apiKeyPlaceholder')}
                   style={{
                     width: '100%',
                     background: '#1a1a1a',
@@ -651,11 +651,10 @@ export function LaunchGate({
                 <p style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
                   {ltxApiKey ? (
                     <span style={{ color: '#6D28D9' }}>
-                      ✓ Text encoder download will be skipped (using API instead)
+                      {t('firstRun.apiKeySkipNotice')}
                     </span>
                   ) : (
-                    'If you have an LTX API key, entering it here skips the 25 GB text encoder download. ' +
-                    'The API provides faster text encoding (~1s vs 23s local).'
+                    t('firstRun.apiKeyTip')
                   )}
                 </p>
               </div>
@@ -670,25 +669,25 @@ export function LaunchGate({
               }}>
                 <div style={{ marginBottom: 8 }}>
                   <label style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>
-                    HuggingFace Account
+                    {t('firstRun.hfAccount')}
                     <span style={{
                       fontSize: 11,
                       color: hfAuthStatus === 'authenticated' ? '#22c55e' : '#f59e0b',
                       marginLeft: 8,
                       fontWeight: 400
                     }}>
-                      {hfAuthStatus === 'authenticated' ? 'Signed in' : 'Required'}
+                      {hfAuthStatus === 'authenticated' ? t('settings.signedIn') : t('firstRun.required')}
                     </span>
                   </label>
                 </div>
                 {hfAuthStatus === 'authenticated' ? (
                   <p style={{ fontSize: 12, color: '#22c55e' }}>
-                    ✓ Authenticated — ready to download models.
+                    {t('firstRun.authenticatedReady')}
                   </p>
                 ) : (
                   <>
                     <p style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
-                      Sign in to HuggingFace to download model files.
+                      {t('firstRun.signInToDownload')}
                     </p>
                     <button
                       onClick={startHuggingFaceLogin}
@@ -706,7 +705,7 @@ export function LaunchGate({
                         opacity: hfAuthPolling ? 0.7 : 1
                       }}
                     >
-                      {hfAuthPolling ? 'Waiting for sign in...' : 'Sign in with HuggingFace'}
+                      {hfAuthPolling ? t('settings.waitingSignIn') : t('settings.signInHf')}
                     </button>
                   </>
                 )}
@@ -723,14 +722,14 @@ export function LaunchGate({
                 }}>
                   <div style={{ marginBottom: 8 }}>
                     <label style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>
-                      Model Access
+                      {t('firstRun.modelAccess')}
                       <span style={{ fontSize: 11, color: '#f59e0b', marginLeft: 8, fontWeight: 400 }}>
-                        Action required
+                        {t('firstRun.actionRequired')}
                       </span>
                     </label>
                   </div>
                   <p style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
-                    Some models require you to accept their license on HuggingFace before downloading.
+                    {t('firstRun.modelAccessDesc')}
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {Object.entries(accessMap)
@@ -761,7 +760,7 @@ export function LaunchGate({
                               transition: 'all 0.2s ease',
                             }}
                           >
-                            Request access
+                            {t('settings.requestAccess')}
                           </button>
                         </div>
                       ))}
@@ -816,7 +815,7 @@ export function LaunchGate({
                   textShadow: '0 1px 4px rgba(0,0,0,0.9)',
                   zIndex: 10
                 }}>
-                  Generated by PongFlongo
+                  {t('firstRun.generatedBy')}
                 </div>
               </div>
 
@@ -860,7 +859,7 @@ export function LaunchGate({
                         color: '#ffffff',
                       }}
                     >
-                      Back
+                      {t('firstRun.back')}
                     </button>
                     <button
                       onClick={retryInstallation}
@@ -875,7 +874,7 @@ export function LaunchGate({
                         color: '#ffffff',
                       }}
                     >
-                      Retry
+                      {t('firstRun.retry')}
                     </button>
                   </div>
                 </div>
@@ -889,7 +888,7 @@ export function LaunchGate({
                   marginBottom: 8
                 }}>
                   <span style={{ fontSize: 13, fontWeight: 500 }}>
-                    {totalProgress > 85 ? 'Installing...' : 'Downloading...'}
+                    {totalProgress > 85 ? t('firstRun.installing') : t('firstRun.downloading')}
                   </span>
                   <span style={{ fontSize: 13, color: '#A98BD9', fontWeight: 600 }}>
                     {Math.round(totalProgress)}%
@@ -942,7 +941,7 @@ export function LaunchGate({
                     )}
                     {runningDownloadProgress && runningDownloadProgress.speed_bytes_per_sec > 0 && (
                       <span>
-                        ETA: {getTimeRemaining()}
+                        {t('firstRun.eta')}: {getTimeRemaining()}
                       </span>
                     )}
                   </div>
@@ -955,7 +954,7 @@ export function LaunchGate({
                     fontSize: 11,
                     color: '#666'
                   }}>
-                    File {runningDownloadProgress.completed_files.length + 1} of {runningDownloadProgress.all_files.length}
+                    {t('firstRun.fileOf').replace('{{current}}', String(runningDownloadProgress.completed_files.length + 1)).replace('{{total}}', String(runningDownloadProgress.all_files.length))}
                   </div>
                 )}
               </>
@@ -997,10 +996,10 @@ export function LaunchGate({
                 fontWeight: 700,
                 marginBottom: 8
               }}>
-                Ready to Create
+                {t('firstRun.readyToCreate')}
               </h2>
               <p style={{ color: '#a0a0a0', fontSize: 14, maxWidth: 320 }}>
-                LTX Video is installed. Start generating.
+                {t('firstRun.readyDesc')}
               </p>
 
               {/* Install Summary */}
@@ -1018,7 +1017,7 @@ export function LaunchGate({
                   padding: '8px 0',
                   fontSize: 13
                 }}>
-                  <span style={{ color: '#a0a0a0' }}>Location</span>
+                  <span style={{ color: '#a0a0a0' }}>{t('firstRun.location')}</span>
                   <span style={{ fontWeight: 500, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {installPath.split('\\').pop() || installPath}
                   </span>
@@ -1036,7 +1035,7 @@ export function LaunchGate({
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
-          <div style={{ fontSize: 11, color: '#666' }}>© 2026 Lightricks</div>
+          <div style={{ fontSize: 11, color: '#666' }}>{t('firstRun.copyright')}</div>
 
           <div style={{ display: 'flex', gap: 10 }}>
             {/* Next/Install/Finish Button */}

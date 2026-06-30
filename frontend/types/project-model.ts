@@ -385,7 +385,7 @@ export function createAssetBinId(): string {
   return `bin-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 }
 
-export function createDefaultTimeline(name: string = 'Timeline 1'): Timeline {
+export function createDefaultTimeline(name: string): Timeline {
   return {
     id: `timeline-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
     name,

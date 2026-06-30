@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { LayoutGrid, RotateCcw, Save, Trash2 } from 'lucide-react'
 import { Tooltip } from '../../components/ui/tooltip'
+import { useT } from '../../lib/i18n'
 import {
   type EditorLayout,
   type LayoutPreset,
@@ -16,6 +17,7 @@ export interface VideoEditorLayoutMenuProps {
 
 export function VideoEditorLayoutMenu(props: VideoEditorLayoutMenuProps) {
   const { currentLayout, onApplyLayout, onResetLayout } = props
+  const { t } = useT()
 
   const [showLayoutMenu, setShowLayoutMenu] = useState(false)
   const [layoutPresets, setLayoutPresets] = useState<LayoutPreset[]>(loadLayoutPresets)
@@ -123,7 +125,7 @@ export function VideoEditorLayoutMenu(props: VideoEditorLayoutMenuProps) {
                 className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[13px] text-zinc-200 hover:bg-blue-600 hover:text-white transition-colors"
               >
                 <Save className="h-3.5 w-3.5" />
-                Save Current Layout...
+                {t('layout.saveCurrent')}
               </button>
               <button
                 onClick={() => {
@@ -133,7 +135,7 @@ export function VideoEditorLayoutMenu(props: VideoEditorLayoutMenuProps) {
                 className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[13px] text-zinc-200 hover:bg-blue-600 hover:text-white transition-colors"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
-                Reset to Default
+                {t('layout.resetDefault')}
               </button>
               {layoutPresets.length > 0 && (
                 <>

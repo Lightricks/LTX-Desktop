@@ -9,9 +9,10 @@ import {
 } from 'lucide-react'
 import type { Asset, TimelineClip, LetterboxSettings, TextOverlayStyle, TransitionType } from '../../types/project-model' // EFFECTS HIDDEN: removed EffectMask
 import { DEFAULT_COLOR_CORRECTION, DEFAULT_LETTERBOX } from '../../types/project-model' // EFFECTS HIDDEN: removed EFFECT_DEFINITIONS, DEFAULT_EFFECT_MASK
-import { TEXT_PRESETS } from '../../types/project'
+import { TEXT_PRESETS, translatePresetName } from '../../types/project'
 import { formatTime } from './video-editor-utils'
 import { Tooltip } from '../../components/ui/tooltip'
+import { useT } from '../../lib/i18n'
 import {
   selectAssets,
   selectSelectedClipAudioControls,
@@ -28,6 +29,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
   const {
     onCreateVideoFromImage,
   } = props
+  const { t } = useT()
   const {
     deleteClipDisplayedTake,
     setClipAudioLevel,
@@ -220,12 +222,12 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                   </div>
                 )}
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Speed</span>
+                  <span className="text-xs text-zinc-400">{t('text.speed')}</span>
                   <span className="text-xs text-white">{selectedClip.speed}x</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Track</span>
-                  <span className="text-xs text-white">{tracks[selectedClip.trackIndex]?.name || `Track ${selectedClip.trackIndex + 1}`}</span>
+                  <span className="text-xs text-zinc-400">{t('text.track')}</span>
+                  <span className="text-xs text-white">{tracks[selectedClip.trackIndex]?.name || t('text.trackN').replace('{{n}}', String(selectedClip.trackIndex + 1))}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-zinc-400">Start</span>
@@ -595,16 +597,16 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
 
               {/* Presets */}
               <div className="pt-2 border-t border-zinc-800">
-                <span className="text-[10px] text-zinc-400 block mb-1.5">Apply Preset</span>
+                <span className="text-[10px] text-zinc-400 block mb-1.5">{t('text.applyPreset')}</span>
                 <div className="grid grid-cols-2 gap-1">
                   {TEXT_PRESETS.map(preset => (
                     <button
                       key={preset.id}
                       onClick={() => updateText({ ...preset.style })}
                       className="px-2 py-1.5 rounded bg-zinc-800 border border-zinc-700 text-[9px] text-zinc-300 hover:border-cyan-500/40 hover:bg-cyan-900/20 transition-colors truncate"
-                      title={preset.name}
+                      title={translatePresetName(preset.name, t)}
                     >
-                      {preset.name}
+                      {translatePresetName(preset.name, t)}
                     </button>
                   ))}
                 </div>

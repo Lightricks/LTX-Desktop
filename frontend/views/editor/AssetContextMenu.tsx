@@ -7,6 +7,7 @@ import type { Asset } from '../../types/project-model'
 import { COLOR_LABELS } from './video-editor-utils'
 import { equalAssetBins, selectAssetBins, selectAssets, selectRegenerationState } from './editor-selectors'
 import { useEditorActions, useEditorStore } from './editor-store'
+import { useT } from '../../lib/i18n'
 
 export interface AssetContextMenuProps {
   asset: Asset
@@ -37,6 +38,7 @@ export function AssetContextMenu({
   createAssetFromTake,
   openCreateBinEditor,
 }: AssetContextMenuProps) {
+  const { t } = useT()
   const actions = useEditorActions()
   const assets = useEditorStore(selectAssets)
   const bins = useEditorStore(selectAssetBins, equalAssetBins)
@@ -93,7 +95,7 @@ export function AssetContextMenu({
           className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
         >
           <Plus className="h-3.5 w-3.5 text-zinc-500" />
-          <span>Add to Timeline</span>
+          <span>{t('assets.addToTimeline')}</span>
         </button>
       )}
 
@@ -106,7 +108,7 @@ export function AssetContextMenu({
           className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
         >
           <FolderOpen className="h-3.5 w-3.5 text-zinc-500" />
-          <span>Show in Explorer</span>
+          <span>{t('assets.showInExplorer')}</span>
         </button>
       )}
 
@@ -220,14 +222,14 @@ export function AssetContextMenu({
 
       <div className="h-px bg-zinc-700 my-1" />
 
-      <div className="px-3 py-1 text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">Label</div>
+      <div className="px-3 py-1 text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">{t('assets.label')}</div>
       <div className="px-3 py-1.5 flex items-center gap-1 flex-wrap">
         <button
           onClick={() => setColor(undefined)}
           className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
             !asset.colorLabel ? 'border-white scale-110' : 'border-zinc-600 hover:border-zinc-400'
           }`}
-          title="No label"
+          title={t('ctx.noLabel')}
         >
           <X className="h-2 w-2 text-zinc-400" />
         </button>
@@ -246,14 +248,14 @@ export function AssetContextMenu({
 
       <div className="h-px bg-zinc-700 my-1" />
 
-      <div className="px-3 py-1 text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">Move to Bin</div>
+      <div className="px-3 py-1 text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">{t('assets.moveToBin')}</div>
 
       <button
         onClick={() => moveToBin(undefined)}
         className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
       >
         <X className="h-3.5 w-3.5 text-zinc-500" />
-        <span>Remove from Bin</span>
+        <span>{t('assets.removeFromBin')}</span>
       </button>
 
       {bins.map(bin => (
@@ -275,7 +277,7 @@ export function AssetContextMenu({
         className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
       >
         <FolderPlus className="h-3.5 w-3.5 text-zinc-500" />
-        <span>New Bin...</span>
+        <span>{t('assets.newBin')}</span>
       </button>
 
       {isMulti && (
@@ -332,7 +334,7 @@ export function AssetContextMenu({
         className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-zinc-700 flex items-center gap-3"
       >
         <Trash2 className="h-3.5 w-3.5" />
-        <span>{isMulti ? `Delete ${targetIds.length} Assets` : 'Delete Asset'}</span>
+        <span>{isMulti ? t('assets.deleteAssets').replace('{{n}}', String(targetIds.length)) : t('assets.deleteAsset')}</span>
       </button>
     </div>
   )

@@ -1,8 +1,9 @@
 import React from 'react'
 import { Magnet, Type } from 'lucide-react'
-import { PRIMARY_TOOLS, TRIM_TOOLS, ToolType } from './video-editor-utils'
+import { PRIMARY_TOOLS, TRIM_TOOLS, ToolType, translateToolLabel } from './video-editor-utils'
 import { getShortcutLabel, type KeyboardLayout } from './video-editor-utils'
 import { Tooltip } from '@/components/ui/tooltip'
+import { useT } from '../../lib/i18n'
 
 interface ToolsPanelProps {
   activeTool: ToolType
@@ -30,13 +31,14 @@ export function ToolsPanel({
   showEffectsBrowser: _showEffectsBrowser, setShowEffectsBrowser: _setShowEffectsBrowser, // EFFECTS HIDDEN
   addTextClip, kbLayout,
 }: ToolsPanelProps) {
+  const { t } = useT()
   return (
     <div className="w-10 flex-shrink-0 bg-zinc-900 border-r border-zinc-800 flex flex-col items-center py-1 gap-0.5 overflow-y-auto">
       {PRIMARY_TOOLS.map(tool => (
         <Tooltip
           key={tool.id}
           side="right"
-          content={(() => { const s = getShortcutLabel(kbLayout, tool.actionId); return <>{tool.label}{s && <span className="text-zinc-400"> ({s})</span>}</>; })()}
+          content={(() => { const s = getShortcutLabel(kbLayout, tool.actionId); return <>{translateToolLabel(tool.label, t)}{s && <span className="text-zinc-400"> ({s})</span>}</>; })()}
         >
           <button
             onClick={() => setActiveTool(tool.id)}
@@ -60,7 +62,7 @@ export function ToolsPanel({
           <div className="relative flex-shrink-0">
             <Tooltip
               side="right"
-              content={(() => { const s = getShortcutLabel(kbLayout, currentTrimTool.actionId); return <>{currentTrimTool.label}<span className="text-zinc-400">{s ? ` (${s}) — ` : ' — '}right-click or hold for more</span></>; })()}
+              content={(() => { const s = getShortcutLabel(kbLayout, currentTrimTool.actionId); return <>{translateToolLabel(currentTrimTool.label, t)}<span className="text-zinc-400">{s ? ` (${s}) — ` : ' — '}{t('tools.trimFlyout')}</span></>; })()}
             >
               <button
                 onClick={() => {
@@ -111,21 +113,21 @@ export function ToolsPanel({
                     className="fixed bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-[9999] min-w-[160px]"
                     style={{ top: rect?.top ?? 0, left: (rect?.right ?? 44) + 4 }}
                   >
-                    {TRIM_TOOLS.map(t => (
+                    {TRIM_TOOLS.map(tool => (
                       <button
-                        key={t.id}
+                        key={tool.id}
                         onClick={() => {
-                          setActiveTool(t.id)
-                          setLastTrimTool(t.id)
+                          setActiveTool(tool.id)
+                          setLastTrimTool(tool.id)
                           setShowTrimFlyout(false)
                         }}
                         className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
-                          activeTool === t.id ? 'bg-blue-600/30 text-white' : 'text-zinc-300 hover:bg-zinc-700'
+                          activeTool === tool.id ? 'bg-blue-600/30 text-white' : 'text-zinc-300 hover:bg-zinc-700'
                         }`}
                       >
-                        <t.icon className="h-3.5 w-3.5" />
-                        <span className="flex-1">{t.label}</span>
-                        <span className="text-zinc-500 text-[10px]">{getShortcutLabel(kbLayout, t.actionId)}</span>
+                        <tool.icon className="h-3.5 w-3.5" />
+                        <span className="flex-1">{translateToolLabel(tool.label, t)}</span>
+                        <span className="text-zinc-500 text-[10px]">{getShortcutLabel(kbLayout, tool.actionId)}</span>
                       </button>
                     ))}
                   </div>
@@ -138,7 +140,7 @@ export function ToolsPanel({
 
       <div className="w-6 h-px bg-zinc-700 my-1 flex-shrink-0" />
 
-      <Tooltip side="right" content={snapEnabled ? 'Snapping On' : 'Snapping Off'}>
+      <Tooltip side="right" content={snapEnabled ? t('tools.snappingOn') : t('tools.snappingOff')}>
         <button
           onClick={() => setSnapEnabled(!snapEnabled)}
           className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
@@ -170,7 +172,7 @@ export function ToolsPanel({
 
       <div className="w-6 h-px bg-zinc-700 my-1 flex-shrink-0" />
 
-      <Tooltip side="right" content="Add Text Overlay">
+      <Tooltip side="right" content={t('tools.addText')}>
         <button
           onClick={() => addTextClip()}
           className="p-1.5 rounded-lg transition-colors flex-shrink-0 text-cyan-400 hover:bg-cyan-900/30 hover:text-cyan-300"

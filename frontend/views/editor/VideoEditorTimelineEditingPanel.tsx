@@ -37,7 +37,7 @@ import {
   PRIMARY_TOOLS, TRIM_TOOLS,
   CUT_POINT_TOLERANCE, DEFAULT_DISSOLVE_DURATION,
   type ToolType,
-  getShortcutLabel, tooltipLabel,
+  getShortcutLabel, tooltipLabel, translateToolLabel,
   formatTime, parseTime, getColorLabel,
 } from './video-editor-utils'
 import {
@@ -76,6 +76,7 @@ import {
 } from './editor-selectors'
 import { useTimelineDrag } from './useTimelineDrag'
 import { useEditorActions, useEditorStore } from './editor-store'
+import { useT } from '../../lib/i18n'
 
 // Custom scissors cursor SVG for the blade tool (white with dark outline for contrast)
 const SCISSORS_CURSOR_SVG = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='6' cy='6' r='3'/><path d='M8.12 8.12 12 12'/><path d='M20 4 8.12 15.88'/><circle cx='6' cy='18' r='3'/><path d='M14.8 14.8 20 20'/></svg>`
@@ -179,6 +180,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     isRegenerating,
     regenProgress,
   } = props
+  const { t } = useT()
   const actions = useEditorActions()
   const { shouldVideoGenerateWithLtxApi } = useAppSettings()
   const {
@@ -269,7 +271,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
   }, [actions])
 
   const handleAddTimeline = useCallback(() => {
-    actions.createTimeline()
+    actions.createTimeline(undefined, t('timeline.defaultNamePrefix'))
   }, [actions])
 
   const handleSwitchTimeline = useCallback((id: string) => {
@@ -465,11 +467,11 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     && !videoGenerationModelSpecsErrorMessage
   )
   const gapVideoSettingsMessage = isLoadingVideoGenerationModelSpecs
-    ? 'Loading generation settings...'
+    ? t('models.loadingSettings')
     : videoGenerationModelSpecsErrorMessage
       ? `Could not load generation settings: ${videoGenerationModelSpecsErrorMessage}`
       : gapGenerateMode !== 'text-to-image' && selectedGap && !gapCanGenerateVideo
-        ? 'This gap is too long to fill with a single video generation.'
+        ? t('menu.gapTooLong')
         : null
 
   const selectedGapRef = useRef<GapSelection>(selectedGap)
@@ -1422,7 +1424,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                 <span className="truncate max-w-[120px]">{tl.name}</span>
               )}
               {/* Close tab button */}
-              <Tooltip content="Close tab" side="bottom">
+              <Tooltip content={t('timeline.closeTab')} side="bottom">
                 <button
                   className={`ml-0.5 p-0.5 rounded transition-colors flex-shrink-0 ${
                     tl.id === activeTimeline?.id
@@ -1441,7 +1443,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
           ))}
           
           {/* Add timeline button */}
-          <Tooltip content="New timeline" side="bottom">
+          <Tooltip content={t('timeline.newTimeline')} side="bottom">
             <button
               onClick={handleAddTimeline}
               className="flex items-center justify-center w-6 h-6 rounded text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors flex-shrink-0"
@@ -1467,23 +1469,23 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                 className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
               >
                 <Pencil className="h-3 w-3" />
-                Rename
+                {t('timeline.rename')}
               </button>
               <button
                 onClick={() => handleDuplicateTimeline(timelineContextMenu.timelineId)}
                 className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
               >
                 <Copy className="h-3 w-3" />
-                Duplicate
+                {t('timeline.duplicate')}
               </button>
               <div className="h-px bg-zinc-700 my-0.5" />
               <button
                 disabled={true}
-                title="Coming Soon!"
+                title={t('ctx.comingSoon')}
                 className="w-full text-left px-3 py-1.5 text-xs text-zinc-500 flex items-center gap-2 opacity-50 cursor-not-allowed"
               >
                 <ZoomIn className="h-3 w-3" />
-                Upscale Timeline
+                {t('timeline.upscaleTimeline')}
               </button>
               <div className="h-px bg-zinc-700 my-0.5" />
               <button
@@ -1494,14 +1496,14 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                 className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
               >
                 <FileUp className="h-3 w-3" />
-                Import XML Timeline
+                {t('timeline.importXmlTimeline')}
               </button>
               <div className="relative group/export">
                 <button
                   className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
                 >
                   <Upload className="h-3 w-3" />
-                  Export
+                  {t('timeline.export')}
                   <ChevronRight className="h-3 w-3 ml-auto text-zinc-500" />
                 </button>
                 <div className="absolute left-full top-0 ml-0.5 min-w-[160px] bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-50 hidden group-hover/export:block">
@@ -1513,7 +1515,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                     className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
                   >
                     <Upload className="h-3 w-3" />
-                    Export Timeline...
+                    {t('timeline.exportTimelineDots')}
                   </button>
                   <button
                     onClick={() => {
@@ -1524,7 +1526,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                     className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2 disabled:opacity-40"
                   >
                     <FileDown className="h-3 w-3" />
-                    Export as FCP 7 XML
+                    {t('timeline.exportFcp7Xml')}
                   </button>
                 </div>
               </div>
@@ -1537,7 +1539,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                 className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
               >
                 <X className="h-3 w-3" />
-                Close Tab
+                {t('timeline.closeTimeline')}
               </button>
               {timelines.length > 1 && (
                 <>
@@ -1546,7 +1548,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                     className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-zinc-700 flex items-center gap-2"
                   >
                     <Trash2 className="h-3 w-3" />
-                    Delete
+                    {t('timeline.deleteTimelineMenu')}
                   </button>
                 </>
               )}
@@ -1559,7 +1561,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
           {/* Tools Panel */}
           <div className="w-10 flex-shrink-0 bg-zinc-900 border-r border-zinc-800 flex flex-col items-center py-1 gap-0.5 overflow-hidden">
             {PRIMARY_TOOLS.map(tool => (
-              <Tooltip key={tool.id} content={tooltipLabel(tool.label, getShortcutLabel(kbLayout, tool.actionId))} side="right">
+              <Tooltip key={tool.id} content={tooltipLabel(translateToolLabel(tool.label, t), getShortcutLabel(kbLayout, tool.actionId))} side="right">
                 <button
                   onClick={() => setActiveTool(tool.id)}
                   className={`p-1.5 rounded-lg transition-colors relative group flex-shrink-0 ${
@@ -1583,7 +1585,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
               const currentTrimTool = TRIM_TOOLS.find(t => t.id === (isTrimActive ? activeTool : lastTrimTool)) || TRIM_TOOLS[0]
               return (
                 <div className="relative flex-shrink-0">
-                  <Tooltip content={(() => { const s = getShortcutLabel(kbLayout, currentTrimTool.actionId); return s ? `${currentTrimTool.label} (${s}) — right-click or hold for more` : `${currentTrimTool.label} — right-click or hold for more` })()} side="right">
+                  <Tooltip content={(() => { const s = getShortcutLabel(kbLayout, currentTrimTool.actionId); return s ? `${translateToolLabel(currentTrimTool.label, t)} (${s})${t('tools.trimFlyout')}` : `${translateToolLabel(currentTrimTool.label, t)}${t('tools.trimFlyout')}` })()} side="right">
                     <button
                       onClick={() => {
                         if (trimFlyoutOpenedRef.current) { trimFlyoutOpenedRef.current = false; return }
@@ -1663,7 +1665,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
             
             <div className="w-6 h-px bg-zinc-700 my-1 flex-shrink-0" />
             
-            <Tooltip content={snapEnabled ? 'Snapping On' : 'Snapping Off'} side="right">
+            <Tooltip content={snapEnabled ? t('tools.snappingOn') : t('tools.snappingOff')} side="right">
               <button
                 onClick={() => setSnapEnabled(!snapEnabled)}
                 className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
@@ -1686,7 +1688,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   ? 'bg-blue-600 text-white'
                   : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
               }`}
-              title="Effects Browser"
+              title={t('track.effectsBrowser')}
             >
               FX
             </button>
@@ -1694,14 +1696,14 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
 
             <div className="w-6 h-px bg-zinc-700 my-1 flex-shrink-0" />
             
-            <Tooltip content="Add Text Overlay" side="right">
+            <Tooltip content={t('tools.addText')} side="right">
               <button
                 onClick={() => addTextClip()}
                 className="p-1.5 rounded-lg transition-colors flex-shrink-0 text-cyan-400 hover:bg-cyan-900/30 hover:text-cyan-300 group relative"
               >
                 <Type className="h-4 w-4" />
                 <div className="absolute left-full ml-2 px-2 py-1 bg-zinc-800 rounded text-xs text-white whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50">
-                  Add Text Overlay
+                  {t('tools.addText')}
                 </div>
               </button>
             </Tooltip>
@@ -1710,7 +1712,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
               <>
                 <div className="w-6 h-px bg-zinc-700 my-1 flex-shrink-0" />
 
-                <Tooltip content="IC-LoRA Style Transfer" side="right">
+                <Tooltip content={t('track.icLoraTransfer')} side="right">
                   <button
                     onClick={() => {
                       if (selectedClip?.type === 'video') {
@@ -1731,7 +1733,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
 
             <div className="flex-1" />
 
-            <Tooltip content={showPropertiesPanel ? 'Hide Properties Panel' : 'Show Properties Panel'} side="right">
+            <Tooltip content={showPropertiesPanel ? t('track.hideProperties') : t('track.showProperties')} side="right">
               <button
                 onClick={() => setShowPropertiesPanel(p => !p)}
                 className={`p-1.5 rounded-lg transition-colors flex-shrink-0 group relative ${
@@ -1740,7 +1742,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
               >
                 <PanelRight className="h-4 w-4" />
                 <div className="absolute left-full ml-2 px-2 py-1 bg-zinc-800 rounded text-xs text-white whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50">
-                  {showPropertiesPanel ? 'Hide Properties' : 'Show Properties'}
+                  {showPropertiesPanel ? t('track.hideProperties') : t('track.showProperties')}
                 </div>
               </button>
             </Tooltip>
@@ -1905,7 +1907,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   <button 
                     onClick={() => addTrack('video')}
                     className="text-[10px] text-zinc-500 hover:text-zinc-300 flex items-center gap-0.5"
-                    title="Add video track"
+                    title={t('track.addVideo')}
                   >
                     <Plus className="h-3 w-3" />
                     V
@@ -1913,7 +1915,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   <button 
                     onClick={() => addTrack('audio')}
                     className="text-[10px] text-emerald-500/70 hover:text-emerald-400 flex items-center gap-0.5"
-                    title="Add audio track"
+                    title={t('track.addAudio')}
                   >
                     <Plus className="h-3 w-3" />
                     A
@@ -1922,7 +1924,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   <button 
                     onClick={() => addSubtitleTrack()}
                     className="text-[10px] text-amber-500/70 hover:text-amber-400 flex items-center gap-0.5"
-                    title="Add subtitle track"
+                    title={t('track.addSubtitle')}
                   >
                     <MessageSquare className="h-3 w-3" />
                     Subs
@@ -1931,7 +1933,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   <button 
                     onClick={() => createAdjustmentLayerAsset()}
                     className="text-[10px] text-blue-400/70 hover:text-blue-300 flex items-center gap-0.5"
-                    title="Create adjustment layer asset"
+                    title={t('track.createAdjustment')}
                   >
                     <Layers className="h-3 w-3" />
                     Adj
@@ -1973,7 +1975,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                             <div className="w-8 h-[1px] bg-zinc-500 group-hover/divider:bg-blue-400 transition-colors rounded-full" />
                           </div>
                         </div>
-                        <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-[7px] font-bold text-zinc-400 bg-zinc-800 px-1.5 rounded-sm leading-none pointer-events-none">V | A</span>
+                        <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-[7px] font-bold text-zinc-400 bg-zinc-800 px-1.5 rounded-sm leading-none pointer-events-none">{t('clip.vaDivider')}</span>
                       </div>
                     )}
                     <div 
@@ -1997,7 +1999,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           </div>
                           {/* Row 2: tools */}
                           <div className="flex items-center gap-0">
-                            <Tooltip content="Track style settings" side="right">
+                            <Tooltip content={t('track.styleSettings')} side="right">
                               <button
                                 onClick={() => setSubtitleTrackStyleIdx(subtitleTrackStyleIdx === realIndex ? null : realIndex)}
                                 className={`p-0.5 rounded ${subtitleTrackStyleIdx === realIndex ? 'text-amber-400 bg-amber-900/30' : 'text-amber-500/60 hover:text-amber-400'}`}
@@ -2005,7 +2007,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                 <Palette className="h-3 w-3" />
                               </button>
                             </Tooltip>
-                            <Tooltip content="Add subtitle" side="right">
+                            <Tooltip content={t('track.addSubtitleBtn')} side="right">
                               <button
                                 onClick={() => addSubtitleClip(realIndex)}
                                 className="p-0.5 rounded text-amber-500/60 hover:text-amber-400"
@@ -2013,7 +2015,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                 <Plus className="h-3 w-3" />
                               </button>
                             </Tooltip>
-                            <Tooltip content={track.locked ? 'Unlock' : 'Lock'} side="right">
+                            <Tooltip content={track.locked ? t('track.unlock') : t('track.lock')} side="right">
                               <button
                                 onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? {...t, locked: !t.locked} : t))}
                                 className={`p-0.5 rounded ${track.locked ? 'text-yellow-400' : 'text-zinc-500 hover:text-zinc-300'}`}
@@ -2021,7 +2023,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                 {track.locked ? <Lock className="h-2.5 w-2.5" /> : <Unlock className="h-2.5 w-2.5" />}
                               </button>
                             </Tooltip>
-                            <Tooltip content={track.muted ? 'Show subtitles' : 'Hide subtitles'} side="right">
+                            <Tooltip content={track.muted ? t('track.showSubtitles') : t('track.hideSubtitles')} side="right">
                               <button
                                 onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? {...t, muted: !t.muted} : t))}
                                 className={`p-0.5 rounded ${track.muted ? 'text-red-400' : 'text-zinc-500 hover:text-zinc-300'}`}
@@ -2029,7 +2031,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                 {track.muted ? <EyeOff className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
                               </button>
                             </Tooltip>
-                            <Tooltip content="Delete track" side="right">
+                            <Tooltip content={t('track.deleteTrack')} side="right">
                               <button
                                 onClick={() => {
                                   if (confirm(`Delete subtitle track "${track.name}"?`)) {
@@ -2047,7 +2049,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                       ) : (
                       <>
                       <div className="flex items-center gap-1 min-w-0 overflow-hidden">
-                        <Tooltip content={track.sourcePatched !== false ? 'Source patched (click to unpatch)' : 'Source unpatched (click to patch)'} side="right">
+                        <Tooltip content={track.sourcePatched !== false ? t('track.sourcePatched') : t('track.sourceUnpatched')} side="right">
                           <button
                             onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? {...t, sourcePatched: !(t.sourcePatched !== false)} : t))}
                             className={`p-0.5 rounded flex-shrink-0 transition-colors ${
@@ -2073,7 +2075,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                         </span>
                       </div>
                       <div className="flex items-center gap-0 flex-shrink-0">
-                        <Tooltip content={track.locked ? 'Unlock' : 'Lock'} side="right">
+                        <Tooltip content={track.locked ? t('track.unlock') : t('track.lock')} side="right">
                           <button
                             onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? {...t, locked: !t.locked} : t))}
                             className={`p-0.5 rounded ${track.locked ? 'text-yellow-400' : 'text-zinc-500 hover:text-zinc-300'}`}
@@ -2082,7 +2084,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           </button>
                         </Tooltip>
                         {track.kind !== 'audio' && (
-                          <Tooltip content={track.enabled === false ? 'Enable track output' : 'Disable track output'} side="right">
+                          <Tooltip content={track.enabled === false ? t('track.enableOutput') : t('track.disableOutput')} side="right">
                             <button
                               onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? {...t, enabled: !(t.enabled !== false)}: t))}
                               className={`p-0.5 rounded ${track.enabled === false ? 'text-zinc-600' : 'text-zinc-500 hover:text-zinc-300'}`}
@@ -2092,7 +2094,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           </Tooltip>
                         )}
                         {track.kind !== 'audio' && (
-                          <Tooltip content={track.muted ? 'Unmute' : 'Mute'} side="right">
+                          <Tooltip content={track.muted ? t('track.unmute') : t('track.mute')} side="right">
                             <button
                               onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? {...t, muted: !t.muted} : t))}
                               className={`p-0.5 rounded ${track.muted ? 'text-red-400' : 'text-zinc-500 hover:text-zinc-300'}`}
@@ -2107,7 +2109,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                             className={`px-1 py-0.5 rounded text-[10px] font-bold leading-none ${
                               track.muted ? 'bg-red-500/80 text-white' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
                             }`}
-                            title={track.muted ? 'Unmute track' : 'Mute track'}
+                            title={track.muted ? t('track.unmuteTrack') : t('track.muteTrack')}
                           >
                             M
                           </button>
@@ -2118,13 +2120,13 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                             className={`px-1 py-0.5 rounded text-[10px] font-bold leading-none ${
                               track.solo ? 'bg-yellow-500/80 text-black' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
                             }`}
-                            title={track.solo ? 'Unsolo track' : 'Solo track'}
+                            title={track.solo ? t('track.unsolo') : t('track.solo')}
                           >
                             S
                           </button>
                         )}
                         {tracks.length > 1 && (
-                          <Tooltip content="Delete track" side="right">
+                          <Tooltip content={t('track.deleteTrack')} side="right">
                             <button
                               onClick={() => deleteTrack(realIndex)}
                               className="p-0.5 rounded text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -2516,7 +2518,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                         })()}
                         <div className={`flex-1 min-w-0 ${clip.type === 'audio' ? 'relative z-10' : ''}`}>
                           <p className={`text-[10px] truncate ${clip.type === 'adjustment' ? 'text-blue-300' : clip.type === 'text' ? 'text-cyan-300' : clip.type === 'audio' ? 'text-emerald-300' : 'text-zinc-300'}`}>
-                            {clip.type === 'adjustment' ? 'Adjustment Layer' : clip.type === 'text' ? (clip.textStyle?.text?.slice(0, 30) || 'Text') : clip.asset?.prompt?.slice(0, 30) || clip.importedName || 'Clip'}
+                            {clip.type === 'adjustment' ? t('clip.adjustmentLayer') : clip.type === 'text' ? (clip.textStyle?.text?.slice(0, 30) || t('clip.text')) : clip.asset?.prompt?.slice(0, 30) || clip.importedName || t('clip.clip')}
                           </p>
                           <div className="flex items-center gap-2 text-[9px] text-zinc-500">
                             <span>{clip.duration.toFixed(1)}s</span>
@@ -2526,11 +2528,11 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                               return <span style={{ color: resInfo.color }} className="font-semibold">{resInfo.height >= 2160 ? '4K' : `${resInfo.height}p`}</span>
                             })()}
                             {clip.speed !== 1 && <span className="text-yellow-400">{clip.speed}x</span>}
-                            {clip.reversed && <span className="text-blue-400">REV</span>}
-                            {clip.muted && <span className="text-red-400">M</span>}
-                            {(clip.flipH || clip.flipV) && <span className="text-cyan-400">FLIP</span>}
-                            {clip.colorCorrection && Object.values(clip.colorCorrection).some(v => v !== 0) && <span className="text-orange-400">CC</span>}
-                            {clip.letterbox?.enabled && <span className="text-blue-400">LB</span>}
+                            {clip.reversed && <span className="text-blue-400">{t('clip.rev')}</span>}
+                            {clip.muted && <span className="text-red-400">{t('clip.mutedBadge')}</span>}
+                            {(clip.flipH || clip.flipV) && <span className="text-cyan-400">{t('clip.flipBadge')}</span>}
+                            {clip.colorCorrection && Object.values(clip.colorCorrection).some(v => v !== 0) && <span className="text-orange-400">{t('clip.ccBadge')}</span>}
+                            {clip.letterbox?.enabled && <span className="text-blue-400">{t('clip.lbBadge')}</span>}
                             {clip.linkedClipIds?.length && <Link2 className="h-2.5 w-2.5 text-zinc-500 inline" />}
                           </div>
                         </div>
@@ -2544,7 +2546,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                               {/* Take navigation: prev/next */}
                               {liveAsset.takes && liveAsset.takes.length > 1 && (
                                 <>
-                                  <Tooltip content="Previous take" side="top">
+                                  <Tooltip content={t('assets.previousTake')} side="top">
                                     <button
                                       onClick={() => handleClipTakeChange(clip.id, 'prev')}
                                       className="p-0.5 rounded hover:bg-white/10 text-zinc-500 hover:text-white transition-colors"
@@ -2555,7 +2557,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                   <span className="text-[8px] text-zinc-400 min-w-[24px] text-center">
                                     {(clip.takeIndex ?? (liveAsset.activeTakeIndex ?? liveAsset.takes.length - 1)) + 1}/{liveAsset.takes.length}
                                   </span>
-                                  <Tooltip content="Next take" side="top">
+                                  <Tooltip content={t('assets.nextTake')} side="top">
                                     <button
                                       onClick={() => handleClipTakeChange(clip.id, 'next')}
                                       className="p-0.5 rounded hover:bg-white/10 text-zinc-500 hover:text-white transition-colors"
@@ -2563,7 +2565,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                       <ChevronRight className="h-3 w-3" />
                                     </button>
                                   </Tooltip>
-                                  <Tooltip content="Delete this take" side="top">
+                                  <Tooltip content={t('ctx.deleteTake')} side="top">
                                     <button
                                       onClick={() => {
                                         if (confirm(`Delete take ${(clip.takeIndex ?? (liveAsset.activeTakeIndex ?? liveAsset.takes!.length - 1)) + 1}?`)) {
@@ -2577,7 +2579,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                   </Tooltip>
                                 </>
                               )}
-                              <Tooltip content="Regenerate shot" side="top">
+                              <Tooltip content={t('ctx.regenerateShot')} side="top">
                                 <button
                                   onClick={() => handleRegenerate(clip.assetId!, clip.id)}
                                   disabled={isRegenerating}
@@ -2591,7 +2593,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                 </button>
                               </Tooltip>
                               {clip.type === 'video' && (
-                                <Tooltip content="Retake section" side="top">
+                                <Tooltip content={t('ctx.retakeSection')} side="top">
                                   <button
                                     onClick={() => handleRetakeClip(clip)}
                                     className="p-0.5 rounded transition-colors hover:bg-white/10 text-zinc-500 hover:text-blue-400"
@@ -2611,13 +2613,13 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-900/80 border border-blue-500/40">
                             <Loader2 className="h-3 w-3 text-blue-300 animate-spin" />
                             <span className="text-[9px] text-blue-200 font-medium">
-                              {regenProgress > 0 ? `${regenProgress}%` : 'Regenerating...'}
+                              {regenProgress > 0 ? `${regenProgress}%` : t('clip.regenerating')}
                             </span>
                             <button
                               onClick={(e) => { e.stopPropagation(); handleCancelRegeneration() }}
                               className="ml-1 px-1.5 py-0.5 rounded bg-zinc-800/80 border border-zinc-600/60 text-[9px] text-zinc-300 hover:text-red-400 hover:border-red-500/50 hover:bg-red-900/30 transition-colors"
                             >
-                              Cancel
+                              {t('assets.cancel')}
                             </button>
                           </div>
                         </div>
@@ -2773,7 +2775,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                               </div>
                             )}
                             {/* Cancel button */}
-                            <Tooltip content="Cancel generation" side="top">
+                            <Tooltip content={t('track.cancelGeneration')} side="top">
                               <button
                                 onClick={(e) => { e.stopPropagation(); cancelGapGeneration() }}
                                 className="absolute top-0.5 right-0.5 p-0.5 rounded hover:bg-zinc-700/80 text-zinc-500 hover:text-red-400 transition-colors"
@@ -3071,7 +3073,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                   className="px-2 py-0.5 rounded bg-red-900/80 border border-red-700 text-[9px] text-red-300 hover:bg-red-800 transition-colors shadow-lg"
                                   onClick={() => removeCrossDissolve(cp.leftClip.id, cp.rightClip.id)}
                                 >
-                                  Remove
+                                  {t('clip.remove')}
                                 </button>
                               </div>
                             )}
@@ -3089,7 +3091,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                   onClick={() => addCrossDissolve(cp.leftClip.id, cp.rightClip.id)}
                                 >
                                   <Film className="h-3 w-3" />
-                                  Dissolve
+                                  {t('clip.dissolve')}
                                 </button>
                               </div>
                             )}
@@ -3148,7 +3150,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
             onClick={() => actions.openExportModal()}
           >
             <Upload className="h-3 w-3 mr-1" />
-            Export
+            {t('toolbar.export')}
           </Button>
           
           
@@ -3160,19 +3162,19 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                 <button
                   onClick={() => subtitleFileInputRef.current?.click()}
                   className="h-6 px-2 rounded bg-amber-900/30 border border-amber-700/30 text-amber-400 hover:bg-amber-900/50 text-[10px] flex items-center gap-1 transition-colors"
-                  title="Import SRT subtitles"
+                  title={t('toolbar.importSrtHint')}
                 >
                   <FileUp className="h-3 w-3" />
-                  Import SRT
+                  {t('toolbar.importSrt')}
                 </button>
                 <button
                   onClick={handleExportSrt}
                   disabled={subtitles.length === 0}
                   className="h-6 px-2 rounded bg-amber-900/30 border border-amber-700/30 text-amber-400 hover:bg-amber-900/50 text-[10px] flex items-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Export SRT subtitles"
+                  title={t('toolbar.exportSrtHint')}
                 >
                   <FileDown className="h-3 w-3" />
-                  Export SRT
+                  {t('toolbar.export')} SRT
                 </button>
               </div>
               <input
@@ -3190,7 +3192,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
           
           {/* Zoom slider bar */}
           <div className="flex items-center gap-2">
-            <Tooltip content="Zoom out (-)" side="top">
+            <Tooltip content={t('toolbar.zoomOut')} side="top">
               <button
                 onClick={() => { centerOnPlayheadRef.current = true; setZoom(Math.max(getMinZoom(), +(zoom - 0.25).toFixed(2))) }}
                 className="p-0.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -3206,9 +3208,9 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
               value={Math.round(zoom * 100)}
               onChange={(e) => { centerOnPlayheadRef.current = true; setZoom(Math.max(getMinZoom(), +(parseInt(e.target.value) / 100).toFixed(2))) }}
               className="w-28 h-1 accent-blue-500 cursor-pointer"
-              title={`Zoom: ${Math.round(zoom * 100)}%`}
+              title={t('toolbar.zoom').replace('{{pct}}', String(Math.round(zoom * 100)))}
             />
-            <Tooltip content="Zoom in (+)" side="top">
+            <Tooltip content={t('toolbar.zoomIn')} side="top">
               <button
                 onClick={() => { centerOnPlayheadRef.current = true; setZoom(Math.min(4, +(zoom + 0.25).toFixed(2))) }}
                 className="p-0.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -3217,7 +3219,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
               </button>
             </Tooltip>
             <span className="text-[10px] text-zinc-500 tabular-nums w-8 text-right">{Math.round(zoom * 100)}%</span>
-            <Tooltip content="Fit to view (Ctrl+0)" side="top">
+            <Tooltip content={t('toolbar.fitToView')} side="top">
               <button
                 onClick={handleFitToView}
                 className="p-0.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors ml-0.5"

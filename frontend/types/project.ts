@@ -121,3 +121,9 @@ export const TEXT_PRESETS: TextPreset[] = [
   { id: 'end-card', name: 'End Card', category: 'end-cards', style: { text: 'Thank You', fontSize: 80, fontWeight: '300', positionX: 50, positionY: 45, textAlign: 'center', letterSpacing: 8, color: '#E4E4E7' } },
   { id: 'corner-tag', name: 'Corner Tag', category: 'captions', style: { text: 'LIVE', fontSize: 20, fontWeight: '700', positionX: 92, positionY: 8, textAlign: 'right', color: '#FFFFFF', backgroundColor: 'rgba(239,68,68,0.9)', padding: 6, borderRadius: 4 } },
 ]
+
+export function translatePresetName(name: string, t: (key: string) => string): string {
+  const key = `text.preset.${name}`
+  const translated = t(key)
+  return translated && translated !== key ? translated : name
+}

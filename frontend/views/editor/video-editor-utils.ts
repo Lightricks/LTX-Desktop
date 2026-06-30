@@ -8,6 +8,24 @@ export type { KeyboardLayout } from '../../lib/keyboard-shortcuts'
 import type { TimelineClip, TransitionType, Track, ClipEffect, EffectMask } from '../../types/project-model'
 import { DEFAULT_COLOR_CORRECTION } from '../../types/project-model'
 
+// ── Tool label i18n map ────────────────────────────────────
+export const TOOL_I18N_MAP: Record<string, string> = {
+  'Selection Tool': 'editor.selectionTool',
+  'Track Select Forward (Shift: single track)': 'tools.trackSelectHint',
+  'Blade Tool': 'editor.bladeTool',
+  'Ripple Trim': 'editor.rippleTrim',
+  'Roll Trim (A/B)': 'editor.rollTrim',
+  'Slip Tool': 'editor.slipTool',
+  'Slide Tool': 'editor.slideTool',
+}
+
+export function translateToolLabel(label: string, t: (key: string) => string): string {
+  const key = TOOL_I18N_MAP[label]
+  if (!key) return label
+  const translated = t(key)
+  return translated && translated !== key ? translated : label
+}
+
 // ── Tool types & definitions ────────────────────────────────────────
 
 export type ToolType = 'select' | 'trackForward' | 'blade' | 'slip' | 'slide' | 'ripple' | 'roll'

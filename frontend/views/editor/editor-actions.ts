@@ -649,8 +649,9 @@ export function switchActiveTimeline(state: EditorState, timelineId: string | nu
   }
 }
 
-export function createTimeline(state: EditorState, name?: string): EditorState {
-  const timeline = createDefaultTimeline(name)
+export function createTimeline(state: EditorState, name?: string, defaultNamePrefix = 'Timeline'): EditorState {
+  const baseName = name ?? `${defaultNamePrefix} ${state.editorModel.timelines.filter(t => /^(Timeline|时间线) \d+$/.test(t.name)).length + 1}`
+  const timeline = createDefaultTimeline(baseName)
   return {
     ...updateEditorModel(state, editorModel => ({
       ...editorModel,
