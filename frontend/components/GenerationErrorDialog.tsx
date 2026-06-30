@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AlertCircle, ChevronDown, ChevronRight, X } from 'lucide-react'
+import { useT } from '../lib/i18n'
 import type { GenerationError } from '../lib/generation-errors'
 
 interface GenerationErrorDialogProps {
@@ -34,7 +35,7 @@ function getGenericHumanMessage(message: string): string {
   return 'Something went wrong during generation. Please try again.'
 }
 
-function getDialogModel(error: GenerationError): {
+function getDialogModel(error: GenerationError, t: (key: string, vars?: Record<string, string | number>, fallback?: string) => string): {
   humanMessage: string
   technicalDetails: string
   primaryAction?: {
@@ -50,7 +51,7 @@ function getDialogModel(error: GenerationError): {
             humanMessage: 'Your LTX API credits are insufficient for this generation. Buy more credits in LTX and try again.',
             technicalDetails: JSON.stringify(error.error, null, 2),
             primaryAction: {
-              label: 'Buy Credits',
+              label: t('genError.buyCredits'),
               onClick: () => {
                 void window.electronAPI.openLtxBillingPage()
               },
@@ -71,8 +72,9 @@ function getDialogModel(error: GenerationError): {
 }
 
 export function GenerationErrorDialog({ error, onDismiss }: GenerationErrorDialogProps) {
+  const { t } = useT()
   const [detailsExpanded, setDetailsExpanded] = useState(false)
-  const dialogModel = getDialogModel(error)
+  const dialogModel = getDialogModel(error, t)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
@@ -80,7 +82,7 @@ export function GenerationErrorDialog({ error, onDismiss }: GenerationErrorDialo
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
           <div className="flex items-center gap-3">
             <AlertCircle className="h-5 w-5 text-red-400" />
-            <h2 className="text-base font-semibold text-zinc-100">Generation Failed</h2>
+            <h2 className="text-base font-semibold text-zinc-100">{t('genError.title')}</h2>
           </div>
           <button
             onClick={onDismiss}
@@ -101,7 +103,7 @@ export function GenerationErrorDialog({ error, onDismiss }: GenerationErrorDialo
               className="flex items-center gap-2 text-xs font-semibold text-zinc-400 uppercase tracking-wider hover:text-zinc-300"
             >
               {detailsExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-              Technical Details
+              {t('genError.techDetails')}
             </button>
             {detailsExpanded && (
               <pre className="mt-2 bg-zinc-800/50 rounded-lg p-3 text-[11px] text-zinc-400 whitespace-pre-wrap break-words max-h-40 overflow-auto">
@@ -117,7 +119,7 @@ export function GenerationErrorDialog({ error, onDismiss }: GenerationErrorDialo
               onClick={onDismiss}
               className="px-4 py-2 bg-zinc-800 text-zinc-100 text-sm font-medium rounded-lg hover:bg-zinc-700 transition-colors"
             >
-              Try Again
+              {t('genError.tryAgain')}
             </button>
           ) : null}
           {dialogModel.primaryAction ? (
@@ -132,7 +134,7 @@ export function GenerationErrorDialog({ error, onDismiss }: GenerationErrorDialo
               onClick={onDismiss}
               className="px-4 py-2 bg-zinc-100 text-zinc-900 text-sm font-medium rounded-lg hover:bg-white transition-colors"
             >
-              Try Again
+              {t('genError.tryAgain')}
             </button>
           )}
         </div>

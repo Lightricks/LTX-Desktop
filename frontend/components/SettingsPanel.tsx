@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react'
+import { useT } from '../lib/i18n'
 import { Select } from './ui/select'
 import {
   areVideoGenerationSettingsEquivalent,
@@ -47,6 +48,7 @@ export function SettingsPanel({
   hideDuration = false,
   videoSettingsMessage,
 }: SettingsPanelProps) {
+  const { t } = useT()
   const isImageMode = mode === 'text-to-image'
   const resolvedVideoOptions = useMemo(() => {
     if (isImageMode || !videoModelSpecs || videoModelSpecs.length === 0) return null
@@ -97,7 +99,7 @@ export function SettingsPanel({
         {/* Aspect Ratio and Quality side by side */}
         <div className="grid grid-cols-2 gap-3">
           <Select
-            label="Aspect Ratio"
+            label={t('models.aspectRatio')}
             value={settings.imageAspectRatio || '16:9'}
             onChange={(e) => handleChange('imageAspectRatio', e.target.value)}
             disabled={disabled}
@@ -111,14 +113,14 @@ export function SettingsPanel({
           </Select>
 
           <Select
-            label="Quality"
+            label={t('models.quality')}
             value={settings.imageSteps || 4}
             onChange={(e) => handleChange('imageSteps', parseInt(e.target.value))}
             disabled={disabled}
           >
-            <option value={4}>Fast</option>
-            <option value={8}>Balanced</option>
-            <option value={12}>High</option>
+            <option value={4}>{t('settings.fast')}</option>
+            <option value={8}>{t('settings.balanced')}</option>
+            <option value={12}>{t('settings.high')}</option>
           </Select>
         </div>
       </div>
@@ -128,7 +130,7 @@ export function SettingsPanel({
   if (!videoModelSpecs || videoModelSpecs.length === 0 || !resolvedVideoOptions || !resolvedVideoOptions.hasCompatibleOptions) {
     return (
       <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-500">
-        {videoSettingsMessage || 'Loading generation settings...'}
+        {videoSettingsMessage || t('models.loadingSettings')}
       </div>
     )
   }
@@ -142,7 +144,7 @@ export function SettingsPanel({
   return (
     <div className="space-y-4">
       <Select
-        label="Model"
+        label={t('models.model')}
         value={resolvedVideoOptions.selectedModel ?? settings.model}
         onChange={(e) => handleChange('model', e.target.value)}
         disabled={disabled}
@@ -158,21 +160,21 @@ export function SettingsPanel({
       <div className={`grid gap-3 ${videoControlsColumns}`}>
         {!hideDuration && (
           <Select
-            label="Duration"
+            label={t('models.duration')}
             value={resolvedVideoOptions.selectedDuration ?? settings.duration}
             onChange={(e) => handleChange('duration', parseInt(e.target.value))}
             disabled={disabled}
           >
             {resolvedVideoOptions.durationOptions.map((duration) => (
               <option key={duration} value={duration}>
-                {duration} sec
+                {duration} {t('settings.sec').replace('{{n}}', String(duration))}
               </option>
             ))}
           </Select>
         )}
 
         <Select
-          label="Resolution"
+          label={t('models.resolution')}
           value={resolvedVideoOptions.selectedResolution ?? settings.videoResolution}
           onChange={(e) => handleChange('videoResolution', e.target.value)}
           disabled={disabled}
@@ -186,7 +188,7 @@ export function SettingsPanel({
 
         {showFps && (
           <Select
-            label="FPS"
+            label={t('models.fps')}
             value={resolvedVideoOptions.selectedFps ?? settings.fps}
             onChange={(e) => handleChange('fps', parseInt(e.target.value))}
             disabled={disabled}
@@ -202,7 +204,7 @@ export function SettingsPanel({
 
       {/* Aspect Ratio */}
       <Select
-        label="Aspect Ratio"
+        label={t('models.aspectRatio')}
         value={settings.aspectRatio || '16:9'}
         onChange={(e) => handleChange('aspectRatio', e.target.value)}
         disabled={disabled}
@@ -215,7 +217,7 @@ export function SettingsPanel({
       <div className="flex gap-3">
         <div className="w-[140px] flex-shrink-0">
           <Select
-            label="Audio"
+            label={t('models.audio')}
             badge="PREVIEW"
             value={settings.audio ? 'on' : 'off'}
             onChange={(e) => handleChange('audio', e.target.value === 'on')}
@@ -228,20 +230,20 @@ export function SettingsPanel({
 
         <div className="flex-1">
           <Select
-            label="Camera Motion"
+            label={t('models.cameraMotion')}
             value={settings.cameraMotion}
             onChange={(e) => handleChange('cameraMotion', e.target.value)}
             disabled={disabled}
           >
-            <option value="none">None</option>
-            <option value="static">Static</option>
-            <option value="focus_shift">Focus Shift</option>
-            <option value="dolly_in">Dolly In</option>
-            <option value="dolly_out">Dolly Out</option>
-            <option value="dolly_left">Dolly Left</option>
-            <option value="dolly_right">Dolly Right</option>
-            <option value="jib_up">Jib Up</option>
-            <option value="jib_down">Jib Down</option>
+            <option value="none">{t('models.none')}</option>
+            <option value="static">{t('models.static')}</option>
+            <option value="focus_shift">{t('models.focusShift')}</option>
+            <option value="dolly_in">{t('models.dollyIn')}</option>
+            <option value="dolly_out">{t('models.dollyOut')}</option>
+            <option value="dolly_left">{t('models.dollyLeft')}</option>
+            <option value="dolly_right">{t('models.dollyRight')}</option>
+            <option value="jib_up">{t('models.jibUp')}</option>
+            <option value="jib_down">{t('models.jibDown')}</option>
           </Select>
         </div>
       </div>

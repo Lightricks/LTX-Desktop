@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { KeyRound, X, Zap } from 'lucide-react'
+import { useT } from '../lib/i18n'
 import { ApiKeyHelperRow, LtxApiKeyInput } from './LtxApiKeyInput'
 
 export type ApiKeyType = 'ltx' | 'fal'
@@ -47,6 +48,7 @@ export function ApiGatewayModal({
   sections,
   blocking = false,
 }: ApiGatewayModalProps) {
+  const { t } = useT()
   const [values, setValues] = useState<Record<ApiKeyType, string>>({ ltx: '', fal: '' })
   const [isSaving, setIsSaving] = useState<Record<ApiKeyType, boolean>>({ ltx: false, fal: false })
   const [errors, setErrors] = useState<Record<ApiKeyType, string | null>>({ ltx: null, fal: null })
@@ -153,13 +155,13 @@ export function ApiGatewayModal({
                         <Icon className={`h-4 w-4 ${meta.iconClass}`} />
                         <h3 className="text-sm font-semibold text-white">{section.title}</h3>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded ${section.required ? meta.chipClass : 'bg-zinc-800 text-zinc-500'}`}>
-                          {section.required ? 'Required' : 'Optional'}
+                          {section.required ? t('apiGateway.required') : t('settings.optional')}
                         </span>
                       </div>
                       <p className="text-xs text-zinc-500 mt-1">{section.description}</p>
                     </div>
                     <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${configured ? 'bg-green-500/10 text-green-400' : 'bg-zinc-800 text-zinc-500'}`}>
-                      {configured ? 'Configured' : 'Not set'}
+                      {configured ? t('apiGateway.configured') : t('apiGateway.notSet')}
                     </div>
                   </div>
 
@@ -178,11 +180,11 @@ export function ApiGatewayModal({
                           disabled={!canSubmit}
                           className="px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                         >
-                          {saving ? 'Saving...' : 'Save Key'}
+                          {saving ? t('apiGateway.saving') : t('settings.saveKey')}
                         </button>
                       </div>
                       <ApiKeyHelperRow
-                        label={section.getKeyLabel ?? 'Get API key'}
+                        label={section.getKeyLabel ?? t('apiGateway.getKey')}
                         onOpenKey={section.onGetKey}
                       />
                     </div>
@@ -200,7 +202,7 @@ export function ApiGatewayModal({
 
           {blocking && requiredMissing && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-              Required API keys are missing. Add them to continue.
+              {t('apiGateway.missing')}
             </div>
           )}
 

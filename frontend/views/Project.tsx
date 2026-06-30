@@ -11,6 +11,7 @@ import {
   hasVisualAssetMetadataForMigration,
   runVisualAssetMetadataMigration,
 } from '../lib/project-asset-metadata-migration'
+import { useT } from '../lib/i18n'
 
 export function Project() {
   const {
@@ -25,6 +26,7 @@ export function Project() {
     setPendingIcLoraUpdate,
   } = useProjects()
   const { goHome } = useView()
+  const { t } = useT()
   const [assetMetadataMigrationProgress, setAssetMetadataMigrationProgress] = useState({ running: false, total: 0, completed: 0 })
   const [upgradePassProjectId, setUpgradePassProjectId] = useState<string | null>(null)
   const activeProjectId = activeProject?.id ?? null
@@ -84,16 +86,16 @@ export function Project() {
     return (
       <div className="h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <p className="text-zinc-400 mb-4">Project not found</p>
-          <Button onClick={goHome}>Go Home</Button>
+          <p className="text-zinc-400 mb-4">{t('project.notFound')}</p>
+          <Button onClick={goHome}>{t('project.goHome')}</Button>
         </div>
       </div>
     )
   }
   
   const tabs: { id: ProjectTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'gen-space', label: 'Gen Space', icon: <Sparkles className="h-4 w-4" /> },
-    { id: 'video-editor', label: 'Video Editor', icon: <Film className="h-4 w-4" /> },
+    { id: 'gen-space', label: t('project.genSpace'), icon: <Sparkles className="h-4 w-4" /> },
+    { id: 'video-editor', label: t('project.videoEditor'), icon: <Film className="h-4 w-4" /> },
   ]
   const shouldShowAssetMetadataMigrationProgressScreen = assetMetadataMigrationProgress.running
     || (upgradePassProjectId !== activeProjectId && needsAssetMetadataMigration)
@@ -107,7 +109,7 @@ export function Project() {
       <div className="h-screen bg-background flex items-center justify-center">
         <div className="w-[360px]">
           <p className="text-center text-sm text-zinc-300 mb-4">
-            Preparing your project assets...
+            {t('project.preparing')}
           </p>
           <div className="h-2 w-full rounded-full bg-zinc-800 overflow-hidden">
             <div

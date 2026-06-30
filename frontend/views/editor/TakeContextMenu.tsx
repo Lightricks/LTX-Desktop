@@ -2,6 +2,7 @@ import React, { type RefObject } from 'react'
 import { Plus, Copy, Eye, Trash2 } from 'lucide-react'
 import type { Asset, AssetTake } from '../../types/project-model'
 import { useEditorActions } from './editor-store'
+import { useT } from '../../lib/i18n'
 
 export interface TakeContextMenuProps {
   tcAsset: Asset
@@ -25,6 +26,7 @@ export function TakeContextMenu({
   setTakeContextMenu,
 }: TakeContextMenuProps) {
   const actions = useEditorActions()
+  const { t } = useT()
   const isActive = (tcAsset.activeTakeIndex ?? 0) === takeIndex
 
   return (
@@ -64,7 +66,7 @@ export function TakeContextMenu({
         className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
       >
         <Plus className="h-3.5 w-3.5 text-zinc-500" />
-        <span>Add to Timeline</span>
+        <span>{t('assets.addToTimeline')}</span>
       </button>
 
       <div className="h-px bg-zinc-700 my-1" />

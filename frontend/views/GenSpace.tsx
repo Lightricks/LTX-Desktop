@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useT } from '../lib/i18n'
 import {
   Trash2, Download, Image, Video, X,
   Heart, Film, Volume2, VolumeX, Sparkles,
@@ -56,6 +57,7 @@ function AssetCard({
   const [isMuted, setIsMuted] = useState(true)
   const [volume, setVolume] = useState(0.5)
   const isFavorite = asset.favorite || false
+  const { t } = useT()
 
   useEffect(() => {
     if (asset.type !== 'video') return
@@ -164,7 +166,7 @@ function AssetCard({
                   className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
                 >
                   <Film className="h-3 w-3" />
-                  Create video
+                  {t('genspace.createVideo')}
                 </button>
               </>
             )}
@@ -175,7 +177,7 @@ function AssetCard({
                   className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
                 >
                   <Scissors className="h-3 w-3" />
-                  Retake
+                  {t('genspace.retake')}
                 </button>
                 {onIcLora && (
                   <button
@@ -183,7 +185,7 @@ function AssetCard({
                     className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
                   >
                     <Sparkles className="h-3 w-3" />
-                    IC-LoRA
+                    {t('genspace.icLora')}
                   </button>
                 )}
               </>
@@ -212,7 +214,7 @@ function AssetCard({
                 <button
                   onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted) }}
                   className="text-white hover:text-white/80 transition-colors"
-                  aria-label={isMuted ? 'Unmute' : 'Mute'}
+                  aria-label={isMuted ? t('genspace.unmute') : t('genspace.mute')}
                 >
                   {isMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
                 </button>
@@ -258,13 +260,13 @@ function AssetCard({
 }
 
 // Dropdown component for settings
-function SettingsDropdown({ 
-  trigger, 
-  options, 
-  value, 
+function SettingsDropdown({
+  trigger,
+  options,
+  value,
   onChange,
-  title 
-}: { 
+  title
+}: {
   trigger: React.ReactNode
   options: { value: string; label: string; disabled?: boolean; tooltip?: string; icon?: React.ReactNode }[]
   value: string
@@ -422,6 +424,7 @@ function PromptBar({
   icLoraStrength?: number
   onIcLoraStrengthChange?: (strength: number) => void
 }) {
+  const { t } = useT()
   const inputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -557,7 +560,7 @@ function PromptBar({
             onDragLeave={() => setIsAudioDragOver(false)}
             onDrop={handleAudioDrop}
             onClick={() => audioInputRef.current?.click()}
-            title={inputAudio ? 'Audio attached — click to change' : 'Attach audio for A2V'}
+            title={inputAudio ? t('genspace.audioAttached') : t('genspace.attachAudio')}
           >
             {inputAudio ? (
               <>
@@ -589,12 +592,12 @@ function PromptBar({
             onChange={(e) => onPromptChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={mode === 'retake'
-              ? "Describe what should happen in the selected section..."
+              ? t('genspace.placeholderRetake')
               : mode === 'ic-lora'
-                ? "Describe the style or transformation to apply..."
+                ? t('genspace.placeholderLora')
               : mode === 'image'
-                ? "A close-up of a woman talking on the phone..."
-                : "The woman sips from a cup of coffee..."
+                ? t('genspace.placeholderT2V')
+                : t('genspace.placeholderI2V')
             }
             className="w-full bg-transparent text-white text-sm placeholder:text-zinc-500 focus:outline-none px-2 py-2 resize-none overflow-y-auto h-[70px] leading-5"
           />
@@ -606,19 +609,19 @@ function PromptBar({
       <div className="flex items-center gap-0.5 px-1.5 py-1.5 border-t border-zinc-800/60 text-xs text-zinc-400">
         {/* Mode dropdown */}
         <SettingsDropdown
-          title="MODE"
+          title={t('genspace.mode')}
           value={mode}
           onChange={(v) => onModeChange(v as 'image' | 'video' | 'retake' | 'ic-lora')}
           options={[
-            { value: 'image', label: 'Generate Images', icon: <Image className="h-4 w-4" /> },
-            { value: 'video', label: 'Generate Videos', icon: <Video className="h-4 w-4" /> },
-            { value: 'retake', label: 'Retake', icon: <Scissors className="h-4 w-4" /> },
-            ...(canUseIcLora ? [{ value: 'ic-lora', label: 'IC-LoRA', icon: <Sparkles className="h-4 w-4" /> }] : []),
+            { value: 'image', label: t('genspace.generateImages'), icon: <Image className="h-4 w-4" /> },
+            { value: 'video', label: t('genspace.generateVideos'), icon: <Video className="h-4 w-4" /> },
+            { value: 'retake', label: t('genspace.retake'), icon: <Scissors className="h-4 w-4" /> },
+            ...(canUseIcLora ? [{ value: 'ic-lora', label: t('genspace.icLora'), icon: <Sparkles className="h-4 w-4" /> }] : []),
           ]}
           trigger={
             <>
               {mode === 'image' ? <Image className="h-3.5 w-3.5" /> : mode === 'retake' ? <Scissors className="h-3.5 w-3.5" /> : mode === 'ic-lora' ? <Sparkles className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}
-              <span className="text-zinc-300 font-medium">{mode === 'image' ? 'Image' : mode === 'retake' ? 'Retake' : mode === 'ic-lora' ? 'IC-LoRA' : 'Video'}</span>
+              <span className="text-zinc-300 font-medium">{mode === 'image' ? t('genspace.generateImages') : mode === 'retake' ? t('genspace.retake') : mode === 'ic-lora' ? t('genspace.icLora') : t('genspace.generateVideos')}</span>
               <ChevronUp className="h-3 w-3 text-zinc-500" />
             </>
           }
@@ -627,24 +630,24 @@ function PromptBar({
         <div className="flex-1" />
         
         {isRetake ? (
-          <div className="text-[10px] text-zinc-500 pr-2">Trim in the panel above, then retake</div>
+          <div className="text-[10px] text-zinc-500 pr-2">{t('genspace.trimHint')}</div>
         ) : isIcLora ? (
           <>
             <SettingsDropdown
-              title="CONDITIONING TYPE"
+              title={t('genspace.conditioningType')}
               value={icLoraCondType || 'canny'}
               onChange={(v) => onIcLoraCondTypeChange?.(v as ICLoraConditioningType)}
               options={CONDITIONING_TYPES.map(ct => ({ value: ct.value, label: ct.label }))}
               trigger={
                 <>
-                  <span className="text-zinc-300 font-medium">{CONDITIONING_TYPES.find(ct => ct.value === icLoraCondType)?.label || 'Canny Edges'}</span>
+                  <span className="text-zinc-300 font-medium">{CONDITIONING_TYPES.find(ct => ct.value === icLoraCondType)?.label || t('genspace.cannyEdges')}</span>
                   <ChevronUp className="h-3 w-3 text-zinc-500" />
                 </>
               }
             />
             <div className="w-px h-4 bg-zinc-700 mx-0.5" />
             <SettingsDropdown
-              title="STRENGTH"
+              title={t('genspace.strength')}
               value={String(icLoraStrength ?? 1.0)}
               onChange={(v) => onIcLoraStrengthChange?.(parseFloat(v))}
               options={[
@@ -657,7 +660,7 @@ function PromptBar({
               ]}
               trigger={
                 <>
-                  <span className="text-zinc-500 text-[10px]">STR</span>
+                  <span className="text-zinc-500 text-[10px]">{t('genspace.str')}</span>
                   <span className="text-zinc-300 font-medium">{(icLoraStrength ?? 1.0).toFixed(2)}</span>
                   <ChevronUp className="h-3 w-3 text-zinc-500" />
                 </>
@@ -669,12 +672,12 @@ function PromptBar({
             {/* Model indicator */}
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800/50">
               <ZitIcon className="h-3.5 w-3.5" />
-              <span className="text-zinc-300 font-medium">Z-Image Turbo</span>
+              <span className="text-zinc-300 font-medium">{t('genspace.zit')}</span>
             </div>
             
             {/* Resolution dropdown */}
             <SettingsDropdown
-              title="IMAGE RESOLUTION"
+              title={t('genspace.imageResolution')}
               value={settings.imageResolution}
               onChange={(v) => onSettingsChange({ ...settings, imageResolution: v })}
               options={[
@@ -692,7 +695,7 @@ function PromptBar({
             
             {/* Aspect ratio dropdown */}
             <SettingsDropdown
-              title="RATIO"
+              title={t('genspace.ratio')}
               value={settings.aspectRatio}
               onChange={(v) => onSettingsChange({ ...settings, aspectRatio: v })}
               options={[
@@ -714,7 +717,7 @@ function PromptBar({
             {resolvedVideoOptions && resolvedVideoOptions.hasCompatibleOptions ? (
               <>
                 <SettingsDropdown
-                  title="MODEL"
+                  title={t('genspace.model')}
                   value={resolvedVideoOptions.selectedModel ?? settings.model}
                   onChange={(v) => onSettingsChange({ ...settings, model: v })}
                   options={resolvedVideoOptions.modelOptions.map((item) => ({
@@ -735,10 +738,10 @@ function PromptBar({
                 <div className="w-px h-4 bg-zinc-700 mx-0.5" />
 
                 <SettingsDropdown
-                  title="DURATION"
+                  title={t('genspace.duration')}
                   value={String(resolvedVideoOptions.selectedDuration ?? settings.duration)}
                   onChange={(v) => onSettingsChange({ ...settings, duration: parseInt(v) })}
-                  options={resolvedVideoOptions.durationOptions.map((value) => ({ value: String(value), label: `${value} Sec` }))}
+                  options={resolvedVideoOptions.durationOptions.map((value) => ({ value: String(value), label: t('genspace.sec').replace('{{n}}', String(value)) }))}
                   trigger={
                     <>
                       <Clock className="h-3.5 w-3.5" />
@@ -748,7 +751,7 @@ function PromptBar({
                 />
 
                 <SettingsDropdown
-                  title="RESOLUTION"
+                  title={t('genspace.resolution')}
                   value={resolvedVideoOptions.selectedResolution ?? settings.videoResolution}
                   onChange={(v) => onSettingsChange({ ...settings, videoResolution: v })}
                   options={resolvedVideoOptions.resolutionOptions.map((value) => ({ value, label: value }))}
@@ -762,21 +765,21 @@ function PromptBar({
 
                 {showVideoFpsControl && (
                   <SettingsDropdown
-                    title="FPS"
+                    title={t('genspace.fpsLabel')}
                     value={String(resolvedVideoOptions.selectedFps ?? settings.fps)}
                     onChange={(v) => onSettingsChange({ ...settings, fps: parseInt(v) })}
                     options={resolvedVideoOptions.fpsOptions.map((value) => ({ value: String(value), label: `${value}` }))}
                     trigger={
                       <>
                         <Film className="h-3.5 w-3.5" />
-                        <span>{resolvedVideoOptions.selectedFps ?? settings.fps} FPS</span>
+                        <span>{resolvedVideoOptions.selectedFps ?? settings.fps} {t('genspace.fpsLabel')}</span>
                       </>
                     }
                   />
                 )}
 
                 <SettingsDropdown
-                  title="ASPECT RATIO"
+                  title={t('genspace.aspectRatio')}
                   value={settings.aspectRatio}
                   onChange={(v) => onSettingsChange({ ...settings, aspectRatio: v })}
                   options={[
@@ -793,7 +796,7 @@ function PromptBar({
               </>
             ) : (
               <div className="px-2 py-1.5 rounded-md bg-zinc-800/60 text-zinc-500 text-xs">
-                {videoSettingsMessage || 'Loading generation settings...'}
+                {videoSettingsMessage || t('models.loadingSettings')}
               </div>
             )}
           </>
@@ -902,6 +905,7 @@ export function GenSpace() {
     setGenSpaceIcLoraSource,
     setPendingIcLoraUpdate,
   } = useProjects()
+  const { t } = useT()
   const currentProjectId = activeProject?.id ?? null
   const { shouldVideoGenerateWithLtxApi, forceApiGenerations, settings: appSettings } = useAppSettings()
   const {
@@ -943,7 +947,7 @@ export function GenSpace() {
     useApiSpecs: shouldVideoGenerateWithLtxApi,
   })
   const videoSettingsMessage = isLoadingVideoGenerationModelSpecs
-    ? 'Loading generation settings...'
+    ? t('models.loadingSettings')
     : videoGenerationModelSpecsErrorMessage
       ? `Could not load generation settings: ${videoGenerationModelSpecsErrorMessage}`
       : null
@@ -1509,7 +1513,7 @@ export function GenSpace() {
     : isIcLoraMode
       ? !!prompt.trim() && icLoraInput.ready && !!icLoraInput.videoPath && !isIcLoraGenerating
       : !!prompt.trim() && hasCompatibleVideoSettings
-  const promptButtonLabel = isRetakeMode ? 'Retake' : isIcLoraMode ? 'Generate' : 'Generate'
+  const promptButtonLabel = isRetakeMode ? t('genspace.retakeBtn') : t('genspace.generate')
   const promptButtonIcon = isRetakeMode
     ? <Scissors className="h-3.5 w-3.5" />
     : isIcLoraMode
@@ -1568,10 +1572,9 @@ export function GenSpace() {
           <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-zinc-700 flex items-center justify-center mb-4">
             <Sparkles className="h-10 w-10 text-zinc-600" />
           </div>
-          <h3 className="text-xl font-semibold text-white mb-2">Start Creating</h3>
+          <h3 className="text-xl font-semibold text-white mb-2">{t('genspace.startCreating')}</h3>
           <p className="text-zinc-500 max-w-md">
-            Use the prompt bar below to generate images and videos.
-            Drag assets into the input box to use them as references.
+            {t('genspace.emptyHint')}
           </p>
         </div>
       )}
@@ -1580,9 +1583,9 @@ export function GenSpace() {
       {isLibraryMode && showFavorites && filteredAssets.length === 0 && assets.length > 0 && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
           <Heart className="h-12 w-12 text-zinc-700 mb-4" />
-          <h3 className="text-lg font-semibold text-white mb-2">No favorites yet</h3>
+          <h3 className="text-lg font-semibold text-white mb-2">{t('genspace.noFavorites')}</h3>
           <p className="text-zinc-500 text-sm">
-            Click the heart icon on any asset to add it to your favorites.
+            {t('genspace.favHint')}
           </p>
         </div>
       )}
@@ -1601,7 +1604,7 @@ export function GenSpace() {
               }`}
             >
               <Heart className={`h-4 w-4 ${showFavorites ? 'fill-current' : ''}`} />
-              Favorites
+              {t('genspace.favorites')}
               {favoriteCount > 0 && (
                 <span className={`text-xs px-1.5 py-0.5 rounded-full ${
                   showFavorites ? 'bg-red-500/30 text-red-300' : 'bg-zinc-800 text-zinc-500'
@@ -1626,9 +1629,9 @@ export function GenSpace() {
               {showSizeMenu && (
                 <div className="absolute top-full mt-2 right-0 bg-zinc-800 border border-zinc-700 rounded-md p-2 min-w-[160px] shadow-xl z-50">
                   {([
-                    { value: 'small' as GallerySize, label: 'Small', icon: GridSmallIcon },
-                    { value: 'medium' as GallerySize, label: 'Medium', icon: GridMediumIcon },
-                    { value: 'large' as GallerySize, label: 'Large', icon: GridLargeIcon },
+                    { value: 'small' as GallerySize, label: t('genspace.small'), icon: GridSmallIcon },
+                    { value: 'medium' as GallerySize, label: t('genspace.medium'), icon: GridMediumIcon },
+                    { value: 'large' as GallerySize, label: t('genspace.large'), icon: GridLargeIcon },
                   ]).map(option => (
                     <button
                       key={option.value}
@@ -1666,7 +1669,7 @@ export function GenSpace() {
                         <Sparkles className="h-6 w-6 text-violet-400" />
                       </div>
                     </div>
-                    <p className="text-sm text-zinc-400">{statusMessage || 'Generating...'}</p>
+                    <p className="text-sm text-zinc-400">{statusMessage || t('genspace.generating')}</p>
                     {progress > 0 && (
                       <div className="w-32 h-1 bg-zinc-800 rounded-full mt-2 overflow-hidden">
                         <div className="h-full bg-violet-500 transition-all" style={{ width: `${progress}%` }} />
@@ -1835,14 +1838,14 @@ export function GenSpace() {
                       setTimeout(() => setCopiedPrompt(false), 2000)
                     }}
                     className="shrink-0 p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors"
-                    title="Copy prompt"
+                    title={t('genspace.copyPrompt')}
                   >
                     {copiedPrompt ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                   </button>
                 )}
               </div>
               <p className="text-zinc-500 text-sm mt-1">
-                {selectedAsset.resolution} • {selectedAsset.duration ? `${selectedAsset.duration}s` : 'Image'}
+                {selectedAsset.resolution} • {selectedAsset.duration ? `${selectedAsset.duration}s` : t('genspace.imageLabel')}
               </p>
             </div>
           </div>

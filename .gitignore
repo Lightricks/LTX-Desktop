@@ -11,6 +11,7 @@ release/
 *.tsbuildinfo
 
 # Python
+backend/python/
 backend/.venv/
 backend/__pycache__/
 backend/**/__pycache__/

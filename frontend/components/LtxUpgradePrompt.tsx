@@ -4,6 +4,7 @@ import { ApiClient, type ApiSuccessOf } from '../lib/api-client'
 import { logger } from '../lib/logger'
 import { useHfAuth } from '../hooks/use-hf-auth'
 import { useHfModelAccess } from '../hooks/use-hf-model-access'
+import { useT } from '../lib/i18n'
 import { Button } from './ui/button'
 import './LtxUpgradePrompt.css'
 
@@ -27,6 +28,7 @@ export function LtxUpgradePrompt({
   onClose,
   onComplete,
 }: LtxUpgradePromptProps) {
+  const { t } = useT()
   const [wantsUpgrade, setWantsUpgrade] = useState(false)
   const [phase, setPhase] = useState<UpgradePhase>('idle')
   const [downloadSessionId, setDownloadSessionId] = useState<string | null>(null)
@@ -181,10 +183,10 @@ export function LtxUpgradePrompt({
               </div>
               <div>
                 <div className="inline-flex items-center rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-200/85">
-                  Optional Upgrade
+                  {t('upgrade.title')}
                 </div>
                 <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-[30px]">
-                  LTX Model Upgrade Detected!
+                  {t('upgrade.detected')}
                 </h2>
                 <p className="mt-2 text-sm text-blue-100/78">
                   Upgrade target: <span className="font-medium text-blue-50">{recommendation.ltx_model_id}</span>
@@ -220,7 +222,7 @@ export function LtxUpgradePrompt({
                 disabled={!canClose}
                 className="h-4 w-4 rounded border-blue-300/40 bg-slate-950 text-blue-500 focus:ring-blue-400"
               />
-              <span className="font-medium">I want this!</span>
+              <span className="font-medium">{t('upgrade.wantIt')}</span>
             </label>
           </div>
 
@@ -230,7 +232,7 @@ export function LtxUpgradePrompt({
                 <div className="rounded-2xl border border-blue-400/12 bg-[#060b14] p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <h3 className="text-sm font-semibold text-white">Connect Hugging Face</h3>
+                      <h3 className="text-sm font-semibold text-white">{t('upgrade.connectHf')}</h3>
                       <p className="mt-1 text-sm text-blue-100/70">
                         Sign in to download this checkpoint upgrade from Hugging Face.
                       </p>
@@ -274,7 +276,7 @@ export function LtxUpgradePrompt({
                 <div className="rounded-2xl border border-blue-400/12 bg-[#060b14] p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <h3 className="text-sm font-semibold text-white">Accept model access</h3>
+                      <h3 className="text-sm font-semibold text-white">{t('upgrade.acceptAccess')}</h3>
                       <p className="mt-1 text-sm text-blue-100/70">
                         Accept the Hugging Face license for these repos before starting the upgrade.
                       </p>
@@ -309,7 +311,7 @@ export function LtxUpgradePrompt({
                 <div className="ltx-upgrade-reveal rounded-2xl border border-blue-400/12 bg-[#060b14] p-5">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="text-sm font-semibold text-white">Ready when you are</p>
+                      <p className="text-sm font-semibold text-white">{t('upgrade.ready')}</p>
                       <p className="mt-1 text-sm text-blue-100/72">
                         This will download {recommendation.cps_to_download.length} checkpoint
                         {recommendation.cps_to_download.length === 1 ? '' : 's'} and swap out the old primary model.
@@ -322,7 +324,7 @@ export function LtxUpgradePrompt({
                       className="bg-blue-600 text-white hover:bg-blue-500"
                     >
                       <Download className="mr-2 h-4 w-4" />
-                      Upgrade now
+                      {t('upgrade.upgradeNow')}
                     </Button>
                   </div>
                 </div>

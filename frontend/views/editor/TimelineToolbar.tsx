@@ -2,6 +2,7 @@ import React from 'react'
 import { Plus, Gauge, Download, Maximize2, Sparkles, FileUp, FileDown, ZoomOut, ZoomIn } from 'lucide-react'
 import { Button } from '../../components/ui/button'
 import { Tooltip } from '../../components/ui/tooltip'
+import { useT } from '../../lib/i18n'
 import type { TimelineClip, Track, SubtitleClip } from '../../types/project-model'
 
 interface TimelineToolbarProps {
@@ -31,11 +32,12 @@ export function TimelineToolbar({
   tracks, subtitleFileInputRef, handleImportSrt, handleExportSrt, subtitles,
   zoom, setZoom, getMinZoom, centerOnPlayheadRef, handleFitToView,
 }: TimelineToolbarProps) {
+  const { t } = useT()
   return (
     <div className="h-9 bg-zinc-900 border-t border-zinc-800 flex items-center px-3 gap-2 flex-shrink-0">
       <Button variant="outline" size="sm" className="h-6 border-zinc-700 text-zinc-400 text-[10px] px-2">
         <Plus className="h-3 w-3 mr-1" />
-        Add Clip
+        {t('toolbar.addClip')}
       </Button>
       
       {selectedClip && (
@@ -78,18 +80,18 @@ export function TimelineToolbar({
         onClick={() => setShowExportModal(true)}
       >
         <Download className="h-3 w-3 mr-1" />
-        Export
+        {t('toolbar.export')}
       </Button>
-      
+
       <Button
         variant="outline"
         size="sm"
         className="h-6 border-zinc-700 text-zinc-400 text-[10px] px-2"
         onClick={handleResetLayout}
-        title="Reset panel sizes to default"
+        title={t('toolbar.resetLayout')}
       >
         <Maximize2 className="h-3 w-3 mr-1" />
-        Layout
+        {t('toolbar.layout')}
       </Button>
       
       <div className="w-px h-4 bg-zinc-700" />
@@ -105,10 +107,10 @@ export function TimelineToolbar({
             }
           }}
           disabled={selectedClip?.type !== 'video'}
-          title="Open IC-LoRA style transfer panel"
+          title={t('toolbar.icLoraHint')}
         >
           <Sparkles className="h-3 w-3 mr-1" />
-          IC-LoRA
+          {t('toolbar.icLora')}
         </Button>
       )}
       
@@ -121,19 +123,19 @@ export function TimelineToolbar({
             <button
               onClick={() => subtitleFileInputRef.current?.click()}
               className="h-6 px-2 rounded bg-amber-900/30 border border-amber-700/30 text-amber-400 hover:bg-amber-900/50 text-[10px] flex items-center gap-1 transition-colors"
-              title="Import SRT subtitles"
+              title={t('toolbar.importSrtHint')}
             >
               <FileUp className="h-3 w-3" />
-              Import SRT
+              {t('toolbar.importSrt')}
             </button>
             <button
               onClick={handleExportSrt}
               disabled={subtitles.length === 0}
               className="h-6 px-2 rounded bg-amber-900/30 border border-amber-700/30 text-amber-400 hover:bg-amber-900/50 text-[10px] flex items-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              title="Export SRT subtitles"
+              title={t('toolbar.exportSrtHint')}
             >
               <FileDown className="h-3 w-3" />
-              Export SRT
+              {t('toolbar.exportSrt')}
             </button>
           </div>
           <input
@@ -151,7 +153,7 @@ export function TimelineToolbar({
       
       {/* Zoom slider bar */}
       <div className="flex items-center gap-2">
-        <Tooltip content="Zoom out (-)">
+        <Tooltip content={t('toolbar.zoomOut')}>
           <button
             onClick={() => { centerOnPlayheadRef.current = true; setZoom(Math.max(getMinZoom(), +(zoom - 0.25).toFixed(2))) }}
             className="p-0.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -167,9 +169,9 @@ export function TimelineToolbar({
           value={Math.round(zoom * 100)}
           onChange={(e) => { centerOnPlayheadRef.current = true; setZoom(Math.max(getMinZoom(), +(parseInt(e.target.value) / 100).toFixed(2))) }}
           className="w-28 h-1 accent-blue-500 cursor-pointer"
-          title={`Zoom: ${Math.round(zoom * 100)}%`}
+          title={t('toolbar.zoom').replace('{{pct}}', String(Math.round(zoom * 100)))}
         />
-        <Tooltip content="Zoom in (+)">
+        <Tooltip content={t('toolbar.zoomIn')}>
           <button
             onClick={() => { centerOnPlayheadRef.current = true; setZoom(Math.min(4, +(zoom + 0.25).toFixed(2))) }}
             className="p-0.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -178,7 +180,7 @@ export function TimelineToolbar({
           </button>
         </Tooltip>
         <span className="text-[10px] text-zinc-500 tabular-nums w-8 text-right">{Math.round(zoom * 100)}%</span>
-        <Tooltip content="Fit to view (Ctrl+0)">
+        <Tooltip content={t('toolbar.fitToView')}>
           <button
             onClick={handleFitToView}
             className="p-0.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors ml-0.5"

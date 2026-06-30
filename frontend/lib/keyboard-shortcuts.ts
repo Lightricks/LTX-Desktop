@@ -488,3 +488,83 @@ export function cloneLayout(layout: KeyboardLayout): KeyboardLayout {
   }
   return result
 }
+
+// ── I18n ──
+// Maps each ACTION_REGISTRY English label to its i18n key.
+// Components that render action labels should use `translateActionLabel()` below.
+
+export const ACTION_I18N_MAP: Record<string, string> = {
+  'Selection Tool': 'editor.selectionTool',
+  'Blade / Razor Tool': 'editor.bladeTool',
+  'Ripple Edit Tool': 'editor.rippleTool',
+  'Roll Edit Tool': 'editor.rollTool',
+  'Slide Tool': 'editor.slideTool',
+  'Slip Tool': 'editor.slipTool',
+  'Track Select Forward': 'editor.trackSelect',
+  'Play / Pause': 'editor.playPause',
+  'Stop': 'editor.stop',
+  'Shuttle Reverse (J)': 'editor.shuttleReverse',
+  'Shuttle Stop (K)': 'editor.shuttleStop',
+  'Shuttle Forward (L)': 'editor.shuttleForward',
+  'Step Backward (1 frame)': 'editor.stepBackward',
+  'Step Forward (1 frame)': 'editor.stepForward',
+  'Jump Backward (1 sec)': 'editor.jumpBackward',
+  'Jump Forward (1 sec)': 'editor.jumpForward',
+  'Go to Start': 'editor.goToStart',
+  'Go to End': 'editor.goToEnd',
+  'Go to In Point': 'editor.goToIn',
+  'Go to Out Point': 'editor.goToOut',
+  'Undo': 'editor.undo',
+  'Redo': 'editor.redo',
+  'Cut': 'editor.cut',
+  'Copy': 'editor.copy',
+  'Paste': 'editor.paste',
+  'Delete': 'editor.delete',
+  'Select All': 'editor.selectAll',
+  'Deselect All': 'editor.deselectAll',
+  'Insert Edit': 'editor.insertEdit',
+  'Overwrite Edit': 'editor.overwriteEdit',
+  'Match Frame': 'editor.matchFrame',
+  'Set In Point': 'editor.setIn',
+  'Set Out Point': 'editor.setOut',
+  'Clear In Point': 'editor.clearIn',
+  'Clear Out Point': 'editor.clearOut',
+  'Clear In / Out': 'editor.clearInOut',
+  'Zoom In': 'editor.zoomIn',
+  'Zoom Out': 'editor.zoomOut',
+  'Fit Timeline to View': 'editor.fitTimeline',
+  'Toggle Snap': 'editor.toggleSnap',
+  'Go to Previous Edit Point': 'editor.prevEdit',
+  'Go to Next Edit Point': 'editor.nextEdit',
+  'Fullscreen Preview': 'editor.fullscreen',
+}
+
+export const ACTION_DESC_I18N_MAP: Record<string, string> = {
+  'Load the clip under the playhead into the source monitor at the matching frame': 'editor.matchFrameDesc',
+  'Jump playhead to previous cut on timeline': 'editor.prevEditDesc',
+  'Jump playhead to next cut on timeline': 'editor.nextEditDesc',
+}
+
+/** Translate an action label from English to the current locale using the given `t` function.
+ *  Falls back to the English label if no i18n key is mapped. */
+export function translateActionLabel(label: string, t: (key: string) => string): string {
+  const i18nKey = ACTION_I18N_MAP[label]
+  if (i18nKey) {
+    const translated = t(i18nKey)
+    // Only return translation if it actually differs (i.e. the key was found);
+    // otherwise stick with the English default.
+    if (translated && translated !== i18nKey) return translated
+  }
+  return label
+}
+
+/** Translate an action description from English to the current locale using the given `t` function.
+ *  Falls back to the English description if no i18n key is mapped. */
+export function translateActionDescription(description: string, t: (key: string) => string): string {
+  const i18nKey = ACTION_DESC_I18N_MAP[description]
+  if (i18nKey) {
+    const translated = t(i18nKey)
+    if (translated && translated !== i18nKey) return translated
+  }
+  return description
+}

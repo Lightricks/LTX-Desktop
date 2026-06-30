@@ -13,6 +13,7 @@ import {
   selectTracks,
 } from '../views/editor/editor-selectors'
 import { useEditorActions, useEditorStore } from '../views/editor/editor-store'
+import { useT } from '../lib/i18n'
 
 interface ExportModalProps {
   projectName: string
@@ -27,12 +28,6 @@ interface ExportSettings {
   height: number
   fps: number
   quality: number // CRF for h264, profile for prores, bitrate(Mbps) for vp9
-}
-
-const CODEC_INFO: Record<ExportCodec, { label: string; ext: string; description: string; filterName: string }> = {
-  h264: { label: 'H.264 / MP4', ext: 'mp4', description: 'Most compatible format', filterName: 'MP4 Video' },
-  prores: { label: 'ProRes / MOV', ext: 'mov', description: 'Professional editing format', filterName: 'QuickTime Movie' },
-  vp9: { label: 'VP9 / WebM', ext: 'webm', description: 'Web-optimized format', filterName: 'WebM Video' },
 }
 
 const RESOLUTIONS = [
@@ -160,6 +155,13 @@ export function ExportModal({ projectName }: ExportModalProps) {
   const clips = useEditorStore(selectClips)
   const tracks = useEditorStore(selectTracks)
   const subtitles = useEditorStore(selectSubtitles)
+  const { t } = useT()
+
+  const CODEC_INFO: Record<ExportCodec, { label: string; ext: string; description: string; filterName: string }> = useMemo(() => ({
+    h264: { label: 'H.264 / MP4', ext: 'mp4', description: t('export.mostCompatible'), filterName: 'MP4 Video' },
+    prores: { label: 'ProRes / MOV', ext: 'mov', description: t('export.professional'), filterName: 'QuickTime Movie' },
+    vp9: { label: 'VP9 / WebM', ext: 'webm', description: t('export.webOptimized'), filterName: 'WebM Video' },
+  }), [t])
 
   const exportClips = useMemo(() => (
     clips
@@ -347,7 +349,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
 
       setExportProgress(100)
       setExportPath(filePath)
-      setExportFrameInfo('Export complete')
+      setExportFrameInfo('')
       setExportStatus('done')
     } catch (err) {
       setExportError(String(err))
@@ -369,7 +371,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-          <h2 className="text-lg font-bold text-white">Export</h2>
+          <h2 className="text-lg font-bold text-white">{t('export.export')}</h2>
           <button
             onClick={closeModal}
             className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors"
@@ -385,7 +387,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
               <div className="flex items-center gap-3">
                 <Loader2 className="h-5 w-5 text-blue-400 animate-spin" />
                 <span className="text-sm text-zinc-300">
-                  {exportType === 'package' ? 'Generating FCPXML...' : 'Rendering video...'}
+                  {exportType === 'package' ? t('export.generatingFcpxml') : t('export.rendering')}
                 </span>
               </div>
               <div className="w-full bg-zinc-800 rounded-full h-2 overflow-hidden">
@@ -419,7 +421,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
                   <Check className="h-5 w-5 text-green-400" />
                 </div>
                 <div>
-                  <p className="text-sm text-white font-medium">Export complete</p>
+                  <p className="text-sm text-white font-medium">{t('export.exportComplete')}</p>
                   <p className="text-xs text-zinc-500 truncate max-w-[340px]">{exportPath}</p>
                   {exportFrameInfo && <p className="text-xs text-zinc-500">{exportFrameInfo}</p>}
                 </div>
@@ -436,7 +438,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
                   }}
                 >
                   <FolderOpen className="h-4 w-4 mr-2" />
-                  Show in Folder
+                  {t('export.showInFolder')}
                 </Button>
                 <Button
                   variant="outline"
@@ -447,7 +449,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
                     setExportType(null)
                   }}
                 >
-                  Export Another
+                  {t('export.exportAnother')}
                 </Button>
               </div>
             </div>
@@ -461,7 +463,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
                   <AlertCircle className="h-5 w-5 text-red-400" />
                 </div>
                 <div>
-                  <p className="text-sm text-white font-medium">Export failed</p>
+                  <p className="text-sm text-white font-medium">{t('export.exportFailed')}</p>
                   <p className="text-xs text-red-400 max-w-[340px] break-words">{exportError}</p>
                 </div>
               </div>
@@ -474,7 +476,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
                   setExportType(null)
                 }}
               >
-                Try Again
+                {t('export.tryAgain')}
               </Button>
             </div>
           )}
@@ -491,8 +493,8 @@ export function ExportModal({ projectName }: ExportModalProps) {
                   <Package className="h-5 w-5 text-zinc-300" />
                 </div>
                 <div className="flex-1 text-left">
-                  <p className="text-sm font-semibold text-white">Package (FCPXML)</p>
-                  <p className="text-[10px] text-zinc-500">For Premiere Pro &amp; DaVinci Resolve</p>
+                  <p className="text-sm font-semibold text-white">{t('export.package')}</p>
+                  <p className="text-[10px] text-zinc-500">{t('export.packageDesc')}</p>
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <div className="w-6 h-6 rounded bg-zinc-700 flex items-center justify-center" title="DaVinci Resolve">
@@ -508,13 +510,13 @@ export function ExportModal({ projectName }: ExportModalProps) {
               {/* Divider */}
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-zinc-800" />
-                <span className="text-[10px] text-zinc-600 uppercase tracking-wider font-semibold">Video Export</span>
+                <span className="text-[10px] text-zinc-600 uppercase tracking-wider font-semibold">{t('export.videoExport')}</span>
                 <div className="flex-1 h-px bg-zinc-800" />
               </div>
 
               {/* Format selector */}
               <div>
-                <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-2 block">Format</label>
+                <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-2 block">{t('export.format')}</label>
                 <div className="grid grid-cols-3 gap-2">
                   {(Object.keys(CODEC_INFO) as ExportCodec[]).map(codec => (
                     <button
@@ -536,7 +538,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
               {/* Resolution & Frame rate row */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-1.5 block">Resolution</label>
+                  <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-1.5 block">{t('export.resolution')}</label>
                   <div className="relative">
                     <select
                       value={`${settings.width}x${settings.height}`}
@@ -556,7 +558,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
                   </div>
                 </div>
                 <div>
-                  <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-1.5 block">Frame Rate</label>
+                  <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-1.5 block">{t('export.frameRate')}</label>
                   <div className="relative">
                     <select
                       value={settings.fps}
@@ -574,7 +576,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
 
               {/* Quality */}
               <div>
-                <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-1.5 block">Quality</label>
+                <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-1.5 block">{t('export.quality')}</label>
                 {settings.codec === 'h264' && (
                   <div className="flex items-center gap-3">
                     <input
@@ -633,7 +635,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
                 <div className="space-y-2">
                   <div className="flex items-center gap-3">
                     <div className="flex-1 h-px bg-zinc-800" />
-                    <span className="text-[10px] text-zinc-600 uppercase tracking-wider font-semibold">Options</span>
+                    <span className="text-[10px] text-zinc-600 uppercase tracking-wider font-semibold">{t('export.options')}</span>
                     <div className="flex-1 h-px bg-zinc-800" />
                   </div>
                   <label className="flex items-center gap-2.5 cursor-pointer group">
@@ -643,7 +645,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
                       onChange={(e) => setBurnSubtitles(e.target.checked)}
                       className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 accent-blue-500 cursor-pointer"
                     />
-                    <span className="text-xs text-zinc-300 group-hover:text-white transition-colors">Burn-in subtitles</span>
+                    <span className="text-xs text-zinc-300 group-hover:text-white transition-colors">{t('export.burnSubtitles')}</span>
                   </label>
                 </div>
               )}
@@ -655,11 +657,11 @@ export function ExportModal({ projectName }: ExportModalProps) {
                 className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors"
               >
                 <Film className="h-4 w-4" />
-                Export Video
+                {t('export.exportVideo')}
               </button>
 
               {clips.length === 0 && (
-                <p className="text-xs text-zinc-500 text-center">Add clips to the timeline to export.</p>
+                <p className="text-xs text-zinc-500 text-center">{t('export.addClips')}</p>
               )}
             </div>
           )}

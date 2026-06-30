@@ -3,6 +3,7 @@ import { TEXT_PRESETS } from '../../types/project'
 import type { TimelineClip } from '../../types/project-model'
 import type { KeyboardLayout } from '../../lib/keyboard-shortcuts'
 import { useMemo } from 'react'
+import { useT } from '../../lib/i18n'
 import { shallow } from 'zustand/vanilla/shallow'
 import {
   selectCanInsertEdit,
@@ -41,16 +42,17 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
   const canInsertEdit = useEditorStore(selectCanInsertEdit)
   const canOverwriteEdit = useEditorStore(selectCanOverwriteEdit)
   const currentTime = useEditorStore(selectCurrentTime)
+  const { t } = useT()
 
   return useMemo(() => ([
     {
       id: 'file',
-      label: 'File',
+      label: t('menu.file'),
       items: [
-        { id: 'new-timeline', label: 'New Timeline', action: () => actions.createTimeline() },
+        { id: 'new-timeline', label: t('menu.newTimeline'), action: () => actions.createTimeline() },
         {
           id: 'duplicate-timeline',
-          label: 'Duplicate Active Timeline',
+          label: t('menu.duplicateTimeline'),
           action: () => {
             if (menuState.activeTimeline) {
               actions.duplicateTimeline(menuState.activeTimeline.id)
@@ -59,43 +61,43 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
           disabled: !menuState.activeTimeline,
         },
         { id: 'sep-0', label: '', separator: true },
-        { id: 'import-media', label: 'Import Media...', shortcut: 'Ctrl+I', action: () => p.fileInputRef.current?.click() },
-        { id: 'import-timeline', label: 'Import Timeline (XML)...', action: () => actions.openImportTimelineModal() },
-        { id: 'import-srt', label: 'Import Subtitles (SRT)...', action: () => p.subtitleFileInputRef.current?.click() },
+        { id: 'import-media', label: t('menu.importMedia'), shortcut: 'Ctrl+I', action: () => p.fileInputRef.current?.click() },
+        { id: 'import-timeline', label: t('menu.importTimeline'), action: () => actions.openImportTimelineModal() },
+        { id: 'import-srt', label: t('menu.importSubtitles'), action: () => p.subtitleFileInputRef.current?.click() },
         { id: 'sep-1', label: '', separator: true },
-        { id: 'export-timeline', label: 'Export Timeline...', shortcut: 'Ctrl+E', action: () => actions.openExportModal() },
-        { id: 'export-xml', label: 'Export FCP7 XML...', action: () => p.handleExportTimelineXml() },
-        { id: 'export-srt', label: 'Export Subtitles (SRT)...', action: () => p.handleExportSrt(), disabled: menuState.subtitles.length === 0 },
+        { id: 'export-timeline', label: t('menu.exportTimeline'), shortcut: 'Ctrl+E', action: () => actions.openExportModal() },
+        { id: 'export-xml', label: t('menu.exportFcp7Xml'), action: () => p.handleExportTimelineXml() },
+        { id: 'export-srt', label: t('menu.exportSubtitles'), action: () => p.handleExportSrt(), disabled: menuState.subtitles.length === 0 },
       ],
     },
     {
       id: 'edit',
-      label: 'Edit',
+      label: t('menu.edit'),
       items: [
-        { id: 'undo', label: 'Undo', shortcut: getShortcutLabel(p.kbLayout, 'edit.undo'), action: () => actions.undo(), disabled: !canUndo },
-        { id: 'redo', label: 'Redo', shortcut: getShortcutLabel(p.kbLayout, 'edit.redo'), action: () => actions.redo(), disabled: !canRedo },
+        { id: 'undo', label: t('editor.undo'), shortcut: getShortcutLabel(p.kbLayout, 'edit.undo'), action: () => actions.undo(), disabled: !canUndo },
+        { id: 'redo', label: t('editor.redo'), shortcut: getShortcutLabel(p.kbLayout, 'edit.redo'), action: () => actions.redo(), disabled: !canRedo },
         { id: 'sep-1', label: '', separator: true },
-        { id: 'cut', label: 'Cut', shortcut: getShortcutLabel(p.kbLayout, 'edit.cut'), action: () => actions.cutSelection() },
-        { id: 'copy', label: 'Copy', shortcut: getShortcutLabel(p.kbLayout, 'edit.copy'), action: () => actions.copySelection() },
-        { id: 'paste', label: 'Paste', shortcut: getShortcutLabel(p.kbLayout, 'edit.paste'), action: () => actions.pasteSelection(), disabled: !canUseClipboard },
+        { id: 'cut', label: t('editor.cut'), shortcut: getShortcutLabel(p.kbLayout, 'edit.cut'), action: () => actions.cutSelection() },
+        { id: 'copy', label: t('editor.copy'), shortcut: getShortcutLabel(p.kbLayout, 'edit.copy'), action: () => actions.copySelection() },
+        { id: 'paste', label: t('editor.paste'), shortcut: getShortcutLabel(p.kbLayout, 'edit.paste'), action: () => actions.pasteSelection(), disabled: !canUseClipboard },
         { id: 'sep-2', label: '', separator: true },
-        { id: 'select-all', label: 'Select All', shortcut: getShortcutLabel(p.kbLayout, 'edit.selectAll'), action: () => actions.selectAllClips() },
-        { id: 'deselect-all', label: 'Deselect All', shortcut: getShortcutLabel(p.kbLayout, 'edit.deselect'), action: () => actions.clearClipSelection() },
+        { id: 'select-all', label: t('editor.selectAll'), shortcut: getShortcutLabel(p.kbLayout, 'edit.selectAll'), action: () => actions.selectAllClips() },
+        { id: 'deselect-all', label: t('editor.deselectAll'), shortcut: getShortcutLabel(p.kbLayout, 'edit.deselect'), action: () => actions.clearClipSelection() },
         { id: 'sep-3', label: '', separator: true },
-        { id: 'insert-edit', label: 'Insert Edit', shortcut: getShortcutLabel(p.kbLayout, 'edit.insertEdit'), action: () => p.handleInsertEdit(), disabled: !canInsertEdit },
-        { id: 'overwrite-edit', label: 'Overwrite Edit', shortcut: getShortcutLabel(p.kbLayout, 'edit.overwriteEdit'), action: () => p.handleOverwriteEdit(), disabled: !canOverwriteEdit },
-        { id: 'match-frame', label: 'Match Frame', shortcut: getShortcutLabel(p.kbLayout, 'edit.matchFrame'), action: () => p.handleMatchFrame() },
+        { id: 'insert-edit', label: t('editor.insertEdit'), shortcut: getShortcutLabel(p.kbLayout, 'edit.insertEdit'), action: () => p.handleInsertEdit(), disabled: !canInsertEdit },
+        { id: 'overwrite-edit', label: t('editor.overwriteEdit'), shortcut: getShortcutLabel(p.kbLayout, 'edit.overwriteEdit'), action: () => p.handleOverwriteEdit(), disabled: !canOverwriteEdit },
+        { id: 'match-frame', label: t('editor.matchFrame'), shortcut: getShortcutLabel(p.kbLayout, 'edit.matchFrame'), action: () => p.handleMatchFrame() },
         { id: 'sep-4', label: '', separator: true },
-        { id: 'keyboard-shortcuts', label: 'Keyboard Shortcuts...', action: () => p.setKbEditorOpen(true) },
+        { id: 'keyboard-shortcuts', label: t('keyboard.title') + '...', action: () => p.setKbEditorOpen(true) },
       ],
     },
     {
       id: 'clip',
-      label: 'Clip',
+      label: t('menu.clip'),
       items: [
         {
           id: 'split',
-          label: 'Split at Playhead',
+          label: t('menu.splitAtPlayhead'),
           shortcut: getShortcutLabel(p.kbLayout, 'tool.blade'),
           action: () => {
             if (menuState.selectedClip) {
@@ -106,7 +108,7 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
         },
         {
           id: 'duplicate',
-          label: 'Duplicate Clip',
+          label: t('menu.duplicateClip'),
           action: () => {
             if (menuState.selectedClip) {
               actions.duplicateClips([menuState.selectedClip.id])
@@ -116,7 +118,7 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
         },
         {
           id: 'delete',
-          label: 'Delete',
+          label: t('editor.delete'),
           shortcut: getShortcutLabel(p.kbLayout, 'edit.delete'),
           action: () => actions.deleteClips([...menuState.selectedClipIds]),
           disabled: menuState.selectedClipIds.size === 0,
@@ -124,7 +126,7 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
         { id: 'sep-1', label: '', separator: true },
         {
           id: 'flip-h',
-          label: 'Flip Horizontal',
+          label: t('menu.flipHorizontal'),
           action: () => {
             if (menuState.selectedClip) {
               actions.updateClip(menuState.selectedClip.id, { flipH: !menuState.selectedClip.flipH })
@@ -134,7 +136,7 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
         },
         {
           id: 'flip-v',
-          label: 'Flip Vertical',
+          label: t('menu.flipVertical'),
           action: () => {
             if (menuState.selectedClip) {
               actions.updateClip(menuState.selectedClip.id, { flipV: !menuState.selectedClip.flipV })
@@ -144,7 +146,7 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
         },
         {
           id: 'reverse',
-          label: 'Reverse',
+          label: t('menu.reverse'),
           action: () => {
             if (menuState.selectedClip) {
               actions.toggleClipReverse(menuState.selectedClip.id)
@@ -155,7 +157,7 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
         { id: 'sep-2', label: '', separator: true },
         {
           id: 'mute',
-          label: menuState.selectedClip?.muted ? 'Unmute Clip' : 'Mute Clip',
+          label: menuState.selectedClip?.muted ? t('menu.unmuteClip') : t('menu.muteClip'),
           action: () => {
             if (menuState.selectedClip) {
               actions.toggleClipMute(menuState.selectedClip.id)
@@ -165,7 +167,7 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
         },
         {
           id: 'link-audio',
-          label: menuState.selectedClip?.linkedClipIds?.length ? 'Unlink Audio' : 'Link Audio',
+          label: menuState.selectedClip?.linkedClipIds?.length ? t('menu.unlinkAudio') : t('menu.linkAudio'),
           action: () => {
             if (menuState.selectedClip?.linkedClipIds?.length) {
               actions.unlinkClipGroup(menuState.selectedClip.id)
@@ -174,46 +176,46 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
           disabled: !menuState.selectedClip,
         },
         { id: 'sep-3', label: '', separator: true },
-        { id: 'speed-025', label: 'Speed: 0.25x', action: () => menuState.selectedClip && actions.updateClip(menuState.selectedClip.id, { speed: 0.25 }), disabled: !menuState.selectedClip },
-        { id: 'speed-050', label: 'Speed: 0.5x', action: () => menuState.selectedClip && actions.updateClip(menuState.selectedClip.id, { speed: 0.5 }), disabled: !menuState.selectedClip },
-        { id: 'speed-100', label: 'Speed: 1x (Normal)', action: () => menuState.selectedClip && actions.updateClip(menuState.selectedClip.id, { speed: 1 }), disabled: !menuState.selectedClip },
-        { id: 'speed-150', label: 'Speed: 1.5x', action: () => menuState.selectedClip && actions.updateClip(menuState.selectedClip.id, { speed: 1.5 }), disabled: !menuState.selectedClip },
-        { id: 'speed-200', label: 'Speed: 2x', action: () => menuState.selectedClip && actions.updateClip(menuState.selectedClip.id, { speed: 2 }), disabled: !menuState.selectedClip },
-        { id: 'speed-400', label: 'Speed: 4x', action: () => menuState.selectedClip && actions.updateClip(menuState.selectedClip.id, { speed: 4 }), disabled: !menuState.selectedClip },
+        { id: 'speed-025', label: t('menu.speed025'), action: () => menuState.selectedClip && actions.updateClip(menuState.selectedClip.id, { speed: 0.25 }), disabled: !menuState.selectedClip },
+        { id: 'speed-050', label: t('menu.speed050'), action: () => menuState.selectedClip && actions.updateClip(menuState.selectedClip.id, { speed: 0.5 }), disabled: !menuState.selectedClip },
+        { id: 'speed-100', label: t('menu.speed100'), action: () => menuState.selectedClip && actions.updateClip(menuState.selectedClip.id, { speed: 1 }), disabled: !menuState.selectedClip },
+        { id: 'speed-150', label: t('menu.speed150'), action: () => menuState.selectedClip && actions.updateClip(menuState.selectedClip.id, { speed: 1.5 }), disabled: !menuState.selectedClip },
+        { id: 'speed-200', label: t('menu.speed200'), action: () => menuState.selectedClip && actions.updateClip(menuState.selectedClip.id, { speed: 2 }), disabled: !menuState.selectedClip },
+        { id: 'speed-400', label: t('menu.speed400'), action: () => menuState.selectedClip && actions.updateClip(menuState.selectedClip.id, { speed: 4 }), disabled: !menuState.selectedClip },
       ],
     },
     {
       id: 'sequence',
-      label: 'Sequence',
+      label: t('menu.sequence'),
       items: [
-        { id: 'add-video-track', label: 'Add Video Track', action: () => actions.addTrack('video') },
-        { id: 'add-audio-track', label: 'Add Audio Track', action: () => actions.addTrack('audio') },
-        { id: 'add-subtitle-track', label: 'Add Subtitle Track', action: () => actions.addSubtitleTrack() },
+        { id: 'add-video-track', label: t('menu.addVideoTrack'), action: () => actions.addTrack('video') },
+        { id: 'add-audio-track', label: t('menu.addAudioTrack'), action: () => actions.addTrack('audio') },
+        { id: 'add-subtitle-track', label: t('menu.addSubtitleTrack'), action: () => actions.addSubtitleTrack() },
         { id: 'sep-1', label: '', separator: true },
-        { id: 'add-adjustment', label: 'Add Adjustment Layer', action: () => actions.createAdjustmentLayerAsset() },
+        { id: 'add-adjustment', label: t('menu.addAdjustmentLayer'), action: () => actions.createAdjustmentLayerAsset() },
         { id: 'sep-2', label: '', separator: true },
-        { id: 'add-text', label: 'Add Text Overlay', action: () => actions.addTextClip() },
-        { id: 'add-text-lower', label: 'Add Lower Third', action: () => actions.addTextClip({ style: TEXT_PRESETS.find(pr => pr.id === 'lower-third-basic')?.style }) },
-        { id: 'add-text-subtitle', label: 'Add Caption', action: () => actions.addTextClip({ style: TEXT_PRESETS.find(pr => pr.id === 'subtitle-style')?.style }) },
+        { id: 'add-text', label: t('menu.addTextOverlay'), action: () => actions.addTextClip() },
+        { id: 'add-text-lower', label: t('menu.addLowerThird'), action: () => actions.addTextClip({ style: TEXT_PRESETS.find(pr => pr.id === 'lower-third-basic')?.style }) },
+        { id: 'add-text-subtitle', label: t('menu.addCaption'), action: () => actions.addTextClip({ style: TEXT_PRESETS.find(pr => pr.id === 'subtitle-style')?.style }) },
         { id: 'sep-3', label: '', separator: true },
-        { id: 'snap-toggle', label: menuState.snapEnabled ? 'Disable Snapping' : 'Enable Snapping', shortcut: getShortcutLabel(p.kbLayout, 'timeline.toggleSnap'), action: () => actions.toggleSnap() },
+        { id: 'snap-toggle', label: menuState.snapEnabled ? t('menu.disableSnapping') : t('menu.enableSnapping'), shortcut: getShortcutLabel(p.kbLayout, 'timeline.toggleSnap'), action: () => actions.toggleSnap() },
       ],
     },
     {
       id: 'tools',
-      label: 'Tools',
+      label: t('menu.tools'),
       items: [
-        { id: 'tool-select', label: 'Selection Tool', shortcut: getShortcutLabel(p.kbLayout, 'tool.select'), action: () => actions.setActiveTool('select') },
-        { id: 'tool-blade', label: 'Blade Tool', shortcut: getShortcutLabel(p.kbLayout, 'tool.blade'), action: () => actions.setActiveTool('blade') },
+        { id: 'tool-select', label: t('menu.selectionTool'), shortcut: getShortcutLabel(p.kbLayout, 'tool.select'), action: () => actions.setActiveTool('select') },
+        { id: 'tool-blade', label: t('menu.bladeTool'), shortcut: getShortcutLabel(p.kbLayout, 'tool.blade'), action: () => actions.setActiveTool('blade') },
         { id: 'sep-1', label: '', separator: true },
-        { id: 'tool-ripple', label: 'Ripple Trim', shortcut: getShortcutLabel(p.kbLayout, 'tool.ripple'), action: () => { actions.setActiveTool('ripple'); actions.setLastTrimTool('ripple') } },
-        { id: 'tool-roll', label: 'Roll Trim', shortcut: getShortcutLabel(p.kbLayout, 'tool.roll'), action: () => { actions.setActiveTool('roll'); actions.setLastTrimTool('roll') } },
-        { id: 'tool-slip', label: 'Slip Tool', shortcut: getShortcutLabel(p.kbLayout, 'tool.slip'), action: () => { actions.setActiveTool('slip'); actions.setLastTrimTool('slip') } },
-        { id: 'tool-slide', label: 'Slide Tool', shortcut: getShortcutLabel(p.kbLayout, 'tool.slide'), action: () => { actions.setActiveTool('slide'); actions.setLastTrimTool('slide') } },
+        { id: 'tool-ripple', label: t('menu.rippleTrim'), shortcut: getShortcutLabel(p.kbLayout, 'tool.ripple'), action: () => { actions.setActiveTool('ripple'); actions.setLastTrimTool('ripple') } },
+        { id: 'tool-roll', label: t('menu.rollTrim'), shortcut: getShortcutLabel(p.kbLayout, 'tool.roll'), action: () => { actions.setActiveTool('roll'); actions.setLastTrimTool('roll') } },
+        { id: 'tool-slip', label: t('menu.slipTool'), shortcut: getShortcutLabel(p.kbLayout, 'tool.slip'), action: () => { actions.setActiveTool('slip'); actions.setLastTrimTool('slip') } },
+        { id: 'tool-slide', label: t('menu.slideTool'), shortcut: getShortcutLabel(p.kbLayout, 'tool.slide'), action: () => { actions.setActiveTool('slide'); actions.setLastTrimTool('slide') } },
         { id: 'sep-2', label: '', separator: true },
         ...(p.canUseIcLora ? [{
           id: 'ic-lora',
-          label: 'IC-LoRA Style Transfer...',
+          label: t('menu.icLoraStyle'),
           action: () => {
             if (menuState.selectedClip?.type === 'video') {
               p.onICLoraClip(menuState.selectedClip)
@@ -225,24 +227,24 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
     },
     {
       id: 'view',
-      label: 'View',
+      label: t('menu.view'),
       items: [
-        { id: 'clip-viewer', label: menuState.showSourceMonitor ? 'Hide Clip Viewer' : 'Show Clip Viewer', action: () => actions.setShowSourceMonitor(!menuState.showSourceMonitor) },
-        { id: 'properties-panel', label: menuState.showPropertiesPanel ? 'Hide Properties Panel' : 'Show Properties Panel', action: () => actions.setShowPropertiesPanel(!menuState.showPropertiesPanel) },
+        { id: 'clip-viewer', label: menuState.showSourceMonitor ? t('menu.hideClipViewer') : t('menu.showClipViewer'), action: () => actions.setShowSourceMonitor(!menuState.showSourceMonitor) },
+        { id: 'properties-panel', label: menuState.showPropertiesPanel ? t('menu.hideProperties') : t('menu.showProperties'), action: () => actions.setShowPropertiesPanel(!menuState.showPropertiesPanel) },
         { id: 'sep-1', label: '', separator: true },
-        { id: 'fit-to-view', label: 'Zoom to Fit', shortcut: getShortcutLabel(p.kbLayout, 'timeline.fitToView'), action: () => p.fitToViewRef.current?.() },
-        { id: 'zoom-in', label: 'Zoom In', shortcut: getShortcutLabel(p.kbLayout, 'timeline.zoomIn'), action: () => actions.zoomIn() },
-        { id: 'zoom-out', label: 'Zoom Out', shortcut: getShortcutLabel(p.kbLayout, 'timeline.zoomOut'), action: () => actions.zoomOut() },
+        { id: 'fit-to-view', label: t('menu.zoomToFit'), shortcut: getShortcutLabel(p.kbLayout, 'timeline.fitToView'), action: () => p.fitToViewRef.current?.() },
+        { id: 'zoom-in', label: t('editor.zoomIn'), shortcut: getShortcutLabel(p.kbLayout, 'timeline.zoomIn'), action: () => actions.zoomIn() },
+        { id: 'zoom-out', label: t('editor.zoomOut'), shortcut: getShortcutLabel(p.kbLayout, 'timeline.zoomOut'), action: () => actions.zoomOut() },
         { id: 'sep-2', label: '', separator: true },
-        { id: 'reset-layout', label: 'Reset Layout', action: () => p.handleResetLayout() },
+        { id: 'reset-layout', label: t('menu.resetLayout'), action: () => p.handleResetLayout() },
       ],
     },
     {
       id: 'help',
-      label: 'Help',
+      label: t('menu.help'),
       items: [
-        { id: 'shortcuts', label: 'Keyboard Shortcuts...', action: () => p.setKbEditorOpen(true) },
-        { id: 'about', label: 'About LTX Desktop', action: () => window.dispatchEvent(new CustomEvent('open-settings', { detail: { tab: 'about' } })) },
+        { id: 'shortcuts', label: t('keyboard.title') + '...', action: () => p.setKbEditorOpen(true) },
+        { id: 'about', label: t('menu.aboutLtx'), action: () => window.dispatchEvent(new CustomEvent('open-settings', { detail: { tab: 'about' } })) },
       ],
     },
   ]), [
@@ -265,5 +267,6 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
     p.onICLoraClip,
     p.setKbEditorOpen,
     p.subtitleFileInputRef,
+    t,
   ])
 }

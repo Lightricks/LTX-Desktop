@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { X, Search, Keyboard, RotateCcw, Save, AlertTriangle, ChevronDown, GripVertical, Trash2 } from 'lucide-react'
+import { useT } from '../lib/i18n'
 import { useKeyboardShortcuts } from '../contexts/KeyboardShortcutsContext'
 import {
   ACTION_REGISTRY,
@@ -8,6 +9,8 @@ import {
   formatKeyCombo,
   findConflicts,
   ActionDefinition,
+  translateActionLabel,
+  translateActionDescription,
 } from '../lib/keyboard-shortcuts'
 
 // ── Visual keyboard layout (US QWERTY) ──
@@ -117,6 +120,7 @@ const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string
 const MODIFIER_KEY_IDS = new Set(['shift-l', 'shift-r', 'ctrl-l', 'ctrl-r', 'alt-l', 'alt-r', 'capslock', 'tab'])
 
 export function KeyboardShortcutsModal() {
+  const { t } = useT()
   const {
     activeLayout,
     activePresetId,
@@ -339,8 +343,8 @@ export function KeyboardShortcutsModal() {
             <Keyboard className="h-4 w-4 text-blue-400" />
           </div>
           <div className="flex-1">
-            <h2 className="text-sm font-semibold text-white">Keyboard Shortcuts</h2>
-            <p className="text-[11px] text-zinc-500 mt-0.5">Customize keybindings — drag actions onto keys or click Edit</p>
+            <h2 className="text-sm font-semibold text-white">{t('keyboard.title')}</h2>
+            <p className="text-[11px] text-zinc-500 mt-0.5">{t('keyboard.customize')}</p>
           </div>
           <button
             onClick={() => setShowKeyboard(!showKeyboard)}
@@ -348,7 +352,7 @@ export function KeyboardShortcutsModal() {
               showKeyboard ? 'bg-blue-600/20 text-blue-300' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
             }`}
           >
-            {showKeyboard ? 'Hide Keyboard' : 'Show Keyboard'}
+            {showKeyboard ? t('keyboard.hideKeyboard') : t('keyboard.showKeyboard')}
           </button>
           <button onClick={() => setEditorOpen(false)} className="text-zinc-500 hover:text-white transition-colors p-1">
             <X className="h-4 w-4" />
@@ -384,15 +388,15 @@ export function KeyboardShortcutsModal() {
                         p.id === activePresetId ? 'text-blue-300' : 'text-zinc-300'
                       }`}
                     >
-                      <div className="font-medium">{p.name}</div>
-                      <div className="text-[10px] text-zinc-500 mt-0.5">{p.description}</div>
+                      <div className="font-medium">{p.builtIn ? t(`keyboard.${p.id === 'ltx-default' ? 'ltxDefault' : p.id}`) : p.name}</div>
+                      <div className="text-[10px] text-zinc-500 mt-0.5">{p.builtIn ? t(`keyboard.${p.id === 'ltx-default' ? 'ltxDefaultDesc' : `${p.id}Desc`}`) : p.description}</div>
                     </button>
                     {/* Delete button — only for user-created (non-built-in) presets */}
                     {!p.builtIn && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          if (confirm(`Delete preset "${p.name}"?`)) {
+                          if (confirm(t('keyboard.deletePresetConfirm', { name: p.name }))) {
                             deleteCustomPreset(p.id)
                             if (presets.filter(pr => pr.id !== p.id).length > 0) {
                               setShowPresetDropdown(true)
@@ -402,7 +406,7 @@ export function KeyboardShortcutsModal() {
                           }
                         }}
                         className="p-1.5 mr-1.5 rounded text-zinc-600 hover:text-red-400 hover:bg-red-600/10 transition-colors"
-                        title={`Delete "${p.name}"`}
+                        title={t('keyboard.deletePresetTooltip', { name: p.name })}
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
@@ -418,7 +422,7 @@ export function KeyboardShortcutsModal() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-zinc-600" />
             <input
               type="text"
-              placeholder="Search actions or keys..."
+              placeholder={t('keyboard.searchActions')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-8 pr-3 py-1.5 bg-zinc-800 rounded-md text-[11px] text-white placeholder-zinc-600 outline-none border border-zinc-700/40 focus:border-blue-500/50 transition-colors"
@@ -429,10 +433,10 @@ export function KeyboardShortcutsModal() {
           <button
             onClick={() => resetToPreset(activePresetId)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
-            title="Reset all shortcuts to the selected preset"
+            title={t('keyboard.resetTooltip')}
           >
             <RotateCcw className="h-3 w-3" />
-            Reset
+            {t('keyboard.reset')}
           </button>
 
           {/* Save as custom */}
@@ -440,17 +444,17 @@ export function KeyboardShortcutsModal() {
             <button
               onClick={() => setShowSaveDialog(!showSaveDialog)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
-              title="Save current layout as a custom preset"
+              title={t('keyboard.saveAsTooltip')}
             >
               <Save className="h-3 w-3" />
-              Save As
+              {t('keyboard.saveAs')}
             </button>
             {showSaveDialog && (
               <div className="absolute top-full right-0 mt-1 w-52 bg-zinc-800 rounded-lg border border-zinc-700 shadow-xl z-50 p-3">
-                <p className="text-[10px] text-zinc-400 mb-2">Save as custom preset:</p>
+                <p className="text-[10px] text-zinc-400 mb-2">{t('keyboard.saveAsPrompt')}</p>
                 <input
                   type="text"
-                  placeholder="Preset name..."
+                  placeholder={t('keyboard.presetNamePlaceholder')}
                   value={savePresetName}
                   onChange={(e) => setSavePresetName(e.target.value)}
                   onKeyDown={(e) => {
@@ -474,7 +478,7 @@ export function KeyboardShortcutsModal() {
                   disabled={!savePresetName.trim()}
                   className="w-full py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-[11px] font-medium rounded transition-colors"
                 >
-                  Save Preset
+                  {t('keyboard.savePreset')}
                 </button>
               </div>
             )}
@@ -486,7 +490,7 @@ export function KeyboardShortcutsModal() {
           <div className="flex items-center gap-2 px-4 py-2 bg-amber-950/30 border-b border-amber-800/30">
             <AlertTriangle className="h-3.5 w-3.5 text-amber-400 flex-shrink-0" />
             <span className="text-[11px] text-amber-400/90">
-              {conflicts.size} shortcut conflict{conflicts.size > 1 ? 's' : ''} detected — some keys are assigned to multiple actions
+              {t('keyboard.conflictsDetected', { count: conflicts.size })}
             </span>
           </div>
         )}
@@ -496,7 +500,7 @@ export function KeyboardShortcutsModal() {
           <div className="border-b border-zinc-800/80 bg-zinc-950/60 px-4 py-3">
             {/* Modifier toggles */}
             <div className="flex items-center gap-2 mb-2.5">
-              <span className="text-[10px] text-zinc-500 font-medium mr-1">Modifiers:</span>
+              <span className="text-[10px] text-zinc-500 font-medium mr-1">{t('keyboard.modifiers')}</span>
               {([
                 { label: 'Ctrl', active: kbModCtrl, toggle: () => setKbModCtrl(v => !v) },
                 { label: 'Shift', active: kbModShift, toggle: () => setKbModShift(v => !v) },
@@ -522,7 +526,7 @@ export function KeyboardShortcutsModal() {
                   return (
                     <div key={cat} className="flex items-center gap-1">
                       <div className={`w-2 h-2 rounded-sm ${c.dot}`} />
-                      <span className="text-[9px] text-zinc-500">{cat}</span>
+                      <span className="text-[9px] text-zinc-500">{t(`keyboard.${cat.toLowerCase()}`)}</span>
                     </div>
                   )
                 })}
@@ -583,7 +587,7 @@ export function KeyboardShortcutsModal() {
                             ? `${assigned.action.label} (${assigned.action.category})`
                             : isModifier
                               ? kbKey.label
-                              : 'Unassigned — drag an action here'
+                              : t('keyboard.unassignedHint')
                         }
                       >
                         {/* Key label */}
@@ -600,7 +604,7 @@ export function KeyboardShortcutsModal() {
                           <span className={`text-[7px] leading-tight mt-0.5 max-w-full px-0.5 truncate ${
                             catColors ? catColors.text : 'text-zinc-400'
                           }`} style={{ opacity: 0.8 }}>
-                            {assigned.action.label.replace(/ Tool$/, '').replace(/ \(.*\)$/, '')}
+                            {translateActionLabel(assigned.action.label, t).replace(/ Tool$/, '').replace(/ \(.*\)$/, '')}
                           </span>
                         )}
                         {/* Conflict indicator */}
@@ -617,9 +621,9 @@ export function KeyboardShortcutsModal() {
             {/* Drag hint */}
             {draggedActionId && (
               <div className="text-center mt-2 text-[10px] text-blue-400 animate-pulse">
-                Drop on a key to assign — current modifiers: {
+                {t('keyboard.dropHint', { modifiers:
                   [kbModCtrl && 'Ctrl', kbModShift && 'Shift', kbModAlt && 'Alt'].filter(Boolean).join('+') || 'None'
-                }
+                })}
               </div>
             )}
           </div>
@@ -633,7 +637,7 @@ export function KeyboardShortcutsModal() {
               !selectedCategory ? 'bg-blue-600/20 text-blue-300' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
             }`}
           >
-            All
+            {t('keyboard.all')}
           </button>
           {categories.map(cat => {
             const c = CATEGORY_COLORS[cat]
@@ -646,7 +650,7 @@ export function KeyboardShortcutsModal() {
                 }`}
               >
                 <div className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
-                {cat}
+                {t(`keyboard.${cat.toLowerCase()}`)}
               </button>
             )
           })}
@@ -663,7 +667,7 @@ export function KeyboardShortcutsModal() {
                 {/* Category header */}
                 <div className="sticky top-0 z-10 px-4 py-1.5 bg-zinc-950/95 border-b border-zinc-800/50 flex items-center gap-2">
                   <div className={`w-1.5 h-1.5 rounded-full ${catColor.dot}`} />
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{cat}</span>
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{t(`keyboard.${cat.toLowerCase()}`)}</span>
                 </div>
                 {/* Action rows */}
                 {actions.map(action => {
@@ -700,10 +704,10 @@ export function KeyboardShortcutsModal() {
                       {/* Action label */}
                       <div className="flex-1 min-w-0">
                         <span className={`text-[12px] ${hasConflict ? 'text-amber-300' : 'text-zinc-300'}`}>
-                          {action.label}
+                          {translateActionLabel(action.label, t)}
                         </span>
                         {action.description && (
-                          <span className="text-[10px] text-zinc-600 ml-2">{action.description}</span>
+                          <span className="text-[10px] text-zinc-600 ml-2">{translateActionDescription(action.description, t)}</span>
                         )}
                         {hasConflict && (
                           <AlertTriangle className="inline-block h-3 w-3 text-amber-400 ml-1.5 -mt-0.5" />
@@ -714,7 +718,7 @@ export function KeyboardShortcutsModal() {
                       <div className="flex items-center gap-1.5">
                         {isRecording ? (
                           <div className="flex items-center gap-2 px-3 py-1 bg-blue-600/20 border border-blue-500/50 rounded-md animate-pulse">
-                            <span className="text-[11px] text-blue-300">Press a key...</span>
+                            <span className="text-[11px] text-blue-300">{t('keyboard.pressKey')}</span>
                             <button
                               onClick={(e) => { e.stopPropagation(); setRecordingAction(null) }}
                               className="text-zinc-500 hover:text-white"
@@ -725,7 +729,7 @@ export function KeyboardShortcutsModal() {
                         ) : (
                           <>
                             {combos.length === 0 ? (
-                              <span className="text-[11px] text-zinc-600 italic">Unassigned</span>
+                              <span className="text-[11px] text-zinc-600 italic">{t('keyboard.unassigned')}</span>
                             ) : (
                               combos.map((combo, i) => {
                                 const comboKey = formatKeyCombo(combo)
@@ -755,14 +759,14 @@ export function KeyboardShortcutsModal() {
                             onClick={() => setRecordingAction(action.id)}
                             className="px-2 py-0.5 text-[10px] text-zinc-500 hover:text-blue-400 hover:bg-blue-600/10 rounded transition-colors"
                           >
-                            Edit
+                            {t('keyboard.edit')}
                           </button>
                           {combos.length > 0 && (
                             <button
                               onClick={() => updateBinding(action.id, [])}
                               className="px-2 py-0.5 text-[10px] text-zinc-600 hover:text-red-400 hover:bg-red-600/10 rounded transition-colors"
                             >
-                              Clear
+                              {t('keyboard.clear')}
                             </button>
                           )}
                         </div>
@@ -778,13 +782,13 @@ export function KeyboardShortcutsModal() {
         {/* Footer */}
         <div className="flex items-center justify-between px-4 py-2.5 border-t border-zinc-800 bg-zinc-950/80">
           <span className="text-[10px] text-zinc-600">
-            {ACTION_REGISTRY.length} actions &middot; Drag actions onto keys or click "Edit" to record
+            {t('keyboard.footer', { count: ACTION_REGISTRY.length })}
           </span>
           <button
             onClick={() => setEditorOpen(false)}
             className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-medium rounded-md transition-colors"
           >
-            Done
+            {t('keyboard.done')}
           </button>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, FolderOpen, RefreshCw, ChevronDown, ChevronUp, Download } from 'lucide-react'
+import { useT } from '../lib/i18n'
 import { Button } from './ui/button'
 import { logger } from '../lib/logger'
 
@@ -10,6 +11,7 @@ interface LogViewerProps {
 }
 
 export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps) {
+  const { t } = useT()
   const [logs, setLogs] = useState<string[]>([])
   const [logPath, setLogPath] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -70,7 +72,7 @@ export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps)
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-zinc-700">
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold text-white">Logs</h2>
+            <h2 className="text-lg font-semibold text-white">{t('logs.logs')}</h2>
             <span className="text-xs text-zinc-500 font-mono truncate max-w-[300px]" title={logPath}>
               {logPath}
             </span>
@@ -82,7 +84,7 @@ export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps)
               onClick={handleDownload}
               disabled={logs.length === 0}
               className="text-zinc-400 hover:text-white"
-              title="Download logs"
+              title={t('logs.download')}
             >
               <Download className="h-4 w-4" />
             </Button>
@@ -91,7 +93,7 @@ export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps)
               size="sm"
               onClick={handleOpenFolder}
               className="text-zinc-400 hover:text-white"
-              title="Open log folder"
+              title={t('logs.openFolder')}
             >
               <FolderOpen className="h-4 w-4" />
             </Button>
@@ -101,7 +103,7 @@ export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps)
               onClick={fetchLogs}
               disabled={isLoading}
               className="text-zinc-400 hover:text-white"
-              title="Refresh logs"
+              title={t('logs.refresh')}
             >
               <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
             </Button>
@@ -110,7 +112,7 @@ export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps)
               size="sm"
               onClick={() => setAutoScroll(!autoScroll)}
               className={`${autoScroll ? 'text-blue-400' : 'text-zinc-400'} hover:text-white`}
-              title={autoScroll ? 'Auto-scroll enabled' : 'Auto-scroll disabled'}
+              title={autoScroll ? t('logs.autoScrollOn') : t('logs.autoScrollOff')}
             >
               {autoScroll ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
             </Button>
@@ -134,7 +136,7 @@ export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps)
         >
           {logs.length === 0 ? (
             <div className="text-zinc-500 text-center py-8">
-              No logs yet...
+              {t('logs.noLogs')}
             </div>
           ) : (
             <div className="space-y-0.5">
@@ -163,8 +165,8 @@ export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps)
 
         {/* Footer */}
         <div className="flex items-center justify-between p-3 border-t border-zinc-700 text-xs text-zinc-500">
-          <span>{logs.length} lines (last 200)</span>
-          <span>Auto-refreshing every 2s</span>
+          <span>{logs.length} lines {t('logs.lastLines')}</span>
+          <span>{t('logs.autoRefresh')}</span>
         </div>
       </div>
   )

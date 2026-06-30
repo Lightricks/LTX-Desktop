@@ -9,6 +9,7 @@ import {
   selectTimelines,
 } from './editor-selectors'
 import { useEditorActions, useEditorStore } from './editor-store'
+import { useT } from '../../lib/i18n'
 
 export interface VideoEditorTimelineControlPanelProps {
   handleTimelineTabContextMenu: (e: React.MouseEvent, timelineId: string) => void
@@ -28,6 +29,7 @@ export function VideoEditorTimelineControlPanel(props: VideoEditorTimelineContro
     startTimelineRename,
     switchActiveTimeline,
   } = useEditorActions()
+  const { t } = useT()
   const timelines = useEditorStore(selectTimelines)
   const activeTimelineId = useEditorStore(selectActiveTimelineId)
   const openTimelineIds = useEditorStore(selectOpenTimelineIds)
@@ -55,7 +57,7 @@ export function VideoEditorTimelineControlPanel(props: VideoEditorTimelineContro
   }
 
   const handleAddTimeline = () => {
-    createTimeline()
+    createTimeline(undefined, t('timeline.defaultNamePrefix'))
   }
 
   const handleSwitchTimeline = (timelineId: string) => {
@@ -92,9 +94,9 @@ export function VideoEditorTimelineControlPanel(props: VideoEditorTimelineContro
   return (
     <div className="flex flex-col min-h-0 h-full">
       <div className="p-3 pb-2 flex items-center justify-between flex-shrink-0">
-        <h3 className="text-sm font-semibold text-white">Timelines</h3>
+        <h3 className="text-sm font-semibold text-white">{t('timeline.title')}</h3>
         <div className="relative" ref={addMenuRef}>
-          <Tooltip content="Add timeline" side="right">
+          <Tooltip content={t('timeline.addTimeline')} side="right">
             <button
               onClick={() => setTimelineAddMenuOpen(prev => !prev)}
               className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
@@ -109,7 +111,7 @@ export function VideoEditorTimelineControlPanel(props: VideoEditorTimelineContro
                 className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
               >
                 <Plus className="h-3.5 w-3.5" />
-                New Timeline
+                {t('timeline.newTimeline')}
               </button>
               <button
                 onClick={() => {
@@ -119,7 +121,7 @@ export function VideoEditorTimelineControlPanel(props: VideoEditorTimelineContro
                 className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
               >
                 <FileUp className="h-3.5 w-3.5" />
-                Import from XML
+                {t('timeline.importXml')}
               </button>
             </div>
           )}
@@ -189,12 +191,12 @@ export function VideoEditorTimelineControlPanel(props: VideoEditorTimelineContro
                 </div>
               </div>
               {isActive ? (
-                <span className="text-[9px] text-blue-400 font-medium uppercase tracking-wider flex-shrink-0">Active</span>
+                <span className="text-[9px] text-blue-400 font-medium uppercase tracking-wider flex-shrink-0">{t('timeline.active')}</span>
               ) : item.isOpen ? (
-                <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 flex-shrink-0" title="Open in tabs" />
+                <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 flex-shrink-0" title={t('timeline.openInTabs')} />
               ) : null}
               {timelineItems.length > 1 && (
-                <Tooltip content="Delete timeline" side="right">
+                <Tooltip content={t('timeline.deleteTimeline')} side="right">
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
