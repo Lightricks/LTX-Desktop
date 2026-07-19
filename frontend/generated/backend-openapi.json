@@ -1,9 +1,75 @@
 {
   "components": {
     "schemas": {
+      "ActiveDownloadResponse": {
+        "properties": {
+          "cp_ids": {
+            "items": {
+              "enum": [
+                "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
+                "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
+                "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "dpt-hybrid-midas",
+                "yolox-l-torchscript",
+                "dw-ll-ucoco-384-bs5",
+                "gemma-3-12b-it-qat-q4_0-unquantized",
+                "z-image-turbo"
+              ],
+              "type": "string"
+            },
+            "title": "Cp Ids",
+            "type": "array"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "required": [
+          "session_id",
+          "cp_ids"
+        ],
+        "title": "ActiveDownloadResponse",
+        "type": "object"
+      },
       "AppSettingsPatch": {
         "additionalProperties": false,
         "properties": {
+          "activeLtxModelId": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ltx-2.3-22b-distilled-1.1",
+                  "ltx-2.3-22b-distilled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activeltxmodelid"
+          },
+          "diffusionStageCacheEnabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diffusionstagecacheenabled"
+          },
           "falApiKey": {
             "anyOf": [
               {
@@ -140,6 +206,39 @@
         "title": "AppSettingsPatch",
         "type": "object"
       },
+      "AuthorSpec": {
+        "properties": {
+          "affiliation": {
+            "default": "community",
+            "enum": [
+              "ltx",
+              "community"
+            ],
+            "title": "Affiliation",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AuthorSpec",
+        "type": "object"
+      },
       "CancelCancellingResponse": {
         "properties": {
           "id": {
@@ -173,13 +272,33 @@
         "title": "CancelNoActiveGenerationResponse",
         "type": "object"
       },
+      "CatalogDownloadStartResponse": {
+        "properties": {
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "sessionId"
+        ],
+        "title": "CatalogDownloadStartResponse",
+        "type": "object"
+      },
       "CheckModelAccessRequest": {
         "properties": {
           "cp_ids": {
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -215,6 +334,102 @@
           "access"
         ],
         "title": "CheckModelAccessResponse",
+        "type": "object"
+      },
+      "CheckpointDescriptor": {
+        "properties": {
+          "cp_id": {
+            "enum": [
+              "ltx-2.3-22b-distilled",
+              "ltx-2.3-22b-distilled-1.1",
+              "ltx-2.3-spatial-upscaler-x2-1.0",
+              "ltx-2.3-spatial-upscaler-x2-1.1",
+              "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+              "dpt-hybrid-midas",
+              "yolox-l-torchscript",
+              "dw-ll-ucoco-384-bs5",
+              "gemma-3-12b-it-qat-q4_0-unquantized",
+              "z-image-turbo"
+            ],
+            "title": "Cp Id",
+            "type": "string"
+          },
+          "downloaded": {
+            "title": "Downloaded",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "base",
+              "upscaler",
+              "text_encoder",
+              "image",
+              "support"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cp_id",
+          "name",
+          "role",
+          "size_bytes",
+          "downloaded"
+        ],
+        "title": "CheckpointDescriptor",
+        "type": "object"
+      },
+      "DescribeCheckpointsRequest": {
+        "properties": {
+          "cp_ids": {
+            "items": {
+              "enum": [
+                "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
+                "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
+                "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "dpt-hybrid-midas",
+                "yolox-l-torchscript",
+                "dw-ll-ucoco-384-bs5",
+                "gemma-3-12b-it-qat-q4_0-unquantized",
+                "z-image-turbo"
+              ],
+              "type": "string"
+            },
+            "title": "Cp Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cp_ids"
+        ],
+        "title": "DescribeCheckpointsRequest",
+        "type": "object"
+      },
+      "DescribeCheckpointsResponse": {
+        "properties": {
+          "checkpoints": {
+            "items": {
+              "$ref": "#/components/schemas/CheckpointDescriptor"
+            },
+            "title": "Checkpoints",
+            "type": "array"
+          }
+        },
+        "required": [
+          "checkpoints"
+        ],
+        "title": "DescribeCheckpointsResponse",
         "type": "object"
       },
       "DownloadProgressCompleteResponse": {
@@ -256,7 +471,9 @@
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -274,7 +491,9 @@
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -293,7 +512,9 @@
               {
                 "enum": [
                   "ltx-2.3-22b-distilled",
+                  "ltx-2.3-22b-distilled-1.1",
                   "ltx-2.3-spatial-upscaler-x2-1.0",
+                  "ltx-2.3-spatial-upscaler-x2-1.1",
                   "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                   "dpt-hybrid-midas",
                   "yolox-l-torchscript",
@@ -351,6 +572,100 @@
           "speed_bytes_per_sec"
         ],
         "title": "DownloadProgressRunningResponse",
+        "type": "object"
+      },
+      "DownloadSpec": {
+        "description": "HF download location for a catalog item.\n\n``variants`` is always non-empty. The first entry is the default checkpoint\n(preferred for generation / omit-``variant_id`` downloads). See the comment on\n``LoraCatalogHandler`` listing helpers.",
+        "properties": {
+          "repo_id": {
+            "title": "Repo Id",
+            "type": "string"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/DownloadVariant"
+            },
+            "title": "Variants",
+            "type": "array"
+          }
+        },
+        "required": [
+          "repo_id",
+          "variants"
+        ],
+        "title": "DownloadSpec",
+        "type": "object"
+      },
+      "DownloadVariant": {
+        "description": "One downloadable weights file under a catalog item (e.g. strong vs light).",
+        "properties": {
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "filename",
+          "size_bytes"
+        ],
+        "title": "DownloadVariant",
+        "type": "object"
+      },
+      "ExtendRequest": {
+        "properties": {
+          "duration": {
+            "exclusiveMinimum": 0.0,
+            "title": "Duration",
+            "type": "number"
+          },
+          "mode": {
+            "default": "end",
+            "enum": [
+              "start",
+              "end"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "prompt": {
+            "default": "",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetResolution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "video_path": {
+            "title": "Video Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "video_path",
+          "duration"
+        ],
+        "title": "ExtendRequest",
         "type": "object"
       },
       "GenerateImageCancelledResponse": {
@@ -565,6 +880,13 @@
             ],
             "title": "Imagepath"
           },
+          "loras": {
+            "items": {
+              "$ref": "#/components/schemas/LoraEntry"
+            },
+            "title": "Loras",
+            "type": "array"
+          },
           "model": {
             "default": "fast",
             "enum": [
@@ -595,6 +917,17 @@
             ],
             "title": "Resolution",
             "type": "string"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
           }
         },
         "required": [
@@ -623,6 +956,23 @@
           "progress": {
             "title": "Progress",
             "type": "integer"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
           },
           "status": {
             "enum": [
@@ -867,6 +1217,340 @@
         "title": "HuggingFaceLogoutResponse",
         "type": "object"
       },
+      "IcLoraCatalogItem": {
+        "description": "IC-LoRA — base plus IC-specific preprocessing / controls / default settings.\n\nIC-LoRAs always take a driving image/video; `input` is required in practice (the base\nfield is optional for plain LoRAs). Enforced by the validator below, so handlers can rely\non it being present.",
+        "properties": {
+          "allows_empty_prompt": {
+            "default": false,
+            "title": "Allows Empty Prompt",
+            "type": "boolean"
+          },
+          "allows_reference_image": {
+            "default": false,
+            "title": "Allows Reference Image",
+            "type": "boolean"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthorSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "base_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Model"
+          },
+          "controls": {
+            "items": {
+              "$ref": "#/components/schemas/IcLoraControl"
+            },
+            "title": "Controls",
+            "type": "array"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "default_settings": {
+            "$ref": "#/components/schemas/IcLoraSettings"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "download": {
+            "$ref": "#/components/schemas/DownloadSpec"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InputSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "instructions": {
+            "items": {
+              "$ref": "#/components/schemas/InstructionSection"
+            },
+            "title": "Instructions",
+            "type": "array"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LicenseSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "media": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MediaSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "preprocessing": {
+            "items": {
+              "$ref": "#/components/schemas/PreprocessingStep"
+            },
+            "title": "Preprocessing",
+            "type": "array"
+          },
+          "recommended_strength": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Strength"
+          },
+          "requires_hf_login": {
+            "title": "Requires Hf Login",
+            "type": "boolean"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "download",
+          "requires_hf_login"
+        ],
+        "title": "IcLoraCatalogItem",
+        "type": "object"
+      },
+      "IcLoraControl": {
+        "properties": {
+          "default": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "int",
+            "enum": [
+              "int",
+              "select",
+              "position_canvas"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value_labels": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Labels"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "IcLoraControl",
+        "type": "object"
+      },
+      "IcLoraDownloadProgressResponse": {
+        "properties": {
+          "downloaded_bytes": {
+            "default": 0,
+            "title": "Downloaded Bytes",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "expected_bytes": {
+            "default": 0,
+            "title": "Expected Bytes",
+            "type": "integer"
+          },
+          "ic_lora_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ic Lora Id"
+          },
+          "progress": {
+            "default": 0.0,
+            "title": "Progress",
+            "type": "number"
+          },
+          "speed_bytes_per_sec": {
+            "default": 0.0,
+            "title": "Speed Bytes Per Sec",
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "downloading",
+              "complete",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "IcLoraDownloadProgressResponse",
+        "type": "object"
+      },
+      "IcLoraDownloadRequest": {
+        "properties": {
+          "ic_lora_id": {
+            "title": "Ic Lora Id",
+            "type": "string"
+          },
+          "use_hf_auth": {
+            "default": false,
+            "title": "Use Hf Auth",
+            "type": "boolean"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          }
+        },
+        "required": [
+          "ic_lora_id"
+        ],
+        "title": "IcLoraDownloadRequest",
+        "type": "object"
+      },
       "IcLoraExtractRequest": {
         "properties": {
           "conditioning_type": {
@@ -961,23 +1645,105 @@
       },
       "IcLoraGenerateRequest": {
         "properties": {
+          "audio_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "source",
+                  "generated",
+                  "off"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Mode"
+          },
           "cfg_guidance_scale": {
             "default": 1.0,
             "title": "Cfg Guidance Scale",
             "type": "number"
           },
           "conditioning_strength": {
-            "default": 1.0,
-            "title": "Conditioning Strength",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conditioning Strength"
           },
           "conditioning_type": {
             "enum": [
               "canny",
-              "depth"
+              "depth",
+              "custom"
             ],
             "title": "Conditioning Type",
             "type": "string"
+          },
+          "control_values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "title": "Control Values",
+            "type": "object"
+          },
+          "control_video_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Control Video Path"
+          },
+          "custom_lora_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Lora Ref"
+          },
+          "fps_override": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps Override"
+          },
+          "ic_lora_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ic Lora Id"
           },
           "images": {
             "items": {
@@ -985,6 +1751,30 @@
             },
             "title": "Images",
             "type": "array"
+          },
+          "input_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Path"
+          },
+          "lora_strength": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lora Strength"
           },
           "negative_prompt": {
             "default": "",
@@ -996,18 +1786,83 @@
             "title": "Num Inference Steps",
             "type": "integer"
           },
+          "outpaint_pads": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OutpaintPads"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "prompt": {
-            "minLength": 1,
             "title": "Prompt",
             "type": "string"
           },
+          "resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetResolution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resolution_factor": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Factor"
+          },
+          "skip_stage_2": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skip Stage 2"
+          },
+          "use_lora_in_stage_2": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Lora In Stage 2"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
           "video_path": {
+            "default": "",
             "title": "Video Path",
             "type": "string"
           }
         },
         "required": [
-          "video_path",
           "conditioning_type",
           "prompt"
         ],
@@ -1037,6 +1892,91 @@
         "title": "IcLoraImageInput",
         "type": "object"
       },
+      "IcLoraListItem": {
+        "properties": {
+          "downloaded": {
+            "title": "Downloaded",
+            "type": "boolean"
+          },
+          "downloaded_variant_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Downloaded Variant Ids",
+            "type": "array"
+          },
+          "ic_lora": {
+            "$ref": "#/components/schemas/IcLoraCatalogItem"
+          }
+        },
+        "required": [
+          "ic_lora",
+          "downloaded"
+        ],
+        "title": "IcLoraListItem",
+        "type": "object"
+      },
+      "IcLoraListResponse": {
+        "properties": {
+          "ic_loras": {
+            "items": {
+              "$ref": "#/components/schemas/IcLoraListItem"
+            },
+            "title": "Ic Loras",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ic_loras"
+        ],
+        "title": "IcLoraListResponse",
+        "type": "object"
+      },
+      "IcLoraSettings": {
+        "properties": {
+          "audio_mode": {
+            "default": "generated",
+            "enum": [
+              "source",
+              "generated",
+              "off"
+            ],
+            "title": "Audio Mode",
+            "type": "string"
+          },
+          "conditioning_strength": {
+            "default": 1.0,
+            "title": "Conditioning Strength",
+            "type": "number"
+          },
+          "lora_strength": {
+            "default": 1.0,
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Lora Strength",
+            "type": "number"
+          },
+          "resolution_factor": {
+            "default": 2.0,
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Resolution Factor",
+            "type": "number"
+          },
+          "skip_stage_2": {
+            "default": false,
+            "title": "Skip Stage 2",
+            "type": "boolean"
+          },
+          "use_lora_in_stage_2": {
+            "default": false,
+            "title": "Use Lora In Stage 2",
+            "type": "boolean"
+          }
+        },
+        "title": "IcLoraSettings",
+        "type": "object"
+      },
       "ImageGenRecommendationResponse": {
         "properties": {
           "cp_to_download": {
@@ -1044,7 +1984,9 @@
               {
                 "enum": [
                   "ltx-2.3-22b-distilled",
+                  "ltx-2.3-22b-distilled-1.1",
                   "ltx-2.3-spatial-upscaler-x2-1.0",
+                  "ltx-2.3-spatial-upscaler-x2-1.1",
                   "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                   "dpt-hybrid-midas",
                   "yolox-l-torchscript",
@@ -1067,6 +2009,113 @@
         "title": "ImageGenRecommendationResponse",
         "type": "object"
       },
+      "InputSpec": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "image",
+              "video"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "InputSpec",
+        "type": "object"
+      },
+      "InstalledModelResponse": {
+        "properties": {
+          "is_ic_lora": {
+            "title": "Is Ic Lora",
+            "type": "boolean"
+          },
+          "is_lora": {
+            "title": "Is Lora",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "name",
+          "kind",
+          "size_bytes",
+          "is_lora",
+          "is_ic_lora"
+        ],
+        "title": "InstalledModelResponse",
+        "type": "object"
+      },
+      "InstalledModelsResponse": {
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/InstalledModelResponse"
+            },
+            "title": "Models",
+            "type": "array"
+          }
+        },
+        "required": [
+          "models"
+        ],
+        "title": "InstalledModelsResponse",
+        "type": "object"
+      },
+      "InstructionSection": {
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Body"
+          },
+          "title": {
+            "enum": [
+              "What it does",
+              "Input",
+              "Prompt",
+              "Tips",
+              "Notes"
+            ],
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "body"
+        ],
+        "title": "InstructionSection",
+        "type": "object"
+      },
+      "JsonValue": {},
       "LTXVideoGenerationModelSpecItem": {
         "properties": {
           "pipeline": {
@@ -1171,13 +2220,324 @@
         "title": "LTXVideoGenerationSpec",
         "type": "object"
       },
+      "LicenseSpec": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "LicenseSpec",
+        "type": "object"
+      },
+      "LoraCatalogItem": {
+        "description": "Base catalog entry — used as-is for a plain LoRA.",
+        "properties": {
+          "allows_empty_prompt": {
+            "default": false,
+            "title": "Allows Empty Prompt",
+            "type": "boolean"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthorSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "base_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Model"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "download": {
+            "$ref": "#/components/schemas/DownloadSpec"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InputSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "instructions": {
+            "items": {
+              "$ref": "#/components/schemas/InstructionSection"
+            },
+            "title": "Instructions",
+            "type": "array"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LicenseSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "media": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MediaSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "recommended_strength": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Strength"
+          },
+          "requires_hf_login": {
+            "title": "Requires Hf Login",
+            "type": "boolean"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "download",
+          "requires_hf_login"
+        ],
+        "title": "LoraCatalogItem",
+        "type": "object"
+      },
+      "LoraDownloadProgressResponse": {
+        "properties": {
+          "downloaded_bytes": {
+            "default": 0,
+            "title": "Downloaded Bytes",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "expected_bytes": {
+            "default": 0,
+            "title": "Expected Bytes",
+            "type": "integer"
+          },
+          "lora_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lora Id"
+          },
+          "progress": {
+            "default": 0.0,
+            "title": "Progress",
+            "type": "number"
+          },
+          "speed_bytes_per_sec": {
+            "default": 0.0,
+            "title": "Speed Bytes Per Sec",
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "downloading",
+              "complete",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "LoraDownloadProgressResponse",
+        "type": "object"
+      },
+      "LoraDownloadRequest": {
+        "properties": {
+          "lora_id": {
+            "title": "Lora Id",
+            "type": "string"
+          },
+          "use_hf_auth": {
+            "default": false,
+            "title": "Use Hf Auth",
+            "type": "boolean"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          }
+        },
+        "required": [
+          "lora_id"
+        ],
+        "title": "LoraDownloadRequest",
+        "type": "object"
+      },
+      "LoraEntry": {
+        "properties": {
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          },
+          "scale": {
+            "default": 1.0,
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Scale",
+            "type": "number"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "title": "LoraEntry",
+        "type": "object"
+      },
+      "LoraListItem": {
+        "properties": {
+          "downloaded": {
+            "title": "Downloaded",
+            "type": "boolean"
+          },
+          "downloaded_variant_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Downloaded Variant Ids",
+            "type": "array"
+          },
+          "lora": {
+            "$ref": "#/components/schemas/LoraCatalogItem"
+          }
+        },
+        "required": [
+          "lora",
+          "downloaded"
+        ],
+        "title": "LoraListItem",
+        "type": "object"
+      },
+      "LoraListResponse": {
+        "properties": {
+          "loras": {
+            "items": {
+              "$ref": "#/components/schemas/LoraListItem"
+            },
+            "title": "Loras",
+            "type": "array"
+          }
+        },
+        "required": [
+          "loras"
+        ],
+        "title": "LoraListResponse",
+        "type": "object"
+      },
       "LtxDownloadRecommendationResponse": {
         "properties": {
           "cps_to_download": {
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -1209,7 +2569,9 @@
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -1248,6 +2610,101 @@
         "title": "LtxInsufficientFundsErrorResponse",
         "type": "object"
       },
+      "LtxModelVersionItem": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "cps_to_download": {
+            "items": {
+              "enum": [
+                "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
+                "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
+                "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "dpt-hybrid-midas",
+                "yolox-l-torchscript",
+                "dw-ll-ucoco-384-bs5",
+                "gemma-3-12b-it-qat-q4_0-unquantized",
+                "z-image-turbo"
+              ],
+              "type": "string"
+            },
+            "title": "Cps To Download",
+            "type": "array"
+          },
+          "installed": {
+            "title": "Installed",
+            "type": "boolean"
+          },
+          "is_newest": {
+            "title": "Is Newest",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "model_cp": {
+            "enum": [
+              "ltx-2.3-22b-distilled",
+              "ltx-2.3-22b-distilled-1.1",
+              "ltx-2.3-spatial-upscaler-x2-1.0",
+              "ltx-2.3-spatial-upscaler-x2-1.1",
+              "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+              "dpt-hybrid-midas",
+              "yolox-l-torchscript",
+              "dw-ll-ucoco-384-bs5",
+              "gemma-3-12b-it-qat-q4_0-unquantized",
+              "z-image-turbo"
+            ],
+            "title": "Model Cp",
+            "type": "string"
+          },
+          "model_id": {
+            "enum": [
+              "ltx-2.3-22b-distilled-1.1",
+              "ltx-2.3-22b-distilled"
+            ],
+            "title": "Model Id",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "model_id",
+          "label",
+          "model_cp",
+          "size_bytes",
+          "installed",
+          "active",
+          "is_newest",
+          "cps_to_download"
+        ],
+        "title": "LtxModelVersionItem",
+        "type": "object"
+      },
+      "LtxModelVersionsResponse": {
+        "properties": {
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/LtxModelVersionItem"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "versions"
+        ],
+        "title": "LtxModelVersionsResponse",
+        "type": "object"
+      },
       "LtxOkRecommendationResponse": {
         "properties": {
           "status": {
@@ -1268,7 +2725,9 @@
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -1285,7 +2744,9 @@
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -1299,7 +2760,10 @@
             "type": "array"
           },
           "ltx_model_id": {
-            "const": "ltx-2.3-22b-distilled",
+            "enum": [
+              "ltx-2.3-22b-distilled-1.1",
+              "ltx-2.3-22b-distilled"
+            ],
             "title": "Ltx Model Id",
             "type": "string"
           },
@@ -1329,13 +2793,43 @@
         "title": "LtxUpgradeRecommendationResponse",
         "type": "object"
       },
+      "MediaSpec": {
+        "properties": {
+          "demo_video": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Demo Video"
+          },
+          "thumbnail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail"
+          }
+        },
+        "title": "MediaSpec",
+        "type": "object"
+      },
       "ModelDeleteRequest": {
         "properties": {
           "cp_ids": {
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -1359,7 +2853,9 @@
             "items": {
               "enum": [
                 "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
                 "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
@@ -1438,6 +2934,106 @@
         "title": "ModelStatusItem",
         "type": "object"
       },
+      "MpsMemoryResponse": {
+        "description": "Read-only Apple Silicon MPS memory snapshot, MiB. Fields are None off MPS.",
+        "properties": {
+          "allocated_mib": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allocated Mib"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "driver_mib": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver Mib"
+          },
+          "recommended_max_mib": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Max Mib"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "MpsMemoryResponse",
+        "type": "object"
+      },
+      "OutpaintPads": {
+        "description": "Per-edge pixels to add around the source video (extend-only, so all ≥ 0).\n\nThe +100% cap (each ≤ the source's axis size) needs the source dimensions, so it's enforced\nin `_outpaint_canvas`, not here.",
+        "properties": {
+          "bottom": {
+            "minimum": 0.0,
+            "title": "Bottom",
+            "type": "integer"
+          },
+          "left": {
+            "minimum": 0.0,
+            "title": "Left",
+            "type": "integer"
+          },
+          "right": {
+            "minimum": 0.0,
+            "title": "Right",
+            "type": "integer"
+          },
+          "top": {
+            "minimum": 0.0,
+            "title": "Top",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "left",
+          "right",
+          "top",
+          "bottom"
+        ],
+        "title": "OutpaintPads",
+        "type": "object"
+      },
+      "PreprocessingStep": {
+        "properties": {
+          "params": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "utility": {
+            "title": "Utility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "utility"
+        ],
+        "title": "PreprocessingStep",
+        "type": "object"
+      },
       "RetakeCancelledResponse": {
         "properties": {
           "status": {
@@ -1493,6 +3089,16 @@
             "title": "Prompt",
             "type": "string"
           },
+          "resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetResolution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "start_time": {
             "title": "Start Time",
             "type": "number"
@@ -1542,8 +3148,45 @@
         "title": "RuntimePolicyResponse",
         "type": "object"
       },
+      "SetActiveLtxModelRequest": {
+        "properties": {
+          "model_id": {
+            "enum": [
+              "ltx-2.3-22b-distilled-1.1",
+              "ltx-2.3-22b-distilled"
+            ],
+            "title": "Model Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_id"
+        ],
+        "title": "SetActiveLtxModelRequest",
+        "type": "object"
+      },
       "SettingsResponse": {
         "properties": {
+          "activeLtxModelId": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ltx-2.3-22b-distilled-1.1",
+                  "ltx-2.3-22b-distilled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activeltxmodelid"
+          },
+          "diffusionStageCacheEnabled": {
+            "default": false,
+            "title": "Diffusionstagecacheenabled",
+            "type": "boolean"
+          },
           "hasFalApiKey": {
             "default": false,
             "title": "Hasfalapikey",
@@ -1704,6 +3347,27 @@
         "title": "SuggestGapPromptResponse",
         "type": "object"
       },
+      "TargetResolution": {
+        "description": "Desired output resolution for a local generation. The backend corrects it to the\nnearest valid size (snapped down to a multiple of 32, never above the source).",
+        "properties": {
+          "height": {
+            "exclusiveMinimum": 0.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "width": {
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height"
+        ],
+        "title": "TargetResolution",
+        "type": "object"
+      },
       "TextEncoderRecommendationResponse": {
         "properties": {
           "cp_to_download": {
@@ -1711,7 +3375,9 @@
               {
                 "enum": [
                   "ltx-2.3-22b-distilled",
+                  "ltx-2.3-22b-distilled-1.1",
                   "ltx-2.3-spatial-upscaler-x2-1.0",
+                  "ltx-2.3-spatial-upscaler-x2-1.1",
                   "ltx-2.3-22b-ic-lora-union-control-ref0.5",
                   "dpt-hybrid-midas",
                   "yolox-l-torchscript",
@@ -1945,6 +3611,68 @@
         "summary": "Route Hf Auth Status",
         "tags": [
           "hf_auth"
+        ]
+      }
+    },
+    "/api/extend": {
+      "post": {
+        "operationId": "route_extend_api_extend_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RetakeVideoResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RetakePayloadResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RetakeCancelledResponse"
+                    }
+                  ],
+                  "title": "Response Route Extend Api Extend Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Extend",
+        "tags": [
+          "extend"
         ]
       }
     },
@@ -2253,6 +3981,47 @@
         ]
       }
     },
+    "/api/gpu-info/mps": {
+      "get": {
+        "operationId": "route_mps_memory_api_gpu_info_mps_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MpsMemoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Mps Memory",
+        "tags": [
+          "health"
+        ]
+      }
+    },
     "/api/ic-lora/extract-conditioning": {
       "post": {
         "operationId": "route_ic_lora_extract_api_ic_lora_extract_conditioning_post",
@@ -2363,6 +4132,405 @@
         ]
       }
     },
+    "/api/ic-loras": {
+      "get": {
+        "operationId": "route_list_ic_loras_api_ic_loras_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IcLoraListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route List Ic Loras",
+        "tags": [
+          "ic-loras"
+        ]
+      }
+    },
+    "/api/ic-loras/download": {
+      "post": {
+        "operationId": "route_ic_lora_download_api_ic_loras_download_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IcLoraDownloadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogDownloadStartResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Ic Lora Download",
+        "tags": [
+          "ic-loras"
+        ]
+      }
+    },
+    "/api/ic-loras/download/progress": {
+      "get": {
+        "operationId": "route_ic_lora_download_progress_api_ic_loras_download_progress_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "title": "Sessionid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IcLoraDownloadProgressResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Ic Lora Download Progress",
+        "tags": [
+          "ic-loras"
+        ]
+      }
+    },
+    "/api/loras": {
+      "get": {
+        "operationId": "route_list_loras_api_loras_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoraListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route List Loras",
+        "tags": [
+          "loras"
+        ]
+      }
+    },
+    "/api/loras/download": {
+      "post": {
+        "operationId": "route_lora_download_api_loras_download_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoraDownloadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogDownloadStartResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Lora Download",
+        "tags": [
+          "loras"
+        ]
+      }
+    },
+    "/api/loras/download/progress": {
+      "get": {
+        "operationId": "route_lora_download_progress_api_loras_download_progress_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "title": "Sessionid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoraDownloadProgressResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Lora Download Progress",
+        "tags": [
+          "loras"
+        ]
+      }
+    },
+    "/api/models": {
+      "get": {
+        "description": "Return installed model files. ?type=lora -> regular LoRAs only;\n?type=ic-lora -> IC-LoRAs only; no type -> all installed models.",
+        "operationId": "route_list_models_api_models_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstalledModelsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route List Models",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/models/active-ltx-model": {
+      "post": {
+        "operationId": "route_set_active_ltx_model_api_models_active_ltx_model_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetActiveLtxModelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Set Active Ltx Model",
+        "tags": [
+          "models"
+        ]
+      }
+    },
     "/api/models/check-access": {
       "post": {
         "operationId": "route_check_model_access_api_models_check_access_post",
@@ -2465,6 +4633,57 @@
         ]
       }
     },
+    "/api/models/describe": {
+      "post": {
+        "operationId": "route_describe_checkpoints_api_models_describe_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DescribeCheckpointsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DescribeCheckpointsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Describe Checkpoints",
+        "tags": [
+          "models"
+        ]
+      }
+    },
     "/api/models/download": {
       "post": {
         "operationId": "route_model_download_api_models_download_post",
@@ -2511,6 +4730,47 @@
           }
         },
         "summary": "Route Model Download",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/models/download/active": {
+      "get": {
+        "operationId": "route_active_download_api_models_download_active_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveDownloadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Active Download",
         "tags": [
           "models"
         ]
@@ -2708,6 +4968,47 @@
           }
         },
         "summary": "Route Ltx Recommendation",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/models/ltx-versions": {
+      "get": {
+        "operationId": "route_ltx_versions_api_models_ltx_versions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LtxModelVersionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Ltx Versions",
         "tags": [
           "models"
         ]

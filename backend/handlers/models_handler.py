@@ -8,9 +8,16 @@ from typing import TYPE_CHECKING
 
 from _routes._errors import HTTPError
 from api_types import (
+    CheckpointDescriptor,
+    CheckpointRole,
+    DescribeCheckpointsResponse,
     ImageGenRecommendationResponse,
+    InstalledModelResponse,
+    InstalledModelsResponse,
     LtxDownloadRecommendationResponse,
     LtxIcLoraRecommendationResponse,
+    LtxModelVersionItem,
+    LtxModelVersionsResponse,
     LtxOkRecommendationResponse,
     LtxRecommendationResponse,
     LtxUpgradeRecommendationResponse,
@@ -19,7 +26,10 @@ from api_types import (
     TextEncoderRecommendationResponse,
 )
 from handlers.base import StateHandlerBase
+from handlers.settings_handler import SettingsHandler
+from runtime_config.models_scanner import scan_models_dir
 from runtime_config.model_download_specs import (
+    ALL_LTX_LOCAL_MODEL_IDS,
     ALL_MODEL_CP_IDS,
     DEPTH_PROCESSOR_CP_ID,
     IMG_GEN_MODEL_CP_ID,
@@ -33,6 +43,7 @@ from runtime_config.model_download_specs import (
     get_ltx_model_spec,
     get_model_cp_spec,
     is_cp_downloaded,
+    resolve_active_ltx_model_id,
     delete_cp_path,
 )
 
@@ -54,8 +65,10 @@ class ModelsHandler(StateHandlerBase):
         state: AppState,
         lock: RLock,
         config: RuntimeConfig,
+        settings_handler: SettingsHandler,
     ) -> None:
         super().__init__(state, lock, config)
+        self._settings = settings_handler
 
     def _ordered_cp_ids(self, cp_ids: set[ModelCheckpointID]) -> list[ModelCheckpointID]:
         return [cp_id for cp_id in ALL_MODEL_CP_IDS if cp_id in cp_ids]
@@ -75,6 +88,39 @@ class ModelsHandler(StateHandlerBase):
 
     def get_downloaded_checkpoints(self) -> set[ModelCheckpointID]:
         return {cp_id for cp_id in ALL_MODEL_CP_IDS if self.is_cp_downloaded(cp_id)}
+
+    def _cp_role(self, cp_id: ModelCheckpointID) -> CheckpointRole:
+        # A base transformer of ANY version is "base" — not just the latest — so an older
+        # version's checkpoint isn't misclassified as a generic "support" model.
+        if any(cp_id == get_ltx_model_spec(model_id).model_cp for model_id in ALL_LTX_LOCAL_MODEL_IDS):
+            return "base"
+        spec = get_ltx_model_spec(get_latest_ltx_model_id())
+        if cp_id == spec.upscale_cp:
+            return "upscaler"
+        if cp_id == spec.text_encoder_cp:
+            return "text_encoder"
+        if cp_id == IMG_GEN_MODEL_CP_ID:
+            return "image"
+        return "support"
+
+    def describe_checkpoints(self, cp_ids: list[ModelCheckpointID]) -> DescribeCheckpointsResponse:
+        # Static spec metadata for a set of checkpoints, used by the first-run download
+        # list and (later) the model version picker. Order follows the canonical cp order.
+        ordered = self._ordered_cp_ids(set(cp_ids))
+        descriptors: list[CheckpointDescriptor] = []
+        for cp_id in ordered:
+            spec = get_model_cp_spec(cp_id)
+            role = self._cp_role(cp_id)
+            descriptors.append(
+                CheckpointDescriptor(
+                    cp_id=cp_id,
+                    name=spec.description,
+                    role=role,
+                    size_bytes=spec.expected_size_bytes,
+                    downloaded=self.is_cp_downloaded(cp_id),
+                )
+            )
+        return DescribeCheckpointsResponse(checkpoints=descriptors)
 
     def _get_required_ltx_cp_ids(self, model_id: LTXLocalModelId) -> set[ModelCheckpointID]:
         spec = get_ltx_model_spec(model_id)
@@ -157,12 +203,18 @@ class ModelsHandler(StateHandlerBase):
             )
             return LtxDownloadRecommendationResponse(status="download", cps_to_download=cps_to_download)
 
+        # A required checkpoint for the current model can be missing even when its base
+        # transformer is present — e.g. a hotfixed shared companion (the 2x upscaler) that
+        # superseded the version already on disk. Surface that download before offering any
+        # base upgrade: the current setup needs it regardless of whether the user upgrades,
+        # and routing it through the 'download' status lets the missing-models gate prompt it.
+        missing_current = self._ordered_cp_ids(
+            self._get_missing_cp_ids(self._get_required_ltx_cp_ids(current_model_id))
+        )
+        if missing_current:
+            return LtxDownloadRecommendationResponse(status="download", cps_to_download=missing_current)
+
         if current_model_id == latest_model_id:
-            missing_required = self._ordered_cp_ids(
-                self._get_missing_cp_ids(self._get_required_ltx_cp_ids(latest_model_id))
-            )
-            if missing_required:
-                return LtxDownloadRecommendationResponse(status="download", cps_to_download=missing_required)
             return LtxOkRecommendationResponse(status="ok")
 
         cps_to_download = self._ordered_cp_ids(
@@ -183,6 +235,31 @@ class ModelsHandler(StateHandlerBase):
         self._ensure_local_model_mode()
         cp_to_download = None if self.is_cp_downloaded(IMG_GEN_MODEL_CP_ID) else IMG_GEN_MODEL_CP_ID
         return ImageGenRecommendationResponse(cp_to_download=cp_to_download)
+
+    def list_installed_models(self, model_type: str | None) -> InstalledModelsResponse:
+        # "lora" -> regular LoRAs only (IC-LoRAs excluded; they need a reference video),
+        # "ic-lora" -> IC-LoRAs only, None -> all installed models. Reject typos so a
+        # bad ?type can't silently leak ic-loras into the lora picker (or vice versa).
+        if model_type is not None and model_type not in ("lora", "ic-lora"):
+            raise HTTPError(400, f"Unknown model type: {model_type}")
+        entries = scan_models_dir(self.models_dir, lora_only=model_type in ("lora", "ic-lora"))
+        if model_type == "lora":
+            entries = [e for e in entries if e.is_lora and not e.is_ic_lora]
+        elif model_type == "ic-lora":
+            entries = [e for e in entries if e.is_ic_lora]
+        return InstalledModelsResponse(
+            models=[
+                InstalledModelResponse(
+                    path=str(e.path),
+                    name=e.name,
+                    kind=e.kind,
+                    size_bytes=e.size_bytes,
+                    is_lora=e.is_lora,
+                    is_ic_lora=e.is_ic_lora,
+                )
+                for e in entries
+            ]
+        )
 
     def _require_downloaded_ltx_model_id(self) -> LTXLocalModelId:
         model_id = self._current_downloaded_ltx_model_id()
@@ -251,10 +328,12 @@ class ModelsHandler(StateHandlerBase):
         )
 
     def get_protected_cp_ids(self) -> set[ModelCheckpointID]:
-        current_model_id = self._current_downloaded_ltx_model_id()
-        if current_model_id is None:
+        active_model_id = resolve_active_ltx_model_id(
+            self.models_dir, self.state.app_settings.active_ltx_model_id
+        )
+        if active_model_id is None:
             return set()
-        return set(get_ltx_model_cp_ids(current_model_id))
+        return set(get_ltx_model_cp_ids(active_model_id))
 
     def delete_checkpoints(self, cp_ids: set[ModelCheckpointID]) -> None:
         protected = self.get_protected_cp_ids()
@@ -262,3 +341,39 @@ class ModelsHandler(StateHandlerBase):
             raise HTTPError(409, "DELETE_PROTECTED_CHECKPOINT")
         for cp_id in cp_ids:
             delete_cp_path(self.models_dir, cp_id)
+
+    def list_ltx_versions(self) -> LtxModelVersionsResponse:
+        self._ensure_local_model_mode()
+        latest = get_latest_ltx_model_id()
+        active = resolve_active_ltx_model_id(self.models_dir, self.state.app_settings.active_ltx_model_id)
+        items: list[LtxModelVersionItem] = []
+        for model_id in ALL_LTX_LOCAL_MODEL_IDS:
+            spec = get_ltx_model_spec(model_id)
+            cp_spec = get_model_cp_spec(spec.model_cp)
+            missing = self._get_missing_cp_ids(self._get_required_ltx_cp_ids(model_id))
+            # "installed" must mean runnable (transformer + companions), matching the bundle
+            # set_active requires — otherwise a partial install reports installed yet 409s on
+            # activation, and BaseModelSection hides the Download button that would repair it.
+            installed = not missing
+            items.append(
+                LtxModelVersionItem(
+                    model_id=model_id,
+                    label=spec.version_label,
+                    model_cp=spec.model_cp,
+                    size_bytes=cp_spec.expected_size_bytes,
+                    installed=installed,
+                    active=model_id == active,
+                    is_newest=model_id == latest,
+                    cps_to_download=self._ordered_cp_ids(missing),
+                )
+            )
+        return LtxModelVersionsResponse(versions=items)
+
+    def set_active_ltx_model(self, model_id: LTXLocalModelId) -> None:
+        self._ensure_local_model_mode()
+        # Require the version's full required bundle (transformer + companions per the
+        # API-key rules), not just the transformer — otherwise the user could activate a
+        # version that can't actually generate (missing upscaler / text encoder).
+        if self._get_missing_cp_ids(self._get_required_ltx_cp_ids(model_id)):
+            raise HTTPError(409, "LTX_MODEL_NOT_INSTALLED")
+        self._settings.set_active_ltx_model_id(model_id)

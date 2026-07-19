@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -53,14 +52,7 @@ class ImageGenerationHandler(StateHandlerBase):
         num_images = max(1, min(12, req.numImages))
 
         generation_id = uuid.uuid4().hex[:8]
-        settings = self.state.app_settings.model_copy(deep=True)
-        if settings.seed_locked:
-            seed = settings.locked_seed
-            logger.info("Using locked seed for image: %s", seed)
-        elif self.config.dev_mode:
-            seed = 1000
-        else:
-            seed = int(time.time()) % 2147483647
+        seed = self._resolve_seed()
 
         if self.config.force_api_generations:
             return self._generate_via_api(
@@ -98,7 +90,7 @@ class ImageGenerationHandler(StateHandlerBase):
         width: int,
         height: int,
         num_inference_steps: int,
-        seed: int | None,
+        seed: int,
         num_images: int,
     ) -> list[str]:
         if self._generation.is_generation_cancelled():
@@ -107,9 +99,6 @@ class ImageGenerationHandler(StateHandlerBase):
         self._generation.update_progress("loading_model", 5, 0, num_inference_steps)
         image_generation_pipeline = self._pipelines.load_image_generation_pipeline_to_gpu()
         self._generation.update_progress("inference", 15, 0, num_inference_steps)
-
-        if seed is None:
-            seed = int(time.time()) % 2147483647
 
         outputs: list[str] = []
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

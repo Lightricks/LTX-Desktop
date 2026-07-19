@@ -56,6 +56,7 @@ def _build_schema() -> dict[str, object]:
             http=cast(Any, fake.http),
             gpu_cleaner=cast(Any, fake.gpu_cleaner),
             model_downloader=cast(Any, fake.model_downloader),
+            lora_catalog_provider=cast(Any, fake.lora_catalog_provider),
             gpu_info=cast(Any, fake.gpu_info),
             video_processor=cast(Any, fake.video_processor),
             text_encoder=cast(Any, fake.text_encoder),

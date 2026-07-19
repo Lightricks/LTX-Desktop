@@ -24,7 +24,15 @@ from ltx_core.quantization import QuantizationPolicy
 from ltx_core.types import Audio
 from ltx_pipelines.utils.media_io import encode_video, get_videostream_metadata
 
+from api_types import ExtendMode
+from services.ltx_pipeline_common import offload_mode_for_prefetch_count
 from services.retake_pipeline.retake_pipeline import RetakePipeline
+
+
+# Seam feather for extend: widen the regenerated region this far INTO the kept source so the
+# frozen->generated boundary blends instead of cutting hard. Mirrors the cloud gateway's
+# MASK_DELTA_SECONDS (ltxv-api retake-edit-window.computePadding). 0 disables the feather.
+_EXTEND_MASK_DELTA_SECONDS = 0.5
 
 
 
@@ -69,13 +77,14 @@ class LTXRetakePipeline:
 
         self.device = device
         self.dtype = torch.bfloat16
-        self._streaming_prefetch_count = streaming_prefetch_count
+        offload_mode = offload_mode_for_prefetch_count(streaming_prefetch_count, device)
 
         self.prompt_encoder = PromptEncoder(
             checkpoint_path=checkpoint_path,
             gemma_root=gemma_root or "",
             dtype=self.dtype,
             device=device,
+            offload_mode=offload_mode,
         )
         self.image_conditioner = ImageConditioner(
             checkpoint_path=checkpoint_path,
@@ -87,12 +96,13 @@ class LTXRetakePipeline:
             dtype=self.dtype,
             device=device,
         )
-        self.stage = DiffusionStage(
+        self.stage = DiffusionStage.from_checkpoint(  # type: ignore[reportUnknownMemberType]
             checkpoint_path=checkpoint_path,
             dtype=self.dtype,
             device=device,
             loras=tuple(loras),
             quantization=quantization,
+            offload_mode=offload_mode,
         )
         self.video_decoder = VideoDecoder(
             checkpoint_path=checkpoint_path,
@@ -122,18 +132,24 @@ class LTXRetakePipeline:
         regenerate_audio: bool = True,
         enhance_prompt: bool = False,
         distilled: bool = False,
-        streaming_prefetch_count: int | None = None,
+        extend_frames: int = 0,
+        extend_at: ExtendMode = "end",
+        target_width: int | None = None,
+        target_height: int | None = None,
+        target_frames: int | None = None,
     ) -> tuple[Iterator[torch.Tensor], Audio]:
         from ltx_core.components.guiders import MultiModalGuider
         from ltx_core.components.noisers import GaussianNoiser
         from ltx_core.components.schedulers import LTX2Scheduler
         from ltx_core.conditioning.types.noise_mask_cond import TemporalRegionMask
+        from ltx_core.types import AudioLatentShape, VideoLatentShape
         from ltx_pipelines.utils.constants import DISTILLED_SIGMA_VALUES as _distilled_sigmas
         from ltx_pipelines.utils.denoisers import GuidedDenoiser, SimpleDenoiser
         from ltx_pipelines.utils.helpers import audio_latent_from_file, video_latent_from_file
         from ltx_pipelines.utils.types import ModalitySpec
 
-        if start_time >= end_time:
+        is_extend = extend_frames > 0
+        if not is_extend and start_time >= end_time:
             raise ValueError(f"start_time ({start_time}) must be less than end_time ({end_time})")
 
         effective_seed = int(torch.randint(0, 2**31, (1,)).item()) if seed < 0 else seed
@@ -152,6 +168,13 @@ class LTXRetakePipeline:
 
         # --- Encode source video (tiled) ---
         output_shape = get_videostream_metadata(video_path)
+        # Optional downscale: encode/generate at the requested (already 32-corrected) size.
+        # video_latent_from_file resizes the source frames to output_shape during encoding.
+        if target_width is not None and target_height is not None:
+            output_shape = output_shape._replace(width=target_width, height=target_height)
+        # Optional frame-count trim: corrected to a valid 8k+1 source length.
+        if target_frames is not None:
+            output_shape = output_shape._replace(frames=target_frames)
 
         initial_video_latent = self.image_conditioner(
             lambda enc: video_latent_from_file(
@@ -177,6 +200,40 @@ class LTXRetakePipeline:
             )
         )
 
+        # --- Resolve target shape + the temporal region to regenerate ---
+        # Retake regenerates an interior window [start_time, end_time]; extend grows the
+        # latent (zeros prepended/appended in latent-frame space, VAE temporal factor 8)
+        # and regenerates only the new region. The source is frozen by the mask either way.
+        if is_extend:
+            target_shape = output_shape._replace(frames=output_shape.frames + extend_frames)
+            pad_video_frames = (
+                VideoLatentShape.from_pixel_shape(target_shape).frames
+                - VideoLatentShape.from_pixel_shape(output_shape).frames
+            )
+            if initial_video_latent is not None:
+                initial_video_latent = self._pad_latent_frames(initial_video_latent, pad_video_frames, extend_at)
+            if initial_audio_latent is not None:
+                pad_audio_frames = (
+                    AudioLatentShape.from_video_pixel_shape(target_shape).frames
+                    - AudioLatentShape.from_video_pixel_shape(output_shape).frames
+                )
+                initial_audio_latent = self._pad_latent_frames(initial_audio_latent, pad_audio_frames, extend_at)
+            # Feather the seam by MASK_DELTA frames INTO the kept source on the side adjacent
+            # to the new region (matches the cloud gateway), so the model regenerates a short
+            # tail/lead of real source and blends the join instead of cutting hard.
+            mask_delta_frames = round(_EXTEND_MASK_DELTA_SECONDS * output_shape.fps)
+            if extend_at == "start":
+                # New content leads; extend the mask forward into the source start.
+                region_start = 0.0
+                region_end = min(target_shape.frames, extend_frames + mask_delta_frames) / output_shape.fps
+            else:
+                # New content trails; pull the mask back into the source tail.
+                region_start = max(0, output_shape.frames - mask_delta_frames) / output_shape.fps
+                region_end = target_shape.frames / output_shape.fps
+        else:
+            target_shape = output_shape
+            region_start, region_end = start_time, end_time
+
 
         # --- Text encoding ---
 
@@ -185,7 +242,6 @@ class LTXRetakePipeline:
             prompts_to_encode,
             enhance_first_prompt=enhance_prompt,
             enhance_prompt_seed=effective_seed,
-            streaming_prefetch_count=streaming_prefetch_count,
         )
 
 
@@ -194,7 +250,7 @@ class LTXRetakePipeline:
         # --- Build modality specs ---
         video_modality_spec = ModalitySpec(
             context=v_context_p,
-            conditionings=[TemporalRegionMask(start_time=start_time, end_time=end_time, fps=output_shape.fps)]
+            conditionings=[TemporalRegionMask(start_time=region_start, end_time=region_end, fps=output_shape.fps)]
             if regenerate_video
             else [],
             initial_latent=initial_video_latent,
@@ -204,7 +260,7 @@ class LTXRetakePipeline:
         if a_context_p is not None:
             audio_modality_spec = ModalitySpec(
                 context=a_context_p,
-                conditionings=[TemporalRegionMask(start_time=start_time, end_time=end_time, fps=output_shape.fps)]
+                conditionings=[TemporalRegionMask(start_time=region_start, end_time=region_end, fps=output_shape.fps)]
                 if (initial_audio_latent is not None and regenerate_audio)
                 else [],
                 initial_latent=initial_audio_latent,
@@ -233,13 +289,12 @@ class LTXRetakePipeline:
             denoiser=denoiser,
             sigmas=sigmas,
             noiser=noiser,
-            width=output_shape.width,
-            height=output_shape.height,
-            frames=output_shape.frames,
-            fps=output_shape.fps,
+            width=target_shape.width,
+            height=target_shape.height,
+            frames=target_shape.frames,
+            fps=target_shape.fps,
             video=video_modality_spec,
             audio=audio_modality_spec,
-            streaming_prefetch_count=streaming_prefetch_count,
         )
 
 
@@ -271,9 +326,13 @@ class LTXRetakePipeline:
         regenerate_audio: bool = True,
         enhance_prompt: bool = False,
         distilled: bool = True,
+        target_width: int | None = None,
+        target_height: int | None = None,
+        target_frames: int | None = None,
     ) -> None:
         meta = get_videostream_metadata(video_path)
-        fps, num_frames = meta.fps, meta.frames
+        fps = meta.fps
+        num_frames = target_frames if target_frames is not None else meta.frames
         video_iter, audio = self._run(
             video_path=video_path,
             prompt=prompt,
@@ -288,7 +347,9 @@ class LTXRetakePipeline:
             regenerate_audio=regenerate_audio,
             enhance_prompt=enhance_prompt,
             distilled=distilled,
-            streaming_prefetch_count=self._streaming_prefetch_count,
+            target_width=target_width,
+            target_height=target_height,
+            target_frames=target_frames,
         )
         audio_out: Audio | None = audio
         tiling_config = TilingConfig.default()
@@ -300,3 +361,64 @@ class LTXRetakePipeline:
             output_path=output_path,
             video_chunks_number=video_chunks,
         )
+
+    @torch.no_grad()
+    def extend(
+        self,
+        *,
+        video_path: str,
+        prompt: str,
+        extend_frames: int,
+        mode: ExtendMode,
+        seed: int,
+        output_path: str,
+        negative_prompt: str = "",
+        regenerate_audio: bool = True,
+        enhance_prompt: bool = False,
+        distilled: bool = True,
+        target_width: int | None = None,
+        target_height: int | None = None,
+        target_frames: int | None = None,
+    ) -> None:
+        meta = get_videostream_metadata(video_path)
+        fps = meta.fps
+        source_frames = target_frames if target_frames is not None else meta.frames
+        total_frames = source_frames + extend_frames
+        video_iter, audio = self._run(
+            video_path=video_path,
+            prompt=prompt,
+            start_time=0.0,
+            end_time=0.0,
+            seed=seed,
+            negative_prompt=negative_prompt,
+            video_guider_params=None,
+            audio_guider_params=None,
+            regenerate_video=True,
+            regenerate_audio=regenerate_audio,
+            enhance_prompt=enhance_prompt,
+            distilled=distilled,
+            extend_frames=extend_frames,
+            extend_at=mode,
+            target_width=target_width,
+            target_height=target_height,
+            target_frames=target_frames,
+        )
+        tiling_config = TilingConfig.default()
+        video_chunks = get_video_chunks_number(total_frames, tiling_config)
+        encode_video(
+            video=video_iter,
+            fps=int(fps),
+            audio=audio,
+            output_path=output_path,
+            video_chunks_number=video_chunks,
+        )
+
+    @staticmethod
+    def _pad_latent_frames(latent: torch.Tensor, pad_frames: int, at: ExtendMode) -> torch.Tensor:
+        """Zero-pad a latent on its temporal axis (dim 2): front for ``start``, back for ``end``."""
+        if pad_frames <= 0:
+            return latent
+        pad_shape = list(latent.shape)
+        pad_shape[2] = pad_frames
+        pad = torch.zeros(pad_shape, device=latent.device, dtype=latent.dtype)
+        return torch.cat([pad, latent] if at == "start" else [latent, pad], dim=2)

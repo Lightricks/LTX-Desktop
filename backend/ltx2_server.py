@@ -23,9 +23,22 @@ if os.environ.get("BACKEND_DEBUG") == "1":
 import logging
 from pathlib import Path
 
-# Note: expandable_segments is not supported on all platforms
+# expandable_segments reduces CUDA allocator fragmentation near full VRAM (helps long/large
+# IC-LoRA runs). Not supported on all platforms (older Windows / non-CUDA) — PyTorch warns and
+# ignores it there. Must be set before importing torch; setdefault lets an explicit env override.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import torch
+
+# macOS: stage mps-sdpa's prebuilt zero-copy attention extension cache before mps-sdpa
+# is imported, so it loads without a runtime compiler. This MUST run before the patch
+# imports below: several of them transitively import mps_sdpa (via ltx_core/ltx_pipelines
+# attention), and mps-sdpa decides mpsgraph_zc's availability at its first import — if that
+# happens before this patch, the zero-copy backend fails to JIT-build on a clean Mac and
+# silently falls back to the leaky pyobjc backend. No-op off Darwin. See
+# backend/mps_prebuilt_ext.py and docs/mps-attention-memory-leak.md.
+import mps_prebuilt_ext as _mps_prebuilt_ext  # pyright: ignore[reportUnusedImport]
+_mps_prebuilt_ext.setup_prebuilt_mps_extension()
 
 import services.patches.record_stream_fix as _record_stream_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core includes the fix
 del _record_stream_fix
@@ -35,6 +48,10 @@ import services.patches.safetensors_metadata_fix as _safetensors_metadata_fix  #
 del _safetensors_metadata_fix
 import services.patches.pinned_pool_fix as _pinned_pool_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core restores bounded pinned pool
 del _pinned_pool_fix
+import services.patches.ic_lora_stage2_lora as _ic_lora_stage2_lora  # pyright: ignore[reportUnusedImport]  # EXPERIMENTAL: remove once upstream ships PR #494 (use_lora_in_stage_2)
+del _ic_lora_stage2_lora
+import services.patches.diffusion_stage_cache as _diffusion_stage_cache  # pyright: ignore[reportUnusedImport]  # EXPERIMENTAL: remove once DiffusionStage caches/reuses identical builds upstream
+del _diffusion_stage_cache
 
 from state.app_settings import AppSettings
 
@@ -42,7 +59,16 @@ from state.app_settings import AppSettings
 # Logging Configuration
 # ============================================================
 
+import io
 import platform
+
+# Windows consoles default to a legacy code page (e.g. cp1252) that can't encode
+# non-ASCII log content — the arrows in the LTX API logs, but also accented file paths or
+# provider error strings — which crashes the logging handler's emit(). Force UTF-8 on the
+# log streams so logging can never fail on an unencodable character.
+for _stream in (sys.stdout, sys.stderr):
+    if isinstance(_stream, io.TextIOWrapper):
+        _stream.reconfigure(encoding="utf-8", errors="backslashreplace")
 
 # Backend logs to console only — Electron captures stdout/stderr and writes
 # them to the session log file. This ensures *all* output (including early
@@ -53,6 +79,10 @@ console_handler.setLevel(logging.INFO)
 
 logging.basicConfig(level=logging.INFO, handlers=[console_handler])
 logger = logging.getLogger(__name__)
+
+# Now that logging is configured, report which mps-sdpa attention backend is live
+# (the setup call at import time logs too early to be captured). No-op off Darwin.
+_mps_prebuilt_ext.log_mps_backend_status()
 
 # ============================================================
 # SageAttention Integration
@@ -68,6 +98,16 @@ if use_sage_attention:
         _original_sdpa = F.scaled_dot_product_attention
 
         _SAGE_SUPPORTED_HEADDIMS = {64, 96, 128}
+
+        @torch.compiler.disable(recursive=True)  # type: ignore[reportUntypedFunctionDecorator]
+        def _sageattn_call(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, is_causal: bool) -> torch.Tensor:
+            # torch.compile must not trace into sageattn's Python internals (quant.py,
+            # core.py): it bakes the current call's shapes into the compiled graph's
+            # guards, which then hard-fails (ConstraintViolationError) on any later call
+            # with different video/audio dimensions. Disabling keeps this call eager —
+            # a graph break here, not a recompile — while the surrounding transformer
+            # forward stays compiled.
+            return cast(torch.Tensor, sageattn(query, key, value, is_causal=is_causal, tensor_layout="HND"))  # type: ignore[reportUnnecessaryCast]
 
         def patched_sdpa(
             query: torch.Tensor,
@@ -87,7 +127,7 @@ if use_sage_attention:
                     and dropout_p == 0.0
                     and query.shape[-1] in _SAGE_SUPPORTED_HEADDIMS
                 ):
-                    return cast(torch.Tensor, sageattn(query, key, value, is_causal=is_causal, tensor_layout="HND"))  # type: ignore[reportUnnecessaryCast]
+                    return _sageattn_call(query, key, value, is_causal)
                 else:
                     return _original_sdpa(query, key, value, attn_mask=attn_mask,
                                          dropout_p=dropout_p, is_causal=is_causal, scale=scale, **kwargs)
@@ -115,11 +155,11 @@ from runtime_config.port_constant import PORT
 
 
 def _get_device() -> torch.device:
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
+    # Delegates to ltx_core's device selection (CUDA -> MPS -> CPU) so the app and the
+    # inference library agree on the preferred device, including MPS on Apple Silicon.
+    from ltx_core.devices import get_preferred_device
+
+    return get_preferred_device()
 
 
 DEVICE = _get_device()
@@ -173,20 +213,30 @@ def _resolve_local_generations_mode() -> LocalGenerationMode:
     gpu_info = GpuInfoImpl()
     system = platform.system()
     cuda_available = gpu_info.get_cuda_available()
+    mps_available = gpu_info.get_mps_available()
     vram_gb = gpu_info.get_vram_total_gb()
+    # On Darwin there's no discrete VRAM (unified memory), so gate on *available* RAM,
+    # not total — total overstates real headroom once the OS/Electron/app are running.
+    # See GpuInfoImpl.get_available_ram_gb.
+    available_ram_gb = gpu_info.get_available_ram_gb() if system == "Darwin" else None
 
     # Server-owned source of truth for mode selection.
     mode = decide_local_generation_mode(
         system=system,
         cuda_available=cuda_available,
         vram_gb=vram_gb,
+        mps_available=mps_available,
+        ram_gb=available_ram_gb,
     )
     logger.info(
-        "Runtime policy local_generations_mode=%s (system=%s cuda_available=%s vram_gb=%s)",
+        "Runtime policy local_generations_mode=%s (system=%s cuda_available=%s mps_available=%s "
+        "vram_gb=%s available_ram_gb=%s)",
         mode,
         system,
         cuda_available,
+        mps_available,
         vram_gb,
+        available_ram_gb,
     )
     return mode
 
@@ -223,7 +273,8 @@ runtime_config = RuntimeConfig(
     dev_mode=os.environ.get("LTX_DEV_MODE") == "1",
     hf_oauth_client_id=HF_OAUTH_CLIENT_ID,
     backend_port=int(os.environ.get("LTX_PORT", "") or PORT),
-    hf_gating_enabled=os.environ.get("LTX_HF_GATING_ENABLED") == "1",
+    lora_catalog_source=str(Path(__file__).parent / "runtime_config" / "lora_catalog.json"),
+    lora_catalog_fallback_path=str(Path(__file__).parent / "runtime_config" / "lora_catalog.json"),
 )
 
 handler = build_initial_state(runtime_config, DEFAULT_APP_SETTINGS)
@@ -258,7 +309,13 @@ def log_hardware_info() -> None:
 
     logger.info(f"Platform: {platform.system()} ({platform.machine()})")
     logger.info(f"Device: {DEVICE}  |  Dtype: {DTYPE}")
-    logger.info(f"GPU: {gpu_info['name']}  |  VRAM: {vram_gb} GB")
+    gpu_line = f"GPU: {gpu_info['name']}  |  VRAM: {vram_gb} GB"
+    # On Apple Silicon there's no discrete VRAM — the figure above is total unified
+    # memory. Local generation is gated on *available* RAM at startup, so surface it.
+    if gpu.get_mps_available():
+        avail = gpu.get_available_ram_gb()
+        gpu_line += f"  |  Available RAM: {avail if avail is not None else '?'} GB"
+    logger.info(gpu_line)
     logger.info(f"SageAttention: {'enabled' if use_sage_attention else 'disabled'}")
     logger.info(f"Python: {sys.version.split()[0]}  |  Torch: {torch.__version__}")
 

@@ -1,8 +1,23 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import type { GenerationSettings } from '../components/SettingsPanel'
-import { ApiClient, type ApiRequestBodyOf } from '../lib/api-client'
+import { ApiClient, type ApiRequestBodyOf, type ApiSuccessOf } from '../lib/api-client'
 import { createLocalGenerationError, type GenerationError } from '../lib/generation-errors'
 import { useAppSettings } from '../contexts/AppSettingsContext'
+
+const POLLING_INTERVAL_MS = 2000
+
+export const GENERATION_RECOVERY_KEY = 'ltx-generation-recovery'
+
+export interface GenerationRecoveryContext {
+  projectId: string
+  prompt: string
+  // Absent for ic-lora/retake: those recover as standalone video assets (Phase 1),
+  // so there are no video/image settings to restore.
+  settings?: GenerationSettings
+  inputImageUrl?: string
+  inputAudioUrl?: string
+  genType?: 'image'
+}
 
 interface GenerationState {
   isGenerating: boolean
@@ -22,6 +37,7 @@ interface UseGenerationReturn extends GenerationState {
   generateImage: (prompt: string, settings: GenerationSettings) => Promise<void>
   cancel: () => void
   reset: () => void
+  resumeIfRunning: () => Promise<'running' | 'complete' | 'none'>
 }
 
 const IMAGE_SHORT_SIDE_BY_RESOLUTION: Record<string, number> = {
@@ -95,6 +111,58 @@ export function useGeneration(): UseGenerationReturn {
   })
 
   const abortControllerRef = useRef<AbortController | null>(null)
+  const recoveryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const clearRecoveryPolling = () => {
+    if (recoveryIntervalRef.current) {
+      clearInterval(recoveryIntervalRef.current)
+      recoveryIntervalRef.current = null
+    }
+  }
+
+  useEffect(() => clearRecoveryPolling, [])
+
+  // Re-attach to a generation that was running OR finished while the frontend was
+  // unmounted. Polls the backend progress endpoint; localStorage recovery context
+  // (inputs, settings incl. loras) is owned by the caller (GenSpace). Returns the
+  // recovered status so the caller can restore context for 'running' AND 'complete'
+  // (a generation that finished during the unmount window still needs its metadata).
+  const resumeIfRunning = useCallback(async (): Promise<'running' | 'complete' | 'none'> => {
+    const apply = (data: ApiSuccessOf<'getGenerationProgress'>): 'running' | 'complete' | 'other' => {
+      if (data.status === 'complete' && data.result != null) {
+        const vp = typeof data.result === 'string' ? data.result : null
+        const ips = Array.isArray(data.result) ? data.result : []
+        setState({
+          isGenerating: false, progress: 100, statusMessage: 'Complete!',
+          videoPath: vp, imagePath: ips[0] ?? null, imagePaths: ips, error: null,
+        })
+        return 'complete'
+      }
+      if (data.status === 'running') {
+        setState(prev => ({
+          ...prev, isGenerating: true, progress: data.progress,
+          statusMessage: getPhaseMessage(data.phase),
+        }))
+        return 'running'
+      }
+      setState(prev => ({ ...prev, isGenerating: false, statusMessage: '' }))
+      return 'other'
+    }
+
+    const initial = await ApiClient.getGenerationProgress()
+    if (!initial.ok) return 'none'
+    const status = apply(initial.data)
+    if (status === 'complete') return 'complete'
+    if (status !== 'running') return 'none'
+
+    clearRecoveryPolling()
+    recoveryIntervalRef.current = setInterval(async () => {
+      const r = await ApiClient.getGenerationProgress()
+      if (!r.ok) return
+      if (apply(r.data) !== 'running') clearRecoveryPolling()
+    }, POLLING_INTERVAL_MS)
+    return 'running'
+  }, [])
 
   const generate = useCallback(async (
     prompt: string,
@@ -138,6 +206,9 @@ export function useGeneration(): UseGenerationReturn {
       }
       if (audioPath) {
         body.audioPath = audioPath
+      }
+      if (settings.loras?.length) {
+        body.loras = settings.loras.map(l => ({ ref: l.ref, scale: l.scale }))
       }
 
       // Poll for real progress from backend with time-based interpolation
@@ -400,6 +471,8 @@ export function useGeneration(): UseGenerationReturn {
   }, [appSettings.hasFalApiKey, forceApiGenerations, refreshSettings])
 
   const reset = useCallback(() => {
+    clearRecoveryPolling()
+    localStorage.removeItem(GENERATION_RECOVERY_KEY)
     setState({
       isGenerating: false,
       progress: 0,
@@ -417,5 +490,6 @@ export function useGeneration(): UseGenerationReturn {
     generateImage,
     cancel,
     reset,
+    resumeIfRunning,
   }
 }

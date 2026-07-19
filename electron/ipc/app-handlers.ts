@@ -1,4 +1,4 @@
-import { app, dialog } from 'electron'
+import { app, dialog, shell } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { checkGPU } from '../gpu'
@@ -188,6 +188,35 @@ export function registerAppHandlers(): void {
     if (!resp.ok) return { success: false, error: await resp.text() }
 
     return { success: true, path: newDir }
+  })
+
+  handle('openModelsFolder', async () => {
+    // Resolve the models dir from the backend rather than trusting a renderer-supplied
+    // path, so a compromised renderer can't open an arbitrary location.
+    const url = getBackendUrl()
+    const auth = getAuthToken()
+    if (!url || !auth) return { success: false, error: 'Backend not ready' }
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 5000)
+    let resp: Response
+    try {
+      resp = await fetch(`${url}/api/settings`, {
+        headers: { 'Authorization': `Bearer ${auth}` },
+        signal: controller.signal,
+      })
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    } finally {
+      clearTimeout(timeout)
+    }
+    if (!resp.ok) return { success: false, error: await resp.text() }
+    const settings = (await resp.json()) as { modelsDir?: string }
+    if (!settings.modelsDir) return { success: false, error: 'No models directory configured' }
+
+    const error = await shell.openPath(settings.modelsDir)
+    if (error) return { success: false, error }
+    return { success: true }
   })
 
 }

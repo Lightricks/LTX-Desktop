@@ -9,6 +9,12 @@ import {
 
 export type GenerationMode = 'text-to-video' | 'image-to-video' | 'text-to-image'
 
+export interface LoraSelection {
+  ref: string
+  name: string
+  scale: number
+}
+
 export interface GenerationSettings {
   model: 'fast' | 'pro'
   duration: number
@@ -17,6 +23,7 @@ export interface GenerationSettings {
   audio: boolean
   cameraMotion: string
   aspectRatio?: string
+  loras?: LoraSelection[]
   // Image-specific settings
   imageResolution: string
   imageAspectRatio: string

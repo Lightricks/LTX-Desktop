@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from api_types import RetakeMode, VideoCameraMotion
+from api_types import ExtendMode, RetakeMode, VideoCameraMotion
 
 
 @dataclass(frozen=True)
@@ -93,5 +93,16 @@ class LTXAPIClient(Protocol):
         duration: float,
         prompt: str,
         mode: RetakeMode,
+    ) -> LTXRetakeResult:
+        ...
+
+    def extend(
+        self,
+        *,
+        api_key: str,
+        video_path: str,
+        duration: float,
+        prompt: str,
+        mode: ExtendMode,
     ) -> LTXRetakeResult:
         ...

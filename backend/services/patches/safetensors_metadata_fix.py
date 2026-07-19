@@ -46,9 +46,16 @@ assert hasattr(SafetensorsModelStateDictLoader, "metadata") and callable(
 SafetensorsModelStateDictLoader.metadata = _patched_model_metadata  # type: ignore[assignment]
 
 
-# --- Patch 2: ltx_pipelines.ic_lora._read_lora_reference_downscale_factor ---
+# --- Patch 2: ltx_pipelines read_lora_reference_downscale_factor ---
+# The upstream MPS-support work moved this helper to ltx_pipelines.iclora_utils and renamed it
+# (dropped the leading underscore); ic_lora re-imports it, so both bindings are patched.
+# The upstream version still uses safetensors safe_open (Windows commit-charge concern), so
+# this mmap-free replacement is still worth applying.
 
 import ltx_pipelines.ic_lora as _ic_lora_module
+import ltx_pipelines.iclora_utils as _iclora_utils_module
+
+_DOWNSCALE_FN = "read_lora_reference_downscale_factor"
 
 
 def _patched_read_lora_reference_downscale_factor(lora_path: str) -> int:
@@ -61,10 +68,14 @@ def _patched_read_lora_reference_downscale_factor(lora_path: str) -> int:
         return 1
 
 
-assert hasattr(_ic_lora_module, "_read_lora_reference_downscale_factor"), (
-    "ltx_pipelines.ic_lora._read_lora_reference_downscale_factor not found — patch needs updating."
+assert hasattr(_iclora_utils_module, _DOWNSCALE_FN), (
+    f"ltx_pipelines.iclora_utils.{_DOWNSCALE_FN} not found — patch needs updating."
 )
-_ic_lora_module._read_lora_reference_downscale_factor = _patched_read_lora_reference_downscale_factor
+setattr(_iclora_utils_module, _DOWNSCALE_FN, _patched_read_lora_reference_downscale_factor)
+# ic_lora binds the name via `from ...iclora_utils import ...`, so its module-local reference
+# (the actual call site) must be patched too.
+if hasattr(_ic_lora_module, _DOWNSCALE_FN):
+    setattr(_ic_lora_module, _DOWNSCALE_FN, _patched_read_lora_reference_downscale_factor)
 
 
 # --- Patch 3: ltx_pipelines.utils.constants.detect_params ---

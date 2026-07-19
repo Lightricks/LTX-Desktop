@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { ApiClient, type ApiRequestBodyOf, type ApiSuccessOf } from '../lib/api-client'
+import { formatBytes } from '../lib/format'
 import { logger } from '../lib/logger'
 import { useHfAuth } from '../hooks/use-hf-auth'
-import { useHfModelAccess } from '../hooks/use-hf-model-access'
 import { useAppSettings } from '../contexts/AppSettingsContext'
 import './FirstRunSetup.css'
 
@@ -19,6 +19,7 @@ type ModelCheckpointID = NonNullable<StartModelDownloadBody['cp_ids']>[number]
 type LtxRecommendation = ApiSuccessOf<'getLtxRecommendation'>
 type ImgGenRecommendation = ApiSuccessOf<'getImgGenRecommendation'>
 type DownloadProgress = ApiSuccessOf<'getModelDownloadProgress'>
+type CheckpointDescriptor = ApiSuccessOf<'describeCheckpoints'>['checkpoints'][number]
 type DownloadStepSpec = {
   type: StartModelDownloadBody['type']
   cpIds: ModelCheckpointID[]
@@ -40,20 +41,64 @@ function uniqueCpIds(cpIds: readonly ModelCheckpointID[]): ModelCheckpointID[] {
   return [...new Set(cpIds)]
 }
 
-function buildAccessCheckpointIds(
-  ltxRecommendation: LtxRecommendation | null,
-  imgGenRecommendation: ImgGenRecommendation | null,
-): ModelCheckpointID[] {
-  if (!ltxRecommendation || !imgGenRecommendation) return []
+// User-facing explanation per checkpoint role (moved out of the backend so wording/i18n
+// iterates without a backend deploy). Keyed by the stable `role` the backend ships.
+const CP_INFO_BY_ROLE: Record<CheckpointDescriptor['role'], string> = {
+  base: 'The core LTX video model that turns your prompt into video frames. This is the largest download.',
+  upscaler:
+    'Doubles the resolution of generated video for sharper, more detailed output. This updated version also ' +
+    'fixes glitches and stray text or overlay artifacts that could appear near the end of longer clips, and ' +
+    'keeps detail consistent through the final frames — recommended for long videos.',
+  text_encoder:
+    'Reads your text prompt so the model understands it. You can skip this large download by entering an LTX ' +
+    'API key, which encodes prompts via the API instead.',
+  image: 'Generates still images from text prompts (used for image-to-video and image tools).',
+  support: 'A supporting model used for guided generation (depth, edges, or pose control).',
+}
 
-  const cpIds: ModelCheckpointID[] = []
-  if (ltxRecommendation.status === 'download') {
-    cpIds.push(...ltxRecommendation.cps_to_download)
-  }
-  if (imgGenRecommendation.cp_to_download) {
-    cpIds.push(imgGenRecommendation.cp_to_download)
-  }
-  return uniqueCpIds(cpIds)
+// One line in the first-run "What will be downloaded" list: checkpoint name, an
+// info-tooltip icon, and the size (or a "skipped" note when an API key covers it).
+function DownloadItem({ item, skipped }: { item: CheckpointDescriptor; skipped: boolean }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        fontSize: 13,
+        padding: '6px 0',
+        color: skipped ? '#666' : '#e0e0e0',
+        opacity: skipped ? 0.7 : 1,
+      }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ textDecoration: skipped ? 'line-through' : 'none' }}>{item.name}</span>
+        <span
+          title={CP_INFO_BY_ROLE[item.role]}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 15,
+            height: 15,
+            borderRadius: '50%',
+            border: '1px solid #6b7280',
+            color: '#9ca3af',
+            fontSize: 10,
+            fontStyle: 'italic',
+            fontFamily: 'Georgia, serif',
+            cursor: 'help',
+            flexShrink: 0,
+          }}
+        >
+          i
+        </span>
+      </span>
+      <span style={{ color: skipped ? '#666' : '#a0a0a0', flexShrink: 0, marginLeft: 12 }}>
+        {skipped ? 'Skipped (API key)' : formatBytes(item.size_bytes)}
+      </span>
+    </div>
+  )
 }
 
 function buildDownloadSteps(
@@ -85,6 +130,7 @@ export function LaunchGate({
   const [downloadSessionId, setDownloadSessionId] = useState<string | null>(null)
   const [installMessage, setInstallMessage] = useState(INSTALL_MESSAGES[0])
   const [availableSpace, setAvailableSpace] = useState('...')
+  const [downloadItems, setDownloadItems] = useState<CheckpointDescriptor[]>([])
   const [videoPath, setVideoPath] = useState('/splash/splash.mp4')
   const [ltxApiKey, setLtxApiKey] = useState('')
   const [licenseAccepted, setLicenseAccepted] = useState(false)
@@ -92,23 +138,19 @@ export function LaunchGate({
   const [licenseError, setLicenseError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [isActionPending, setIsActionPending] = useState(false)
-  const [requiredCheckpointIds, setRequiredCheckpointIds] = useState<ModelCheckpointID[]>([])
   const { hfAuthStatus, hfAuthPolling, startHuggingFaceLogin } = useHfAuth(currentStep === 'location')
-  const { accessMap, allAuthorized } = useHfModelAccess(requiredCheckpointIds, hfAuthStatus)
   const { saveLtxApiKey } = useAppSettings()
-  const modelAccessRef = useRef<HTMLDivElement>(null)
   const downloadQueueRef = useRef<DownloadStepSpec[]>([])
   const runningDownloadProgress = downloadProgress?.status === 'downloading' ? downloadProgress : null
   const totalProgress = runningDownloadProgress?.total_progress ?? (downloadProgress?.status === 'complete' ? 100 : 0)
 
-  // Format bytes to human readable
-  const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B'
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
-  }
+  // The text encoder download is skipped when an API key is entered (the backend
+  // omits it once a key is saved); reflect that live in the preview + total.
+  const isItemSkipped = (item: CheckpointDescriptor): boolean =>
+    item.role === 'text_encoder' && ltxApiKey.trim().length > 0
+  const totalDownloadBytes = downloadItems
+    .filter((item) => !isItemSkipped(item))
+    .reduce((sum, item) => sum + item.size_bytes, 0)
 
   // Format time remaining
   const formatTimeRemaining = (seconds: number): string => {
@@ -161,7 +203,21 @@ export function LaunchGate({
     }
 
     setInstallPath(settingsResult.data.modelsDir ?? '')
-    setRequiredCheckpointIds(buildAccessCheckpointIds(ltxResult.data, imgGenResult.data))
+
+    // Surface exactly what the install will download (base model, upscaler, text
+    // encoder, image model) with per-checkpoint sizes and info. Same cp set the
+    // installer actually downloads, so the preview can't drift from reality.
+    const cpIds = buildDownloadSteps(ltxResult.data, imgGenResult.data).flatMap((step) => step.cpIds)
+    if (cpIds.length === 0) {
+      setDownloadItems([])
+      return
+    }
+    const describeResult = await ApiClient.describeCheckpoints({ cp_ids: cpIds })
+    if (!describeResult.ok) {
+      logger.error(`Failed to describe checkpoints: ${describeResult.error.message}`)
+      return
+    }
+    setDownloadItems(describeResult.data.checkpoints)
   }, [licenseOnly])
 
   const startDownloadStep = useCallback(async (step: DownloadStepSpec) => {
@@ -210,13 +266,6 @@ export function LaunchGate({
       void fetchLicense()
     }
   }, [refreshModelRecommendations, showLicenseStep])
-
-  // Auto-scroll to model access section when it appears
-  useEffect(() => {
-    if (hfAuthStatus === 'authenticated' && Object.keys(accessMap).length > 0 && !allAuthorized) {
-      modelAccessRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    }
-  }, [hfAuthStatus, accessMap, allAuthorized])
 
   // Cycle install messages
   useEffect(() => {
@@ -285,7 +334,6 @@ export function LaunchGate({
       }
       const nextLtxRecommendation = ltxResult.data
       const nextImgGenRecommendation = imgGenResult.data
-      setRequiredCheckpointIds(buildAccessCheckpointIds(nextLtxRecommendation, nextImgGenRecommendation))
 
       const downloadSteps = buildDownloadSteps(nextLtxRecommendation, nextImgGenRecommendation)
       if (downloadSteps.length === 0) {
@@ -361,7 +409,8 @@ export function LaunchGate({
   // Check if next button should be disabled
   const isNextDisabled = () => {
     if (currentStep === 'license') return !licenseAccepted || isActionPending
-    if (currentStep === 'location') return hfAuthStatus !== 'authenticated' || !allAuthorized
+    // HF sign-in is optional (base models are public) — don't block setup on it.
+    if (currentStep === 'location') return false
     if (currentStep === 'complete') return isActionPending
     return false
   }
@@ -612,6 +661,28 @@ export function LaunchGate({
                 </div>
               </div>
 
+              {/* What will be downloaded */}
+              {downloadItems.length > 0 && (
+                <div style={{
+                  marginTop: 24,
+                  background: '#2e3445',
+                  borderRadius: 12,
+                  padding: '14px 18px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>What will be downloaded</label>
+                    <span style={{ fontSize: 12, color: '#a0a0a0' }}>
+                      Total: <strong style={{ color: '#fff' }}>{formatBytes(totalDownloadBytes)}</strong>
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {downloadItems.map((item) => (
+                      <DownloadItem key={item.cp_id} item={item} skipped={isItemSkipped(item)} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* LTX API Key - Optional but saves ~25 GB download */}
               <div style={{
                 marginTop: 24,
@@ -661,7 +732,6 @@ export function LaunchGate({
               </div>
 
               {/* HuggingFace Authentication */}
-              {window.electronAPI.hfGatingEnabled && (
               <div style={{
                 marginTop: 24,
                 background: '#2e3445',
@@ -673,22 +743,24 @@ export function LaunchGate({
                     HuggingFace Account
                     <span style={{
                       fontSize: 11,
-                      color: hfAuthStatus === 'authenticated' ? '#22c55e' : '#f59e0b',
+                      color: hfAuthStatus === 'authenticated' ? '#22c55e' : '#888',
                       marginLeft: 8,
                       fontWeight: 400
                     }}>
-                      {hfAuthStatus === 'authenticated' ? 'Signed in' : 'Required'}
+                      {hfAuthStatus === 'authenticated' ? 'Signed in' : 'Optional'}
                     </span>
                   </label>
                 </div>
                 {hfAuthStatus === 'authenticated' ? (
                   <p style={{ fontSize: 12, color: '#22c55e' }}>
-                    ✓ Authenticated — ready to download models.
+                    ✓ Authenticated — gated models will download with your account.
                   </p>
                 ) : (
                   <>
                     <p style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
-                      Sign in to HuggingFace to download model files.
+                      Optional. The base models download without an account — sign in only to
+                      download gated models (some catalog LoRAs / IC-LoRAs require it). You can
+                      also do this later in Settings.
                     </p>
                     <button
                       onClick={startHuggingFaceLogin}
@@ -711,63 +783,7 @@ export function LaunchGate({
                   </>
                 )}
               </div>
-              )}
 
-              {/* Model Access Check */}
-              {hfAuthStatus === 'authenticated' && Object.keys(accessMap).length > 0 && !allAuthorized && (
-                <div ref={modelAccessRef} style={{
-                  marginTop: 24,
-                  background: '#2e3445',
-                  borderRadius: 12,
-                  padding: '14px 18px'
-                }}>
-                  <div style={{ marginBottom: 8 }}>
-                    <label style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>
-                      Model Access
-                      <span style={{ fontSize: 11, color: '#f59e0b', marginLeft: 8, fontWeight: 400 }}>
-                        Action required
-                      </span>
-                    </label>
-                  </div>
-                  <p style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
-                    Some models require you to accept their license on HuggingFace before downloading.
-                  </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {Object.entries(accessMap)
-                      .filter(([, status]) => status === 'not_authorized')
-                      .map(([repoId]) => (
-                        <div key={repoId} style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          background: '#1a1a1a',
-                          borderRadius: 8,
-                          padding: '10px 14px',
-                        }}>
-                          <span style={{ fontSize: 12, color: '#a0a0a0', fontFamily: "'Consolas', 'Monaco', monospace" }}>
-                            {repoId}
-                          </span>
-                          <button
-                            onClick={() => window.electronAPI.openHuggingFaceRepo({ repoId })}
-                            style={{
-                              padding: '6px 16px',
-                              borderRadius: 9999,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              background: '#4f46e5',
-                              border: 'none',
-                              color: '#ffffff',
-                              transition: 'all 0.2s ease',
-                            }}
-                          >
-                            Request access
-                          </button>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
 

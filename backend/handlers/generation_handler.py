@@ -13,6 +13,7 @@ from api_types import (
     GenerationProgressResponse,
 )
 from handlers.base import StateHandlerBase, with_state_lock
+from services.patches import diffusion_stage_cache
 from state.app_state_types import (
     ApiGeneration,
     AppState,
@@ -43,6 +44,14 @@ class GenerationHandler(StateHandlerBase):
         if self.state.gpu_slot is None:
             raise RuntimeError("No active GPU pipeline")
 
+        # EXPERIMENTAL: push the live Settings toggle, then drop any transformer
+        # cached from the previous generation before this one starts -- otherwise
+        # it stays resident while this generation's own text encoder/VAE/etc.
+        # build, double-booking VRAM. See that module's GENERATION-SCOPED
+        # docstring section for the RTX 5090 repro (~42GB reported on a 32GB card).
+        diffusion_stage_cache.set_enabled(self.state.app_settings.diffusion_stage_cache_enabled)
+        diffusion_stage_cache.evict()
+
         self.state.active_generation = GpuGeneration(
             state=GenerationRunning(
                 id=generation_id,
@@ -54,6 +63,11 @@ class GenerationHandler(StateHandlerBase):
     def start_api_generation(self, generation_id: str) -> None:
         if self.is_generation_running():
             raise RuntimeError("Generation already in progress")
+
+        # EXPERIMENTAL: see start_generation -- an API generation doesn't build a
+        # local transformer itself, but evicting here still releases VRAM held by
+        # a previous local generation's cached build.
+        diffusion_stage_cache.evict()
 
         self.state.active_generation = ApiGeneration(
             state=GenerationRunning(
@@ -181,7 +195,7 @@ class GenerationHandler(StateHandlerBase):
                 return CancelNoActiveGenerationResponse(status="no_active_generation")
 
     @with_state_lock
-    def complete_generation(self, result: str | list[str]) -> None:
+    def complete_generation(self, result: str | list[str] | None = None) -> None:
         running_generation = self._running_generation()
         if running_generation is None:
             return
@@ -216,13 +230,14 @@ class GenerationHandler(StateHandlerBase):
                     currentStep=progress.current_step,
                     totalSteps=progress.total_steps,
                 )
-            case GenerationComplete():
+            case GenerationComplete(result=result):
                 return GenerationProgressResponse(
                     status="complete",
                     phase="complete",
                     progress=100,
                     currentStep=0,
                     totalSteps=0,
+                    result=result,
                 )
             case GenerationCancelled():
                 return GenerationProgressResponse(

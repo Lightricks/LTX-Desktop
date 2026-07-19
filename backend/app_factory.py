@@ -19,10 +19,12 @@ from _routes.generation import router as generation_router
 from _routes.hf_auth import router as hf_auth_router
 from _routes.health import router as health_router
 from _routes.ic_lora import router as ic_lora_router
+from _routes.lora_catalog import router as lora_catalog_router
 from _routes.image_gen import router as image_gen_router
 from _routes.models import router as models_router
 from _routes.suggest_gap_prompt import router as suggest_gap_prompt_router
 from _routes.retake import router as retake_router
+from _routes.extend import router as extend_router
 from _routes.runtime_policy import router as runtime_policy_router
 from _routes.settings import router as settings_router
 from api_types import HTTPErrorResponse
@@ -158,7 +160,9 @@ def create_app(
     app.include_router(image_gen_router)
     app.include_router(suggest_gap_prompt_router)
     app.include_router(retake_router)
+    app.include_router(extend_router)
     app.include_router(ic_lora_router)
+    app.include_router(lora_catalog_router)
     app.include_router(runtime_policy_router)
     app.include_router(hf_auth_router)
 

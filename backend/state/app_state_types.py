@@ -65,6 +65,26 @@ class DownloadingSession:
     completed_bytes: int
 
 
+# One shape for both catalog download kinds (IC-LoRA + plain LoRA). The kinds keep separate
+# state slots below so an IC-LoRA download never collides with a plain-LoRA one; `item_id` is
+# the catalog id of whichever kind owns the slot.
+@dataclass
+class CatalogDownloadSession:
+    id: DownloadSessionId
+    item_id: str
+    downloaded_bytes: int
+    expected_bytes: int
+    speed_bytes_per_sec: float = 0.0
+
+
+def _default_completed_ic_lora_download_sessions() -> dict[DownloadSessionId, DownloadSessionResult]:
+    return {}
+
+
+def _default_completed_lora_download_sessions() -> dict[DownloadSessionId, DownloadSessionResult]:
+    return {}
+
+
 # ============================================================
 # Text encoding
 # ============================================================
@@ -102,6 +122,11 @@ class TextEncoderState:
 class VideoPipelineState:
     pipeline: FastVideoPipeline
     is_compiled: bool
+    loras: tuple[tuple[str, float], ...] = field(default_factory=tuple)
+    # gemma_root the pipeline's text encoder was built with. Part of the cache key: switching
+    # text-encoding mode (API<->local) changes it, and a cached pipeline built for the other
+    # mode must be rebuilt (an API-mode pipeline has a stub encoder that can't encode locally).
+    gemma_root: str | None = None
 
 
 @dataclass
@@ -115,15 +140,19 @@ class PoseResources:
 class ICLoraState:
     pipeline: IcLoraPipeline
     lora_path: str
-    depth_pipeline: DepthProcessorPipeline
-    depth_model_path: str
+    depth_pipeline: DepthProcessorPipeline | None
+    depth_model_path: str | None
+    lora_strength: float = 1.0
     pose_resources: PoseResources | None = None
     conditioning_cache: ConditioningCache = field(default_factory=ConditioningCache)
+    gemma_root: str | None = None  # cache key — see VideoPipelineState.gemma_root
 
 
 @dataclass
 class A2VPipelineState:
     pipeline: A2VPipeline
+    loras: tuple[tuple[str, float], ...] = field(default_factory=tuple)
+    gemma_root: str | None = None  # cache key — see VideoPipelineState.gemma_root
 
 
 @dataclass
@@ -131,6 +160,7 @@ class RetakePipelineState:
     pipeline: RetakePipeline
     distilled: bool
     quantized: bool
+    gemma_root: str | None = None  # cache key — see VideoPipelineState.gemma_root
 
 
 # ============================================================
@@ -155,7 +185,9 @@ class GenerationRunning:
 @dataclass
 class GenerationComplete:
     id: str
-    result: str | list[str]
+    # None = completed successfully but produced no locally-recoverable artifact
+    # (e.g. an API retake that returned a remote payload instead of video bytes).
+    result: str | list[str] | None
 
 
 @dataclass
@@ -242,3 +274,11 @@ class AppState:
         default_factory=_default_completed_download_sessions
     )
     hf_auth_state: HfAuthState = field(default_factory=HfNotAuthenticated)
+    ic_lora_download_session: CatalogDownloadSession | None = None
+    completed_ic_lora_download_sessions: dict[DownloadSessionId, DownloadSessionResult] = field(
+        default_factory=_default_completed_ic_lora_download_sessions
+    )
+    lora_download_session: CatalogDownloadSession | None = None
+    completed_lora_download_sessions: dict[DownloadSessionId, DownloadSessionResult] = field(
+        default_factory=_default_completed_lora_download_sessions
+    )

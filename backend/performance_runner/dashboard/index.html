@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LTX Desktop — Performance Runner</title>
+<link rel="stylesheet" href="style.css" />
+<script src="chart.umd.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>LTX Desktop · Performance Runner</h1>
+  <span id="backend" class="pill">backend …</span>
+  <span id="gpu" class="pill">GPU …</span>
+  <span id="tok" class="pill">token …</span>
+  <span class="pill mut">localhost only</span>
+</header>
+
+<div class="grid">
+  <!-- left column: controls -->
+  <div class="col">
+    <div class="panel">
+      <h2>Backend token</h2>
+      <div class="row">
+        <input type="password" id="tokIn" class="grow" placeholder="paste Bearer token" autocomplete="off">
+        <button class="go" onclick="setToken()">set</button>
+      </div>
+      <div class="mut">Copy it from the app's Logs footer (the •••••). Held in memory only.</div>
+    </div>
+
+    <div class="panel cuda-only">
+      <h2>Toggles</h2>
+      <label class="tog"><input type="checkbox" id="tgCache"> cache patch</label>
+      <label class="tog"><input type="checkbox" id="tgCompile"> torch compile</label>
+      <div class="mut" id="tgMsg">reading live settings…</div>
+    </div>
+
+    <div class="panel">
+      <h2>Run</h2>
+      <div class="row cuda-only"><span>Soak N</span><input type="number" id="soakN" value="50"></div>
+      <div class="row cuda-only">
+        <button class="go runbtn" title="Run cache_on + cache_off back-to-back in one process and check the ON floor TRACKS the OFF floor — the real leak gate, in one command with a combined verdict." onclick="run('soak',{n:+soakN.value,pair:true})">soak + control (pair)</button>
+      </div>
+      <div class="row cuda-only">
+        <button class="runbtn" title="Leak gate WITH the patch: N gens back-to-back, cache ON. Checks the VRAM floor stays flat across gens. Torch Compile must be ON." onclick="run('soak',{n:+soakN.value,set_cache:'on',label:'cache_on'})">soak cache ON</button>
+        <button class="runbtn" title="Baseline control: the same N-gen soak with the cache OFF, to compare the floor against." onclick="run('soak',{n:+soakN.value,set_cache:'off',label:'cache_off'})">control OFF</button>
+      </div>
+      <div class="row">
+        <button class="runbtn cuda-only" title="Correctness: fixed seed, cache OFF then ON, diff the outputs. Proves a cache hit reuses the right model." onclick="run('ab',{seed:42})">correctness A/B</button>
+        <button class="runbtn cuda-only" title="Wall-time the patch saves: baseline (patch OFF) vs patch_only (patch ON), median per-gen delta." onclick="run('decompose',{reps:5})">decompose</button>
+        <button class="runbtn" title="First-generation penalty: cold gen 0 (model load / disk read / build) vs warm median. Run right after a fresh backend start for a true cold reading." onclick="run('coldstart',{warm:3})">cold-start</button>
+      </div>
+      <div class="row">
+        <button class="runbtn" title="Smoke-test the wired scenarios end-to-end. Pass/fail matrix that the surface still generates." onclick="run('sanity',{})">sanity (wired)</button>
+        <button class="runbtn" title="Same sweep including any scaffold scenarios not yet wired to a route — those are expected to fail." onclick="run('sanity',{include_unwired:true})">sanity (all)</button>
+        <button class="runbtn" title="Quick surface check — forces 540p/5s on every scenario so each feature path runs in a fraction of the time. Not a quality or perf signal." onclick="run('sanity',{fast:true})">sanity (fast)</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Scenarios</h2>
+        <button class="ghost" id="refreshCatBtn" onclick="refreshCatalog()" title="Re-check which LoRAs / IC-LoRAs are downloaded (after downloading one from the app's library)">↻ refresh</button>
+      </div>
+      <div class="row">
+        <select id="scenSel" class="grow" title="Run a single scenario end-to-end"></select>
+        <button class="runbtn" id="runScenBtn" onclick="runScenario()">run scenario</button>
+      </div>
+      <div id="scenarios" class="mut list-tall">…</div>
+    </div>
+  </div>
+
+  <!-- right column: monitoring -->
+  <div class="col">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Runs</h2>
+        <button class="stop" onclick="stopAll()">stop all</button>
+      </div>
+      <div class="runs-wrap">
+        <table>
+          <thead><tr><th>id</th><th>kind</th><th>label</th><th>status</th><th>progress</th><th>verdict</th><th>result</th><th>elapsed</th><th></th></tr></thead>
+          <tbody id="runs"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Log
+        <span class="logsrc">
+          <a href="#" id="lsRun" class="active" onclick="setLogSrc('run');return false">run</a>
+          · <a href="#" id="lsBackend" onclick="setLogSrc('backend');return false">backend</a>
+        </span>
+        <span id="logsel" class="mut"></span>
+      </h2>
+      <pre id="log">select a run…</pre>
+    </div>
+
+    <div class="panel cuda-only">
+      <h2>Soak trend (latest CSV) — VRAM floor + host RAM (left) &amp; wall s (right)</h2>
+      <div id="chartScroll"><div id="chartInner"><canvas id="chart"></canvas></div></div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -126,6 +126,14 @@ class TextHandler(StateHandlerBase):
             self.clear_api_embeddings()
             return None
 
+        # The LTX API rejects an empty prompt (returns None), but an empty prompt is valid for
+        # some IC-LoRAs (e.g. outpainting fills from the scene). Local gemma encodes "" fine; to
+        # match that in API mode — where there's no gemma fallback — encode a neutral placeholder
+        # so we still get usable embeddings. Nothing to enhance for an empty prompt, so skip it.
+        if not prompt.strip():
+            prompt = " "
+            enhance_prompt = False
+
         cached = self._get_cached_prompt(prompt, enhance_prompt)
         if cached is not None:
             self._set_api_embeddings(cached)
