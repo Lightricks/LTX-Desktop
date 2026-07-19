@@ -18,6 +18,7 @@ class A2VPipeline(Protocol):
         upsampler_path: str,
         device: torch.device,
         streaming_prefetch_count: int | None,
+        loras: list[tuple[str, float]] | None = None,
     ) -> "A2VPipeline": ...
 
     def generate(

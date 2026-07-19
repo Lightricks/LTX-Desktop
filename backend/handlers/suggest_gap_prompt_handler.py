@@ -15,7 +15,7 @@ from _routes._errors import HTTPError
 from handlers.base import StateHandlerBase
 from pydantic import BaseModel, Field, ValidationError
 from server_utils.media_validation import normalize_optional_path, validate_image_file
-from services.interfaces import HTTPClient, HttpTimeoutError, JSONValue
+from services.interfaces import HTTPClient, HttpTransportError, JSONValue
 from state.app_state_types import AppState
 
 if TYPE_CHECKING:
@@ -139,10 +139,16 @@ class SuggestGapPromptHandler(StateHandlerBase):
             user_parts.append({"text": "First frame of the shot AFTER the gap:"})
             user_parts.append({"inlineData": {"mimeType": "image/jpeg", "data": after_frame}})
 
-        gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+        gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
         contents: list[JSONValue] = [{"role": "user", "parts": user_parts}]
         system_instruction: dict[str, JSONValue] = {"parts": [{"text": system_text}]}
-        generation_config: dict[str, JSONValue] = {"temperature": 0.7, "maxOutputTokens": 512}
+        # thinkingBudget=0 disables 2.5-flash's default "thinking" pass, which would
+        # otherwise eat into maxOutputTokens (starving the actual suggestion) and add latency.
+        generation_config: dict[str, JSONValue] = {
+            "temperature": 0.7,
+            "maxOutputTokens": 512,
+            "thinkingConfig": {"thinkingBudget": 0},
+        }
         gemini_payload: dict[str, JSONValue] = {
             "contents": contents,
             "systemInstruction": system_instruction,
@@ -156,7 +162,7 @@ class SuggestGapPromptHandler(StateHandlerBase):
                 json_payload=gemini_payload,
                 timeout=30,
             )
-        except HttpTimeoutError as exc:
+        except HttpTransportError as exc:
             raise HTTPError(504, "Gemini API request timed out") from exc
         except Exception as exc:
             raise HTTPError(500, str(exc)) from exc

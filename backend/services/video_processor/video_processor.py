@@ -28,6 +28,9 @@ class VideoProcessor(Protocol):
     def read_frame(self, cap: VideoCaptureLike, frame_idx: int | None = None) -> FrameArray | None:
         ...
 
+    def read_image(self, path: str) -> FrameArray:
+        ...
+
     def apply_canny(self, frame: FrameArray) -> FrameArray:
         ...
 

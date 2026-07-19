@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
+
+from frame_math import compute_num_frames
 import tempfile
 import time
 import uuid
@@ -21,14 +23,17 @@ from api_types import (
     GenerateVideoRequest,
     GenerateVideoResponse,
     ImageConditioningInput,
+    LoraEntry,
     VideoCameraMotion,
 )
+from runtime_config.models_scanner import resolve_lora_ref
 from _routes._errors import HTTPError
 from api_model_specs import (
     build_generate_video_model_specs_response,
     validate_generate_video_request,
 )
 from handlers.base import StateHandlerBase
+from server_utils.heartbeat import log_heartbeat
 from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
 from handlers.text_handler import TextHandler
@@ -136,10 +141,11 @@ class VideoGenerationHandler(StateHandlerBase):
             logger.info("Image: %s -> %sx%s", image_path, width, height)
 
         generation_id = self._make_generation_id()
-        seed = self._resolve_seed()
+        seed = req.seed if req.seed is not None else self._resolve_seed()
+        loras = self._resolve_loras(req.loras)
 
         try:
-            self._pipelines.load_gpu_pipeline("fast")
+            self._pipelines.load_gpu_pipeline("fast", loras=loras)
             self._generation.start_generation(generation_id)
 
             output_path = self.generate_video(
@@ -152,6 +158,7 @@ class VideoGenerationHandler(StateHandlerBase):
                 seed=seed,
                 camera_motion=req.cameraMotion,
                 negative_prompt=req.negativePrompt,
+                loras=loras,
             )
 
             self._generation.complete_generation(output_path)
@@ -168,6 +175,12 @@ class VideoGenerationHandler(StateHandlerBase):
 
             raise HTTPError(500, str(e)) from e
 
+    def _resolve_loras(self, loras: list[LoraEntry]) -> list[tuple[str, float]]:
+        try:
+            return [(str(resolve_lora_ref(self.models_dir, e.ref)), e.scale) for e in loras]
+        except ValueError as exc:
+            raise HTTPError(400, str(exc)) from exc
+
     def generate_video(
         self,
         prompt: str,
@@ -179,6 +192,7 @@ class VideoGenerationHandler(StateHandlerBase):
         seed: int,
         camera_motion: VideoCameraMotion,
         negative_prompt: str,
+        loras: list[tuple[str, float]] | None = None,
     ) -> str:
         t_total_start = time.perf_counter()
         gen_mode = "i2v" if image is not None else "t2v"
@@ -191,7 +205,7 @@ class VideoGenerationHandler(StateHandlerBase):
 
         self._generation.update_progress("loading_model", 5, 0, total_steps)
         t_load_start = time.perf_counter()
-        pipeline_state = self._pipelines.load_gpu_pipeline("fast")
+        pipeline_state = self._pipelines.load_gpu_pipeline("fast", loras=loras)
         t_load_end = time.perf_counter()
         logger.info("[%s] Pipeline load: %.2fs", gen_mode, t_load_end - t_load_start)
 
@@ -228,16 +242,17 @@ class VideoGenerationHandler(StateHandlerBase):
             width = round(width / 64) * 64
 
             t_inference_start = time.perf_counter()
-            pipeline_state.pipeline.generate(
-                prompt=enhanced_prompt,
-                seed=seed,
-                height=height,
-                width=width,
-                num_frames=num_frames,
-                frame_rate=fps,
-                images=images,
-                output_path=str(output_path),
-            )
+            with log_heartbeat(f"{gen_mode} inference"):
+                pipeline_state.pipeline.generate(
+                    prompt=enhanced_prompt,
+                    seed=seed,
+                    height=height,
+                    width=width,
+                    num_frames=num_frames,
+                    frame_rate=fps,
+                    images=images,
+                    output_path=str(output_path),
+                )
             t_inference_end = time.perf_counter()
             logger.info("[%s] Inference: %.2fs", gen_mode, t_inference_end - t_inference_start)
 
@@ -284,12 +299,13 @@ class VideoGenerationHandler(StateHandlerBase):
         if image_path:
             image = self._prepare_image(image_path, width, height)
 
-        seed = self._resolve_seed()
+        seed = req.seed if req.seed is not None else self._resolve_seed()
+        loras = self._resolve_loras(req.loras)
 
         generation_id = self._make_generation_id()
 
         try:
-            a2v_state = self._pipelines.load_a2v_pipeline()
+            a2v_state = self._pipelines.load_a2v_pipeline(loras=loras)
             self._generation.start_generation(generation_id)
 
             enhanced_prompt = req.prompt + self.config.camera_motion_prompts.get(req.cameraMotion, "")
@@ -382,17 +398,7 @@ class VideoGenerationHandler(StateHandlerBase):
 
     @staticmethod
     def _compute_num_frames(duration: int, fps: int) -> int:
-        n = ((duration * fps) // 8) * 8 + 1
-        return max(n, 9)
-
-    def _resolve_seed(self) -> int:
-        settings = self.state.app_settings
-        if settings.seed_locked:
-            logger.info("Using locked seed: %s", settings.locked_seed)
-            return settings.locked_seed
-        if self.config.dev_mode:
-            return 1000
-        return int(time.time()) % 2147483647
+        return compute_num_frames(duration, fps)
 
     def _make_output_path(self) -> Path:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -6,6 +6,8 @@ from typing import Any, TypeGuard, TypeVar, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator
 
+from api_types import LTXLocalModelId
+
 
 def _to_camel_case(field_name: str) -> str:
     special_aliases = {
@@ -47,6 +49,7 @@ class SettingsPatchModel(SettingsBaseModel):
 
 class AppSettings(SettingsBaseModel):
     use_torch_compile: bool = False
+    diffusion_stage_cache_enabled: bool = False
     ltx_api_key: str = ""
     user_prefers_ltx_api_video_generations: bool = False
     fal_api_key: str = ""
@@ -58,6 +61,7 @@ class AppSettings(SettingsBaseModel):
     seed_locked: bool = False
     locked_seed: int = 42
     models_dir: str = ""
+    active_ltx_model_id: LTXLocalModelId | None = None
 
     @field_validator("prompt_cache_size", mode="before")
     @classmethod
@@ -116,6 +120,7 @@ UpdateSettingsRequest = AppSettingsPatch
 
 class SettingsResponse(SettingsBaseModel):
     use_torch_compile: bool = False
+    diffusion_stage_cache_enabled: bool = False
     has_ltx_api_key: bool = False
     user_prefers_ltx_api_video_generations: bool = False
     has_fal_api_key: bool = False
@@ -127,6 +132,7 @@ class SettingsResponse(SettingsBaseModel):
     seed_locked: bool = False
     locked_seed: int = 42
     models_dir: str = ""
+    active_ltx_model_id: LTXLocalModelId | None = None
 
 
 def to_settings_response(settings: AppSettings) -> SettingsResponse:

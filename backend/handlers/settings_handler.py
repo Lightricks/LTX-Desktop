@@ -7,6 +7,7 @@ import logging
 from threading import RLock
 from typing import TYPE_CHECKING
 
+from api_types import LTXLocalModelId
 from state.app_settings import AppSettings, UpdateSettingsRequest
 from handlers._settings_utils import (
     collect_changed_paths,
@@ -63,12 +64,23 @@ class SettingsHandler(StateHandlerBase):
         return self.state.app_settings.model_copy(deep=True)
 
     @with_state_lock
+    def set_active_ltx_model_id(self, model_id: LTXLocalModelId) -> None:
+        self.state.app_settings.active_ltx_model_id = model_id
+        self.save_settings()
+
+    @with_state_lock
     def update_settings(self, patch: UpdateSettingsRequest) -> tuple[AppSettings, AppSettings, set[str]]:
         patch_payload = strip_none_values(ensure_json_object(patch.model_dump(by_alias=False, exclude_unset=True)))
 
         for key_field in ("ltx_api_key", "gemini_api_key", "fal_api_key"):
             if key_field in patch_payload and patch_payload[key_field] == "":
                 del patch_payload[key_field]
+
+        # active_ltx_model_id is patchable here only because the patch model is auto-derived
+        # from every AppSettings field — but it must go through set_active_ltx_model, which
+        # checks the full required bundle. Drop it so the generic PATCH can't persist an
+        # unrunnable active model (base present, companions missing).
+        patch_payload.pop("active_ltx_model_id", None)
 
         before = self.state.app_settings.model_copy(deep=True)
         before_payload = ensure_json_object(before.model_dump(by_alias=False))

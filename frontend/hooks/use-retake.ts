@@ -10,6 +10,7 @@ export interface RetakeSubmitParams {
   duration: number
   prompt: string
   mode: RetakeMode
+  resolution?: { width: number; height: number }
 }
 
 export interface RetakeResult {
@@ -47,6 +48,7 @@ export function useRetake() {
       duration: params.duration,
       prompt: params.prompt,
       mode: params.mode,
+      resolution: params.resolution,
     })
 
     if (!result.ok) {

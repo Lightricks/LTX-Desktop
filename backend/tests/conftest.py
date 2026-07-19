@@ -68,6 +68,7 @@ def test_state(tmp_path: Path, fake_services: FakeServices):
         http=fake_services.http,
         gpu_cleaner=fake_services.gpu_cleaner,
         model_downloader=fake_services.model_downloader,
+        lora_catalog_provider=fake_services.lora_catalog_provider,
         gpu_info=fake_services.gpu_info,
         video_processor=fake_services.video_processor,
         text_encoder=fake_services.text_encoder,
@@ -136,6 +137,23 @@ def create_fake_model_files(test_state):
             zit_dir = _test_model_path(test_state, IMG_GEN_MODEL_CP_ID)
             zit_dir.mkdir(parents=True, exist_ok=True)
             (zit_dir / "model.safetensors").write_bytes(b"\x00" * 1024)
+
+    return _create
+
+
+@pytest.fixture
+def create_fake_lora(test_state):
+    """Write a fake LoRA file under the models dir and return its resolved path.
+
+    Refs are now contained to models_dir + must exist (resolve_lora_ref), so tests
+    that forward LoRAs need a real on-disk file rather than an arbitrary path.
+    """
+    def _create(name: str = "style.safetensors") -> str:
+        loras_dir = test_state.config.default_models_dir / "loras"
+        loras_dir.mkdir(parents=True, exist_ok=True)
+        path = loras_dir / name
+        path.write_bytes(b"\x00" * 1024)
+        return str(path.resolve())
 
     return _create
 

@@ -29,3 +29,6 @@ class GpuInfo(Protocol):
 
     def get_vram_total_gb(self) -> int | None:
         ...
+
+    def get_available_ram_gb(self) -> int | None:
+        ...

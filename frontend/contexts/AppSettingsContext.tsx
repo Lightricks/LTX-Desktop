@@ -4,6 +4,7 @@ import { ApiClient, type ApiSuccessOf } from '../lib/api-client'
 
 export interface AppSettings {
   useTorchCompile: boolean
+  diffusionStageCacheEnabled: boolean
   hasLtxApiKey: boolean
   userPrefersLtxApiVideoGenerations: boolean
   hasFalApiKey: boolean
@@ -19,6 +20,7 @@ export interface AppSettings {
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   useTorchCompile: false,
+  diffusionStageCacheEnabled: false,
   hasLtxApiKey: false,
   userPrefersLtxApiVideoGenerations: false,
   hasFalApiKey: false,
@@ -45,6 +47,7 @@ interface AppSettingsContextValue {
   saveGeminiApiKey: (value: string) => Promise<void>
   forceApiGenerations: boolean
   shouldVideoGenerateWithLtxApi: boolean
+  cudaAvailable: boolean
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
@@ -64,6 +67,7 @@ function toBackendProcessStatus(value: unknown): BackendProcessStatus | null {
 function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
   return {
     useTorchCompile: data.useTorchCompile ?? DEFAULT_APP_SETTINGS.useTorchCompile,
+    diffusionStageCacheEnabled: data.diffusionStageCacheEnabled ?? DEFAULT_APP_SETTINGS.diffusionStageCacheEnabled,
     hasLtxApiKey: data.hasLtxApiKey ?? DEFAULT_APP_SETTINGS.hasLtxApiKey,
     userPrefersLtxApiVideoGenerations: data.userPrefersLtxApiVideoGenerations ?? DEFAULT_APP_SETTINGS.userPrefersLtxApiVideoGenerations,
     hasFalApiKey: data.hasFalApiKey ?? DEFAULT_APP_SETTINGS.hasFalApiKey,
@@ -79,12 +83,14 @@ function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
 }
 
 type RuntimePolicyPayload = ApiSuccessOf<'getRuntimePolicy'>
+type GpuInfoPayload = ApiSuccessOf<'getGpuInfo'>
 
 export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS)
   const [isLoaded, setIsLoaded] = useState(false)
   const [runtimePolicyLoaded, setRuntimePolicyLoaded] = useState(false)
   const [forceApiGenerations, setForceApiGenerations] = useState(true)
+  const [cudaAvailable, setCudaAvailable] = useState(false)
   const [backendProcessStatus, setBackendProcessStatus] = useState<BackendProcessStatus | null>(null)
 
   useEffect(() => {
@@ -119,6 +125,26 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     }
 
     void fetchRuntimePolicy()
+
+    return () => {
+      cancelled = true
+    }
+  }, [backendProcessStatus])
+
+  useEffect(() => {
+    if (backendProcessStatus !== 'alive') return
+
+    let cancelled = false
+
+    const fetchGpuInfo = async () => {
+      const result = await ApiClient.getGpuInfo()
+      if (!result.ok || cancelled) return
+
+      const payload = result.data as GpuInfoPayload
+      setCudaAvailable(Boolean(payload.cuda_available))
+    }
+
+    void fetchGpuInfo()
 
     return () => {
       cancelled = true
@@ -250,8 +276,9 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       saveGeminiApiKey,
       forceApiGenerations,
       shouldVideoGenerateWithLtxApi,
+      cudaAvailable,
     }),
-    [forceApiGenerations, isLoaded, refreshSettings, runtimePolicyLoaded, saveFalApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, updateSettings],
+    [cudaAvailable, forceApiGenerations, isLoaded, refreshSettings, runtimePolicyLoaded, saveFalApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, updateSettings],
   )
 
   return <AppSettingsContext.Provider value={contextValue}>{children}</AppSettingsContext.Provider>

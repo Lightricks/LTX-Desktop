@@ -1,6 +1,7 @@
-import { AlertCircle, Check, Download, Film, Folder, Info, KeyRound, Settings, Sparkles, X, Zap } from 'lucide-react'
+import { AlertCircle, Check, Download, Film, Folder, HardDrive, Info, KeyRound, Settings, Sparkles, X, Zap } from 'lucide-react'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from './ui/button'
+import { BaseModelSection } from './settings/BaseModelSection'
 import { useAppSettings, type AppSettings } from '../contexts/AppSettingsContext'
 import { ApiClient, type ApiSuccessOf } from '../lib/api-client'
 import { logger } from '../lib/logger'
@@ -14,10 +15,58 @@ interface SettingsModalProps {
   initialTab?: TabId
 }
 
-type TabId = 'general' | 'apiKeys' | 'promptEnhancer' | 'about'
+type TabId = 'general' | 'models' | 'apiKeys' | 'promptEnhancer' | 'about'
+
+/** A labelled on/off setting row: bolt icon, title, description, switch, and a status pill.
+ *  Shared by the CUDA-only Torch Compile + Diffusion Stage Cache toggles. */
+function SettingToggle({ title, description, enabled, onToggle, statusOn, statusOff }: {
+  title: string
+  description: React.ReactNode
+  enabled: boolean
+  onToggle: () => void
+  statusOn: string
+  statusOff: string
+}) {
+  return (
+    <div className="space-y-3 pt-4 border-t border-zinc-800">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <svg className="h-4 w-4 text-orange-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+            <label className="text-sm font-medium text-white">{title}</label>
+          </div>
+          <p className="text-xs text-zinc-500 leading-relaxed">{description}</p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onToggle}
+          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+            enabled ? 'bg-orange-500' : 'bg-zinc-700'
+          }`}
+        >
+          <span
+            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+              enabled ? 'translate-x-5' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+
+      <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
+        enabled ? 'bg-orange-500/10 text-orange-400' : 'bg-zinc-800 text-zinc-500'
+      }`}>
+        <div className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-orange-400' : 'bg-zinc-600'}`} />
+        {enabled ? statusOn : statusOff}
+      </div>
+    </div>
+  )
+}
 
 export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
-  const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, forceApiGenerations } = useAppSettings()
+  const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, forceApiGenerations, cudaAvailable } = useAppSettings()
   const onSettingsChange = (next: AppSettings) => updateSettings(next)
   const [activeTab, setActiveTab] = useState<TabId>('general')
   const [ltxApiKeyInput, setLtxApiKeyInput] = useState('')
@@ -56,6 +105,14 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       setActiveTab(initialTab)
     }
   }, [isOpen, initialTab])
+
+  // The Models tab is hidden in force-API mode; don't let the selection get stuck there
+  // (e.g. via initialTab or a stale value).
+  useEffect(() => {
+    if (forceApiGenerations && activeTab === 'models') {
+      setActiveTab('general')
+    }
+  }, [forceApiGenerations, activeTab])
 
   useEffect(() => {
     if (!isOpen || activeTab !== 'apiKeys' || !focusLtxApiKeyInputOnTabChange) return
@@ -162,6 +219,13 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     })
   }
 
+  const handleToggleDiffusionStageCache = () => {
+    onSettingsChange({
+      ...settings,
+      diffusionStageCacheEnabled: !settings.diffusionStageCacheEnabled,
+    })
+  }
+
   const handleToggleLocalEncoder = () => {
     onSettingsChange({
       ...settings,
@@ -248,6 +312,9 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
 
   const tabs = [
     { id: 'general' as TabId, label: 'General', icon: Settings },
+    // The Models tab is local-model management — irrelevant (and non-functional) when all
+    // generation is forced through the API, so hide it in that mode.
+    ...(!forceApiGenerations ? [{ id: 'models' as TabId, label: 'Models', icon: HardDrive }] : []),
     { id: 'apiKeys' as TabId, label: 'API Keys', icon: KeyRound },
     { id: 'promptEnhancer' as TabId, label: 'Prompt Enhancer', icon: Sparkles },
     { id: 'about' as TabId, label: 'About', icon: Info },
@@ -262,7 +329,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       />
 
       {/* Modal */}
-      <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-xl mx-4">
+      <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-2xl mx-4">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
           <div className="flex items-center gap-2">
@@ -287,7 +354,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+                className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors ${
                   activeTab === tab.id
                     ? 'text-white border-b-2 border-blue-500 -mb-px'
                     : 'text-zinc-400 hover:text-white'
@@ -547,52 +614,32 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               </div>
               )}
 
-              {/* Torch Compile Setting */}
-              <div className="space-y-3 pt-4 border-t border-zinc-800">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <svg className="h-4 w-4 text-orange-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                      </svg>
-                      <label className="text-sm font-medium text-white">
-                        Torch Compile
-                      </label>
-                    </div>
-                    <p className="text-xs text-zinc-500 leading-relaxed">
-                      Compiles the model for optimized inference. <span className="text-orange-400">Experimental:</span> First
-                      generation can take 5-10+ minutes for compilation. Subsequent generations may be
-                      20-40% faster. Requires app restart to take effect.
-                    </p>
-                  </div>
+              {/* Torch Compile + Diffusion Stage Cache -- CUDA only, no-op on MPS/CPU */}
+              {cudaAvailable && (
+                <SettingToggle
+                  title="Torch Compile"
+                  description={<>Compiles the model for optimized inference. <span className="text-orange-400">Experimental:</span> First
+                    generation can take 5-10+ minutes for compilation. Subsequent generations may be
+                    20-40% faster. Requires app restart to take effect.</>}
+                  enabled={settings.useTorchCompile}
+                  onToggle={handleToggleTorchCompile}
+                  statusOn="Optimized inference (recommended)"
+                  statusOff="Standard inference"
+                />
+              )}
 
-                  {/* Toggle Switch */}
-                  <button
-                    onClick={handleToggleTorchCompile}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      settings.useTorchCompile ? 'bg-orange-500' : 'bg-zinc-700'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        settings.useTorchCompile ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                {/* Status indicator */}
-                <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
-                  settings.useTorchCompile
-                    ? 'bg-orange-500/10 text-orange-400'
-                    : 'bg-zinc-800 text-zinc-500'
-                }`}>
-                  <div className={`w-1.5 h-1.5 rounded-full ${
-                    settings.useTorchCompile ? 'bg-orange-400' : 'bg-zinc-600'
-                  }`} />
-                  {settings.useTorchCompile ? 'Optimized inference (recommended)' : 'Standard inference'}
-                </div>
-              </div>
+              {cudaAvailable && (
+                <SettingToggle
+                  title="Diffusion Stage Cache"
+                  description={<>Reuses an already-built transformer across stage 1/stage 2 within one generation
+                    instead of reloading it from disk twice. <span className="text-orange-400">Experimental:</span> only
+                    applies on high-VRAM cards (32GB+); no effect otherwise.</>}
+                  enabled={settings.diffusionStageCacheEnabled}
+                  onToggle={handleToggleDiffusionStageCache}
+                  statusOn="Skipping redundant transformer reloads"
+                  statusOff="Standard behavior"
+                />
+              )}
 
               {/* Seed Lock Setting */}
               <div className="space-y-3 pt-4 border-t border-zinc-800">
@@ -704,6 +751,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               </div>
             </>
           )}
+
+          {activeTab === 'models' && !forceApiGenerations && <BaseModelSection />}
 
           {activeTab === 'apiKeys' && (
             <>
@@ -896,7 +945,6 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               </div>
 
               {/* HuggingFace Account */}
-              {window.electronAPI.hfGatingEnabled && (
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <Download className="h-4 w-4 text-orange-400" />
@@ -944,7 +992,6 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   )}
                 </div>
               </div>
-              )}
             </>
           )}
 

@@ -12,6 +12,7 @@ from services.services_utils import AudioOrNone, TilingConfigType, device_suppor
 
 if TYPE_CHECKING:
     from ltx_core.components.guiders import MultiModalGuiderParams
+    from ltx_pipelines.utils.types import OffloadMode
 
 
 def default_tiling_config() -> TilingConfigType:
@@ -30,6 +31,31 @@ def video_chunks_number(num_frames: int, tiling_config: TilingConfigType | None)
     from ltx_core.model.video_vae import get_video_chunks_number
 
     return int(get_video_chunks_number(num_frames, tiling_config))
+
+
+def offload_mode_for_prefetch_count(streaming_prefetch_count: int | None, device: torch.device) -> OffloadMode:
+    """Translate the desktop's streaming_prefetch_count knob to ltx_pipelines' OffloadMode.
+
+    ltx_pipelines moved weight streaming from a per-call prefetch-count int to a
+    construction-time OffloadMode enum (NONE/CPU/DISK). Desktop's runtime policy
+    (runtime_config/runtime_policy.py) distinguishes fully resident (None) vs streaming
+    (an int); which *kind* of streaming depends on the device's memory model:
+
+    - CUDA: system RAM is separate from VRAM, so OffloadMode.CPU pins the blocks in host
+      RAM and streams them to the smaller VRAM — the fast streaming path.
+    - MPS (Apple Silicon): CPU-pinned weights live in the *same* unified RAM as the GPU,
+      so OffloadMode.CPU (which pins every block, ~46 GB for the bf16 transformer) OOMs.
+      OffloadMode.DISK mmaps blocks from the checkpoint through a small pinned buffer
+      (~5 GB), the only memory-safe streaming path on unified memory. This is the "mmap
+      streaming" the upstream MPS-support work validated on an M4 Pro.
+    """
+    from ltx_pipelines.utils.types import OffloadMode
+
+    if streaming_prefetch_count is None:
+        return OffloadMode.NONE
+    if device.type == "mps":
+        return OffloadMode.DISK
+    return OffloadMode.CPU
 
 
 def encode_video_output(
@@ -60,7 +86,7 @@ class DistilledNativePipeline:
         device: torch.device | None = None,
         fp8transformer: bool = False,
     ) -> None:
-        from ltx_core.quantization import QuantizationPolicy
+        from ltx_core.quantization.fp8_cast import build_policy as build_fp8_cast_policy
         from ltx_pipelines.utils.blocks import (
             AudioDecoder,
             DiffusionStage,
@@ -82,11 +108,11 @@ class DistilledNativePipeline:
         self.image_conditioner = ImageConditioner(
             checkpoint_path, self.dtype, device,
         )
-        self.stage = DiffusionStage(
+        self.stage = DiffusionStage.from_checkpoint(  # type: ignore[reportUnknownMemberType]
             checkpoint_path,
             self.dtype,
             device,
-            quantization=QuantizationPolicy.fp8_cast() if fp8transformer and device_supports_fp8(device) else None,
+            quantization=build_fp8_cast_policy(checkpoint_path) if fp8transformer and device_supports_fp8(device) else None,
         )
         self.video_decoder = VideoDecoder(checkpoint_path, self.dtype, device)
         self.audio_decoder = AudioDecoder(checkpoint_path, self.dtype, device)

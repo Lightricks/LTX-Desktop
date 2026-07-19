@@ -8,8 +8,9 @@ from typing import Protocol
 from services.services_utils import JSONValue, RequestData
 
 
-class HttpTimeoutError(Exception):
-    """Raised by HTTP service implementations when a request times out."""
+class HttpTransportError(Exception):
+    """Raised by HTTP service implementations on a transport-level failure (timeout,
+    connection reset, or broken chunked stream) — the request didn't complete."""
 
 
 class HttpResponseLike(Protocol):

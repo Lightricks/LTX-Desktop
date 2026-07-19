@@ -6,15 +6,21 @@ from fastapi import APIRouter, Depends, Query
 
 from _routes._errors import HTTPError
 from api_types import (
+    ActiveDownloadResponse,
     CheckModelAccessRequest,
     CheckModelAccessResponse,
+    DescribeCheckpointsRequest,
+    DescribeCheckpointsResponse,
     DownloadProgressResponse,
     ImageGenRecommendationResponse,
+    InstalledModelsResponse,
     LtxIcLoraRecommendationResponse,
+    LtxModelVersionsResponse,
     LtxRecommendationResponse,
     ModelDeleteRequest,
     ModelDownloadRequest,
     ModelDownloadStartResponse,
+    SetActiveLtxModelRequest,
     StatusResponse,
     TextEncoderRecommendationResponse,
 )
@@ -22,6 +28,16 @@ from app_handler import AppHandler
 from state import get_state_service
 
 router = APIRouter(prefix="/api", tags=["models"])
+
+
+@router.get("/models", response_model=InstalledModelsResponse)
+def route_list_models(
+    model_type: str | None = Query(default=None, alias="type"),
+    handler: AppHandler = Depends(get_state_service),
+) -> InstalledModelsResponse:
+    """Return installed model files. ?type=lora -> regular LoRAs only;
+    ?type=ic-lora -> IC-LoRAs only; no type -> all installed models."""
+    return handler.models.list_installed_models(model_type=model_type)
 
 
 @router.get("/models/ltx-recommendation", response_model=LtxRecommendationResponse)
@@ -46,6 +62,19 @@ def route_text_encoder_recommendation(
     handler: AppHandler = Depends(get_state_service),
 ) -> TextEncoderRecommendationResponse:
     return handler.models.get_text_encoder_recommendation()
+
+
+@router.post("/models/describe", response_model=DescribeCheckpointsResponse)
+def route_describe_checkpoints(
+    req: DescribeCheckpointsRequest,
+    handler: AppHandler = Depends(get_state_service),
+) -> DescribeCheckpointsResponse:
+    return handler.models.describe_checkpoints(req.cp_ids)
+
+
+@router.get("/models/download/active", response_model=ActiveDownloadResponse)
+def route_active_download(handler: AppHandler = Depends(get_state_service)) -> ActiveDownloadResponse:
+    return handler.downloads.get_active_download()
 
 
 @router.get("/models/download/progress", response_model=DownloadProgressResponse)
@@ -81,6 +110,20 @@ def route_model_download(
         message="Model download started",
         sessionId=session_id,
     )
+
+
+@router.get("/models/ltx-versions", response_model=LtxModelVersionsResponse)
+def route_ltx_versions(handler: AppHandler = Depends(get_state_service)) -> LtxModelVersionsResponse:
+    return handler.models.list_ltx_versions()
+
+
+@router.post("/models/active-ltx-model", response_model=StatusResponse)
+def route_set_active_ltx_model(
+    req: SetActiveLtxModelRequest,
+    handler: AppHandler = Depends(get_state_service),
+) -> StatusResponse:
+    handler.models.set_active_ltx_model(req.model_id)
+    return StatusResponse(status="ok")
 
 
 @router.delete("/models/delete", response_model=StatusResponse)

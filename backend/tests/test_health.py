@@ -90,3 +90,15 @@ class TestGpuInfo:
         assert data["gpu_available"] is True
         assert data["gpu_name"] == "Apple Silicon (MPS)"
         assert data["vram_gb"] == 36
+
+
+class TestMpsMemory:
+    def test_returns_typed_snapshot(self, client):
+        """Contract-shape check that holds on any platform: 200 + a bool `available`,
+        and the mib fields are ints when available / null when not (off MPS)."""
+        r = client.get("/api/gpu-info/mps")
+        assert r.status_code == 200
+        data = r.json()
+        assert isinstance(data["available"], bool)
+        for key in ("allocated_mib", "driver_mib", "recommended_max_mib"):
+            assert data[key] is None or isinstance(data[key], int)

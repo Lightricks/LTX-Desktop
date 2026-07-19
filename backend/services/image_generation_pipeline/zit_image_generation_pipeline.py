@@ -37,10 +37,15 @@ class ZitImageGenerationPipeline:
             self.to(device)
 
     def _resolve_generator_device(self) -> str:
-        if self._cpu_offload_active:
-            return "cuda"
+        # The configured runtime device is authoritative. With enable_model_cpu_offload()
+        # the pipeline's _execution_device can read as "cpu", but the generator must live
+        # on the actual compute device. This previously returned "cuda" whenever offload
+        # was active — but offload is enabled on MPS too, so on a Mac it built a CUDA
+        # generator and failed ("Cannot get CUDA generator without ATen_cuda library").
         if self._device is not None:
             return self._device
+        if self._cpu_offload_active:
+            return "cuda"
 
         execution_device = getattr(self.pipeline, "_execution_device", None)
         return get_device_type(execution_device)
