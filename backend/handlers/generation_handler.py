@@ -7,6 +7,7 @@ from threading import RLock
 from typing import TYPE_CHECKING, Literal
 
 from api_types import (
+    ArtifactRef,
     CancelCancellingResponse,
     CancelNoActiveGenerationResponse,
     CancelResponse,
@@ -181,13 +182,21 @@ class GenerationHandler(StateHandlerBase):
                 return CancelNoActiveGenerationResponse(status="no_active_generation")
 
     @with_state_lock
-    def complete_generation(self, result: str | list[str]) -> None:
+    def complete_generation(
+        self,
+        result: str | list[str],
+        artifacts: ArtifactRef | list[ArtifactRef] | None = None,
+    ) -> None:
         running_generation = self._running_generation()
         if running_generation is None:
             return
 
         slot, running = running_generation
-        self._set_generation_state(slot, GenerationComplete(id=running.id, result=result))
+        artifact_list = [] if artifacts is None else artifacts if isinstance(artifacts, list) else [artifacts]
+        self._set_generation_state(
+            slot,
+            GenerationComplete(id=running.id, result=result, artifacts=artifact_list),
+        )
 
     @with_state_lock
     def fail_generation(self, error: str) -> None:
@@ -215,30 +224,37 @@ class GenerationHandler(StateHandlerBase):
                     progress=progress.progress,
                     currentStep=progress.current_step,
                     totalSteps=progress.total_steps,
+                    generationId=gen.id,
                 )
-            case GenerationComplete():
+            case GenerationComplete(id=generation_id, artifacts=artifacts):
                 return GenerationProgressResponse(
                     status="complete",
                     phase="complete",
                     progress=100,
                     currentStep=0,
                     totalSteps=0,
+                    generationId=generation_id,
+                    artifact=artifacts[0] if len(artifacts) == 1 else None,
+                    artifacts=artifacts,
                 )
-            case GenerationCancelled():
+            case GenerationCancelled(id=generation_id):
                 return GenerationProgressResponse(
                     status="cancelled",
                     phase="cancelled",
                     progress=0,
                     currentStep=0,
                     totalSteps=0,
+                    generationId=generation_id,
                 )
-            case GenerationError():
+            case GenerationError(id=generation_id, error=error):
                 return GenerationProgressResponse(
                     status="error",
                     phase="error",
                     progress=0,
                     currentStep=0,
                     totalSteps=0,
+                    generationId=generation_id,
+                    error=error,
                 )
             case _:
                 return GenerationProgressResponse(

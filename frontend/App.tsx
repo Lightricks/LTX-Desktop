@@ -17,6 +17,7 @@ import { SettingsModal, type SettingsTabId } from './components/SettingsModal'
 import { LogViewer } from './components/LogViewer'
 import { ApiGatewayModal, type ApiGatewaySection } from './components/ApiGatewayModal'
 import { Button } from './components/ui/button'
+import { BackendConnectionPanel } from './components/BackendConnectionPanel'
 
 type SetupState = 'loading' | { needsSetup: boolean; needsLicense: boolean }
 type RequiredModelsGateState = 'checking' | 'missing' | 'ready'
@@ -25,10 +26,17 @@ type LtxUpgradeRecommendation = Extract<LtxRecommendation, { status: 'upgrade' }
 
 function AppContent() {
   const { currentView } = useView()
-  const { connected, processStatus, isLoading: backendLoading } = useBackend()
+  const {
+    connected,
+    processStatus,
+    isLoading: backendLoading,
+    connectionMode,
+    message: backendMessage,
+  } = useBackend()
   const { settings, saveLtxApiKey, saveFalApiKey, forceApiGenerations, isLoaded, runtimePolicyLoaded } = useAppSettings()
 
   const [pythonReady, setPythonReady] = useState<boolean | null>(null)
+  const [pythonSetupSelected, setPythonSetupSelected] = useState(false)
   const [backendStarted, setBackendStarted] = useState(false)
   const [setupState, setSetupState] = useState<SetupState>('loading')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -53,8 +61,9 @@ function AppContent() {
 
   const [apiGatewayRequest, setApiGatewayRequest] = useState<ApiGatewayRequest | null>(null)
 
-  const isBackendRestarting = processStatus === 'restarting'
-  const isBackendDead = processStatus === 'dead'
+  const isBackendRestarting = processStatus === 'restarting' && connectionMode !== 'external'
+  const isBackendDead = processStatus === 'dead' && connectionMode !== 'external'
+  const isExternalBackendUnreachable = processStatus === 'unreachable' && connectionMode === 'external'
   const waitingForRuntimePolicy = processStatus === 'alive' && !runtimePolicyLoaded
 
   useEffect(() => {
@@ -86,6 +95,11 @@ function AppContent() {
   useEffect(() => {
     const check = async () => {
       try {
+        const connection = await window.electronAPI.getBackendConnectionConfig()
+        if (connection.mode === 'external') {
+          setPythonReady(true)
+          return
+        }
         const result = await window.electronAPI.checkPythonReady()
         setPythonReady(result.ready)
       } catch (e) {
@@ -101,9 +115,9 @@ function AppContent() {
     setBackendStarted(true)
     const start = async () => {
       try {
-        logger.info('Starting Python backend...')
-        await window.electronAPI.startPythonBackend()
-        logger.info('Python backend started successfully')
+        logger.info('Starting backend connection...')
+        await window.electronAPI.startBackendConnection()
+        logger.info('Backend connection started successfully')
       } catch (e) {
         logger.error(`Failed to start Python backend: ${e}`)
       }
@@ -342,6 +356,30 @@ function AppContent() {
     </div>
   ) : null
 
+  const externalBackendOverlay = isExternalBackendUnreachable ? (
+    <div className="fixed inset-0 z-[70] overflow-auto bg-black/70 p-6 backdrop-blur-sm">
+      <div className="mx-auto flex min-h-full w-full max-w-2xl items-center justify-center">
+        <div className="w-full space-y-5 rounded-xl border border-zinc-700 bg-zinc-900/95 p-6 shadow-2xl">
+          <div className="text-center">
+            <AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-400" />
+            <h2 className="text-xl font-semibold text-foreground">Remote backend disconnected</h2>
+            <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
+              {backendMessage || 'Check that the Atom backend and SSH tunnel are running. Active work remains open while LTX Desktop reconnects.'}
+            </p>
+            <Button
+              variant="outline"
+              className="mt-4 border-zinc-700"
+              onClick={() => { void window.electronAPI.retryBackendConnection() }}
+            >
+              Retry current connection
+            </Button>
+          </div>
+          <BackendConnectionPanel />
+        </div>
+      </div>
+    </div>
+  ) : null
+
   const showGlobalControls = currentView !== 'home' && connected && setupState !== 'loading' && !setupState.needsSetup
   const shouldBlockUntilSettingsLoaded = forceApiGenerations && !isLoaded
   const shouldShowForcedFirstRunUpsell = isForcedFirstRun && isLoaded && !settings.hasLtxApiKey
@@ -424,7 +462,27 @@ function AppContent() {
   }
 
   if (pythonReady === false) {
-    return <PythonSetup onReady={() => setPythonReady(true)} />
+    if (pythonSetupSelected) {
+      return <PythonSetup onReady={() => setPythonReady(true)} />
+    }
+    return (
+      <div className="h-screen overflow-auto bg-background p-6">
+        <div className="mx-auto flex min-h-full w-full max-w-2xl items-center justify-center">
+          <div className="w-full space-y-5">
+            <div className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-5 text-center">
+              <h2 className="text-xl font-semibold text-white">Choose where inference runs</h2>
+              <p className="mx-auto mt-2 max-w-lg text-sm text-zinc-400">
+                Install the managed runtime for this computer, or connect directly to a standalone backend on another machine.
+              </p>
+              <Button className="mt-4" onClick={() => setPythonSetupSelected(true)}>
+                Install local runtime
+              </Button>
+            </div>
+            <BackendConnectionPanel />
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (isBackendDead) {
@@ -465,6 +523,7 @@ function AppContent() {
           </div>
         </div>
         {restartingOverlay}
+        {externalBackendOverlay}
       </div>
     )
   }
@@ -596,6 +655,7 @@ function AppContent() {
       )}
 
       {restartingOverlay}
+      {externalBackendOverlay}
     </div>
   )
 }

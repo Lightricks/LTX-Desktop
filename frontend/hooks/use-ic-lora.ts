@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { ApiClient, type ApiRequestBodyOf } from '../lib/api-client'
 import { logger } from '../lib/logger'
+import { materializeBackendOutput, prepareBackendMedia } from '../lib/backend-media'
 
 export type IcLoraConditioningType = 'canny' | 'depth'
 
@@ -22,7 +23,7 @@ interface UseIcLoraState {
   result: IcLoraResult | null
 }
 
-type GenerateIcLoraBody = ApiRequestBodyOf<'generateIcLora'>
+type GenerateIcLoraBody = NonNullable<ApiRequestBodyOf<'generateIcLora'>>
 
 export function useIcLora() {
   const [state, setState] = useState<UseIcLoraState>({
@@ -42,12 +43,32 @@ export function useIcLora() {
       result: null,
     })
 
-    const result = await ApiClient.generateIcLora({
-      video_path: params.videoPath,
+    let preparedVideo
+    try {
+      setState(prev => ({ ...prev, status: 'Uploading source video' }))
+      preparedVideo = await prepareBackendMedia(params.videoPath, 'video')
+    } catch (error) {
+      setState({
+        isGenerating: false,
+        status: '',
+        error: error instanceof Error ? error.message : String(error),
+        result: null,
+      })
+      return
+    }
+    const request: GenerateIcLoraBody = {
       conditioning_type: params.conditioningType,
       conditioning_strength: params.conditioningStrength,
       prompt: params.prompt,
-    } as GenerateIcLoraBody)
+      num_inference_steps: 30,
+      cfg_guidance_scale: 1,
+      negative_prompt: '',
+    }
+    if (preparedVideo?.path) request.video_path = preparedVideo.path
+    if (preparedVideo?.mediaId) request.video_media_id = preparedVideo.mediaId
+    setState(prev => ({ ...prev, status: 'Generating' }))
+
+    const result = await ApiClient.generateIcLora(request)
     if (!result.ok) {
       logger.error(`IC-LoRA error: ${result.error.message}`)
       setState({
@@ -71,12 +92,24 @@ export function useIcLora() {
     }
 
     if (payload.status === 'complete') {
+      let outputPath: string
+      try {
+        outputPath = await materializeBackendOutput(payload.video_path, payload.artifact)
+      } catch (error) {
+        setState({
+          isGenerating: false,
+          status: '',
+          error: error instanceof Error ? error.message : String(error),
+          result: null,
+        })
+        return
+      }
       setState({
         isGenerating: false,
         status: 'Generation complete!',
         error: null,
         result: {
-          videoPath: payload.video_path,
+          videoPath: outputPath,
         },
       })
       return

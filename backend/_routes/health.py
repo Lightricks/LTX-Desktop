@@ -29,7 +29,13 @@ def _shutdown_process() -> None:
 
 
 @router.post("/api/system/shutdown")
-def route_shutdown(background_tasks: BackgroundTasks, request: Request) -> dict[str, str]:
+def route_shutdown(
+    background_tasks: BackgroundTasks,
+    request: Request,
+    handler: AppHandler = Depends(get_state_service),
+) -> dict[str, str]:
+    if handler.config.deployment_mode == "standalone":
+        raise HTTPException(status_code=403, detail="Shutdown is disabled in standalone mode")
     client_host = request.client.host if request.client else None
     if client_host not in {"127.0.0.1", "::1", "localhost"}:
         raise HTTPException(status_code=403, detail="Forbidden")

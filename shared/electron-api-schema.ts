@@ -50,9 +50,55 @@ const logsResponse = z.object({
   error: z.string().optional(),
 })
 
+const backendConnectionMode = z.enum(['managed-local', 'external'])
+
 const backendHealthStatus = z.object({
-  status: z.enum(['alive', 'restarting', 'dead']),
+  mode: backendConnectionMode,
+  status: z.enum(['connecting', 'alive', 'restarting', 'unreachable', 'dead']),
   exitCode: z.number().nullable().optional(),
+  checkedAt: z.number(),
+  message: z.string().optional(),
+})
+
+const externalServerInfo = z.object({
+  api_version: z.number(),
+  deployment_mode: z.enum(['managed_local', 'standalone']),
+  capabilities: z.object({
+    media_ids: z.boolean(),
+    artifact_downloads: z.boolean(),
+    legacy_path_inputs: z.boolean(),
+    models_dir_editable: z.boolean(),
+  }),
+})
+
+const backendConnectionInput = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('managed-local') }),
+  z.object({
+    mode: z.literal('external'),
+    url: z.string(),
+    authToken: z.string(),
+    adminToken: z.string().optional(),
+  }),
+])
+
+const backendMediaRef = z.object({
+  media_id: z.string(),
+  media_type: z.enum(['image', 'audio', 'video']),
+  filename: z.string(),
+  content_type: z.string(),
+  size_bytes: z.number(),
+  sha256: z.string(),
+  expires_at: z.string(),
+})
+
+const backendArtifactRef = z.object({
+  artifact_id: z.string(),
+  media_type: z.enum(['image', 'audio', 'video']),
+  filename: z.string(),
+  content_type: z.string(),
+  size_bytes: z.number(),
+  sha256: z.string(),
+  expires_at: z.string(),
 })
 
 export type BackendHealthStatus = z.infer<typeof backendHealthStatus>
@@ -61,7 +107,37 @@ export const electronAPISchemas = {
   // App info
   getBackend: {
     input: z.object({}),
-    output: z.object({ url: z.string(), token: z.string() }),
+    output: z.object({
+      url: z.string(),
+      token: z.string(),
+      mode: backendConnectionMode,
+      connectionRevision: z.number(),
+    }),
+  },
+  getBackendConnectionConfig: {
+    input: z.object({}),
+    output: z.object({
+      mode: backendConnectionMode,
+      url: z.string(),
+      hasAuthToken: z.boolean(),
+      hasAdminToken: z.boolean(),
+    }),
+  },
+  testBackendConnection: {
+    input: z.object({ url: z.string(), authToken: z.string() }),
+    output: ipcResult({ serverInfo: externalServerInfo }),
+  },
+  setBackendConnection: {
+    input: backendConnectionInput,
+    output: emptyResult,
+  },
+  startBackendConnection: {
+    input: z.object({}),
+    output: z.void(),
+  },
+  retryBackendConnection: {
+    input: z.object({}),
+    output: z.void(),
   },
   getModelsPath: {
     input: z.object({}),
@@ -277,6 +353,19 @@ export const electronAPISchemas = {
     output: backendHealthStatus.nullable(),
   },
 
+  // Remote backend media transfer
+  uploadBackendMedia: {
+    input: z.object({
+      filePath: z.string(),
+      mediaType: z.enum(['image', 'audio', 'video']),
+    }),
+    output: ipcResult({ media: backendMediaRef }),
+  },
+  materializeBackendArtifact: {
+    input: z.object({ artifact: backendArtifactRef }),
+    output: ipcResult({ path: z.string() }),
+  },
+
   // Video processing
   extractVideoFrame: {
     input: z.object({ videoPath: z.string(), seekTime: z.number(), width: z.number().optional(), quality: z.number().optional() }),
@@ -292,6 +381,10 @@ export const electronAPISchemas = {
   // Models
   openModelsDirChangeDialog: {
     input: z.object({}),
+    output: ipcResult({ path: z.string() }),
+  },
+  setBackendModelsDirectory: {
+    input: z.object({ path: z.string() }),
     output: ipcResult({ path: z.string() }),
   },
 

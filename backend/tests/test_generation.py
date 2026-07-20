@@ -71,6 +71,7 @@ class TestGenerate:
                 "duration": 5,
                 "fps": 24,
                 "cameraMotion": "none",
+                "generationId": "desktop-video-job-1234",
             },
         )
 
@@ -79,6 +80,9 @@ class TestGenerate:
         assert data["status"] == "complete"
         assert data["video_path"] is not None
         assert Path(data["video_path"]).exists()
+        progress = client.get("/api/generation/progress").json()
+        assert progress["generationId"] == "desktop-video-job-1234"
+        assert progress["artifact"]["artifact_id"] == data["artifact"]["artifact_id"]
 
         pipeline = fake_services.fast_video_pipeline
         assert len(pipeline.generate_calls) == 1
@@ -1147,13 +1151,43 @@ class TestGenerationProgress:
         assert data["currentStep"] is None
         assert data["totalSteps"] is None
 
+    def test_complete_includes_generation_id_and_artifacts(self, client, test_state):
+        from api_types import ArtifactRef
+
+        artifact = ArtifactRef(
+            artifact_id="art_abcdefghijklmnopqrstuvwxyz",
+            media_type="video",
+            filename="result.mp4",
+            content_type="video/mp4",
+            size_bytes=123,
+            sha256="a" * 64,
+            expires_at="2030-01-01T00:00:00Z",
+        )
+        test_state.generation.start_api_generation("recoverable-job")
+        test_state.generation.complete_generation("/outputs/result.mp4", artifact)
+
+        response = client.get("/api/generation/progress")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "complete"
+        assert data["generationId"] == "recoverable-job"
+        assert data["artifact"] == data["artifacts"][0]
+        assert data["artifact"]["artifact_id"] == "art_abcdefghijklmnopqrstuvwxyz"
+
 
 class TestGenerateImage:
     def test_happy_path(self, client, create_fake_model_files):
         create_fake_model_files(include_zit=True)
         r = client.post(
             "/api/generate-image",
-            json={"prompt": "A cat", "width": 1024, "height": 1024, "numSteps": 4},
+            json={
+                "prompt": "A cat",
+                "width": 1024,
+                "height": 1024,
+                "numSteps": 4,
+                "generationId": "desktop-image-job-1234",
+            },
         )
 
         assert r.status_code == 200
@@ -1161,6 +1195,9 @@ class TestGenerateImage:
         assert data["status"] == "complete"
         assert len(data["image_paths"]) == 1
         assert Path(data["image_paths"][0]).exists()
+        progress = client.get("/api/generation/progress").json()
+        assert progress["generationId"] == "desktop-image-job-1234"
+        assert progress["artifacts"][0]["artifact_id"] == data["artifacts"][0]["artifact_id"]
 
     def test_dimension_clamping(self, client, fake_services, create_fake_model_files):
         create_fake_model_files(include_zit=True)

@@ -188,6 +188,7 @@ LTX Desktop collects minimal, anonymous usage analytics (app version, platform, 
 - [`INSTALLER.md`](docs/INSTALLER.md) — building installers
 - [`TELEMETRY.md`](docs/TELEMETRY.md) — telemetry and privacy
 - [`backend/architecture.md`](backend/architecture.md) — backend architecture
+- [`docs/REMOTE_BACKEND.md`](docs/REMOTE_BACKEND.md) — experimental remote/headless backend setup
 
 ## Contributing
 

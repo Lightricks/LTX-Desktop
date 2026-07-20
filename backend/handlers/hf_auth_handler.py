@@ -5,17 +5,19 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import html
 import logging
 import secrets
 import time
 from threading import RLock
 from typing import TYPE_CHECKING
 
-import requests
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from api_types import HuggingFaceAuthStatusResponse, HuggingFaceLoginResponse, HuggingFaceLogoutResponse
 from handlers.base import StateHandlerBase, with_state_lock
+from services.interfaces import HTTPClient
+from server_utils.secure_files import harden_file_permissions, secure_write_text
 from state.app_state_types import (
     AppState,
     HfAuthenticated,
@@ -55,9 +57,15 @@ class _PersistedHfToken(BaseModel):
     expires_at: float
 
 
+class _TokenExchangePayload(BaseModel):
+    access_token: str
+    expires_in: int = 28800
+
+
 class HuggingFaceAuthHandler(StateHandlerBase):
-    def __init__(self, state: AppState, lock: RLock, config: RuntimeConfig) -> None:
+    def __init__(self, state: AppState, lock: RLock, config: RuntimeConfig, http: HTTPClient) -> None:
         super().__init__(state, lock, config)
+        self._http = http
         self._token_file = config.app_data_dir / "hf_auth_token.json"
 
     # ============================================================
@@ -81,7 +89,7 @@ class HuggingFaceAuthHandler(StateHandlerBase):
 
     def _save_token_file(self, data: _PersistedHfToken) -> None:
         try:
-            self._token_file.write_text(data.model_dump_json(), encoding="utf-8")
+            secure_write_text(self._token_file, data.model_dump_json())
         except Exception:
             logger.error("Failed to write HF auth token file")
 
@@ -102,6 +110,7 @@ class HuggingFaceAuthHandler(StateHandlerBase):
             if not self._token_file.exists():
                 return
             persisted = _PersistedHfToken.model_validate_json(self._token_file.read_text(encoding="utf-8"))
+            harden_file_permissions(self._token_file)
             if persisted.expires_at <= time.time():
                 self._clear_token_file()
                 return
@@ -119,7 +128,7 @@ class HuggingFaceAuthHandler(StateHandlerBase):
     # ============================================================
 
     def _redirect_uri(self) -> str:
-        return f"http://127.0.0.1:{self.config.backend_port}/api/auth/huggingface/callback"
+        return f"{self.config.effective_public_base_url}/api/auth/huggingface/callback"
 
     @with_state_lock
     def start_login(self) -> HuggingFaceLoginResponse:
@@ -150,7 +159,7 @@ class HuggingFaceAuthHandler(StateHandlerBase):
     def handle_callback(self, code: str, state_param: str, error: str) -> str:
         """Handle the OAuth callback. Returns an HTML string for the browser."""
         if error:
-            return _ERROR_HTML_TEMPLATE.format(msg=error)
+            return _ERROR_HTML_TEMPLATE.format(msg=html.escape(error))
 
         if not code or not state_param:
             return _ERROR_HTML_TEMPLATE.format(msg="Missing code or state parameter")
@@ -178,7 +187,7 @@ class HuggingFaceAuthHandler(StateHandlerBase):
 
         # Token exchange — outside lock (network I/O).
         try:
-            resp = requests.post(
+            resp = self._http.post(
                 _HF_TOKEN_URL,
                 data={
                     "client_id": self.config.hf_oauth_client_id,
@@ -201,14 +210,18 @@ class HuggingFaceAuthHandler(StateHandlerBase):
                 self._set_hf_auth_state(HfNotAuthenticated())
             return False
 
-        data: dict[str, object] = resp.json()  # type: ignore[assignment]
-        access_token = str(data.get("access_token", ""))
-        expires_in = int(data.get("expires_in", 28800))  # type: ignore[arg-type]
+        try:
+            data = _TokenExchangePayload.model_validate(resp.json())
+        except ValidationError:
+            logger.error("HuggingFace token exchange returned an invalid payload")
+            with self._lock:
+                self._set_hf_auth_state(HfNotAuthenticated())
+            return False
 
         with self._lock:
             self._set_hf_auth_state(HfAuthenticated(
-                access_token=access_token,
-                expires_at=time.time() + expires_in,
+                access_token=data.access_token,
+                expires_at=time.time() + data.expires_in,
             ))
         return True
 

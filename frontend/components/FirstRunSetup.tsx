@@ -80,6 +80,10 @@ export function LaunchGate({
 }: LaunchGateProps) {
   const [currentStep, setCurrentStep] = useState<Step>(showLicenseStep ? 'license' : 'location')
   const [installPath, setInstallPath] = useState('')
+  const [backendConnection, setBackendConnection] = useState<{
+    mode: 'managed-local' | 'external'
+    hasAdminToken: boolean
+  }>({ mode: 'managed-local', hasAdminToken: false })
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [downloadSessionId, setDownloadSessionId] = useState<string | null>(null)
@@ -95,6 +99,12 @@ export function LaunchGate({
   const [requiredCheckpointIds, setRequiredCheckpointIds] = useState<ModelCheckpointID[]>([])
   const { hfAuthStatus, hfAuthPolling, startHuggingFaceLogin } = useHfAuth(currentStep === 'location')
   const { accessMap, allAuthorized } = useHfModelAccess(requiredCheckpointIds, hfAuthStatus)
+
+  useEffect(() => {
+    void window.electronAPI.getBackendConnectionConfig().then((config) => {
+      setBackendConnection({ mode: config.mode, hasAdminToken: config.hasAdminToken })
+    }).catch(() => {})
+  }, [])
   const { saveLtxApiKey } = useAppSettings()
   const modelAccessRef = useRef<HTMLDivElement>(null)
   const downloadQueueRef = useRef<DownloadStepSpec[]>([])
@@ -580,11 +590,14 @@ export function LaunchGate({
                   />
                   <button
                     onClick={async () => {
-                      const result = await window.electronAPI?.openModelsDirChangeDialog()
+                      const result = backendConnection.mode === 'external'
+                        ? await window.electronAPI.setBackendModelsDirectory({ path: installPath })
+                        : await window.electronAPI.openModelsDirChangeDialog()
                       if (result?.success) {
                         setInstallPath(result.path)
                       }
                     }}
+                    disabled={backendConnection.mode === 'external'}
                     style={{
                       padding: '10px 28px',
                       borderRadius: 9999,
@@ -597,7 +610,7 @@ export function LaunchGate({
                       transition: 'all 0.2s ease'
                     }}
                   >
-                    Browse
+                    {backendConnection.mode === 'external' ? 'Managed on Atom' : 'Browse'}
                   </button>
                 </div>
 

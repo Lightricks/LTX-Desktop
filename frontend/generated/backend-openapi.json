@@ -140,6 +140,79 @@
         "title": "AppSettingsPatch",
         "type": "object"
       },
+      "ArtifactRef": {
+        "properties": {
+          "artifact_id": {
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "media_type": {
+            "enum": [
+              "image",
+              "audio",
+              "video"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "media_type",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "sha256",
+          "expires_at"
+        ],
+        "title": "ArtifactRef",
+        "type": "object"
+      },
+      "Body_route_upload_media_api_media_post": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          },
+          "media_type": {
+            "enum": [
+              "image",
+              "audio",
+              "video"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "media_type"
+        ],
+        "title": "Body_route_upload_media_api_media_post",
+        "type": "object"
+      },
       "CancelCancellingResponse": {
         "properties": {
           "id": {
@@ -369,6 +442,13 @@
       },
       "GenerateImageCompleteResponse": {
         "properties": {
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactRef"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
           "image_paths": {
             "items": {
               "type": "string"
@@ -384,13 +464,28 @@
         },
         "required": [
           "status",
-          "image_paths"
+          "image_paths",
+          "artifacts"
         ],
         "title": "GenerateImageCompleteResponse",
         "type": "object"
       },
       "GenerateImageRequest": {
         "properties": {
+          "generationId": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generationid"
+          },
           "height": {
             "default": 1024,
             "minimum": 16.0,
@@ -443,6 +538,9 @@
       },
       "GenerateVideoCompleteResponse": {
         "properties": {
+          "artifact": {
+            "$ref": "#/components/schemas/ArtifactRef"
+          },
           "status": {
             "const": "complete",
             "title": "Status",
@@ -455,7 +553,8 @@
         },
         "required": [
           "status",
-          "video_path"
+          "video_path",
+          "artifact"
         ],
         "title": "GenerateVideoCompleteResponse",
         "type": "object"
@@ -499,6 +598,17 @@
             "default": false,
             "title": "Audio",
             "type": "boolean"
+          },
+          "audioMediaId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audiomediaid"
           },
           "audioPath": {
             "anyOf": [
@@ -554,6 +664,31 @@
             "title": "Fps",
             "type": "integer"
           },
+          "generationId": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generationid"
+          },
+          "imageMediaId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imagemediaid"
+          },
           "imagePath": {
             "anyOf": [
               {
@@ -605,6 +740,23 @@
       },
       "GenerationProgressResponse": {
         "properties": {
+          "artifact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArtifactRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactRef"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
           "currentStep": {
             "anyOf": [
               {
@@ -615,6 +767,28 @@
               }
             ],
             "title": "Currentstep"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "generationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generationid"
           },
           "phase": {
             "title": "Phase",
@@ -883,14 +1057,29 @@
             "title": "Frame Time",
             "type": "number"
           },
+          "video_media_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Media Id"
+          },
           "video_path": {
-            "title": "Video Path",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Path"
           }
         },
-        "required": [
-          "video_path"
-        ],
         "title": "IcLoraExtractRequest",
         "type": "object"
       },
@@ -942,6 +1131,9 @@
       },
       "IcLoraGenerateCompleteResponse": {
         "properties": {
+          "artifact": {
+            "$ref": "#/components/schemas/ArtifactRef"
+          },
           "status": {
             "const": "complete",
             "title": "Status",
@@ -954,7 +1146,8 @@
         },
         "required": [
           "status",
-          "video_path"
+          "video_path",
+          "artifact"
         ],
         "title": "IcLoraGenerateCompleteResponse",
         "type": "object"
@@ -1001,13 +1194,30 @@
             "title": "Prompt",
             "type": "string"
           },
+          "video_media_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Media Id"
+          },
           "video_path": {
-            "title": "Video Path",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Path"
           }
         },
         "required": [
-          "video_path",
           "conditioning_type",
           "prompt"
         ],
@@ -1021,9 +1231,27 @@
             "title": "Frame",
             "type": "integer"
           },
+          "media_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Id"
+          },
           "path": {
-            "title": "Path",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
           },
           "strength": {
             "default": 1.0,
@@ -1031,9 +1259,6 @@
             "type": "number"
           }
         },
-        "required": [
-          "path"
-        ],
         "title": "IcLoraImageInput",
         "type": "object"
       },
@@ -1329,6 +1554,55 @@
         "title": "LtxUpgradeRecommendationResponse",
         "type": "object"
       },
+      "MediaRef": {
+        "properties": {
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "media_id": {
+            "title": "Media Id",
+            "type": "string"
+          },
+          "media_type": {
+            "enum": [
+              "image",
+              "audio",
+              "video"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "media_id",
+          "media_type",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "sha256",
+          "expires_at"
+        ],
+        "title": "MediaRef",
+        "type": "object"
+      },
       "ModelDeleteRequest": {
         "properties": {
           "cp_ids": {
@@ -1497,13 +1771,30 @@
             "title": "Start Time",
             "type": "number"
           },
+          "video_media_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Media Id"
+          },
           "video_path": {
-            "title": "Video Path",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Path"
           }
         },
         "required": [
-          "video_path",
           "start_time",
           "duration"
         ],
@@ -1512,6 +1803,9 @@
       },
       "RetakeVideoResponse": {
         "properties": {
+          "artifact": {
+            "$ref": "#/components/schemas/ArtifactRef"
+          },
           "status": {
             "const": "complete",
             "title": "Status",
@@ -1524,7 +1818,8 @@
         },
         "required": [
           "status",
-          "video_path"
+          "video_path",
+          "artifact"
         ],
         "title": "RetakeVideoResponse",
         "type": "object"
@@ -1540,6 +1835,63 @@
           "force_api_generations"
         ],
         "title": "RuntimePolicyResponse",
+        "type": "object"
+      },
+      "ServerCapabilities": {
+        "properties": {
+          "artifact_downloads": {
+            "const": true,
+            "default": true,
+            "title": "Artifact Downloads",
+            "type": "boolean"
+          },
+          "legacy_path_inputs": {
+            "title": "Legacy Path Inputs",
+            "type": "boolean"
+          },
+          "media_ids": {
+            "const": true,
+            "default": true,
+            "title": "Media Ids",
+            "type": "boolean"
+          },
+          "models_dir_editable": {
+            "title": "Models Dir Editable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "legacy_path_inputs",
+          "models_dir_editable"
+        ],
+        "title": "ServerCapabilities",
+        "type": "object"
+      },
+      "ServerInfoResponse": {
+        "properties": {
+          "api_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Api Version",
+            "type": "integer"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/ServerCapabilities"
+          },
+          "deployment_mode": {
+            "enum": [
+              "managed_local",
+              "standalone"
+            ],
+            "title": "Deployment Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deployment_mode",
+          "capabilities"
+        ],
+        "title": "ServerInfoResponse",
         "type": "object"
       },
       "SettingsResponse": {
@@ -1634,6 +1986,17 @@
             ],
             "title": "Afterframe"
           },
+          "afterFrameMediaId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Afterframemediaid"
+          },
           "afterPrompt": {
             "default": "",
             "title": "Afterprompt",
@@ -1649,6 +2012,17 @@
               }
             ],
             "title": "Beforeframe"
+          },
+          "beforeFrameMediaId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Beforeframemediaid"
           },
           "beforePrompt": {
             "default": "",
@@ -1670,6 +2044,17 @@
               }
             ],
             "title": "Inputimage"
+          },
+          "inputImageMediaId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputimagemediaid"
           },
           "mode": {
             "default": "text-to-video",
@@ -1752,6 +2137,101 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/artifacts/{artifact_id}": {
+      "delete": {
+        "operationId": "route_delete_artifact_api_artifacts__artifact_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Delete Artifact",
+        "tags": [
+          "media"
+        ]
+      },
+      "get": {
+        "operationId": "route_download_artifact_api_artifacts__artifact_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Download Artifact",
+        "tags": [
+          "media"
+        ]
+      }
+    },
     "/api/auth/huggingface/callback": {
       "get": {
         "operationId": "route_hf_callback_api_auth_huggingface_callback_get",
@@ -2363,6 +2843,109 @@
         ]
       }
     },
+    "/api/media": {
+      "post": {
+        "operationId": "route_upload_media_api_media_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_route_upload_media_api_media_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaRef"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Upload Media",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/media/{media_id}": {
+      "delete": {
+        "operationId": "route_delete_media_api_media__media_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "title": "Media Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Delete Media",
+        "tags": [
+          "media"
+        ]
+      }
+    },
     "/api/models/check-access": {
       "post": {
         "operationId": "route_check_model_access_api_models_check_access_post",
@@ -2854,6 +3437,47 @@
         "summary": "Route Runtime Policy",
         "tags": [
           "runtime-policy"
+        ]
+      }
+    },
+    "/api/server-info": {
+      "get": {
+        "operationId": "route_server_info_api_server_info_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerInfoResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Server Info",
+        "tags": [
+          "server"
         ]
       }
     },

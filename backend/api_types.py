@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Annotated
+from datetime import datetime
 from typing import Literal, NamedTuple, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
@@ -30,6 +31,7 @@ class ImageConditioningInput(NamedTuple):
 
 
 JsonObject: TypeAlias = dict[str, object]
+MediaType: TypeAlias = Literal["image", "audio", "video"]
 VideoCameraMotion = Literal[
     "none",
     "dolly_in",
@@ -83,12 +85,49 @@ class RuntimePolicyResponse(BaseModel):
     force_api_generations: bool
 
 
+class ServerCapabilities(BaseModel):
+    media_ids: Literal[True] = True
+    artifact_downloads: Literal[True] = True
+    legacy_path_inputs: bool
+    models_dir_editable: bool
+
+
+class ServerInfoResponse(BaseModel):
+    api_version: Literal[2] = 2
+    deployment_mode: Literal["managed_local", "standalone"]
+    capabilities: ServerCapabilities
+
+
+class MediaRef(BaseModel):
+    media_id: str
+    media_type: MediaType
+    filename: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    expires_at: datetime
+
+
+class ArtifactRef(BaseModel):
+    artifact_id: str
+    media_type: MediaType
+    filename: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    expires_at: datetime
+
+
 class GenerationProgressResponse(BaseModel):
     status: Literal["idle", "running", "complete", "cancelled", "error"]
     phase: str
     progress: int
     currentStep: int | None
     totalSteps: int | None
+    generationId: str | None = None
+    artifact: ArtifactRef | None = None
+    artifacts: list[ArtifactRef] = Field(default_factory=lambda: list[ArtifactRef]())
+    error: str | None = None
 
 
 class DownloadProgressRunningResponse(BaseModel):
@@ -126,6 +165,7 @@ class SuggestGapPromptResponse(BaseModel):
 class GenerateVideoCompleteResponse(BaseModel):
     status: Literal["complete"]
     video_path: str
+    artifact: ArtifactRef
 
 
 class GenerateVideoCancelledResponse(BaseModel):
@@ -138,6 +178,7 @@ GenerateVideoResponse: TypeAlias = GenerateVideoCompleteResponse | GenerateVideo
 class GenerateImageCompleteResponse(BaseModel):
     status: Literal["complete"]
     image_paths: list[str]
+    artifacts: list[ArtifactRef]
 
 
 class GenerateImageCancelledResponse(BaseModel):
@@ -162,6 +203,7 @@ CancelResponse: TypeAlias = CancelCancellingResponse | CancelNoActiveGenerationR
 class RetakeVideoResponse(BaseModel):
     status: Literal["complete"]
     video_path: str
+    artifact: ArtifactRef
 
 
 class RetakePayloadResponse(BaseModel):
@@ -186,6 +228,7 @@ class IcLoraExtractResponse(BaseModel):
 class IcLoraGenerateCompleteResponse(BaseModel):
     status: Literal["complete"]
     video_path: str
+    artifact: ArtifactRef
 
 
 class IcLoraGenerateCancelledResponse(BaseModel):
@@ -308,6 +351,7 @@ class GenerateVideoRequest(BaseModel):
     model_config = ConfigDict(strict=True)
 
     prompt: NonEmptyPrompt
+    generationId: str | None = Field(default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     resolution: LTXVideoGenResolution = "1080p"
     model: LTXVideoGenPipeline = "fast"
     cameraMotion: VideoCameraMotion = "none"
@@ -317,13 +361,24 @@ class GenerateVideoRequest(BaseModel):
     audio: bool = False
     imagePath: str | None = None
     audioPath: str | None = None
+    imageMediaId: str | None = None
+    audioMediaId: str | None = None
     aspectRatio: Literal["16:9", "9:16"] = "16:9"
+
+    @model_validator(mode="after")
+    def _validate_media_refs(self) -> "GenerateVideoRequest":
+        if self.imagePath and self.imageMediaId:
+            raise ValueError("imagePath and imageMediaId are mutually exclusive")
+        if self.audioPath and self.audioMediaId:
+            raise ValueError("audioPath and audioMediaId are mutually exclusive")
+        return self
 
 
 class GenerateImageRequest(BaseModel):
     model_config = ConfigDict(strict=True)
 
     prompt: NonEmptyPrompt
+    generationId: str | None = Field(default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     width: int = Field(default=1024, ge=16)
     height: int = Field(default=1024, ge=16)
     numSteps: int = Field(default=4, ge=1)
@@ -364,14 +419,24 @@ class SuggestGapPromptRequest(BaseModel):
     afterPrompt: str = ""
     beforeFrame: str | None = None
     afterFrame: str | None = None
+    beforeFrameMediaId: str | None = None
+    afterFrameMediaId: str | None = None
     gapDuration: float = 5
     mode: GapPromptMode = "text-to-video"
     inputImage: str | None = None
+    inputImageMediaId: str | None = None
 
     @model_validator(mode="after")
     def _validate_input_image_mode(self) -> "SuggestGapPromptRequest":
-        if self.inputImage is not None and self.mode != "image-to-video":
+        if (self.inputImage is not None or self.inputImageMediaId is not None) and self.mode != "image-to-video":
             raise ValueError("inputImage is only valid for image-to-video mode")
+        for path_value, id_value, name in (
+            (self.beforeFrame, self.beforeFrameMediaId, "beforeFrame"),
+            (self.afterFrame, self.afterFrameMediaId, "afterFrame"),
+            (self.inputImage, self.inputImageMediaId, "inputImage"),
+        ):
+            if path_value and id_value:
+                raise ValueError(f"{name} path and media ID are mutually exclusive")
         return self
 
 
@@ -381,11 +446,18 @@ RetakeMode: TypeAlias = Literal["replace_audio_and_video", "replace_video", "rep
 class RetakeRequest(BaseModel):
     model_config = ConfigDict(strict=True)
 
-    video_path: str
+    video_path: str | None = None
+    video_media_id: str | None = None
     start_time: float
     duration: float
     prompt: str = ""
     mode: RetakeMode = "replace_audio_and_video"
+
+    @model_validator(mode="after")
+    def _validate_video_ref(self) -> "RetakeRequest":
+        if bool(self.video_path) == bool(self.video_media_id):
+            raise ValueError("exactly one of video_path or video_media_id is required")
+        return self
 
 
 ConditioningType: TypeAlias = Literal["canny", "depth"]
@@ -394,17 +466,31 @@ ConditioningType: TypeAlias = Literal["canny", "depth"]
 class IcLoraExtractRequest(BaseModel):
     model_config = ConfigDict(strict=True)
 
-    video_path: str
+    video_path: str | None = None
+    video_media_id: str | None = None
     conditioning_type: ConditioningType = "canny"
     frame_time: float = 0
+
+    @model_validator(mode="after")
+    def _validate_video_ref(self) -> "IcLoraExtractRequest":
+        if bool(self.video_path) == bool(self.video_media_id):
+            raise ValueError("exactly one of video_path or video_media_id is required")
+        return self
 
 
 class IcLoraImageInput(BaseModel):
     model_config = ConfigDict(strict=True)
 
-    path: str
+    path: str | None = None
+    media_id: str | None = None
     frame: int = 0
     strength: float = 1.0
+
+    @model_validator(mode="after")
+    def _validate_image_ref(self) -> "IcLoraImageInput":
+        if bool(self.path) == bool(self.media_id):
+            raise ValueError("exactly one of path or media_id is required")
+        return self
 
 
 def _default_ic_lora_images() -> list[IcLoraImageInput]:
@@ -413,7 +499,8 @@ def _default_ic_lora_images() -> list[IcLoraImageInput]:
 
 class IcLoraGenerateRequest(BaseModel):
     model_config = ConfigDict(strict=True)
-    video_path: str
+    video_path: str | None = None
+    video_media_id: str | None = None
     conditioning_type: ConditioningType
     prompt: NonEmptyPrompt
     conditioning_strength: float = 1.0
@@ -421,3 +508,9 @@ class IcLoraGenerateRequest(BaseModel):
     cfg_guidance_scale: float = 1.0
     negative_prompt: str = ""
     images: list[IcLoraImageInput] = Field(default_factory=_default_ic_lora_images)
+
+    @model_validator(mode="after")
+    def _validate_video_ref(self) -> "IcLoraGenerateRequest":
+        if bool(self.video_path) == bool(self.video_media_id):
+            raise ValueError("exactly one of video_path or video_media_id is required")
+        return self

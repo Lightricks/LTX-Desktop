@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, safeStorage } from 'electron'
 import fs from 'fs'
 import path from 'path'
 
@@ -6,7 +6,28 @@ export interface AppState {
   analyticsEnabled?: boolean
   installationId?: string
   projectAssetsPath?: string
+  backendConnection?: StoredBackendConnection
   [key: string]: unknown
+}
+
+export type BackendConnectionMode = 'managed-local' | 'external'
+
+interface StoredBackendConnection {
+  mode: BackendConnectionMode
+  url?: string
+  authToken?: string
+  adminToken?: string
+}
+
+export type BackendConnectionConfig =
+  | { mode: 'managed-local' }
+  | { mode: 'external'; url: string; authToken: string; adminToken?: string }
+
+export interface BackendConnectionSummary {
+  mode: BackendConnectionMode
+  url: string
+  hasAuthToken: boolean
+  hasAdminToken: boolean
 }
 
 export function getAppStatePath(): string {
@@ -27,6 +48,74 @@ export function readAppState(): AppState {
 
 export function writeAppState(state: AppState): void {
   fs.writeFileSync(getAppStatePath(), JSON.stringify(state, null, 2))
+}
+
+function encryptSecret(value: string): string {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Secure credential storage is unavailable on this system')
+  }
+  return safeStorage.encryptString(value).toString('base64')
+}
+
+function decryptSecret(value: string | undefined): string {
+  if (!value) return ''
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Secure credential storage is unavailable on this system')
+  }
+  return safeStorage.decryptString(Buffer.from(value, 'base64'))
+}
+
+export function readBackendConnectionConfig(): BackendConnectionConfig {
+  const stored = readAppState().backendConnection
+  if (!stored || stored.mode !== 'external') {
+    return { mode: 'managed-local' }
+  }
+
+  if (!stored.url || !stored.authToken) {
+    throw new Error('The saved external backend connection is incomplete')
+  }
+
+  const adminToken = decryptSecret(stored.adminToken)
+  return {
+    mode: 'external',
+    url: stored.url,
+    authToken: decryptSecret(stored.authToken),
+    ...(adminToken ? { adminToken } : {}),
+  }
+}
+
+export function getBackendConnectionSummary(): BackendConnectionSummary {
+  const stored = readAppState().backendConnection
+  if (!stored || stored.mode !== 'external') {
+    return {
+      mode: 'managed-local',
+      url: '',
+      hasAuthToken: false,
+      hasAdminToken: false,
+    }
+  }
+
+  return {
+    mode: 'external',
+    url: stored.url ?? '',
+    hasAuthToken: Boolean(stored.authToken),
+    hasAdminToken: Boolean(stored.adminToken),
+  }
+}
+
+export function writeBackendConnectionConfig(config: BackendConnectionConfig): void {
+  const state = readAppState()
+  if (config.mode === 'managed-local') {
+    state.backendConnection = { mode: 'managed-local' }
+  } else {
+    state.backendConnection = {
+      mode: 'external',
+      url: config.url,
+      authToken: encryptSecret(config.authToken),
+      ...(config.adminToken ? { adminToken: encryptSecret(config.adminToken) } : {}),
+    }
+  }
+  writeAppState(state)
 }
 
 let cachedProjectAssetsPath: string | null = null

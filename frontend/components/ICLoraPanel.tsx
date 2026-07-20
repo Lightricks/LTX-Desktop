@@ -8,6 +8,7 @@ import { logger } from '../lib/logger'
 import { pathToFileUrl } from '../lib/file-url'
 import { useHfAuth } from '../hooks/use-hf-auth'
 import { useHfModelAccess } from '../hooks/use-hf-model-access'
+import { prepareBackendMedia } from '../lib/backend-media'
 
 export type ICLoraConditioningType = 'canny' | 'depth'
 
@@ -38,6 +39,7 @@ export const CONDITIONING_TYPES: { value: ICLoraConditioningType; label: string;
 type StartModelDownloadBody = NonNullable<ApiRequestBodyOf<'startModelDownload'>>
 type ModelCheckpointID = NonNullable<StartModelDownloadBody['cp_ids']>[number]
 type DownloadProgress = ApiSuccessOf<'getModelDownloadProgress'>
+type ExtractConditioningBody = NonNullable<ApiRequestBodyOf<'extractIcLoraConditioning'>>
 
 
 export function ICLoraPanel({
@@ -186,22 +188,28 @@ export function ICLoraPanel({
     isExtractingRef.current = true
     setIsExtracting(true)
     setExtractError(null)
-    const result = await ApiClient.extractIcLoraConditioning({
-      video_path: inputVideoPath,
-      conditioning_type: conditioningType,
-      frame_time: inputTime,
-    })
-    if (!result.ok) {
-      logger.warn(`Failed to extract conditioning: ${result.error.message}`)
-      setExtractError(result.error.message)
+    try {
+      const preparedVideo = await prepareBackendMedia(inputVideoPath, 'video')
+      const request: Record<string, unknown> = {
+        conditioning_type: conditioningType,
+        frame_time: inputTime,
+      }
+      if (preparedVideo?.path) request.video_path = preparedVideo.path
+      if (preparedVideo?.mediaId) request.video_media_id = preparedVideo.mediaId
+      const result = await ApiClient.extractIcLoraConditioning(request as ExtractConditioningBody)
+      if (!result.ok) {
+        logger.warn(`Failed to extract conditioning: ${result.error.message}`)
+        setExtractError(result.error.message)
+        return
+      }
+
+      setConditioningPreview(result.data.conditioning)
+    } catch (error) {
+      setExtractError(error instanceof Error ? error.message : String(error))
+    } finally {
       isExtractingRef.current = false
       setIsExtracting(false)
-      return
     }
-
-    setConditioningPreview(result.data.conditioning)
-    isExtractingRef.current = false
-    setIsExtracting(false)
   }, [inputVideoPath, conditioningType, inputTime, icLoraReady])
 
   const extractTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)

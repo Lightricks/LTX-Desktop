@@ -4,6 +4,24 @@
  */
 
 export interface paths {
+    "/api/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Download Artifact */
+        get: operations["route_download_artifact_api_artifacts__artifact_id__get"];
+        put?: never;
+        post?: never;
+        /** Route Delete Artifact */
+        delete: operations["route_delete_artifact_api_artifacts__artifact_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/huggingface/callback": {
         parameters: {
             query?: never;
@@ -223,6 +241,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Upload Media */
+        post: operations["route_upload_media_api_media_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/media/{media_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Route Delete Media */
+        delete: operations["route_delete_media_api_media__media_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/models/check-access": {
         parameters: {
             query?: never;
@@ -393,6 +445,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/server-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Server Info */
+        get: operations["route_server_info_api_server_info_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings": {
         parameters: {
             query?: never;
@@ -493,6 +562,42 @@ export interface components {
             /** Userprefersltxapivideogenerations */
             userPrefersLtxApiVideoGenerations?: boolean | null;
         };
+        /** ArtifactRef */
+        ArtifactRef: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Content Type */
+            content_type: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Media Type
+             * @enum {string}
+             */
+            media_type: "image" | "audio" | "video";
+            /** Sha256 */
+            sha256: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** Body_route_upload_media_api_media_post */
+        Body_route_upload_media_api_media_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /**
+             * Media Type
+             * @enum {string}
+             */
+            media_type: "image" | "audio" | "video";
+        };
         /** CancelCancellingResponse */
         CancelCancellingResponse: {
             /** Id */
@@ -577,6 +682,8 @@ export interface components {
         };
         /** GenerateImageCompleteResponse */
         GenerateImageCompleteResponse: {
+            /** Artifacts */
+            artifacts: components["schemas"]["ArtifactRef"][];
             /** Image Paths */
             image_paths: string[];
             /**
@@ -587,6 +694,8 @@ export interface components {
         };
         /** GenerateImageRequest */
         GenerateImageRequest: {
+            /** Generationid */
+            generationId?: string | null;
             /**
              * Height
              * @default 1024
@@ -620,6 +729,7 @@ export interface components {
         };
         /** GenerateVideoCompleteResponse */
         GenerateVideoCompleteResponse: {
+            artifact: components["schemas"]["ArtifactRef"];
             /**
              * Status
              * @constant
@@ -648,6 +758,8 @@ export interface components {
              * @default false
              */
             audio: boolean;
+            /** Audiomediaid */
+            audioMediaId?: string | null;
             /** Audiopath */
             audioPath?: string | null;
             /**
@@ -668,6 +780,10 @@ export interface components {
              * @enum {integer}
              */
             fps: 24 | 25 | 48 | 50;
+            /** Generationid */
+            generationId?: string | null;
+            /** Imagemediaid */
+            imageMediaId?: string | null;
             /** Imagepath */
             imagePath?: string | null;
             /**
@@ -692,8 +808,15 @@ export interface components {
         };
         /** GenerationProgressResponse */
         GenerationProgressResponse: {
+            artifact?: components["schemas"]["ArtifactRef"] | null;
+            /** Artifacts */
+            artifacts?: components["schemas"]["ArtifactRef"][];
             /** Currentstep */
             currentStep: number | null;
+            /** Error */
+            error?: string | null;
+            /** Generationid */
+            generationId?: string | null;
             /** Phase */
             phase: string;
             /** Progress */
@@ -803,8 +926,10 @@ export interface components {
              * @default 0
              */
             frame_time: number;
+            /** Video Media Id */
+            video_media_id?: string | null;
             /** Video Path */
-            video_path: string;
+            video_path?: string | null;
         };
         /** IcLoraExtractResponse */
         IcLoraExtractResponse: {
@@ -830,6 +955,7 @@ export interface components {
         };
         /** IcLoraGenerateCompleteResponse */
         IcLoraGenerateCompleteResponse: {
+            artifact: components["schemas"]["ArtifactRef"];
             /**
              * Status
              * @constant
@@ -869,8 +995,10 @@ export interface components {
             num_inference_steps: number;
             /** Prompt */
             prompt: string;
+            /** Video Media Id */
+            video_media_id?: string | null;
             /** Video Path */
-            video_path: string;
+            video_path?: string | null;
         };
         /** IcLoraImageInput */
         IcLoraImageInput: {
@@ -879,8 +1007,10 @@ export interface components {
              * @default 0
              */
             frame: number;
+            /** Media Id */
+            media_id?: string | null;
             /** Path */
-            path: string;
+            path?: string | null;
             /**
              * Strength
              * @default 1
@@ -973,6 +1103,29 @@ export interface components {
             /** Upgrade Message */
             upgrade_message?: string | null;
         };
+        /** MediaRef */
+        MediaRef: {
+            /** Content Type */
+            content_type: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Filename */
+            filename: string;
+            /** Media Id */
+            media_id: string;
+            /**
+             * Media Type
+             * @enum {string}
+             */
+            media_type: "image" | "audio" | "video";
+            /** Sha256 */
+            sha256: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
         /** ModelDeleteRequest */
         ModelDeleteRequest: {
             /** Cp Ids */
@@ -1049,11 +1202,14 @@ export interface components {
             prompt: string;
             /** Start Time */
             start_time: number;
+            /** Video Media Id */
+            video_media_id?: string | null;
             /** Video Path */
-            video_path: string;
+            video_path?: string | null;
         };
         /** RetakeVideoResponse */
         RetakeVideoResponse: {
+            artifact: components["schemas"]["ArtifactRef"];
             /**
              * Status
              * @constant
@@ -1066,6 +1222,40 @@ export interface components {
         RuntimePolicyResponse: {
             /** Force Api Generations */
             force_api_generations: boolean;
+        };
+        /** ServerCapabilities */
+        ServerCapabilities: {
+            /**
+             * Artifact Downloads
+             * @default true
+             * @constant
+             */
+            artifact_downloads: true;
+            /** Legacy Path Inputs */
+            legacy_path_inputs: boolean;
+            /**
+             * Media Ids
+             * @default true
+             * @constant
+             */
+            media_ids: true;
+            /** Models Dir Editable */
+            models_dir_editable: boolean;
+        };
+        /** ServerInfoResponse */
+        ServerInfoResponse: {
+            /**
+             * Api Version
+             * @default 2
+             * @constant
+             */
+            api_version: 2;
+            capabilities: components["schemas"]["ServerCapabilities"];
+            /**
+             * Deployment Mode
+             * @enum {string}
+             */
+            deployment_mode: "managed_local" | "standalone";
         };
         /** SettingsResponse */
         SettingsResponse: {
@@ -1139,6 +1329,8 @@ export interface components {
         SuggestGapPromptRequest: {
             /** Afterframe */
             afterFrame?: string | null;
+            /** Afterframemediaid */
+            afterFrameMediaId?: string | null;
             /**
              * Afterprompt
              * @default
@@ -1146,6 +1338,8 @@ export interface components {
             afterPrompt: string;
             /** Beforeframe */
             beforeFrame?: string | null;
+            /** Beforeframemediaid */
+            beforeFrameMediaId?: string | null;
             /**
              * Beforeprompt
              * @default
@@ -1158,6 +1352,8 @@ export interface components {
             gapDuration: number;
             /** Inputimage */
             inputImage?: string | null;
+            /** Inputimagemediaid */
+            inputImageMediaId?: string | null;
             /**
              * Mode
              * @default text-to-video
@@ -1194,6 +1390,84 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    route_download_artifact_api_artifacts__artifact_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_delete_artifact_api_artifacts__artifact_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
     route_hf_callback_api_auth_huggingface_callback_get: {
         parameters: {
             query?: {
@@ -1679,6 +1953,88 @@ export interface operations {
             };
         };
     };
+    route_upload_media_api_media_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_route_upload_media_api_media_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaRef"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_delete_media_api_media__media_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
     route_check_model_access_api_models_check_access_post: {
         parameters: {
             query?: never;
@@ -2055,6 +2411,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RuntimePolicyResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_server_info_api_server_info_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerInfoResponse"];
                 };
             };
             /** @description Client Error */

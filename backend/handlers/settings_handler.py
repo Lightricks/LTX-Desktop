@@ -17,6 +17,7 @@ from handlers._settings_utils import (
 )
 from handlers.base import StateHandlerBase, with_state_lock
 from state.app_state_types import AppState
+from server_utils.secure_files import harden_file_permissions, secure_write_text
 
 if TYPE_CHECKING:
     from runtime_config.runtime_config import RuntimeConfig
@@ -41,6 +42,7 @@ class SettingsHandler(StateHandlerBase):
                     migrated,
                 )
                 loaded = AppSettings.model_validate(merged)
+                harden_file_permissions(settings_file)
                 logger.info("Settings loaded from %s", settings_file)
                 self.state.app_settings = loaded
                 return loaded
@@ -53,8 +55,7 @@ class SettingsHandler(StateHandlerBase):
     def save_settings(self) -> None:
         try:
             payload = self.get_settings_snapshot().model_dump(by_alias=False)
-            with open(self.config.settings_file, "w", encoding="utf-8") as f:
-                json.dump(payload, f, indent=2)
+            secure_write_text(self.config.settings_file, json.dumps(payload, indent=2))
         except Exception as exc:
             logger.warning("Could not save settings: %s", exc, exc_info=True)
 

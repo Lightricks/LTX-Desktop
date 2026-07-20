@@ -72,3 +72,23 @@ def test_websocket_with_token_query_param(test_state):
         )
         # The route may not exist, but auth should pass (not 401)
         assert response.status_code != 401
+
+
+def test_standalone_rejects_basic_auth(test_state):
+    test_state.config.deployment_mode = "standalone"
+    app = create_app(handler=test_state, auth_token="test-secret")
+    credentials = base64.b64encode(b":test-secret").decode()
+    with TestClient(app) as client:
+        response = client.get("/health", headers={"Authorization": f"Basic {credentials}"})
+        assert_http_error(response, status_code=401, code="HTTP_401", message="Unauthorized")
+
+
+def test_standalone_shutdown_is_disabled_even_for_loopback(test_state):
+    test_state.config.deployment_mode = "standalone"
+    app = create_app(handler=test_state, auth_token="test-secret")
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/system/shutdown",
+            headers={"Authorization": "Bearer test-secret"},
+        )
+        assert response.status_code == 403

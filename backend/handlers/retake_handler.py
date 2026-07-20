@@ -19,6 +19,7 @@ from api_types import (
 from _routes._errors import HTTPError
 from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
+from handlers.media_handler import MediaHandler
 from handlers.pipelines_handler import PipelinesHandler
 from handlers.text_handler import TextHandler
 from runtime_config.runtime_config import RuntimeConfig
@@ -38,15 +39,24 @@ class RetakeHandler(StateHandlerBase):
         generation_handler: GenerationHandler,
         pipelines_handler: PipelinesHandler,
         text_handler: TextHandler,
+        media_handler: MediaHandler,
     ) -> None:
         super().__init__(state, lock, config)
         self._ltx_api_client = ltx_api_client
         self._generation = generation_handler
         self._pipelines = pipelines_handler
         self._text = text_handler
+        self._media = media_handler
 
     def run(self, req: RetakeRequest) -> RetakeResponse:
-        video_path = req.video_path
+        resolved_video = self._media.resolve_input(
+            media_id=req.video_media_id,
+            legacy_path=req.video_path,
+            expected_type="video",
+            required=True,
+        )
+        assert resolved_video is not None
+        video_path = str(resolved_video)
         start_time = req.start_time
         duration = req.duration
         prompt = req.prompt
@@ -110,7 +120,8 @@ class RetakeHandler(StateHandlerBase):
             output = self.config.outputs_dir / f"retake_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.mp4"
             with open(output, "wb") as out:
                 out.write(result.video_bytes)
-            return RetakeVideoResponse(status="complete", video_path=str(output))
+            artifact = self._media.register_artifact(output, media_type="video")
+            return RetakeVideoResponse(status="complete", video_path=str(output), artifact=artifact)
 
         if result.result_payload is not None:
             return RetakePayloadResponse(status="complete", result=result.result_payload)
@@ -173,8 +184,13 @@ class RetakeHandler(StateHandlerBase):
                 raise RuntimeError("Generation was cancelled")
 
             self._generation.update_progress("complete", 100, 1, 1)
-            self._generation.complete_generation(str(output_path))
-            return RetakeVideoResponse(status="complete", video_path=str(output_path))
+            artifact = self._media.register_artifact(output_path, media_type="video")
+            self._generation.complete_generation(str(output_path), artifact)
+            return RetakeVideoResponse(
+                status="complete",
+                video_path=str(output_path),
+                artifact=artifact,
+            )
         except HTTPError:
             self._generation.fail_generation("Retake generation failed")
             raise

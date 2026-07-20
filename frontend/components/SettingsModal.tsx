@@ -1,4 +1,4 @@
-import { AlertCircle, Check, Download, Film, Folder, Info, KeyRound, Settings, Sparkles, X, Zap } from 'lucide-react'
+import { AlertCircle, Check, Cpu, Download, Film, Folder, Info, KeyRound, Settings, Sparkles, X, Zap } from 'lucide-react'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from './ui/button'
 import { useAppSettings, type AppSettings } from '../contexts/AppSettingsContext'
@@ -7,6 +7,7 @@ import { logger } from '../lib/logger'
 import { ApiKeyHelperRow, LtxApiKeyInput, LtxApiKeyHelperRow } from './LtxApiKeyInput'
 import { useHfAuth } from '../hooks/use-hf-auth'
 import { useHfModelAccess } from '../hooks/use-hf-model-access'
+import { BackendConnectionPanel } from './BackendConnectionPanel'
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -14,7 +15,7 @@ interface SettingsModalProps {
   initialTab?: TabId
 }
 
-type TabId = 'general' | 'apiKeys' | 'promptEnhancer' | 'about'
+type TabId = 'general' | 'compute' | 'apiKeys' | 'promptEnhancer' | 'about'
 
 export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
   const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, forceApiGenerations } = useAppSettings()
@@ -248,6 +249,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
 
   const tabs = [
     { id: 'general' as TabId, label: 'General', icon: Settings },
+    { id: 'compute' as TabId, label: 'Compute', icon: Cpu },
     { id: 'apiKeys' as TabId, label: 'API Keys', icon: KeyRound },
     { id: 'promptEnhancer' as TabId, label: 'Prompt Enhancer', icon: Sparkles },
     { id: 'about' as TabId, label: 'About', icon: Info },
@@ -302,6 +304,21 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
 
         {/* Content */}
         <div className="px-6 py-5 space-y-6 h-[60vh] overflow-y-auto">
+          {activeTab === 'compute' && (
+            <>
+              <BackendConnectionPanel compact />
+              <div className="rounded-lg border border-zinc-800 bg-zinc-800/40 p-3">
+                <div className="text-xs font-medium text-zinc-300">Models directory on the active backend</div>
+                <div className="mt-1 truncate font-mono text-[11px] text-zinc-500" title={settings.modelsDir}>
+                  {settings.modelsDir || 'Available after the backend connects'}
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-zinc-600">
+                  Standalone backends manage this path on the remote machine; a Mac folder picker cannot change it.
+                </p>
+              </div>
+            </>
+          )}
+
           {activeTab === 'general' && (
             <>
               {/* Project Assets Path */}

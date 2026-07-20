@@ -9,6 +9,13 @@ import { logger, writeLog } from './logger'
 import { getCurrentLogFilename } from './logging-management'
 import { getPythonDir } from './python-setup'
 import { getMainWindow } from './window'
+import {
+  getBackendConnectionSummary,
+  readBackendConnectionConfig,
+  writeBackendConnectionConfig,
+  type BackendConnectionConfig,
+  type BackendConnectionMode,
+} from './app-state'
 
 let pythonProcess: ChildProcess | null = null
 let isIntentionalShutdown = false
@@ -30,25 +37,39 @@ let livenessFailureCount = 0
 let backendUrl: string | null = null
 let authToken: string | null = null
 let adminToken: string | null = null
+let activeConnectionMode: BackendConnectionMode = getBackendConnectionSummary().mode
+let connectionRevision = 0
 
 export function getBackendUrl(): string | null { return backendUrl }
 export function getAuthToken(): string | null { return authToken }
 export function getAdminToken(): string | null { return adminToken }
+export function getBackendConnectionMode(): BackendConnectionMode { return activeConnectionMode }
+export function getBackendConnectionRevision(): number { return connectionRevision }
 
 type BackendOwnership = 'managed' | 'adopted' | null
 
 let backendOwnership: BackendOwnership = null
 
 export interface BackendHealthStatus {
-  status: 'alive' | 'restarting' | 'dead'
+  mode: BackendConnectionMode
+  status: 'connecting' | 'alive' | 'restarting' | 'unreachable' | 'dead'
   exitCode?: number | null
+  checkedAt: number
+  message?: string
 }
 
 let latestBackendHealthStatus: BackendHealthStatus | null = null
 
-function publishBackendHealthStatus(status: BackendHealthStatus): void {
-  latestBackendHealthStatus = status
-  getMainWindow()?.webContents.send('backend-health-status', status)
+function publishBackendHealthStatus(
+  status: Omit<BackendHealthStatus, 'mode' | 'checkedAt'> & Partial<Pick<BackendHealthStatus, 'mode' | 'checkedAt'>>,
+): void {
+  const payload: BackendHealthStatus = {
+    ...status,
+    mode: status.mode ?? activeConnectionMode,
+    checkedAt: status.checkedAt ?? Date.now(),
+  }
+  latestBackendHealthStatus = payload
+  getMainWindow()?.webContents.send('backend-health-status', payload)
 }
 
 export function getBackendHealthStatus(): BackendHealthStatus | null {
@@ -89,6 +110,88 @@ async function probeBackendHealth(timeoutMs = 1500, probeUrl?: string): Promise<
   } finally {
     clearTimeout(timeout)
   }
+}
+
+export interface ExternalServerInfo {
+  api_version: number
+  deployment_mode: 'managed_local' | 'standalone'
+  capabilities: {
+    media_ids: boolean
+    artifact_downloads: boolean
+    legacy_path_inputs: boolean
+    models_dir_editable: boolean
+  }
+}
+
+export function normalizeExternalBackendUrl(value: string): string {
+  let parsed: URL
+  try {
+    parsed = new URL(value.trim())
+  } catch {
+    throw new Error('Enter a valid backend URL')
+  }
+
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error('Backend URL must not contain credentials, query parameters, or a fragment')
+  }
+  if (parsed.pathname !== '/' && parsed.pathname !== '') {
+    throw new Error('Backend URL must not include a path')
+  }
+
+  const hostname = parsed.hostname.toLowerCase()
+  const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1'
+  if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && isLoopback)) {
+    throw new Error('Use HTTPS for remote hosts, or HTTP through a localhost SSH tunnel')
+  }
+  return parsed.origin
+}
+
+async function fetchExternalServerInfo(
+  url: string,
+  token: string,
+  timeoutMs = 5000,
+): Promise<ExternalServerInfo> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(`${url}/api/server-info`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    })
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('The backend rejected the authentication token')
+    }
+    if (!response.ok) {
+      throw new Error(`Server compatibility probe failed (HTTP ${response.status})`)
+    }
+    const payload = await response.json() as Partial<ExternalServerInfo>
+    if (
+      typeof payload.api_version !== 'number'
+      || payload.api_version < 2
+      || payload.deployment_mode !== 'standalone'
+      || !payload.capabilities?.media_ids
+      || !payload.capabilities.artifact_downloads
+    ) {
+      throw new Error('This backend does not support the remote media protocol required by LTX Desktop')
+    }
+    return payload as ExternalServerInfo
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Timed out while connecting to the backend')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+export async function testExternalBackendConnection(
+  url: string,
+  token: string,
+): Promise<ExternalServerInfo> {
+  const normalizedUrl = normalizeExternalBackendUrl(url)
+  if (!token.trim()) throw new Error('Authentication token is required')
+  return fetchExternalServerInfo(normalizedUrl, token.trim())
 }
 
 async function requestAdoptedBackendShutdown(timeoutMs = 2000): Promise<boolean> {
@@ -135,9 +238,26 @@ function startLivenessMonitor(): void {
   stopLivenessMonitor()
   livenessMonitorTimer = setInterval(() => {
     void (async () => {
-      if (!pythonProcess || backendOwnership !== 'managed' || isIntentionalShutdown) {
+      if (activeConnectionMode === 'external') {
+        const healthy = await probeBackendHealth(3000)
+        if (healthy) {
+          livenessFailureCount = 0
+          if (latestBackendHealthStatus?.status !== 'alive') {
+            publishBackendHealthStatus({ status: 'alive' })
+          }
+          return
+        }
+        livenessFailureCount += 1
+        if (livenessFailureCount >= LIVENESS_FAILURE_THRESHOLD) {
+          publishBackendHealthStatus({
+            status: 'unreachable',
+            message: 'The external backend is not responding. LTX Desktop will keep retrying.',
+          })
+        }
         return
       }
+
+      if (!pythonProcess || backendOwnership !== 'managed' || isIntentionalShutdown) return
       const healthy = await probeBackendHealth(2000)
       if (healthy) {
         livenessFailureCount = 0
@@ -156,6 +276,75 @@ function startLivenessMonitor(): void {
       }
     })()
   }, LIVENESS_POLL_INTERVAL_MS)
+}
+
+async function connectExternalBackend(): Promise<void> {
+  stopLivenessMonitor()
+  activeConnectionMode = 'external'
+  backendOwnership = null
+  isIntentionalShutdown = false
+  publishBackendHealthStatus({ status: 'connecting' })
+
+  try {
+    const config = readBackendConnectionConfig()
+    if (config.mode !== 'external') throw new Error('No external backend is configured')
+    backendUrl = normalizeExternalBackendUrl(config.url)
+    authToken = config.authToken
+    adminToken = config.adminToken ?? null
+    await fetchExternalServerInfo(backendUrl, authToken)
+    if (!await probeBackendHealth(3000)) {
+      throw new Error('The backend compatibility check passed, but its health endpoint is unavailable')
+    }
+    publishBackendHealthStatus({ status: 'alive' })
+    startLivenessMonitor()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    publishBackendHealthStatus({ status: 'unreachable', message })
+    startLivenessMonitor()
+    throw error
+  }
+}
+
+export async function startBackendConnection(): Promise<void> {
+  activeConnectionMode = getBackendConnectionSummary().mode
+  if (activeConnectionMode === 'external') {
+    await connectExternalBackend()
+    return
+  }
+  await startPythonBackend()
+}
+
+export async function configureBackendConnection(config: BackendConnectionConfig): Promise<void> {
+  if (config.mode === 'external') {
+    const normalizedUrl = normalizeExternalBackendUrl(config.url)
+    const normalizedToken = config.authToken.trim()
+    if (!normalizedToken) throw new Error('Authentication token is required')
+    await fetchExternalServerInfo(normalizedUrl, normalizedToken)
+
+    if (activeConnectionMode === 'managed-local' && pythonProcess) {
+      stopPythonBackend()
+    } else {
+      stopLivenessMonitor()
+    }
+    writeBackendConnectionConfig({
+      mode: 'external',
+      url: normalizedUrl,
+      authToken: normalizedToken,
+      ...(config.adminToken?.trim() ? { adminToken: config.adminToken.trim() } : {}),
+    })
+    activeConnectionMode = 'external'
+  } else {
+    stopLivenessMonitor()
+    writeBackendConnectionConfig({ mode: 'managed-local' })
+    activeConnectionMode = 'managed-local'
+  }
+
+  backendUrl = null
+  authToken = null
+  adminToken = null
+  backendOwnership = null
+  latestBackendHealthStatus = null
+  connectionRevision += 1
 }
 
 function startOwnershipTakeover(): void {
@@ -243,6 +432,7 @@ export function getPythonPath(): string {
 }
 
 export async function startPythonBackend(): Promise<void> {
+  activeConnectionMode = 'managed-local'
   if (startPromise) {
     return startPromise
   }
@@ -402,11 +592,13 @@ export async function startPythonBackend(): Promise<void> {
 
     pythonProcess.on('exit', async (code) => {
       logger.info(`Python backend exited with code ${code}`)
-      stopLivenessMonitor()
       pythonProcess = null
-      backendUrl = null
-      authToken = null
-      adminToken = null
+      if (activeConnectionMode === 'managed-local') {
+        stopLivenessMonitor()
+        backendUrl = null
+        authToken = null
+        adminToken = null
+      }
 
       if (!started) {
         if (isIntentionalShutdown) {
@@ -482,6 +674,11 @@ export async function startPythonBackend(): Promise<void> {
 }
 
 export function stopPythonBackend(): void {
+  if (activeConnectionMode === 'external') {
+    // The desktop client never owns, stops, or restarts an external backend.
+    stopLivenessMonitor()
+    return
+  }
   if (pythonProcess) {
     isIntentionalShutdown = true
     stopLivenessMonitor()

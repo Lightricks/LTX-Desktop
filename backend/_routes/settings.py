@@ -7,6 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, Request
 
 from _routes._admin_guard import guard_admin_permission
+from _routes._errors import HTTPError
 from state.app_settings import SettingsResponse, UpdateSettingsRequest, to_settings_response
 from api_types import StatusResponse
 from state import get_state_service
@@ -32,6 +33,8 @@ def route_post_settings(
 ) -> StatusResponse:
     patch_data = req.model_dump(exclude_unset=True)
     if "models_dir" in patch_data or "modelsDir" in patch_data:
+        if not handler.config.models_dir_editable:
+            raise HTTPError(409, "MODELS_DIR_MANAGED_BY_SERVER")
         guard_admin_permission(request)
 
     _, _after, changed_paths = handler.settings.update_settings(req)

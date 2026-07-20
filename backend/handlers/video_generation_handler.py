@@ -30,10 +30,10 @@ from api_model_specs import (
 )
 from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
+from handlers.media_handler import MediaHandler
 from handlers.pipelines_handler import PipelinesHandler
 from handlers.text_handler import TextHandler
 from server_utils.media_validation import (
-    normalize_optional_path,
     validate_audio_file,
     validate_image_file,
 )
@@ -69,6 +69,7 @@ class VideoGenerationHandler(StateHandlerBase):
         pipelines_handler: PipelinesHandler,
         text_handler: TextHandler,
         ltx_api_client: LTXAPIClient,
+        media_handler: MediaHandler,
         config: RuntimeConfig,
     ) -> None:
         super().__init__(state, lock, config)
@@ -76,11 +77,24 @@ class VideoGenerationHandler(StateHandlerBase):
         self._pipelines = pipelines_handler
         self._text = text_handler
         self._ltx_api_client = ltx_api_client
+        self._media = media_handler
 
     def get_model_specs(self) -> GenerateVideoModelsSpecsResponse:
         return build_generate_video_model_specs_response()
 
     def generate(self, req: GenerateVideoRequest) -> GenerateVideoResponse:
+        resolved_audio = self._media.resolve_input(
+            media_id=req.audioMediaId,
+            legacy_path=req.audioPath,
+            expected_type="audio",
+        )
+        resolved_image = self._media.resolve_input(
+            media_id=req.imageMediaId,
+            legacy_path=req.imagePath,
+            expected_type="image",
+        )
+        audio_path = str(resolved_audio) if resolved_audio is not None else None
+        image_path = str(resolved_image) if resolved_image is not None else None
         use_api_specs = should_video_generate_with_ltx_api(
             force_api_generations=self.config.force_api_generations,
             settings=self.state.app_settings,
@@ -90,7 +104,7 @@ class VideoGenerationHandler(StateHandlerBase):
             raise HTTPError(422, validation_error, code="INVALID_VIDEO_GENERATION_SPEC")
 
         if use_api_specs:
-            return self._generate_forced_api(req)
+            return self._generate_forced_api(req, audio_path=audio_path, image_path=image_path)
 
         if self._generation.is_generation_running():
             raise HTTPError(409, "Generation already in progress")
@@ -99,9 +113,8 @@ class VideoGenerationHandler(StateHandlerBase):
         duration = req.duration
         fps = req.fps
 
-        audio_path = normalize_optional_path(req.audioPath)
         if audio_path:
-            return self._generate_a2v(req, duration, fps, audio_path=audio_path)
+            return self._generate_a2v(req, duration, fps, audio_path=audio_path, image_path=image_path)
 
         logger.info("Resolution %s - using fast pipeline", resolution)
 
@@ -130,12 +143,11 @@ class VideoGenerationHandler(StateHandlerBase):
         num_frames = self._compute_num_frames(duration, fps)
 
         image = None
-        image_path = normalize_optional_path(req.imagePath)
         if image_path:
             image = self._prepare_image(image_path, width, height)
             logger.info("Image: %s -> %sx%s", image_path, width, height)
 
-        generation_id = self._make_generation_id()
+        generation_id = req.generationId or self._make_generation_id()
         seed = self._resolve_seed()
 
         try:
@@ -154,8 +166,9 @@ class VideoGenerationHandler(StateHandlerBase):
                 negative_prompt=req.negativePrompt,
             )
 
-            self._generation.complete_generation(output_path)
-            return GenerateVideoCompleteResponse(status="complete", video_path=output_path)
+            artifact = self._media.register_artifact(output_path, media_type="video")
+            self._generation.complete_generation(output_path, artifact)
+            return GenerateVideoCompleteResponse(status="complete", video_path=output_path, artifact=artifact)
 
         except HTTPError as e:
             self._generation.fail_generation(e.detail)
@@ -259,7 +272,13 @@ class VideoGenerationHandler(StateHandlerBase):
                 os.unlink(temp_image_path)
 
     def _generate_a2v(
-        self, req: GenerateVideoRequest, duration: int, fps: int, *, audio_path: str
+        self,
+        req: GenerateVideoRequest,
+        duration: int,
+        fps: int,
+        *,
+        audio_path: str,
+        image_path: str | None,
     ) -> GenerateVideoResponse:
         validated_audio_path = validate_audio_file(audio_path)
         audio_path_str = str(validated_audio_path)
@@ -280,13 +299,12 @@ class VideoGenerationHandler(StateHandlerBase):
 
         image = None
         temp_image_path: str | None = None
-        image_path = normalize_optional_path(req.imagePath)
         if image_path:
             image = self._prepare_image(image_path, width, height)
 
         seed = self._resolve_seed()
 
-        generation_id = self._make_generation_id()
+        generation_id = req.generationId or self._make_generation_id()
 
         try:
             a2v_state = self._pipelines.load_a2v_pipeline()
@@ -339,8 +357,13 @@ class VideoGenerationHandler(StateHandlerBase):
                 raise RuntimeError("Generation was cancelled")
 
             self._generation.update_progress("complete", 100, total_steps, total_steps)
-            self._generation.complete_generation(str(output_path))
-            return GenerateVideoCompleteResponse(status="complete", video_path=str(output_path))
+            artifact = self._media.register_artifact(output_path, media_type="video")
+            self._generation.complete_generation(str(output_path), artifact)
+            return GenerateVideoCompleteResponse(
+                status="complete",
+                video_path=str(output_path),
+                artifact=artifact,
+            )
 
         except HTTPError as e:
             self._generation.fail_generation(e.detail)
@@ -398,15 +421,19 @@ class VideoGenerationHandler(StateHandlerBase):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return self.config.outputs_dir / f"ltx2_video_{timestamp}_{self._make_generation_id()}.mp4"
 
-    def _generate_forced_api(self, req: GenerateVideoRequest) -> GenerateVideoResponse:
+    def _generate_forced_api(
+        self,
+        req: GenerateVideoRequest,
+        *,
+        audio_path: str | None,
+        image_path: str | None,
+    ) -> GenerateVideoResponse:
         if self._generation.is_generation_running():
             raise HTTPError(409, "Generation already in progress")
 
-        generation_id = self._make_generation_id()
+        generation_id = req.generationId or self._make_generation_id()
         self._generation.start_api_generation(generation_id)
 
-        audio_path = normalize_optional_path(req.audioPath)
-        image_path = normalize_optional_path(req.imagePath)
         has_input_audio = bool(audio_path)
         has_input_image = bool(image_path)
 
@@ -519,8 +546,13 @@ class VideoGenerationHandler(StateHandlerBase):
                 raise RuntimeError("Generation was cancelled")
 
             self._generation.update_progress("complete", 100, None, None)
-            self._generation.complete_generation(str(output_path))
-            return GenerateVideoCompleteResponse(status="complete", video_path=str(output_path))
+            artifact = self._media.register_artifact(output_path, media_type="video")
+            self._generation.complete_generation(str(output_path), artifact)
+            return GenerateVideoCompleteResponse(
+                status="complete",
+                video_path=str(output_path),
+                artifact=artifact,
+            )
         except HTTPError as e:
             self._generation.fail_generation(e.detail)
             raise

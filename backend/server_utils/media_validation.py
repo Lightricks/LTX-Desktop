@@ -11,9 +11,11 @@ from pathlib import Path
 from PIL import Image
 
 from _routes._errors import HTTPError
+from services.video_processor.video_processor import VideoProcessor
 
 _MAX_IMAGE_BYTES = 50 * 1024 * 1024
 _MAX_AUDIO_BYTES = 100 * 1024 * 1024
+_MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024
 _MAX_IMAGE_PIXELS = 50_000_000
 
 _ALLOWED_IMAGE_FORMATS = {"PNG", "JPEG", "WEBP", "GIF", "BMP", "TIFF"}
@@ -132,4 +134,35 @@ def validate_audio_file(path: str) -> Path:
     if not _sniff_audio(header, file_path.suffix):
         raise HTTPError(400, f"Invalid audio file: {path}")
 
+    return file_path
+
+
+def validate_video_file(path: str, video_processor: VideoProcessor) -> Path:
+    """Validate a readable video using the injected VideoProcessor service."""
+
+    try:
+        file_path = Path(path)
+    except Exception:
+        raise HTTPError(400, f"Video file not found: {path}") from None
+    _assert_is_file(file_path, kind="Video", raw_path=path)
+    _assert_max_bytes(file_path, limit_bytes=_MAX_VIDEO_BYTES, error_detail=f"Video file too large: {path}")
+
+    try:
+        capture = video_processor.open_video(str(file_path))
+        try:
+            if not bool(capture.isOpened()):
+                raise ValueError("not opened")
+            info = video_processor.get_video_info(capture)
+            if (
+                float(info["fps"]) <= 0
+                or int(info["frame_count"]) <= 0
+                or int(info["width"]) <= 0
+                or int(info["height"]) <= 0
+                or video_processor.read_frame(capture, frame_idx=0) is None
+            ):
+                raise ValueError("invalid metadata")
+        finally:
+            video_processor.release(capture)
+    except Exception:
+        raise HTTPError(400, f"Invalid video file: {path}") from None
     return file_path
