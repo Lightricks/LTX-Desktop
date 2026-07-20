@@ -5,6 +5,7 @@ import http from 'http'
 import https from 'https'
 import os from 'os'
 import path from 'path'
+import { Transform } from 'stream'
 import { pipeline } from 'stream/promises'
 import {
   getAuthToken,
@@ -12,6 +13,7 @@ import {
   getBackendUrl,
 } from './python-backend'
 import { logger } from './logger'
+import { MAX_BACKEND_ARTIFACT_BYTES } from '../shared/electron-api-schema'
 
 export type BackendMediaType = 'image' | 'audio' | 'video'
 
@@ -225,6 +227,13 @@ async function deleteArtifact(artifactId: string): Promise<void> {
 async function downloadArtifact(artifact: BackendArtifactRef): Promise<string> {
   const { url, token } = requireExternalBackend()
   if (!artifact.artifact_id || artifact.artifact_id.length > 256) throw new Error('Invalid backend artifact ID')
+  if (
+    !Number.isSafeInteger(artifact.size_bytes)
+    || artifact.size_bytes <= 0
+    || artifact.size_bytes > MAX_BACKEND_ARTIFACT_BYTES
+  ) {
+    throw new Error('Invalid backend artifact size')
+  }
   const filename = safeFilename(artifact.filename)
   const unique = crypto.randomBytes(8).toString('hex')
   const finalPath = path.join(transferDirectory(), `${unique}-${filename}`)
@@ -242,13 +251,26 @@ async function downloadArtifact(artifact: BackendArtifactRef): Promise<string> {
             reject(new Error(`Artifact download failed (HTTP ${response.statusCode ?? 0}): ${await readErrorResponse(response)}`))
             return
           }
+          const contentLength = response.headers['content-length']
+          if (contentLength !== undefined && Number(contentLength) !== artifact.size_bytes) {
+            response.destroy()
+            reject(new Error(`Artifact size mismatch: expected ${artifact.size_bytes}, server announced ${contentLength}`))
+            return
+          }
           const hash = crypto.createHash('sha256')
           let receivedBytes = 0
-          response.on('data', (chunk: Buffer) => {
-            hash.update(chunk)
-            receivedBytes += chunk.length
+          const verifier = new Transform({
+            transform(chunk: Buffer, _encoding, callback) {
+              receivedBytes += chunk.length
+              if (receivedBytes > artifact.size_bytes || receivedBytes > MAX_BACKEND_ARTIFACT_BYTES) {
+                callback(new Error('Artifact download exceeded its declared size'))
+                return
+              }
+              hash.update(chunk)
+              callback(null, chunk)
+            },
           })
-          await pipeline(response, fs.createWriteStream(partialPath, { flags: 'wx' }))
+          await pipeline(response, verifier, fs.createWriteStream(partialPath, { flags: 'wx' }))
           if (receivedBytes !== artifact.size_bytes) {
             throw new Error(`Artifact size mismatch: expected ${artifact.size_bytes}, received ${receivedBytes}`)
           }

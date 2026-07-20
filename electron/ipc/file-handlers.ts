@@ -363,8 +363,8 @@ export function registerFileHandlers(): void {
     const results: Record<string, boolean> = {}
     for (const p of filePaths) {
       try {
-        const validatedPath = validatePath(p, getAllowedRoots())
-        results[p] = fs.existsSync(validatedPath)
+        const normalizedPath = p.trim()
+        results[p] = path.isAbsolute(normalizedPath) && fs.statSync(path.resolve(normalizedPath)).isFile()
       } catch {
         results[p] = false
       }

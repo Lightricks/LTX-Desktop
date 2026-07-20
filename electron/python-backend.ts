@@ -31,6 +31,13 @@ const STARTUP_PROBE_TIMEOUT_MS = 30_000
 const STARTUP_PROBE_INTERVAL_MS = 500
 const LIVENESS_POLL_INTERVAL_MS = 10_000
 const LIVENESS_FAILURE_THRESHOLD = 3
+const STANDALONE_ONLY_ENV_KEYS = [
+  'LTX_DEPLOYMENT_MODE',
+  'LTX_BIND_HOST',
+  'LTX_PUBLIC_BASE_URL',
+  'LTX_ALLOWED_ORIGINS',
+  'LTX_MODELS_DIR',
+] as const
 let livenessMonitorTimer: NodeJS.Timeout | null = null
 let livenessFailureCount = 0
 
@@ -70,6 +77,16 @@ function publishBackendHealthStatus(
 
 export function getBackendHealthStatus(): BackendHealthStatus | null {
   return latestBackendHealthStatus
+}
+
+function managedBackendEnvironment(): NodeJS.ProcessEnv {
+  const environment = { ...process.env }
+  for (const key of STANDALONE_ONLY_ENV_KEYS) {
+    delete environment[key]
+  }
+  environment.LTX_DEPLOYMENT_MODE = 'managed_local'
+  environment.LTX_BIND_HOST = '127.0.0.1'
+  return environment
 }
 
 function getBackendPath(): string {
@@ -472,7 +489,7 @@ export async function startPythonBackend(): Promise<void> {
     pythonProcess = spawn(pythonPath, pythonArgs, {
       cwd: backendPath,
       env: {
-        ...process.env,
+        ...managedBackendEnvironment(),
         PYTHONUNBUFFERED: '1',
         PYTHONNOUSERSITE: '1',
         // Only pass LTX_PORT when the developer explicitly set it

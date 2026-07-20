@@ -3,6 +3,7 @@ import { z } from 'zod'
 // Private preload-to-main channel. It is intentionally not part of
 // electronAPISchemas, so renderer code cannot approve arbitrary path strings.
 export const SELECTED_FILE_PATH_APPROVAL_CHANNEL = 'approve-selected-file-path'
+export const MAX_BACKEND_ARTIFACT_BYTES = 20 * 1024 * 1024 * 1024
 
 const fileFilter = z.object({ name: z.string(), extensions: z.array(z.string()) })
 
@@ -98,7 +99,7 @@ const backendArtifactRef = z.object({
   media_type: z.enum(['image', 'audio', 'video']),
   filename: z.string(),
   content_type: z.string(),
-  size_bytes: z.number(),
+  size_bytes: z.number().int().positive().max(MAX_BACKEND_ARTIFACT_BYTES),
   sha256: z.string(),
   expires_at: z.string(),
 })
