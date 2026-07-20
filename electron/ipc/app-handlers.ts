@@ -179,6 +179,9 @@ export function registerAppHandlers(): void {
   })
 
   handle('checkPythonReady', () => {
+    if (!app.isPackaged && process.env.LTX_FORCE_REMOTE_SETUP === '1') {
+      return { ready: false }
+    }
     return isPythonReady()
   })
 

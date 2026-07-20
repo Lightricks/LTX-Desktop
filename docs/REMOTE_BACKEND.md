@@ -113,6 +113,11 @@ Configure the reverse proxy to preserve `Authorization`, `Content-Type`, and `Ra
 - Upload cancellation is not yet connected to generation cancellation.
 - Remote compute is intended for one desktop client per backend instance; generation state is still single-client.
 
+## Follow-up TODO
+
+- [ ] Add phase-aware generation progress so the UI distinguishes cold model loading, text encoding, inference, export, artifact transfer, and completion instead of showing only `Generating...`.
+- [ ] Add a persistent backend status bar showing the connected machine, model location, active model, and live CPU, GPU, and RAM usage.
+
 ## Return to local compute
 
 Open **Settings → Compute**, choose **This computer**, and select **Save & reconnect**. LTX Desktop will return to its original managed-local startup and model workflow.
