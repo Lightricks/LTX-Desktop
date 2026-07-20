@@ -9,24 +9,23 @@ import re
 import secrets
 import shutil
 import threading
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import BinaryIO, Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from services.media_store.media_store import MediaRecord, MediaType, StagedMedia
+from services.media_store.media_store import (
+    InvalidMediaStorePathError,
+    MediaRecord,
+    MediaTooLargeError,
+    MediaType,
+    StagedMedia,
+)
 
 _ID_PATTERN = re.compile(r"^(?:med|art)_[A-Za-z0-9_-]{24,}$")
 _CHUNK_BYTES = 1024 * 1024
-
-
-class MediaTooLargeError(Exception):
-    pass
-
-
-class InvalidMediaStorePathError(Exception):
-    pass
 
 
 class _StoredMetadata(BaseModel):
@@ -75,6 +74,8 @@ class FilesystemMediaStore:
         outputs_dir: Path,
         upload_ttl: timedelta = timedelta(hours=24),
         artifact_ttl: timedelta = timedelta(days=7),
+        cleanup_interval: timedelta = timedelta(hours=1),
+        delete_expired_artifact_files: bool = False,
     ) -> None:
         self._root = (app_data_dir / "media").resolve()
         self._staging_dir = self._root / "staging"
@@ -83,6 +84,9 @@ class FilesystemMediaStore:
         self._outputs_dir = outputs_dir.resolve()
         self._upload_ttl = upload_ttl
         self._artifact_ttl = artifact_ttl
+        self._cleanup_interval_seconds = max(0.0, cleanup_interval.total_seconds())
+        self._delete_expired_artifact_files = delete_expired_artifact_files
+        self._last_cleanup_monotonic: float | None = None
         self._lock = threading.RLock()
         for directory in (self._root, self._staging_dir, self._uploads_dir, self._artifacts_dir):
             directory.mkdir(parents=True, exist_ok=True)
@@ -206,20 +210,23 @@ class FilesystemMediaStore:
         resolved = path.resolve(strict=True)
         if not resolved.is_file() or not _is_within(resolved, self._outputs_dir):
             raise InvalidMediaStorePathError("Artifact must be a file inside the outputs directory")
+
+        digest = hashlib.sha256()
+        with resolved.open("rb") as artifact_file:
+            while chunk := artifact_file.read(_CHUNK_BYTES):
+                digest.update(chunk)
+        size_bytes = resolved.stat().st_size
+
         with self._lock:
             artifact_id = self._new_id("art")
             metadata_path = self._artifacts_dir / artifact_id / "metadata.json"
             metadata_path.parent.mkdir(parents=False, exist_ok=False)
-            digest = hashlib.sha256()
-            with resolved.open("rb") as artifact_file:
-                while chunk := artifact_file.read(_CHUNK_BYTES):
-                    digest.update(chunk)
             metadata = _StoredMetadata(
                 id=artifact_id,
                 media_type=media_type,
                 filename=resolved.name,
                 content_type=content_type,
-                size_bytes=resolved.stat().st_size,
+                size_bytes=size_bytes,
                 sha256=digest.hexdigest(),
                 expires_at=_now() + self._artifact_ttl,
                 relative_path=str(resolved.relative_to(self._outputs_dir)),
@@ -260,8 +267,18 @@ class FilesystemMediaStore:
             return True
 
     def cleanup_expired(self) -> None:
-        now = _now()
+        cleanup_started = time.monotonic()
         with self._lock:
+            if (
+                self._last_cleanup_monotonic is not None
+                and cleanup_started - self._last_cleanup_monotonic < self._cleanup_interval_seconds
+            ):
+                return
+
+            # Throttle failed best-effort scans too, so a damaged store cannot
+            # turn every upload or generation completion into repeated I/O.
+            self._last_cleanup_monotonic = cleanup_started
+            now = _now()
             for staged in self._staging_dir.iterdir():
                 try:
                     if datetime.fromtimestamp(staged.stat().st_mtime, UTC) + timedelta(hours=1) <= now:
@@ -281,10 +298,11 @@ class FilesystemMediaStore:
                     continue
                 if metadata.expires_at > now:
                     continue
-                try:
-                    artifact_path = (self._outputs_dir / metadata.relative_path).resolve(strict=True)
-                    if artifact_path.is_file() and _is_within(artifact_path, self._outputs_dir):
-                        artifact_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
+                if self._delete_expired_artifact_files:
+                    try:
+                        artifact_path = (self._outputs_dir / metadata.relative_path).resolve(strict=True)
+                        if artifact_path.is_file() and _is_within(artifact_path, self._outputs_dir):
+                            artifact_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
                 shutil.rmtree(directory, ignore_errors=True)

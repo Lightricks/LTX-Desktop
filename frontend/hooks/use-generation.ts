@@ -292,7 +292,7 @@ export function useGeneration(): UseGenerationReturn {
               }))
             },
           )
-          const recoveredArtifact = recovered.artifact ?? recovered.artifacts?.[0]
+          const recoveredArtifact = recovered.artifacts?.[0]
           if (!recoveredArtifact) {
             throw new Error('The recovered remote generation has no downloadable artifact')
           }

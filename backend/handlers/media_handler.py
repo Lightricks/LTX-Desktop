@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import mimetypes
 from pathlib import Path
 from threading import RLock
@@ -12,19 +13,25 @@ from PIL import Image
 from _routes._errors import HTTPError
 from api_types import ArtifactRef, MediaRef
 from handlers.base import StateHandlerBase
-from server_utils.media_validation import validate_audio_file, validate_image_file, validate_video_file
-from services.interfaces import MediaRecord, MediaStore, MediaType, VideoProcessor
-from services.media_store.filesystem_media_store import InvalidMediaStorePathError, MediaTooLargeError
+from server_utils.media_validation import (
+    MAX_MEDIA_BYTES,
+    validate_audio_file,
+    validate_image_file,
+    validate_video_file,
+)
+from services.interfaces import (
+    MediaRecord,
+    MediaStore,
+    MediaTooLargeError,
+    MediaType,
+    VideoProcessor,
+)
 from state.app_state_types import AppState
 
 if TYPE_CHECKING:
     from runtime_config.runtime_config import RuntimeConfig
 
-_MAX_UPLOAD_BYTES: dict[MediaType, int] = {
-    "image": 50 * 1024 * 1024,
-    "audio": 100 * 1024 * 1024,
-    "video": 2 * 1024 * 1024 * 1024,
-}
+logger = logging.getLogger(__name__)
 
 _IMAGE_CONTENT_TYPES = {
     "PNG": "image/png",
@@ -48,15 +55,21 @@ class MediaHandler(StateHandlerBase):
         super().__init__(state, lock, config)
         self._store = media_store
         self._video_processor = video_processor
-        self._store.cleanup_expired()
+        self._cleanup_expired()
+
+    def _cleanup_expired(self) -> None:
+        try:
+            self._store.cleanup_expired()
+        except Exception:
+            logger.warning("Media-store cleanup failed", exc_info=True)
 
     def upload(self, source: BinaryIO, *, filename: str, media_type: MediaType) -> MediaRef:
-        self._store.cleanup_expired()
+        self._cleanup_expired()
         try:
             staged = self._store.stage_upload(
                 source,
                 filename=filename,
-                max_bytes=_MAX_UPLOAD_BYTES[media_type],
+                max_bytes=MAX_MEDIA_BYTES[media_type],
             )
         except MediaTooLargeError:
             raise HTTPError(413, "MEDIA_TOO_LARGE") from None
@@ -118,7 +131,7 @@ class MediaHandler(StateHandlerBase):
         return None
 
     def register_artifact(self, path: str | Path, *, media_type: MediaType) -> ArtifactRef:
-        self._store.cleanup_expired()
+        self._cleanup_expired()
         artifact_path = Path(path)
         guessed, _encoding = mimetypes.guess_type(artifact_path.name)
         fallback = "image/png" if media_type == "image" else "video/mp4"
@@ -128,8 +141,6 @@ class MediaHandler(StateHandlerBase):
                 media_type=media_type,
                 content_type=guessed or fallback,
             )
-        except (OSError, InvalidMediaStorePathError) as exc:
-            raise HTTPError(500, "ARTIFACT_REGISTRATION_FAILED") from exc
         except Exception as exc:
             raise HTTPError(500, "ARTIFACT_REGISTRATION_FAILED") from exc
         return self._artifact_ref(record)

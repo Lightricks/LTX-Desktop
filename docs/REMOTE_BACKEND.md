@@ -7,7 +7,7 @@ Remote compute is optional. The default `managed_local` mode continues to start 
 ## Architecture
 
 ```text
-Mac or PC                         GPU machine
+Desktop computer                 GPU machine
 ---------------------------      -----------------------------
 Electron + React UI              Standalone FastAPI backend
 Project assets and playback  ->  Media upload by opaque ID
@@ -69,7 +69,7 @@ Server running on http://127.0.0.1:8000
 On the computer running LTX Desktop, forward the same local port to the GPU machine:
 
 ```bash
-ssh -N -L 8000:127.0.0.1:8000 user@atom
+ssh -N -L 8000:127.0.0.1:8000 user@gpu-host
 ```
 
 Keeping port 8000 on both sides also preserves the default Hugging Face OAuth callback address.
@@ -92,7 +92,7 @@ Example environment:
 
 ```bash
 export LTX_BIND_HOST=127.0.0.1
-export LTX_PUBLIC_BASE_URL=https://ltx-atom.example.ts.net
+export LTX_PUBLIC_BASE_URL=https://ltx-gpu.example.com
 export LTX_ALLOWED_ORIGINS='null,http://localhost:5173,http://127.0.0.1:5173'
 ```
 
@@ -105,18 +105,13 @@ Configure the reverse proxy to preserve `Authorization`, `Content-Type`, and `Ra
 - Partial transfers are written atomically and removed after failures.
 - The Electron client validates downloaded size and SHA-256 before importing an artifact.
 - Upload references are refreshed before expiry instead of being reused indefinitely.
-- Video and image requests carry a client generation ID. If the connection drops after the Atom accepts a job, the desktop client keeps polling that exact job and downloads its completed artifacts after reconnection.
+- Video and image requests carry a client generation ID. If the connection drops after the backend accepts a job, the desktop client keeps polling that exact job and downloads its completed artifacts after reconnection.
 
 ## Current limitations
 
 - Remote inference does not yet remove every local media-tool dependency. Existing thumbnail and export code still uses the desktop application's packaged Python/ffmpeg tooling.
 - Upload cancellation is not yet connected to generation cancellation.
 - Remote compute is intended for one desktop client per backend instance; generation state is still single-client.
-
-## Follow-up TODO
-
-- [ ] Add phase-aware generation progress so the UI distinguishes cold model loading, text encoding, inference, export, artifact transfer, and completion instead of showing only `Generating...`.
-- [ ] Add a persistent backend status bar showing the connected machine, model location, active model, and live CPU, GPU, and RAM usage.
 
 ## Return to local compute
 

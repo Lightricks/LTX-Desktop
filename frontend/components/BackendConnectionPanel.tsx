@@ -5,15 +5,13 @@ import { Button } from './ui/button'
 type ConnectionMode = 'managed-local' | 'external'
 
 interface BackendConnectionPanelProps {
-  onConfigured?: () => void
   compact?: boolean
 }
 
-export function BackendConnectionPanel({ onConfigured, compact = false }: BackendConnectionPanelProps) {
+export function BackendConnectionPanel({ compact = false }: BackendConnectionPanelProps) {
   const [mode, setMode] = useState<ConnectionMode>('managed-local')
   const [url, setUrl] = useState('http://127.0.0.1:8000')
   const [authToken, setAuthToken] = useState('')
-  const [adminToken, setAdminToken] = useState('')
   const [hasSavedToken, setHasSavedToken] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -64,12 +62,10 @@ export function BackendConnectionPanel({ onConfigured, compact = false }: Backen
             mode: 'external',
             url,
             authToken,
-            ...(adminToken.trim() ? { adminToken } : {}),
           })
       if (!result.success) throw new Error(result.error)
       setSuccess(true)
       setMessage('Connection saved. Reloading LTX Desktop…')
-      onConfigured?.()
       window.setTimeout(() => window.location.reload(), 250)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error))
@@ -130,19 +126,8 @@ export function BackendConnectionPanel({ onConfigured, compact = false }: Backen
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
             />
           </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-zinc-400">Admin token <span className="text-zinc-600">(optional)</span></span>
-            <input
-              type="password"
-              value={adminToken}
-              onChange={(event) => setAdminToken(event.target.value)}
-              onKeyDown={(event) => event.stopPropagation()}
-              placeholder="Only needed to change Atom settings"
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
-            />
-          </label>
           <p className="text-[11px] leading-relaxed text-zinc-500">
-            Plain HTTP is accepted only on localhost. For an Atom bound to port 8000, use an SSH tunnel to the same Mac port.
+            Plain HTTP is accepted only on localhost. Use an SSH tunnel or HTTPS to reach a backend on another machine.
           </p>
         </div>
       )}

@@ -9,7 +9,6 @@ import { pipeline } from 'stream/promises'
 import {
   getAuthToken,
   getBackendConnectionMode,
-  getBackendConnectionRevision,
   getBackendUrl,
 } from './python-backend'
 import { logger } from './logger'
@@ -180,7 +179,9 @@ export async function uploadBackendMedia(
 ): Promise<BackendMediaRef> {
   const resolvedPath = resolveMediaPath(filePath)
   const stat = fs.statSync(resolvedPath)
-  const key = `${getBackendConnectionRevision()}:${mediaType}:${resolvedPath}:${stat.size}:${stat.mtimeMs}`
+  const { url, token } = requireExternalBackend()
+  const connectionKey = crypto.createHash('sha256').update(`${url}\0${token}`).digest('hex')
+  const key = `${connectionKey}:${mediaType}:${resolvedPath}:${stat.size}:${stat.mtimeMs}`
   const cached = mediaCache.get(key)
   if (cached) {
     const cachedUpload = await cached

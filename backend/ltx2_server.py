@@ -142,18 +142,16 @@ def _resolve_app_data_dir() -> Path:
 APP_DATA_DIR = _resolve_app_data_dir()
 
 DEFAULT_MODELS_DIR = APP_DATA_DIR / "models"
-DEFAULT_MODELS_DIR.mkdir(parents=True, exist_ok=True)
-
 models_dir_env = os.environ.get("LTX_MODELS_DIR", "").strip()
 MODELS_DIR_OVERRIDE = Path(models_dir_env).expanduser().resolve() if models_dir_env else None
-if MODELS_DIR_OVERRIDE is not None:
-    MODELS_DIR_OVERRIDE.mkdir(parents=True, exist_ok=True)
+ACTIVE_MODELS_DIR = MODELS_DIR_OVERRIDE or DEFAULT_MODELS_DIR
+ACTIVE_MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 PROJECT_ROOT = Path(__file__).parent.parent
 OUTPUTS_DIR = APP_DATA_DIR / "outputs"
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
-logger.info(f"Models directory: {DEFAULT_MODELS_DIR}")
+logger.info("Models directory: %s", ACTIVE_MODELS_DIR)
 
 # ============================================================
 # Settings

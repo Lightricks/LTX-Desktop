@@ -740,16 +740,6 @@
       },
       "GenerationProgressResponse": {
         "properties": {
-          "artifact": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ArtifactRef"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "artifacts": {
             "items": {
               "$ref": "#/components/schemas/ArtifactRef"

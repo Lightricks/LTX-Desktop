@@ -10,6 +10,14 @@ from typing import BinaryIO, Literal, Protocol
 MediaType = Literal["image", "audio", "video"]
 
 
+class MediaTooLargeError(Exception):
+    pass
+
+
+class InvalidMediaStorePathError(Exception):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class StagedMedia:
     token: str

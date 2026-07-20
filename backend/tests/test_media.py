@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from _routes._errors import HTTPError
 from tests.fakes.services import FakeResponse
 
 
@@ -42,6 +45,24 @@ def test_upload_rejects_invalid_image(client) -> None:
         files={"file": ("frame.png", b"not-an-image", "image/png")},
     )
     assert response.status_code == 400
+
+
+def test_uploaded_media_type_must_match_requested_input(
+    client,
+    test_state,
+    make_test_image,
+) -> None:
+    uploaded = _upload_image(client, make_test_image)
+
+    with pytest.raises(HTTPError) as exc_info:
+        test_state.media.resolve_input(
+            media_id=str(uploaded["media_id"]),
+            legacy_path=None,
+            expected_type="video",
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.code == "MEDIA_TYPE_MISMATCH"
 
 
 def test_artifact_download_range_and_delete(client, test_state) -> None:

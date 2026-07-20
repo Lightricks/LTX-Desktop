@@ -234,7 +234,6 @@ class GenerationHandler(StateHandlerBase):
                     currentStep=0,
                     totalSteps=0,
                     generationId=generation_id,
-                    artifact=artifacts[0] if len(artifacts) == 1 else None,
                     artifacts=artifacts,
                 )
             case GenerationCancelled(id=generation_id):

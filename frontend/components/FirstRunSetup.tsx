@@ -80,10 +80,7 @@ export function LaunchGate({
 }: LaunchGateProps) {
   const [currentStep, setCurrentStep] = useState<Step>(showLicenseStep ? 'license' : 'location')
   const [installPath, setInstallPath] = useState('')
-  const [backendConnection, setBackendConnection] = useState<{
-    mode: 'managed-local' | 'external'
-    hasAdminToken: boolean
-  }>({ mode: 'managed-local', hasAdminToken: false })
+  const [backendConnectionMode, setBackendConnectionMode] = useState<'managed-local' | 'external'>('managed-local')
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [downloadSessionId, setDownloadSessionId] = useState<string | null>(null)
@@ -102,7 +99,7 @@ export function LaunchGate({
 
   useEffect(() => {
     void window.electronAPI.getBackendConnectionConfig().then((config) => {
-      setBackendConnection({ mode: config.mode, hasAdminToken: config.hasAdminToken })
+      setBackendConnectionMode(config.mode)
     }).catch(() => {})
   }, [])
   const { saveLtxApiKey } = useAppSettings()
@@ -590,14 +587,12 @@ export function LaunchGate({
                   />
                   <button
                     onClick={async () => {
-                      const result = backendConnection.mode === 'external'
-                        ? await window.electronAPI.setBackendModelsDirectory({ path: installPath })
-                        : await window.electronAPI.openModelsDirChangeDialog()
+                      const result = await window.electronAPI.openModelsDirChangeDialog()
                       if (result?.success) {
                         setInstallPath(result.path)
                       }
                     }}
-                    disabled={backendConnection.mode === 'external'}
+                    disabled={backendConnectionMode === 'external'}
                     style={{
                       padding: '10px 28px',
                       borderRadius: 9999,
@@ -610,7 +605,7 @@ export function LaunchGate({
                       transition: 'all 0.2s ease'
                     }}
                   >
-                    {backendConnection.mode === 'external' ? 'Managed on Atom' : 'Browse'}
+                    {backendConnectionMode === 'external' ? 'Managed remotely' : 'Browse'}
                   </button>
                 </div>
 

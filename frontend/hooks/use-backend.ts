@@ -9,7 +9,6 @@ interface BackendHealthStatusPayload {
   mode: BackendConnectionMode
   status: BackendProcessStatus
   exitCode?: number | null
-  checkedAt: number
   message?: string
 }
 
@@ -26,7 +25,7 @@ function toBackendHealthStatus(value: unknown): BackendHealthStatusPayload | nul
     return null
   }
 
-  const record = value as { mode?: unknown; status?: unknown; exitCode?: unknown; checkedAt?: unknown; message?: unknown }
+  const record = value as { mode?: unknown; status?: unknown; exitCode?: unknown; message?: unknown }
   if (record.mode !== 'managed-local' && record.mode !== 'external') {
     return null
   }
@@ -44,7 +43,6 @@ function toBackendHealthStatus(value: unknown): BackendHealthStatusPayload | nul
     mode: record.mode,
     status: record.status,
     exitCode: typeof record.exitCode === 'number' || record.exitCode === null ? record.exitCode : undefined,
-    checkedAt: typeof record.checkedAt === 'number' ? record.checkedAt : Date.now(),
     message: typeof record.message === 'string' ? record.message : undefined,
   }
 }

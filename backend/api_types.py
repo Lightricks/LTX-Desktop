@@ -125,7 +125,6 @@ class GenerationProgressResponse(BaseModel):
     currentStep: int | None
     totalSteps: int | None
     generationId: str | None = None
-    artifact: ArtifactRef | None = None
     artifacts: list[ArtifactRef] = Field(default_factory=lambda: list[ArtifactRef]())
     error: str | None = None
 

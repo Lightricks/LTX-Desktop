@@ -1,5 +1,9 @@
 import { z } from 'zod'
 
+// Private preload-to-main channel. It is intentionally not part of
+// electronAPISchemas, so renderer code cannot approve arbitrary path strings.
+export const SELECTED_FILE_PATH_APPROVAL_CHANNEL = 'approve-selected-file-path'
+
 const fileFilter = z.object({ name: z.string(), extensions: z.array(z.string()) })
 
 function ipcResult<T extends z.ZodRawShape>(valueShape: T) {
@@ -56,7 +60,6 @@ const backendHealthStatus = z.object({
   mode: backendConnectionMode,
   status: z.enum(['connecting', 'alive', 'restarting', 'unreachable', 'dead']),
   exitCode: z.number().nullable().optional(),
-  checkedAt: z.number(),
   message: z.string().optional(),
 })
 
@@ -77,7 +80,6 @@ const backendConnectionInput = z.discriminatedUnion('mode', [
     mode: z.literal('external'),
     url: z.string(),
     authToken: z.string(),
-    adminToken: z.string().optional(),
   }),
 ])
 
@@ -111,7 +113,6 @@ export const electronAPISchemas = {
       url: z.string(),
       token: z.string(),
       mode: backendConnectionMode,
-      connectionRevision: z.number(),
     }),
   },
   getBackendConnectionConfig: {
@@ -120,7 +121,6 @@ export const electronAPISchemas = {
       mode: backendConnectionMode,
       url: z.string(),
       hasAuthToken: z.boolean(),
-      hasAdminToken: z.boolean(),
     }),
   },
   testBackendConnection: {
@@ -381,10 +381,6 @@ export const electronAPISchemas = {
   // Models
   openModelsDirChangeDialog: {
     input: z.object({}),
-    output: ipcResult({ path: z.string() }),
-  },
-  setBackendModelsDirectory: {
-    input: z.object({ path: z.string() }),
     output: ipcResult({ path: z.string() }),
   },
 

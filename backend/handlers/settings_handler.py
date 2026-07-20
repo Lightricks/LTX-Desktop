@@ -7,6 +7,7 @@ import logging
 from threading import RLock
 from typing import TYPE_CHECKING
 
+from _routes._errors import HTTPError
 from state.app_settings import AppSettings, UpdateSettingsRequest
 from handlers._settings_utils import (
     collect_changed_paths,
@@ -66,6 +67,9 @@ class SettingsHandler(StateHandlerBase):
     @with_state_lock
     def update_settings(self, patch: UpdateSettingsRequest) -> tuple[AppSettings, AppSettings, set[str]]:
         patch_payload = strip_none_values(ensure_json_object(patch.model_dump(by_alias=False, exclude_unset=True)))
+
+        if "models_dir" in patch_payload and not self.config.models_dir_editable:
+            raise HTTPError(409, "MODELS_DIR_MANAGED_BY_SERVER")
 
         for key_field in ("ltx_api_key", "gemini_api_key", "fal_api_key"):
             if key_field in patch_payload and patch_payload[key_field] == "":

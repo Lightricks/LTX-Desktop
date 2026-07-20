@@ -808,7 +808,6 @@ export interface components {
         };
         /** GenerationProgressResponse */
         GenerationProgressResponse: {
-            artifact?: components["schemas"]["ArtifactRef"] | null;
             /** Artifacts */
             artifacts?: components["schemas"]["ArtifactRef"][];
             /** Currentstep */

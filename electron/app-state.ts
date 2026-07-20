@@ -16,18 +16,16 @@ interface StoredBackendConnection {
   mode: BackendConnectionMode
   url?: string
   authToken?: string
-  adminToken?: string
 }
 
 export type BackendConnectionConfig =
   | { mode: 'managed-local' }
-  | { mode: 'external'; url: string; authToken: string; adminToken?: string }
+  | { mode: 'external'; url: string; authToken: string }
 
 export interface BackendConnectionSummary {
   mode: BackendConnectionMode
   url: string
   hasAuthToken: boolean
-  hasAdminToken: boolean
 }
 
 export function getAppStatePath(): string {
@@ -75,12 +73,10 @@ export function readBackendConnectionConfig(): BackendConnectionConfig {
     throw new Error('The saved external backend connection is incomplete')
   }
 
-  const adminToken = decryptSecret(stored.adminToken)
   return {
     mode: 'external',
     url: stored.url,
     authToken: decryptSecret(stored.authToken),
-    ...(adminToken ? { adminToken } : {}),
   }
 }
 
@@ -91,7 +87,6 @@ export function getBackendConnectionSummary(): BackendConnectionSummary {
       mode: 'managed-local',
       url: '',
       hasAuthToken: false,
-      hasAdminToken: false,
     }
   }
 
@@ -99,7 +94,6 @@ export function getBackendConnectionSummary(): BackendConnectionSummary {
     mode: 'external',
     url: stored.url ?? '',
     hasAuthToken: Boolean(stored.authToken),
-    hasAdminToken: Boolean(stored.adminToken),
   }
 }
 
@@ -112,7 +106,6 @@ export function writeBackendConnectionConfig(config: BackendConnectionConfig): v
       mode: 'external',
       url: config.url,
       authToken: encryptSecret(config.authToken),
-      ...(config.adminToken ? { adminToken: encryptSecret(config.adminToken) } : {}),
     }
   }
   writeAppState(state)

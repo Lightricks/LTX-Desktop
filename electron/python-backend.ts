@@ -38,13 +38,11 @@ let backendUrl: string | null = null
 let authToken: string | null = null
 let adminToken: string | null = null
 let activeConnectionMode: BackendConnectionMode = getBackendConnectionSummary().mode
-let connectionRevision = 0
 
 export function getBackendUrl(): string | null { return backendUrl }
 export function getAuthToken(): string | null { return authToken }
 export function getAdminToken(): string | null { return adminToken }
 export function getBackendConnectionMode(): BackendConnectionMode { return activeConnectionMode }
-export function getBackendConnectionRevision(): number { return connectionRevision }
 
 type BackendOwnership = 'managed' | 'adopted' | null
 
@@ -54,19 +52,17 @@ export interface BackendHealthStatus {
   mode: BackendConnectionMode
   status: 'connecting' | 'alive' | 'restarting' | 'unreachable' | 'dead'
   exitCode?: number | null
-  checkedAt: number
   message?: string
 }
 
 let latestBackendHealthStatus: BackendHealthStatus | null = null
 
 function publishBackendHealthStatus(
-  status: Omit<BackendHealthStatus, 'mode' | 'checkedAt'> & Partial<Pick<BackendHealthStatus, 'mode' | 'checkedAt'>>,
+  status: Omit<BackendHealthStatus, 'mode'> & Partial<Pick<BackendHealthStatus, 'mode'>>,
 ): void {
   const payload: BackendHealthStatus = {
     ...status,
     mode: status.mode ?? activeConnectionMode,
-    checkedAt: status.checkedAt ?? Date.now(),
   }
   latestBackendHealthStatus = payload
   getMainWindow()?.webContents.send('backend-health-status', payload)
@@ -290,7 +286,7 @@ async function connectExternalBackend(): Promise<void> {
     if (config.mode !== 'external') throw new Error('No external backend is configured')
     backendUrl = normalizeExternalBackendUrl(config.url)
     authToken = config.authToken
-    adminToken = config.adminToken ?? null
+    adminToken = null
     await fetchExternalServerInfo(backendUrl, authToken)
     if (!await probeBackendHealth(3000)) {
       throw new Error('The backend compatibility check passed, but its health endpoint is unavailable')
@@ -321,21 +317,20 @@ export async function configureBackendConnection(config: BackendConnectionConfig
     if (!normalizedToken) throw new Error('Authentication token is required')
     await fetchExternalServerInfo(normalizedUrl, normalizedToken)
 
+    writeBackendConnectionConfig({
+      mode: 'external',
+      url: normalizedUrl,
+      authToken: normalizedToken,
+    })
     if (activeConnectionMode === 'managed-local' && pythonProcess) {
       stopPythonBackend()
     } else {
       stopLivenessMonitor()
     }
-    writeBackendConnectionConfig({
-      mode: 'external',
-      url: normalizedUrl,
-      authToken: normalizedToken,
-      ...(config.adminToken?.trim() ? { adminToken: config.adminToken.trim() } : {}),
-    })
     activeConnectionMode = 'external'
   } else {
-    stopLivenessMonitor()
     writeBackendConnectionConfig({ mode: 'managed-local' })
+    stopLivenessMonitor()
     activeConnectionMode = 'managed-local'
   }
 
@@ -344,7 +339,6 @@ export async function configureBackendConnection(config: BackendConnectionConfig
   adminToken = null
   backendOwnership = null
   latestBackendHealthStatus = null
-  connectionRevision += 1
 }
 
 function startOwnershipTakeover(): void {

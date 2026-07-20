@@ -313,7 +313,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   {settings.modelsDir || 'Available after the backend connects'}
                 </div>
                 <p className="mt-2 text-[11px] leading-relaxed text-zinc-600">
-                  Standalone backends manage this path on the remote machine; a Mac folder picker cannot change it.
+                  Standalone backends manage this path on the remote machine; a local folder picker cannot change it.
                 </p>
               </div>
             </>

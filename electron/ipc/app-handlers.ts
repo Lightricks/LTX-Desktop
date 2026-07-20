@@ -1,4 +1,4 @@
-import { app, dialog } from 'electron'
+import { app, dialog, ipcMain } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { checkGPU } from '../gpu'
@@ -6,7 +6,6 @@ import { isPythonReady, downloadPythonEmbed } from '../python-setup'
 import {
   configureBackendConnection,
   getBackendConnectionMode,
-  getBackendConnectionRevision,
   getBackendHealthStatus,
   getBackendUrl,
   getAuthToken,
@@ -20,6 +19,9 @@ import { getAnalyticsState, setAnalyticsEnabled, sendAnalyticsEvent } from '../a
 import { handle } from './typed-handle'
 import { getBackendConnectionSummary } from '../app-state'
 import { materializeBackendArtifact, uploadBackendMedia } from '../backend-media-transfer'
+import { getAllowedRoots } from '../config'
+import { approveExistingFilePath, validatePath } from '../path-validation'
+import { SELECTED_FILE_PATH_APPROVAL_CHANNEL } from '../../shared/electron-api-schema'
 
 function getModelsPath(): string {
   const modelsPath = path.join(app.getPath('userData'), 'models')
@@ -81,12 +83,23 @@ function markLicenseAccepted(settingsPath: string): void {
 }
 
 export function registerAppHandlers(): void {
+  ipcMain.on(SELECTED_FILE_PATH_APPROVAL_CHANNEL, (event, selectedPath: unknown) => {
+    try {
+      if (event.sender !== getMainWindow()?.webContents || typeof selectedPath !== 'string') {
+        throw new Error('Invalid selected file approval request')
+      }
+      approveExistingFilePath(selectedPath)
+      event.returnValue = true
+    } catch {
+      event.returnValue = false
+    }
+  })
+
   handle('getBackend', () => {
     return {
       url: getBackendUrl() ?? '',
       token: getAuthToken() ?? '',
       mode: getBackendConnectionMode(),
-      connectionRevision: getBackendConnectionRevision(),
     }
   })
 
@@ -179,9 +192,6 @@ export function registerAppHandlers(): void {
   })
 
   handle('checkPythonReady', () => {
-    if (!app.isPackaged && process.env.LTX_FORCE_REMOTE_SETUP === '1') {
-      return { ready: false }
-    }
     return isPythonReady()
   })
 
@@ -201,7 +211,8 @@ export function registerAppHandlers(): void {
 
   handle('uploadBackendMedia', async ({ filePath, mediaType }) => {
     try {
-      const media = await uploadBackendMedia(filePath, mediaType)
+      const validatedPath = validatePath(filePath, getAllowedRoots())
+      const media = await uploadBackendMedia(validatedPath, mediaType)
       return { success: true, media }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -231,7 +242,7 @@ export function registerAppHandlers(): void {
 
   handle('openModelsDirChangeDialog', async () => {
     if (getBackendConnectionMode() === 'external') {
-      return { success: false, error: 'Choose the models path on the Atom, not on this computer' }
+      return { success: false, error: 'Choose the models path on the remote backend, not on this computer' }
     }
     const mainWindow = getMainWindow()
     if (!mainWindow) return { success: false, error: 'No window' }
@@ -260,31 +271,6 @@ export function registerAppHandlers(): void {
     if (!resp.ok) return { success: false, error: await resp.text() }
 
     return { success: true, path: newDir }
-  })
-
-  handle('setBackendModelsDirectory', async ({ path: modelsDir }) => {
-    const url = getBackendUrl()
-    const auth = getAuthToken()
-    const admin = getAdminToken()
-    if (!url || !auth || !admin) {
-      return { success: false, error: 'An admin token is required to change the backend models directory' }
-    }
-
-    try {
-      const resp = await fetch(`${url}/api/settings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${auth}`,
-          'X-Admin-Token': admin,
-        },
-        body: JSON.stringify({ modelsDir }),
-      })
-      if (!resp.ok) return { success: false, error: await resp.text() }
-      return { success: true, path: modelsDir }
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : String(error) }
-    }
   })
 
 }

@@ -2,7 +2,6 @@ export interface BackendCredentials {
   url: string
   token: string
   mode: 'managed-local' | 'external'
-  connectionRevision: number
 }
 
 let cached: BackendCredentials | null = null

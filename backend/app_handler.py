@@ -254,6 +254,7 @@ class ServiceBundle:
     pose_processor_pipeline_class: type[PoseProcessorPipeline]
     a2v_pipeline_class: type[A2VPipeline]
     retake_pipeline_class: type[RetakePipeline]
+    # Integration tests use the real store inside their temporary app-data directory.
     media_store: MediaStore | None = None
 
 
@@ -300,7 +301,11 @@ def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
         pose_processor_pipeline_class=DWPosePipeline,
         a2v_pipeline_class=LTXa2vPipeline,
         retake_pipeline_class=LTXRetakePipeline,
-        media_store=FilesystemMediaStore(app_data_dir=config.app_data_dir, outputs_dir=config.outputs_dir),
+        media_store=FilesystemMediaStore(
+            app_data_dir=config.app_data_dir,
+            outputs_dir=config.outputs_dir,
+            delete_expired_artifact_files=config.deployment_mode == "standalone",
+        ),
     )
 
 
@@ -316,6 +321,7 @@ def build_initial_state(
         media_store: MediaStore = FilesystemMediaStore(
             app_data_dir=config.app_data_dir,
             outputs_dir=config.outputs_dir,
+            delete_expired_artifact_files=config.deployment_mode == "standalone",
         )
     else:
         media_store = bundle.media_store

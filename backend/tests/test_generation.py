@@ -82,7 +82,7 @@ class TestGenerate:
         assert Path(data["video_path"]).exists()
         progress = client.get("/api/generation/progress").json()
         assert progress["generationId"] == "desktop-video-job-1234"
-        assert progress["artifact"]["artifact_id"] == data["artifact"]["artifact_id"]
+        assert progress["artifacts"][0]["artifact_id"] == data["artifact"]["artifact_id"]
 
         pipeline = fake_services.fast_video_pipeline
         assert len(pipeline.generate_calls) == 1
@@ -1172,8 +1172,7 @@ class TestGenerationProgress:
         data = response.json()
         assert data["status"] == "complete"
         assert data["generationId"] == "recoverable-job"
-        assert data["artifact"] == data["artifacts"][0]
-        assert data["artifact"]["artifact_id"] == "art_abcdefghijklmnopqrstuvwxyz"
+        assert data["artifacts"][0]["artifact_id"] == "art_abcdefghijklmnopqrstuvwxyz"
 
 
 class TestGenerateImage:
