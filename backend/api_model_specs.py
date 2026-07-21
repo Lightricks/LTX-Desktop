@@ -31,7 +31,7 @@ ltx_api_model_specs: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], .
     (
         "fast",
         LTXVideoGenerationSpec(
-            display_name="LTX-2.3 Fast (API)",
+            display_name="LTX-2.3 Fast (LTX Cloud)",
             supported_resolutions_durations={
                 "1080p": _resolution_spec(
                     fps_to_durations={
@@ -73,7 +73,7 @@ ltx_api_model_specs: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], .
     (
         "pro",
         LTXVideoGenerationSpec(
-            display_name="LTX-2.3 Pro (API)",
+            display_name="LTX-2.3 Pro (LTX Cloud)",
             supported_resolutions_durations={
                 "1080p": _resolution_spec(
                     fps_to_durations={

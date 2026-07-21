@@ -50,7 +50,7 @@ export LTX_MODELS_DIR=/srv/ltx-models
 export LTX_AUTH_TOKEN='replace-with-the-generated-token'
 export LTX_BIND_HOST=127.0.0.1
 export LTX_PORT=8000
-export LTX_PUBLIC_BASE_URL=http://127.0.0.1:8000
+export LTX_PUBLIC_BASE_URL=http://127.0.0.1:18000
 export LTX_ALLOWED_ORIGINS='null,http://localhost:5173,http://127.0.0.1:5173'
 
 uv run python ltx2_server.py
@@ -66,23 +66,23 @@ Server running on http://127.0.0.1:8000
 
 ## Connect through SSH
 
-On the computer running LTX Desktop, forward the same local port to the GPU machine:
+On the computer running LTX Desktop, forward local port `18000` to backend port `8000` on the GPU machine:
 
 ```bash
-ssh -N -L 8000:127.0.0.1:8000 user@gpu-host
+ssh -N -L 18000:127.0.0.1:8000 user@gpu-host
 ```
 
-Keeping port 8000 on both sides also preserves the default Hugging Face OAuth callback address.
+Port `18000` avoids colliding with the managed-local backend while LTX Desktop tests the remote connection. `LTX_PUBLIC_BASE_URL` must use the forwarded address so browser-based authentication callbacks return to the remote backend.
 
-In LTX Desktop:
+On first launch, LTX Desktop asks where generation should run. Choose **Remote machine**. After onboarding, use the **Remote compute** status control or open **Settings → Compute** to change the connection.
 
-1. Open **Settings → Compute**.
-2. Choose **Remote machine**.
-3. Enter `http://127.0.0.1:8000`.
-4. Enter the bearer token from `LTX_AUTH_TOKEN`.
-5. Select **Test connection**, then **Save & reconnect**.
+Then:
 
-The connection requires standalone API version 2 and verifies media-upload and artifact-download capabilities before it is saved.
+1. Enter `http://127.0.0.1:18000`.
+2. Enter the bearer token from `LTX_AUTH_TOKEN`.
+3. Select **Test connection**, then **Connect & continue** during onboarding or **Save & reconnect** in Settings.
+
+The connection requires remote-backend protocol version 2 and verifies media-upload and artifact-download capabilities before it is saved.
 
 ## Direct HTTPS connection
 

@@ -313,7 +313,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   {settings.modelsDir || 'Available after the backend connects'}
                 </div>
                 <p className="mt-2 text-[11px] leading-relaxed text-zinc-600">
-                  Standalone backends manage this path on the remote machine; a local folder picker cannot change it.
+                  The remote backend manages this path on the GPU machine; a local folder picker cannot change it.
                 </p>
               </div>
             </>
@@ -375,10 +375,10 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <Zap className="h-4 w-4 text-blue-400" />
-                          <span className="text-sm font-medium text-white">Generate With API</span>
+                          <span className="text-sm font-medium text-white">Generate With LTX Cloud</span>
                         </div>
                         <p className="text-xs text-zinc-400 mt-1">
-                          Use LTX API for video generation when an LTX API key is configured.
+                          Send video generation to LTX Cloud instead of the active local or remote compute backend.
                         </p>
                       </div>
                       <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
@@ -431,7 +431,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <Zap className="h-4 w-4 text-blue-400" />
-                        <span className="text-sm font-medium text-white">LTX API</span>
+                        <span className="text-sm font-medium text-white">LTX Cloud text encoding</span>
                         <span className="text-xs px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded">Recommended</span>
                       </div>
                       <p className="text-xs text-zinc-400 mt-1">
@@ -728,11 +728,11 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <Zap className="h-4 w-4 text-blue-400" />
-                  <h3 className="text-sm font-semibold text-white">LTX API</h3>
+                  <h3 className="text-sm font-semibold text-white">LTX Cloud API</h3>
                 </div>
 
                 <p className="text-xs text-zinc-500 leading-relaxed">
-                  Your LTX API key is used for cloud text encoding, prompt enhancement, and API video generation.
+                  This cloud API key is separate from a remote backend access token. It is used for cloud text encoding, prompt enhancement, and LTX Cloud video generation.
                   Add your key below to unlock these features.
                 </p>
 

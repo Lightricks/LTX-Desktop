@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, AlertCircle, Settings, FileText } from 'lucide-react'
+import { Loader2, AlertCircle, Settings, FileText, Monitor, Server } from 'lucide-react'
 import { ApiClient, type ApiSuccessOf } from './lib/api-client'
 import { ProjectProvider } from './contexts/ProjectContext'
 import { ViewProvider, useView } from './contexts/ViewContext'
@@ -38,7 +38,9 @@ function AppContent() {
 
   const [pythonReady, setPythonReady] = useState<boolean | null>(null)
   const [configuredBackendMode, setConfiguredBackendMode] = useState<ConfiguredBackendMode | null>(null)
+  const [configuredBackendUrl, setConfiguredBackendUrl] = useState('')
   const [pythonSetupSelected, setPythonSetupSelected] = useState(false)
+  const [firstRunComputeConfirmed, setFirstRunComputeConfirmed] = useState(false)
   const [backendStarted, setBackendStarted] = useState(false)
   const [setupState, setSetupState] = useState<SetupState>('loading')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -99,6 +101,7 @@ function AppContent() {
       try {
         const connection = await window.electronAPI.getBackendConnectionConfig()
         setConfiguredBackendMode(connection.mode)
+        setConfiguredBackendUrl(connection.url)
         const result = await window.electronAPI.checkPythonReady()
         setPythonReady(result.ready)
       } catch (e) {
@@ -384,7 +387,7 @@ function AppContent() {
     </div>
   ) : null
 
-  const showGlobalControls = currentView !== 'home' && connected && setupState !== 'loading' && !setupState.needsSetup
+  const showGlobalControls = connected && setupState !== 'loading' && !setupState.needsSetup
   const shouldBlockUntilSettingsLoaded = forceApiGenerations && !isLoaded
   const shouldShowForcedFirstRunUpsell = isForcedFirstRun && isLoaded && !settings.hasLtxApiKey
   const shouldShowGlobalForcedUpsell = forceApiGenerations && setupState !== 'loading' && !setupState.needsSetup && isLoaded && !settings.hasLtxApiKey
@@ -415,15 +418,15 @@ function AppContent() {
     const sections: ApiGatewaySection[] = [
       {
         keyType: 'ltx',
-        title: 'LTX API',
+        title: 'LTX Cloud API',
         description: 'Video generation, prompt enhancement, and cloud text encoding.',
         required: activeApiGatewayRequest.requiredKeys.includes('ltx'),
         isConfigured: settings.hasLtxApiKey,
-        inputLabel: 'LTX API key',
-        placeholder: 'Enter your LTX API key...',
+        inputLabel: 'LTX Cloud API key',
+        placeholder: 'Enter your LTX Cloud API key...',
         onSave: handleSaveLtxKey,
         onGetKey: () => window.electronAPI.openLtxApiKeyPage(),
-        getKeyLabel: 'Get LTX API key',
+        getKeyLabel: 'Get LTX Cloud API key',
       },
       {
         keyType: 'fal',
@@ -550,6 +553,31 @@ function AppContent() {
     )
   }
 
+  if (
+    setupState.needsSetup
+    && configuredBackendMode === 'managed-local'
+    && !firstRunComputeConfirmed
+  ) {
+    return (
+      <div className="h-screen overflow-auto bg-background p-6">
+        <div className="mx-auto flex min-h-full w-full max-w-2xl items-center justify-center">
+          <div className="w-full space-y-5">
+            <div className="text-center">
+              <h2 className="text-2xl font-semibold text-white">Choose where generation runs</h2>
+              <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-zinc-400">
+                LTX Desktop and your project files stay on this computer. The models can run here, or on a headless GPU machine such as a workstation or home server.
+              </p>
+            </div>
+            <BackendConnectionPanel
+              onboarding
+              onContinueWithManagedLocal={() => setFirstRunComputeConfirmed(true)}
+            />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (setupState.needsSetup && !forceApiGenerations) {
     return <LaunchGate showLicenseStep={false} onComplete={handleFirstRunComplete} />
   }
@@ -575,6 +603,21 @@ function AppContent() {
 
       {showGlobalControls && (
         <div className="fixed top-[18px] right-3 z-50 flex items-center gap-1">
+          <button
+            onClick={() => {
+              setSettingsInitialTab('compute')
+              setIsSettingsOpen(true)
+            }}
+            className="flex h-8 items-center gap-1.5 rounded-md bg-black/40 px-2 text-xs text-zinc-200 ring-1 ring-white/10 backdrop-blur-sm transition-colors hover:bg-zinc-800 hover:text-white"
+            title={connectionMode === 'external'
+              ? `Remote backend: ${configuredBackendUrl || 'connected'}`
+              : 'Models and inference run on this computer'}
+          >
+            {connectionMode === 'external'
+              ? <Server className="h-4 w-4 text-blue-400" />
+              : <Monitor className="h-4 w-4 text-blue-400" />}
+            <span>{connectionMode === 'external' ? 'Remote compute' : 'This computer'}</span>
+          </button>
           <button
             onClick={() => setIsLogViewerOpen(true)}
             className="h-8 w-8 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"

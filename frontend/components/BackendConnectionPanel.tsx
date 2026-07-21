@@ -6,11 +6,17 @@ type ConnectionMode = 'managed-local' | 'external'
 
 interface BackendConnectionPanelProps {
   compact?: boolean
+  onboarding?: boolean
+  onContinueWithManagedLocal?: () => void
 }
 
-export function BackendConnectionPanel({ compact = false }: BackendConnectionPanelProps) {
+export function BackendConnectionPanel({
+  compact = false,
+  onboarding = false,
+  onContinueWithManagedLocal,
+}: BackendConnectionPanelProps) {
   const [mode, setMode] = useState<ConnectionMode>('managed-local')
-  const [url, setUrl] = useState('http://127.0.0.1:8000')
+  const [url, setUrl] = useState('http://127.0.0.1:18000')
   const [authToken, setAuthToken] = useState('')
   const [hasSavedToken, setHasSavedToken] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -29,8 +35,8 @@ export function BackendConnectionPanel({ compact = false }: BackendConnectionPan
     if (!authToken.trim()) {
       setSuccess(false)
       setMessage(hasSavedToken
-        ? 'Re-enter the saved authentication token to test or update this connection.'
-        : 'Enter the backend authentication token.')
+        ? 'Re-enter the saved backend access token to test or update this connection.'
+        : 'Enter the backend access token.')
       return
     }
     setBusy(true)
@@ -40,7 +46,7 @@ export function BackendConnectionPanel({ compact = false }: BackendConnectionPan
       const result = await window.electronAPI.testBackendConnection({ url, authToken })
       if (!result.success) throw new Error(result.error)
       setSuccess(true)
-      setMessage(`Connected to standalone API v${result.serverInfo.api_version}.`)
+      setMessage(`Connected to the remote LTX backend (protocol v${result.serverInfo.api_version}).`)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error))
     } finally {
@@ -53,8 +59,13 @@ export function BackendConnectionPanel({ compact = false }: BackendConnectionPan
     setMessage(null)
     setSuccess(false)
     try {
+      if (mode === 'managed-local' && onContinueWithManagedLocal) {
+        onContinueWithManagedLocal()
+        setBusy(false)
+        return
+      }
       if (mode === 'external' && !authToken.trim()) {
-        throw new Error('Enter the backend authentication token before saving.')
+        throw new Error('Enter the backend access token before saving.')
       }
       const result = mode === 'managed-local'
         ? await window.electronAPI.setBackendConnection({ mode: 'managed-local' })
@@ -75,12 +86,14 @@ export function BackendConnectionPanel({ compact = false }: BackendConnectionPan
 
   return (
     <div className={`space-y-4 ${compact ? '' : 'rounded-xl border border-zinc-700 bg-zinc-900/70 p-5'}`}>
-      <div>
-        <h3 className="text-sm font-semibold text-white">Compute backend</h3>
-        <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-          Run inference on this computer, or connect to a standalone LTX backend through an SSH tunnel or HTTPS.
-        </p>
-      </div>
+      {!onboarding && (
+        <div>
+          <h3 className="text-sm font-semibold text-white">Where generation runs</h3>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+            Keep the interface and project files here while running the LTX models on this computer or a remote GPU machine.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         <button
@@ -90,7 +103,7 @@ export function BackendConnectionPanel({ compact = false }: BackendConnectionPan
         >
           <Monitor className="mb-2 h-4 w-4 text-blue-400" />
           <div className="text-sm font-medium text-white">This computer</div>
-          <div className="mt-1 text-[11px] text-zinc-500">Managed Python and models</div>
+          <div className="mt-1 text-[11px] text-zinc-500">Models and inference run locally</div>
         </button>
         <button
           type="button"
@@ -99,24 +112,24 @@ export function BackendConnectionPanel({ compact = false }: BackendConnectionPan
         >
           <Server className="mb-2 h-4 w-4 text-blue-400" />
           <div className="text-sm font-medium text-white">Remote machine</div>
-          <div className="mt-1 text-[11px] text-zinc-500">Standalone backend and GPU</div>
+          <div className="mt-1 text-[11px] text-zinc-500">Models stay on another GPU machine</div>
         </button>
       </div>
 
       {mode === 'external' && (
         <div className="space-y-3">
           <label className="block">
-            <span className="mb-1 block text-xs text-zinc-400">Backend URL</span>
+            <span className="mb-1 block text-xs text-zinc-400">Remote backend URL</span>
             <input
               value={url}
               onChange={(event) => setUrl(event.target.value)}
               onKeyDown={(event) => event.stopPropagation()}
-              placeholder="http://127.0.0.1:8000"
+              placeholder="http://127.0.0.1:18000"
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs text-zinc-400">Authentication token</span>
+            <span className="mb-1 block text-xs text-zinc-400">Backend access token</span>
             <input
               type="password"
               value={authToken}
@@ -127,7 +140,10 @@ export function BackendConnectionPanel({ compact = false }: BackendConnectionPan
             />
           </label>
           <p className="text-[11px] leading-relaxed text-zinc-500">
-            Plain HTTP is accepted only on localhost. Use an SSH tunnel or HTTPS to reach a backend on another machine.
+            Use the <code className="text-zinc-400">LTX_AUTH_TOKEN</code> value configured on your GPU machine. This is not an LTX cloud API key.
+          </p>
+          <p className="text-[11px] leading-relaxed text-zinc-500">
+            SSH example: <code className="text-zinc-400">ssh -N -L 18000:127.0.0.1:8000 user@gpu-host</code>. Plain HTTP is accepted only on localhost; use HTTPS for direct network connections.
           </p>
         </div>
       )}
@@ -146,7 +162,11 @@ export function BackendConnectionPanel({ compact = false }: BackendConnectionPan
           </Button>
         )}
         <Button onClick={() => { void saveConnection() }} disabled={busy}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save & reconnect'}
+          {busy
+            ? <Loader2 className="h-4 w-4 animate-spin" />
+            : onboarding
+              ? mode === 'external' ? 'Connect & continue' : 'Continue on this computer'
+              : 'Save & reconnect'}
         </Button>
       </div>
     </div>
