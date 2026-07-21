@@ -19,6 +19,7 @@ from api_types import (
 )
 from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
+from handlers.media_handler import MediaHandler
 from handlers.pipelines_handler import PipelinesHandler
 from services.interfaces import ZitAPIClient
 from state.app_state_types import AppState
@@ -38,11 +39,13 @@ class ImageGenerationHandler(StateHandlerBase):
         pipelines_handler: PipelinesHandler,
         config: RuntimeConfig,
         zit_api_client: ZitAPIClient,
+        media_handler: MediaHandler,
     ) -> None:
         super().__init__(state, lock, config)
         self._generation = generation_handler
         self._pipelines = pipelines_handler
         self._zit_api_client = zit_api_client
+        self._media = media_handler
 
     def generate(self, req: GenerateImageRequest) -> GenerateImageResponse:
         if self._generation.is_generation_running():
@@ -52,7 +55,7 @@ class ImageGenerationHandler(StateHandlerBase):
         height = (req.height // 16) * 16
         num_images = max(1, min(12, req.numImages))
 
-        generation_id = uuid.uuid4().hex[:8]
+        generation_id = req.generationId or uuid.uuid4().hex[:8]
         settings = self.state.app_settings.model_copy(deep=True)
         if settings.seed_locked:
             seed = settings.locked_seed
@@ -70,6 +73,7 @@ class ImageGenerationHandler(StateHandlerBase):
                 num_inference_steps=req.numSteps,
                 seed=seed,
                 num_images=num_images,
+                generation_id=generation_id,
             )
 
         try:
@@ -83,8 +87,13 @@ class ImageGenerationHandler(StateHandlerBase):
                 seed=seed,
                 num_images=num_images,
             )
-            self._generation.complete_generation(output_paths)
-            return GenerateImageCompleteResponse(status="complete", image_paths=output_paths)
+            artifacts = [self._media.register_artifact(path, media_type="image") for path in output_paths]
+            self._generation.complete_generation(output_paths, artifacts)
+            return GenerateImageCompleteResponse(
+                status="complete",
+                image_paths=output_paths,
+                artifacts=artifacts,
+            )
         except Exception as e:
             self._generation.fail_generation(str(e))
             if "cancelled" in str(e).lower():
@@ -149,8 +158,8 @@ class ImageGenerationHandler(StateHandlerBase):
         num_inference_steps: int,
         seed: int,
         num_images: int,
+        generation_id: str,
     ) -> GenerateImageResponse:
-        generation_id = uuid.uuid4().hex[:8]
         output_paths: list[Path] = []
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         settings = self.state.app_settings.model_copy(deep=True)
@@ -188,8 +197,14 @@ class ImageGenerationHandler(StateHandlerBase):
                 output_paths.append(output_path)
 
             self._generation.update_progress("complete", 100, None, None)
-            self._generation.complete_generation([str(path) for path in output_paths])
-            return GenerateImageCompleteResponse(status="complete", image_paths=[str(path) for path in output_paths])
+            output_path_strings = [str(path) for path in output_paths]
+            artifacts = [self._media.register_artifact(path, media_type="image") for path in output_paths]
+            self._generation.complete_generation(output_path_strings, artifacts)
+            return GenerateImageCompleteResponse(
+                status="complete",
+                image_paths=output_path_strings,
+                artifacts=artifacts,
+            )
         except HTTPError as e:
             self._generation.fail_generation(e.detail)
             raise

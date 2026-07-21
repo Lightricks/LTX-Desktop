@@ -160,6 +160,25 @@ class TestModelsDirAdminGuard:
         assert test_state.state.app_settings.models_dir == ""
         assert test_state.models.models_dir == test_state.config.default_models_dir
 
+    def test_standalone_models_dir_is_server_managed(self, client, test_state, tmp_path):
+        override = tmp_path / "atom-models"
+        override.mkdir()
+        test_state.config.deployment_mode = "standalone"
+        test_state.config.models_dir_editable = False
+        test_state.config.models_dir_override = override
+
+        response = client.post(
+            "/api/settings",
+            json={"modelsDir": "/client/path"},
+            headers={"X-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        assert response.status_code == 409
+        assert response.json()["code"] == "MODELS_DIR_MANAGED_BY_SERVER"
+
+        settings = client.get("/api/settings")
+        assert settings.json()["modelsDir"] == str(override)
+        assert test_state.models.models_dir == override
+
     def test_models_dir_persists_and_loads(self, client, test_state, default_app_settings):
         r = client.post(
             "/api/settings",

@@ -8,7 +8,8 @@ This document describes the **Python backend** architecture and the contracts we
 
 ## Big picture
 
-At runtime, the backend is a **local FastAPI server**. Endpoints are intentionally thin and delegate all work to a
+At runtime, the backend is a **FastAPI server** used either as an Electron-managed local process or as a standalone
+single-user service. Endpoints are intentionally thin and delegate all work to a
 single, shared **`AppHandler`** instance which owns:
 
 - `RuntimeConfig`: constant environment configuration (treat as immutable).
@@ -106,7 +107,7 @@ This enables exhaustive matching and makes illegal states harder to represent.
 
 ### Why threads
 
-This backend is optimized for a **single local client** with **heavy requests** (GPU/CPU work), rather than a high-QPS,
+This backend is optimized for a **single trusted desktop client** with **heavy requests** (GPU/CPU work), rather than a high-QPS,
 multi-tenant server.
 
 Most endpoints are defined as synchronous `def` route handlers, which FastAPI/Starlette executes via a **thread pool**.
@@ -165,6 +166,8 @@ Some side effects are not suitable for integration tests (GPU-heavy compute, net
   - The tested app (fake implementations).
 - Services should be narrowly scoped to their side effect and avoid business/state logic.
 - If a heavy side effect must be avoided in tests, it should be avoided **only** by introducing (or using) a service.
+- The lightweight filesystem media store is exercised directly in temporary test directories; GPU and network services
+  still use fakes.
 
 ### Service interfaces and naming conventions
 

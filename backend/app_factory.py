@@ -21,9 +21,11 @@ from _routes.health import router as health_router
 from _routes.ic_lora import router as ic_lora_router
 from _routes.image_gen import router as image_gen_router
 from _routes.models import router as models_router
+from _routes.media import router as media_router
 from _routes.suggest_gap_prompt import router as suggest_gap_prompt_router
 from _routes.retake import router as retake_router
 from _routes.runtime_policy import router as runtime_policy_router
+from _routes.server_info import router as server_info_router
 from _routes.settings import router as settings_router
 from api_types import HTTPErrorResponse
 from logging_policy import log_http_error, log_unhandled_exception
@@ -32,10 +34,7 @@ from state import init_state_service
 if TYPE_CHECKING:
     from app_handler import AppHandler
 
-DEFAULT_ALLOWED_ORIGINS: list[str] = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+from runtime_config.server_config import DEFAULT_ALLOWED_ORIGINS
 
 DEFAULT_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     "4XX": {
@@ -64,9 +63,10 @@ def create_app(
     app.state.admin_token = admin_token  # type: ignore[attr-defined]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=allowed_origins or DEFAULT_ALLOWED_ORIGINS,
+        allow_origins=list(DEFAULT_ALLOWED_ORIGINS) if allowed_origins is None else allowed_origins,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["Accept-Ranges", "Content-Disposition", "Content-Length", "Content-Range", "ETag"],
     )
 
     @app.middleware("http")
@@ -78,13 +78,16 @@ def create_app(
             return await call_next(request)
         if request.method == "OPTIONS":
             return await call_next(request)
-        if request.url.path == "/api/auth/huggingface/callback":
+        if request.method == "GET" and request.url.path == "/api/auth/huggingface/callback":
             return await call_next(request)
         def _token_matches(candidate: str) -> bool:
             return hmac.compare_digest(candidate, auth_token)
 
         # WebSocket: check query param
-        if request.headers.get("upgrade", "").lower() == "websocket":
+        if (
+            handler.config.deployment_mode == "managed_local"
+            and request.headers.get("upgrade", "").lower() == "websocket"
+        ):
             if _token_matches(request.query_params.get("token", "")):
                 return await call_next(request)
             return JSONResponse(
@@ -95,7 +98,7 @@ def create_app(
         auth_header = request.headers.get("authorization", "")
         if auth_header.startswith("Bearer ") and _token_matches(auth_header[7:]):
             return await call_next(request)
-        if auth_header.startswith("Basic "):
+        if handler.config.deployment_mode == "managed_local" and auth_header.startswith("Basic "):
             try:
                 decoded = base64.b64decode(auth_header[6:]).decode()
                 _, _, password = decoded.partition(":")
@@ -161,5 +164,7 @@ def create_app(
     app.include_router(ic_lora_router)
     app.include_router(runtime_policy_router)
     app.include_router(hf_auth_router)
+    app.include_router(server_info_router)
+    app.include_router(media_router)
 
     return app

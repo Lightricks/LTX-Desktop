@@ -7,6 +7,7 @@ import logging
 from threading import RLock
 from typing import TYPE_CHECKING
 
+from _routes._errors import HTTPError
 from state.app_settings import AppSettings, UpdateSettingsRequest
 from handlers._settings_utils import (
     collect_changed_paths,
@@ -17,6 +18,7 @@ from handlers._settings_utils import (
 )
 from handlers.base import StateHandlerBase, with_state_lock
 from state.app_state_types import AppState
+from server_utils.secure_files import harden_file_permissions, secure_write_text
 
 if TYPE_CHECKING:
     from runtime_config.runtime_config import RuntimeConfig
@@ -41,6 +43,7 @@ class SettingsHandler(StateHandlerBase):
                     migrated,
                 )
                 loaded = AppSettings.model_validate(merged)
+                harden_file_permissions(settings_file)
                 logger.info("Settings loaded from %s", settings_file)
                 self.state.app_settings = loaded
                 return loaded
@@ -53,8 +56,7 @@ class SettingsHandler(StateHandlerBase):
     def save_settings(self) -> None:
         try:
             payload = self.get_settings_snapshot().model_dump(by_alias=False)
-            with open(self.config.settings_file, "w", encoding="utf-8") as f:
-                json.dump(payload, f, indent=2)
+            secure_write_text(self.config.settings_file, json.dumps(payload, indent=2))
         except Exception as exc:
             logger.warning("Could not save settings: %s", exc, exc_info=True)
 
@@ -65,6 +67,9 @@ class SettingsHandler(StateHandlerBase):
     @with_state_lock
     def update_settings(self, patch: UpdateSettingsRequest) -> tuple[AppSettings, AppSettings, set[str]]:
         patch_payload = strip_none_values(ensure_json_object(patch.model_dump(by_alias=False, exclude_unset=True)))
+
+        if "models_dir" in patch_payload and not self.config.models_dir_editable:
+            raise HTTPError(409, "MODELS_DIR_MANAGED_BY_SERVER")
 
         for key_field in ("ltx_api_key", "gemini_api_key", "fal_api_key"):
             if key_field in patch_payload and patch_payload[key_field] == "":

@@ -111,7 +111,9 @@ if use_sage_attention:
 # Constants & Paths
 # ============================================================
 
-from runtime_config.port_constant import PORT
+from runtime_config.server_config import load_server_config
+
+server_config = load_server_config()
 
 
 def _get_device() -> torch.device:
@@ -140,13 +142,16 @@ def _resolve_app_data_dir() -> Path:
 APP_DATA_DIR = _resolve_app_data_dir()
 
 DEFAULT_MODELS_DIR = APP_DATA_DIR / "models"
-DEFAULT_MODELS_DIR.mkdir(parents=True, exist_ok=True)
+models_dir_env = os.environ.get("LTX_MODELS_DIR", "").strip()
+MODELS_DIR_OVERRIDE = Path(models_dir_env).expanduser().resolve() if models_dir_env else None
+ACTIVE_MODELS_DIR = MODELS_DIR_OVERRIDE or DEFAULT_MODELS_DIR
+ACTIVE_MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 PROJECT_ROOT = Path(__file__).parent.parent
 OUTPUTS_DIR = APP_DATA_DIR / "outputs"
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
-logger.info(f"Models directory: {DEFAULT_MODELS_DIR}")
+logger.info("Models directory: %s", ACTIVE_MODELS_DIR)
 
 # ============================================================
 # Settings
@@ -158,7 +163,7 @@ SETTINGS_FILE = SETTINGS_DIR / "settings.json"
 
 DEFAULT_APP_SETTINGS = AppSettings()
 
-from app_factory import DEFAULT_ALLOWED_ORIGINS, create_app
+from app_factory import create_app
 from state import RuntimeConfig, build_initial_state
 from runtime_config.runtime_policy import LocalGenerationMode, decide_local_generation_mode
 from server_utils.model_layout_migration import migrate_legacy_models_layout
@@ -207,7 +212,7 @@ CAMERA_MOTION_PROMPTS = {
 
 DEFAULT_NEGATIVE_PROMPT = """blurry, out of focus, overexposed, underexposed, low contrast, washed out colors, excessive noise, grainy texture, poor lighting, flickering, motion blur, distorted proportions, unnatural skin tones, deformed facial features, asymmetrical face, missing facial features, extra limbs, disfigured hands, wrong hand count, artifacts around text, inconsistent perspective, camera shake, incorrect depth of field"""
 
-HF_OAUTH_CLIENT_ID = "a8189e14-9246-4f19-bd6a-a307bdcb9276"
+HF_OAUTH_CLIENT_ID = os.environ.get("LTX_HF_OAUTH_CLIENT_ID", "a8189e14-9246-4f19-bd6a-a307bdcb9276")
 
 runtime_config = RuntimeConfig(
     device=DEVICE,
@@ -222,16 +227,23 @@ runtime_config = RuntimeConfig(
     default_negative_prompt=DEFAULT_NEGATIVE_PROMPT,
     dev_mode=os.environ.get("LTX_DEV_MODE") == "1",
     hf_oauth_client_id=HF_OAUTH_CLIENT_ID,
-    backend_port=int(os.environ.get("LTX_PORT", "") or PORT),
+    backend_port=server_config.port,
     hf_gating_enabled=os.environ.get("LTX_HF_GATING_ENABLED") == "1",
+    deployment_mode=server_config.deployment_mode,
+    public_base_url=server_config.public_base_url,
+    allow_legacy_path_inputs=server_config.allow_legacy_path_inputs,
+    models_dir_editable=server_config.models_dir_editable,
+    models_dir_override=MODELS_DIR_OVERRIDE,
 )
 
 handler = build_initial_state(runtime_config, DEFAULT_APP_SETTINGS)
 
-auth_token = os.environ.get("LTX_AUTH_TOKEN", "")
-admin_token = os.environ.get("LTX_ADMIN_TOKEN", "")
-
-app = create_app(handler=handler, allowed_origins=DEFAULT_ALLOWED_ORIGINS, auth_token=auth_token, admin_token=admin_token)
+app = create_app(
+    handler=handler,
+    allowed_origins=list(server_config.allowed_origins),
+    auth_token=server_config.auth_token,
+    admin_token=server_config.admin_token,
+)
 
 
 def precache_model_files(model_dir: Path) -> int:
@@ -291,7 +303,14 @@ if __name__ == "__main__":
         },
     }
 
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info", access_log=False, log_config=log_config)
+    config = uvicorn.Config(
+        app,
+        host=server_config.bind_host,
+        port=port,
+        log_level="info",
+        access_log=False,
+        log_config=log_config,
+    )
     server = uvicorn.Server(config)
 
     _orig_startup = server.startup
@@ -300,7 +319,8 @@ if __name__ == "__main__":
         await _orig_startup(sockets=sockets)  # type: ignore[arg-type]
         if server.started:
             # Machine-parseable ready message — Electron matches this line
-            print(f"Server running on http://127.0.0.1:{port}", flush=True)
+            ready_host = "127.0.0.1" if server_config.bind_host in {"0.0.0.0", "::"} else server_config.bind_host
+            print(f"Server running on http://{ready_host}:{port}", flush=True)
 
     server.startup = _startup_with_ready_msg  # type: ignore[assignment]
 

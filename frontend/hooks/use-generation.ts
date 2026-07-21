@@ -1,8 +1,14 @@
 import { useState, useCallback, useRef } from 'react'
 import type { GenerationSettings } from '../components/SettingsPanel'
-import { ApiClient, type ApiRequestBodyOf } from '../lib/api-client'
+import { ApiClient, type ApiRequestBodyOf, type ApiSuccessOf } from '../lib/api-client'
 import { createLocalGenerationError, type GenerationError } from '../lib/generation-errors'
 import { useAppSettings } from '../contexts/AppSettingsContext'
+import { getBackendCredentials } from '../lib/backend'
+import {
+  materializeBackendOutput,
+  materializeBackendOutputs,
+  prepareBackendMedia,
+} from '../lib/backend-media'
 
 interface GenerationState {
   isGenerating: boolean
@@ -16,6 +22,63 @@ interface GenerationState {
 
 type GenerateVideoRequest = ApiRequestBodyOf<'generateVideo'>
 type GenerateImageRequest = ApiRequestBodyOf<'generateImage'>
+type GenerationProgressPayload = ApiSuccessOf<'getGenerationProgress'>
+
+const REMOTE_RECOVERY_TIMEOUT_MS = 30 * 60 * 1000
+const REMOTE_RECOVERY_POLL_MS = 2_000
+
+function isTransportFailure(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  const result = value as { ok?: unknown; error?: { code?: unknown } }
+  return result.ok === false
+    && (result.error?.code === 'NETWORK_ERROR' || result.error?.code === 'RESPONSE_READ_FAILED')
+}
+
+function waitForRemoteRetry(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException('Generation cancelled', 'AbortError'))
+      return
+    }
+    const onAbort = () => {
+      window.clearTimeout(timeout)
+      reject(new DOMException('Generation cancelled', 'AbortError'))
+    }
+    const timeout = window.setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, REMOTE_RECOVERY_POLL_MS)
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+async function recoverRemoteGeneration(
+  generationId: string,
+  signal: AbortSignal,
+  onProgress: (progress: GenerationProgressPayload) => void,
+): Promise<GenerationProgressPayload> {
+  const deadline = Date.now() + REMOTE_RECOVERY_TIMEOUT_MS
+
+  while (Date.now() < deadline) {
+    const progressResult = await ApiClient.getGenerationProgress(undefined, { signal })
+    if (progressResult.ok) {
+      const progress = progressResult.data
+      if (progress.generationId === generationId) {
+        onProgress(progress)
+        if (progress.status === 'complete') return progress
+        if (progress.status === 'cancelled') {
+          throw new DOMException('Generation cancelled', 'AbortError')
+        }
+        if (progress.status === 'error') {
+          throw new Error(progress.error || 'The remote generation failed')
+        }
+      }
+    }
+    await waitForRemoteRetry(signal)
+  }
+
+  throw new Error('Timed out while waiting to recover the remote generation')
+}
 
 interface UseGenerationReturn extends GenerationState {
   generate: (prompt: string, imagePath: string | null, settings: GenerationSettings, audioPath?: string | null) => Promise<void>
@@ -117,12 +180,27 @@ export function useGeneration(): UseGenerationReturn {
     })
 
     abortControllerRef.current = new AbortController()
+    const generationId = crypto.randomUUID()
     let progressInterval: ReturnType<typeof setInterval> | null = null
     let shouldApplyPollingUpdates = true
 
     try {
+      if (imagePath || audioPath) {
+        setState(prev => ({
+          ...prev,
+          statusMessage: imagePath && audioPath
+            ? 'Uploading image and audio...'
+            : imagePath ? 'Uploading image...' : 'Uploading audio...',
+        }))
+      }
+      const [preparedImage, preparedAudio] = await Promise.all([
+        prepareBackendMedia(imagePath, 'image'),
+        prepareBackendMedia(audioPath, 'audio'),
+      ])
+
       // Prepare JSON body
       const body: Record<string, unknown> = {
+        generationId,
         prompt,
         model: settings.model,
         duration: settings.duration,
@@ -133,11 +211,15 @@ export function useGeneration(): UseGenerationReturn {
         negativePrompt: (settings as { negativePrompt?: string }).negativePrompt ?? '',
         aspectRatio: settings.aspectRatio || '16:9',
       }
-      if (imagePath) {
-        body.imagePath = imagePath
+      if (preparedImage?.path) {
+        body.imagePath = preparedImage.path
+      } else if (preparedImage?.mediaId) {
+        body.imageMediaId = preparedImage.mediaId
       }
-      if (audioPath) {
-        body.audioPath = audioPath
+      if (preparedAudio?.path) {
+        body.audioPath = preparedAudio.path
+      } else if (preparedAudio?.mediaId) {
+        body.audioMediaId = preparedAudio.mediaId
       }
 
       // Poll for real progress from backend with time-based interpolation
@@ -185,26 +267,60 @@ export function useGeneration(): UseGenerationReturn {
       progressInterval = setInterval(pollProgress, 500)
 
       // Start generation (HTTP POST - synchronous, returns when done)
+      const backend = await getBackendCredentials()
       const result = await ApiClient.generateVideo(body as unknown as GenerateVideoRequest, {
         signal: abortControllerRef.current.signal,
       })
       shouldApplyPollingUpdates = false
+      let payload: ApiSuccessOf<'generateVideo'>
       if (!result.ok) {
-        setState(prev => ({
-          ...prev,
-          isGenerating: false,
-          error: result,
-        }))
-        return
+        if (backend.mode === 'external' && isTransportFailure(result)) {
+          setState(prev => ({
+            ...prev,
+            statusMessage: 'Connection lost. Waiting for the remote generation...',
+          }))
+          const recovered = await recoverRemoteGeneration(
+            generationId,
+            abortControllerRef.current.signal,
+            (progress) => {
+              setState(prev => ({
+                ...prev,
+                progress: progress.progress,
+                statusMessage: progress.status === 'running'
+                  ? getPhaseMessage(progress.phase)
+                  : 'Downloading recovered output...',
+              }))
+            },
+          )
+          const recoveredArtifact = recovered.artifacts?.[0]
+          if (!recoveredArtifact) {
+            throw new Error('The recovered remote generation has no downloadable artifact')
+          }
+          payload = {
+            status: 'complete',
+            video_path: '',
+            artifact: recoveredArtifact,
+          }
+        } else {
+          setState(prev => ({
+            ...prev,
+            isGenerating: false,
+            error: result,
+          }))
+          return
+        }
+      } else {
+        payload = result.data
       }
 
-      const payload = result.data
       if (payload.status === 'complete') {
+        setState(prev => ({ ...prev, statusMessage: 'Downloading output...', progress: 97 }))
+        const outputPath = await materializeBackendOutput(payload.video_path, payload.artifact)
         setState({
           isGenerating: false,
           progress: 100,
           statusMessage: 'Complete!',
-          videoPath: payload.video_path,
+          videoPath: outputPath,
           imagePath: null,
           imagePaths: [],
           error: null,
@@ -302,6 +418,9 @@ export function useGeneration(): UseGenerationReturn {
     })
 
     abortControllerRef.current = new AbortController()
+    const generationId = crypto.randomUUID()
+    let progressInterval: ReturnType<typeof setInterval> | null = null
+    let shouldApplyPollingUpdates = true
 
     try {
       // Skip prompt enhancement for T2I - use original prompt directly
@@ -312,8 +431,9 @@ export function useGeneration(): UseGenerationReturn {
 
       // Poll for progress
       const pollProgress = async () => {
+        if (!shouldApplyPollingUpdates) return
         const result = await ApiClient.getGenerationProgress()
-        if (!result.ok) return
+        if (!result.ok || !shouldApplyPollingUpdates) return
 
         const data = result.data
         const currentImage = data.currentStep || 0
@@ -333,32 +453,62 @@ export function useGeneration(): UseGenerationReturn {
         }))
       }
       
-      const progressInterval = setInterval(pollProgress, 500)
+      progressInterval = setInterval(pollProgress, 500)
 
       const imageRequest: GenerateImageRequest = {
+        generationId,
         prompt: finalPrompt,
         width: dims.width,
         height: dims.height,
         numSteps,
         numImages,
       }
+      const backend = await getBackendCredentials()
       const result = await ApiClient.generateImage(imageRequest, {
         signal: abortControllerRef.current.signal,
       })
 
-      clearInterval(progressInterval)
+      shouldApplyPollingUpdates = false
+      let payload: ApiSuccessOf<'generateImage'>
       if (!result.ok) {
-        setState(prev => ({
-          ...prev,
-          isGenerating: false,
-          error: result,
-        }))
-        return
+        if (backend.mode === 'external' && isTransportFailure(result)) {
+          setState(prev => ({
+            ...prev,
+            statusMessage: 'Connection lost. Waiting for the remote generation...',
+          }))
+          const recovered = await recoverRemoteGeneration(
+            generationId,
+            abortControllerRef.current.signal,
+            (progress) => {
+              setState(prev => ({
+                ...prev,
+                progress: progress.progress,
+                statusMessage: progress.status === 'running'
+                  ? getPhaseMessage(progress.phase)
+                  : 'Downloading recovered output...',
+              }))
+            },
+          )
+          payload = {
+            status: 'complete',
+            image_paths: [],
+            artifacts: recovered.artifacts ?? [],
+          }
+        } else {
+          setState(prev => ({
+            ...prev,
+            isGenerating: false,
+            error: result,
+          }))
+          return
+        }
+      } else {
+        payload = result.data
       }
 
-      const payload = result.data
       if (payload.status === 'complete') {
-        const rawPaths = payload.image_paths
+        setState(prev => ({ ...prev, statusMessage: 'Downloading output...', progress: 97 }))
+        const rawPaths = await materializeBackendOutputs(payload.image_paths, payload.artifacts)
         if (rawPaths.length === 0) {
           throw new Error('Image generation completed without output images')
         }
@@ -396,6 +546,9 @@ export function useGeneration(): UseGenerationReturn {
           error: createLocalGenerationError(error instanceof Error ? error.message : 'Unknown error'),
         }))
       }
+    } finally {
+      shouldApplyPollingUpdates = false
+      if (progressInterval) clearInterval(progressInterval)
     }
   }, [appSettings.hasFalApiKey, forceApiGenerations, refreshSettings])
 

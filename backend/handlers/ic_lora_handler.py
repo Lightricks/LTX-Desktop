@@ -24,6 +24,7 @@ from api_types import (
 from _routes._errors import HTTPError
 from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
+from handlers.media_handler import MediaHandler
 from handlers.pipelines_handler import PipelinesHandler
 from handlers.text_handler import TextHandler
 from runtime_config.model_download_specs import (
@@ -33,6 +34,7 @@ from runtime_config.model_download_specs import (
     get_ltx_model_spec,
 )
 from runtime_config.runtime_config import RuntimeConfig
+from server_utils.media_validation import validate_image_file
 from state.conditioning_cache import ConditioningCacheEntry, ConditioningCacheKey
 from services.interfaces import VideoProcessor
 from services.services_utils import FrameArray
@@ -53,6 +55,7 @@ class IcLoraHandler(StateHandlerBase):
         pipelines_handler: PipelinesHandler,
         text_handler: TextHandler,
         video_processor: VideoProcessor,
+        media_handler: MediaHandler,
         config: RuntimeConfig,
     ) -> None:
         super().__init__(state, lock, config)
@@ -60,6 +63,7 @@ class IcLoraHandler(StateHandlerBase):
         self._pipelines = pipelines_handler
         self._text = text_handler
         self._video_processor = video_processor
+        self._media = media_handler
 
     def _build_conditioning_frame(
         self,
@@ -94,9 +98,16 @@ class IcLoraHandler(StateHandlerBase):
         return lora_path, depth_model_path
 
     def extract_conditioning(self, req: IcLoraExtractRequest) -> IcLoraExtractResponse:
-        video_file = Path(req.video_path)
+        resolved_video = self._media.resolve_input(
+            media_id=req.video_media_id,
+            legacy_path=req.video_path,
+            expected_type="video",
+            required=True,
+        )
+        assert resolved_video is not None
+        video_file = resolved_video
         if not video_file.exists():
-            raise HTTPError(400, f"Video not found: {req.video_path}")
+            raise HTTPError(400, f"Video not found: {video_file}")
 
         cap = self._video_processor.open_video(str(video_file))
         info = self._video_processor.get_video_info(cap)
@@ -139,9 +150,16 @@ class IcLoraHandler(StateHandlerBase):
         if self._generation.is_generation_running():
             raise HTTPError(409, "Generation already in progress")
 
-        video_path = Path(req.video_path)
+        resolved_video = self._media.resolve_input(
+            media_id=req.video_media_id,
+            legacy_path=req.video_path,
+            expected_type="video",
+            required=True,
+        )
+        assert resolved_video is not None
+        video_path = resolved_video
         if not video_path.exists():
-            raise HTTPError(400, f"Video not found: {req.video_path}")
+            raise HTTPError(400, f"Video not found: {video_path}")
         lora_path, depth_model_path = self._require_ic_lora_model_paths(req.conditioning_type)
 
         generation_id = uuid.uuid4().hex[:8]
@@ -224,10 +242,23 @@ class IcLoraHandler(StateHandlerBase):
                     cache_key, ConditioningCacheEntry(control_video_path, frame_count, fps)
                 )
 
-            images: list[ImageConditioningInput] = [
-                ImageConditioningInput(path=img.path, frame_idx=int(img.frame), strength=float(img.strength))
-                for img in req.images
-            ]
+            images: list[ImageConditioningInput] = []
+            for image_input in req.images:
+                resolved_image = self._media.resolve_input(
+                    media_id=image_input.media_id,
+                    legacy_path=image_input.path,
+                    expected_type="image",
+                    required=True,
+                )
+                assert resolved_image is not None
+                validated_image = validate_image_file(str(resolved_image))
+                images.append(
+                    ImageConditioningInput(
+                        path=str(validated_image),
+                        frame_idx=int(image_input.frame),
+                        strength=float(image_input.strength),
+                    )
+                )
 
             self._generation.update_progress("inference", 15, 0, 1)
 
@@ -266,8 +297,13 @@ class IcLoraHandler(StateHandlerBase):
             )
 
             self._generation.update_progress("complete", 100, 1, 1)
-            self._generation.complete_generation(str(output_path))
-            return IcLoraGenerateCompleteResponse(status="complete", video_path=str(output_path))
+            artifact = self._media.register_artifact(output_path, media_type="video")
+            self._generation.complete_generation(str(output_path), artifact)
+            return IcLoraGenerateCompleteResponse(
+                status="complete",
+                video_path=str(output_path),
+                artifact=artifact,
+            )
 
         except HTTPError:
             self._generation.fail_generation("IC-LoRA generation failed")

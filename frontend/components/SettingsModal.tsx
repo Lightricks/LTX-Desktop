@@ -1,4 +1,4 @@
-import { AlertCircle, Check, Download, Film, Folder, Info, KeyRound, Settings, Sparkles, X, Zap } from 'lucide-react'
+import { AlertCircle, Check, Cpu, Download, Film, Folder, Info, KeyRound, Settings, Sparkles, X, Zap } from 'lucide-react'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from './ui/button'
 import { useAppSettings, type AppSettings } from '../contexts/AppSettingsContext'
@@ -7,6 +7,7 @@ import { logger } from '../lib/logger'
 import { ApiKeyHelperRow, LtxApiKeyInput, LtxApiKeyHelperRow } from './LtxApiKeyInput'
 import { useHfAuth } from '../hooks/use-hf-auth'
 import { useHfModelAccess } from '../hooks/use-hf-model-access'
+import { BackendConnectionPanel } from './BackendConnectionPanel'
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -14,7 +15,7 @@ interface SettingsModalProps {
   initialTab?: TabId
 }
 
-type TabId = 'general' | 'apiKeys' | 'promptEnhancer' | 'about'
+type TabId = 'general' | 'compute' | 'apiKeys' | 'promptEnhancer' | 'about'
 
 export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
   const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, forceApiGenerations } = useAppSettings()
@@ -248,6 +249,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
 
   const tabs = [
     { id: 'general' as TabId, label: 'General', icon: Settings },
+    { id: 'compute' as TabId, label: 'Compute', icon: Cpu },
     { id: 'apiKeys' as TabId, label: 'API Keys', icon: KeyRound },
     { id: 'promptEnhancer' as TabId, label: 'Prompt Enhancer', icon: Sparkles },
     { id: 'about' as TabId, label: 'About', icon: Info },
@@ -302,6 +304,21 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
 
         {/* Content */}
         <div className="px-6 py-5 space-y-6 h-[60vh] overflow-y-auto">
+          {activeTab === 'compute' && (
+            <>
+              <BackendConnectionPanel compact />
+              <div className="rounded-lg border border-zinc-800 bg-zinc-800/40 p-3">
+                <div className="text-xs font-medium text-zinc-300">Models directory on the active backend</div>
+                <div className="mt-1 truncate font-mono text-[11px] text-zinc-500" title={settings.modelsDir}>
+                  {settings.modelsDir || 'Available after the backend connects'}
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-zinc-600">
+                  The remote backend manages this path on the GPU machine; a local folder picker cannot change it.
+                </p>
+              </div>
+            </>
+          )}
+
           {activeTab === 'general' && (
             <>
               {/* Project Assets Path */}
@@ -358,10 +375,10 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <Zap className="h-4 w-4 text-blue-400" />
-                          <span className="text-sm font-medium text-white">Generate With API</span>
+                          <span className="text-sm font-medium text-white">Generate With LTX Cloud</span>
                         </div>
                         <p className="text-xs text-zinc-400 mt-1">
-                          Use LTX API for video generation when an LTX API key is configured.
+                          Send video generation to LTX Cloud instead of the active local or remote compute backend.
                         </p>
                       </div>
                       <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
@@ -414,7 +431,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <Zap className="h-4 w-4 text-blue-400" />
-                        <span className="text-sm font-medium text-white">LTX API</span>
+                        <span className="text-sm font-medium text-white">LTX Cloud text encoding</span>
                         <span className="text-xs px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded">Recommended</span>
                       </div>
                       <p className="text-xs text-zinc-400 mt-1">
@@ -711,11 +728,11 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <Zap className="h-4 w-4 text-blue-400" />
-                  <h3 className="text-sm font-semibold text-white">LTX API</h3>
+                  <h3 className="text-sm font-semibold text-white">LTX Cloud API</h3>
                 </div>
 
                 <p className="text-xs text-zinc-500 leading-relaxed">
-                  Your LTX API key is used for cloud text encoding, prompt enhancement, and API video generation.
+                  This cloud API key is separate from a remote backend access token. It is used for cloud text encoding, prompt enhancement, and LTX Cloud video generation.
                   Add your key below to unlock these features.
                 </p>
 

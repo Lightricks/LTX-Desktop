@@ -31,7 +31,7 @@ ltx_api_model_specs: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], .
     (
         "fast",
         LTXVideoGenerationSpec(
-            display_name="LTX-2.3 Fast (API)",
+            display_name="LTX-2.3 Fast (LTX Cloud)",
             supported_resolutions_durations={
                 "1080p": _resolution_spec(
                     fps_to_durations={
@@ -73,7 +73,7 @@ ltx_api_model_specs: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], .
     (
         "pro",
         LTXVideoGenerationSpec(
-            display_name="LTX-2.3 Pro (API)",
+            display_name="LTX-2.3 Pro (LTX Cloud)",
             supported_resolutions_durations={
                 "1080p": _resolution_spec(
                     fps_to_durations={
@@ -169,7 +169,9 @@ def validate_generate_video_request(
     items = get_api_video_generation_model_specs() if use_api_specs else get_local_video_generation_model_specs()
     item = next((candidate for candidate in items if candidate.pipeline == req.model), None)
     generation_backend = "api" if use_api_specs else "local"
-    generation_mode = "audio-to-video" if req.audioPath is not None else "image-to-video" if req.imagePath is not None else "text-to-video"
+    has_audio = req.audioPath is not None or req.audioMediaId is not None
+    has_image = req.imagePath is not None or req.imageMediaId is not None
+    generation_mode = "audio-to-video" if has_audio else "image-to-video" if has_image else "text-to-video"
 
     if item is None:
         return (
@@ -177,7 +179,7 @@ def validate_generate_video_request(
             f"Supported pipelines: {', '.join(candidate.pipeline for candidate in items)}"
         )
 
-    resolution_spec = _get_resolution_spec(item, resolution=req.resolution, is_a2v=req.audioPath is not None)
+    resolution_spec = _get_resolution_spec(item, resolution=req.resolution, is_a2v=has_audio)
     if resolution_spec is None:
         return (
             f"Unsupported {generation_backend} {generation_mode} resolution '{req.resolution}' "

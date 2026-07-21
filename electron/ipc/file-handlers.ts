@@ -72,12 +72,7 @@ function resolveLocalSourcePath(srcPath: string): string {
   }
 
   const normalized = srcPath.trim()
-
-  if (!path.isAbsolute(normalized)) {
-    throw new Error(`Source path must be absolute: ${srcPath}`)
-  }
-
-  const resolved = path.resolve(normalized)
+  const resolved = validatePath(normalized, getAllowedRoots())
   if (!fs.existsSync(resolved)) {
     throw new Error(`Source file does not exist: ${resolved}`)
   }
@@ -368,7 +363,8 @@ export function registerFileHandlers(): void {
     const results: Record<string, boolean> = {}
     for (const p of filePaths) {
       try {
-        results[p] = fs.existsSync(p)
+        const normalizedPath = p.trim()
+        results[p] = path.isAbsolute(normalizedPath) && fs.statSync(path.resolve(normalizedPath)).isFile()
       } catch {
         results[p] = false
       }

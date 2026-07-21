@@ -2,17 +2,22 @@ import { useState, useEffect, useCallback } from 'react'
 import { resetBackendCredentials } from '../lib/backend'
 import { logger } from '../lib/logger'
 
-export type BackendProcessStatus = 'alive' | 'restarting' | 'dead'
+export type BackendProcessStatus = 'connecting' | 'alive' | 'restarting' | 'unreachable' | 'dead'
+export type BackendConnectionMode = 'managed-local' | 'external'
 
 interface BackendHealthStatusPayload {
+  mode: BackendConnectionMode
   status: BackendProcessStatus
   exitCode?: number | null
+  message?: string
 }
 
 interface UseBackendReturn {
   processStatus: BackendProcessStatus | null
   connected: boolean
   isLoading: boolean
+  connectionMode: BackendConnectionMode | null
+  message: string | null
 }
 
 function toBackendHealthStatus(value: unknown): BackendHealthStatusPayload | null {
@@ -20,23 +25,38 @@ function toBackendHealthStatus(value: unknown): BackendHealthStatusPayload | nul
     return null
   }
 
-  const record = value as { status?: unknown; exitCode?: unknown }
-  if (record.status !== 'alive' && record.status !== 'restarting' && record.status !== 'dead') {
+  const record = value as { mode?: unknown; status?: unknown; exitCode?: unknown; message?: unknown }
+  if (record.mode !== 'managed-local' && record.mode !== 'external') {
+    return null
+  }
+  if (
+    record.status !== 'connecting'
+    && record.status !== 'alive'
+    && record.status !== 'restarting'
+    && record.status !== 'unreachable'
+    && record.status !== 'dead'
+  ) {
     return null
   }
 
   return {
+    mode: record.mode,
     status: record.status,
     exitCode: typeof record.exitCode === 'number' || record.exitCode === null ? record.exitCode : undefined,
+    message: typeof record.message === 'string' ? record.message : undefined,
   }
 }
 
 export function useBackend(): UseBackendReturn {
   const [processStatus, setProcessStatus] = useState<BackendProcessStatus | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [connectionMode, setConnectionMode] = useState<BackendConnectionMode | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
 
   const handleBackendStatus = useCallback((payload: BackendHealthStatusPayload) => {
     setProcessStatus(payload.status)
+    setConnectionMode(payload.mode)
+    setMessage(payload.message ?? null)
 
     if (payload.status === 'alive') {
       // Main has verified HTTP reachability before publishing 'alive' and may
@@ -47,7 +67,7 @@ export function useBackend(): UseBackendReturn {
       return
     }
 
-    if (payload.status === 'restarting') {
+    if (payload.status === 'restarting' || payload.status === 'connecting') {
       return
     }
 
@@ -90,5 +110,7 @@ export function useBackend(): UseBackendReturn {
     processStatus,
     connected: processStatus === 'alive',
     isLoading,
+    connectionMode,
+    message,
   }
 }

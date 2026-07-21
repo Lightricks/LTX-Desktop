@@ -13,6 +13,7 @@ from handlers import (
     HuggingFaceAuthHandler,
     IcLoraHandler,
     ImageGenerationHandler,
+    MediaHandler,
     ModelsHandler,
     PipelinesHandler,
     SuggestGapPromptHandler,
@@ -34,6 +35,7 @@ from services.interfaces import (
     HTTPClient,
     IcLoraPipeline,
     LTXAPIClient,
+    MediaStore,
     ModelDownloader,
     PoseProcessorPipeline,
     RetakePipeline,
@@ -67,6 +69,7 @@ class AppHandler:
         pose_processor_pipeline_class: type[PoseProcessorPipeline],
         a2v_pipeline_class: type[A2VPipeline],
         retake_pipeline_class: type[RetakePipeline],
+        media_store: MediaStore,
     ) -> None:
         self.config = config
 
@@ -86,6 +89,7 @@ class AppHandler:
         self.pose_processor_pipeline_class = pose_processor_pipeline_class
         self.a2v_pipeline_class = a2v_pipeline_class
         self.retake_pipeline_class = retake_pipeline_class
+        self.media_store = media_store
 
         self._lock = threading.RLock()
 
@@ -101,6 +105,14 @@ class AppHandler:
         # ============================================================
         # Handlers (wired in dependency order)
         # ============================================================
+
+        self.media = MediaHandler(
+            state=self.state,
+            lock=self._lock,
+            config=config,
+            media_store=media_store,
+            video_processor=video_processor,
+        )
 
         self.settings = SettingsHandler(
             state=self.state,
@@ -118,6 +130,7 @@ class AppHandler:
             state=self.state,
             lock=self._lock,
             config=config,
+            http=http,
         )
 
         self.downloads = DownloadHandler(
@@ -159,6 +172,7 @@ class AppHandler:
             pipelines_handler=self.pipelines,
             text_handler=self.text,
             ltx_api_client=ltx_api_client,
+            media_handler=self.media,
             config=config,
         )
 
@@ -169,6 +183,7 @@ class AppHandler:
             pipelines_handler=self.pipelines,
             config=config,
             zit_api_client=zit_api_client,
+            media_handler=self.media,
         )
 
         self.health = HealthHandler(
@@ -186,6 +201,7 @@ class AppHandler:
             lock=self._lock,
             config=config,
             http=http,
+            media_handler=self.media,
         )
 
         self.retake = RetakeHandler(
@@ -196,6 +212,7 @@ class AppHandler:
             generation_handler=self.generation,
             pipelines_handler=self.pipelines,
             text_handler=self.text,
+            media_handler=self.media,
         )
 
         self.ic_lora = IcLoraHandler(
@@ -205,6 +222,7 @@ class AppHandler:
             pipelines_handler=self.pipelines,
             text_handler=self.text,
             video_processor=video_processor,
+            media_handler=self.media,
             config=config,
         )
 
@@ -236,6 +254,8 @@ class ServiceBundle:
     pose_processor_pipeline_class: type[PoseProcessorPipeline]
     a2v_pipeline_class: type[A2VPipeline]
     retake_pipeline_class: type[RetakePipeline]
+    # Integration tests use the real store inside their temporary app-data directory.
+    media_store: MediaStore | None = None
 
 
 def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
@@ -256,6 +276,7 @@ def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
     from services.task_runner.threading_runner import ThreadingRunner
     from services.text_encoder.ltx_text_encoder import LTXTextEncoder
     from services.video_processor.video_processor_impl import VideoProcessorImpl
+    from services.media_store.filesystem_media_store import FilesystemMediaStore
 
     http = HTTPClientImpl()
 
@@ -280,6 +301,11 @@ def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
         pose_processor_pipeline_class=DWPosePipeline,
         a2v_pipeline_class=LTXa2vPipeline,
         retake_pipeline_class=LTXRetakePipeline,
+        media_store=FilesystemMediaStore(
+            app_data_dir=config.app_data_dir,
+            outputs_dir=config.outputs_dir,
+            delete_expired_artifact_files=config.deployment_mode == "standalone",
+        ),
     )
 
 
@@ -289,6 +315,16 @@ def build_initial_state(
     service_bundle: ServiceBundle | None = None,
 ) -> AppHandler:
     bundle = service_bundle or build_default_service_bundle(config)
+    if bundle.media_store is None:
+        from services.media_store.filesystem_media_store import FilesystemMediaStore
+
+        media_store: MediaStore = FilesystemMediaStore(
+            app_data_dir=config.app_data_dir,
+            outputs_dir=config.outputs_dir,
+            delete_expired_artifact_files=config.deployment_mode == "standalone",
+        )
+    else:
+        media_store = bundle.media_store
 
     return AppHandler(
         config=config,
@@ -309,4 +345,5 @@ def build_initial_state(
         pose_processor_pipeline_class=bundle.pose_processor_pipeline_class,
         a2v_pipeline_class=bundle.a2v_pipeline_class,
         retake_pipeline_class=bundle.retake_pipeline_class,
+        media_store=media_store,
     )

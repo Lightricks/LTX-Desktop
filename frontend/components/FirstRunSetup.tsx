@@ -80,6 +80,7 @@ export function LaunchGate({
 }: LaunchGateProps) {
   const [currentStep, setCurrentStep] = useState<Step>(showLicenseStep ? 'license' : 'location')
   const [installPath, setInstallPath] = useState('')
+  const [backendConnectionMode, setBackendConnectionMode] = useState<'managed-local' | 'external'>('managed-local')
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [downloadSessionId, setDownloadSessionId] = useState<string | null>(null)
@@ -93,8 +94,15 @@ export function LaunchGate({
   const [actionError, setActionError] = useState<string | null>(null)
   const [isActionPending, setIsActionPending] = useState(false)
   const [requiredCheckpointIds, setRequiredCheckpointIds] = useState<ModelCheckpointID[]>([])
+  const [recommendationsLoaded, setRecommendationsLoaded] = useState(false)
   const { hfAuthStatus, hfAuthPolling, startHuggingFaceLogin } = useHfAuth(currentStep === 'location')
   const { accessMap, allAuthorized } = useHfModelAccess(requiredCheckpointIds, hfAuthStatus)
+
+  useEffect(() => {
+    void window.electronAPI.getBackendConnectionConfig().then((config) => {
+      setBackendConnectionMode(config.mode)
+    }).catch(() => {})
+  }, [])
   const { saveLtxApiKey } = useAppSettings()
   const modelAccessRef = useRef<HTMLDivElement>(null)
   const downloadQueueRef = useRef<DownloadStepSpec[]>([])
@@ -142,26 +150,32 @@ export function LaunchGate({
   const refreshModelRecommendations = useCallback(async () => {
     if (licenseOnly) return
 
-    const [settingsResult, ltxResult, imgGenResult] = await Promise.all([
-      ApiClient.getSettings(),
-      ApiClient.getLtxRecommendation(),
-      ApiClient.getImgGenRecommendation(),
-    ])
-    if (!settingsResult.ok) {
-      logger.error(`Failed to fetch model recommendations: ${settingsResult.error.message}`)
-      return
-    }
-    if (!ltxResult.ok) {
-      logger.error(`Failed to fetch model recommendations: ${ltxResult.error.message}`)
-      return
-    }
-    if (!imgGenResult.ok) {
-      logger.error(`Failed to fetch model recommendations: ${imgGenResult.error.message}`)
-      return
-    }
+    setRecommendationsLoaded(false)
 
-    setInstallPath(settingsResult.data.modelsDir ?? '')
-    setRequiredCheckpointIds(buildAccessCheckpointIds(ltxResult.data, imgGenResult.data))
+    try {
+      const [settingsResult, ltxResult, imgGenResult] = await Promise.all([
+        ApiClient.getSettings(),
+        ApiClient.getLtxRecommendation(),
+        ApiClient.getImgGenRecommendation(),
+      ])
+      if (!settingsResult.ok) {
+        logger.error(`Failed to fetch model recommendations: ${settingsResult.error.message}`)
+        return
+      }
+      if (!ltxResult.ok) {
+        logger.error(`Failed to fetch model recommendations: ${ltxResult.error.message}`)
+        return
+      }
+      if (!imgGenResult.ok) {
+        logger.error(`Failed to fetch model recommendations: ${imgGenResult.error.message}`)
+        return
+      }
+
+      setInstallPath(settingsResult.data.modelsDir ?? '')
+      setRequiredCheckpointIds(buildAccessCheckpointIds(ltxResult.data, imgGenResult.data))
+    } finally {
+      setRecommendationsLoaded(true)
+    }
   }, [licenseOnly])
 
   const startDownloadStep = useCallback(async (step: DownloadStepSpec) => {
@@ -353,7 +367,11 @@ export function LaunchGate({
   // Get button text
   const getNextButtonText = () => {
     if (currentStep === 'license') return licenseOnly ? 'Accept' : 'Next'
-    if (currentStep === 'location') return 'Install'
+    if (currentStep === 'location') {
+      if (!recommendationsLoaded) return 'Checking models...'
+      if (requiredCheckpointIds.length === 0) return 'Continue'
+      return backendConnectionMode === 'external' ? 'Install on remote machine' : 'Install'
+    }
     if (currentStep === 'complete') return 'Finish'
     return 'Continue'
   }
@@ -361,7 +379,10 @@ export function LaunchGate({
   // Check if next button should be disabled
   const isNextDisabled = () => {
     if (currentStep === 'license') return !licenseAccepted || isActionPending
-    if (currentStep === 'location') return hfAuthStatus !== 'authenticated' || !allAuthorized
+    if (currentStep === 'location') {
+      if (!recommendationsLoaded) return true
+      return requiredCheckpointIds.length > 0 && (hfAuthStatus !== 'authenticated' || !allAuthorized)
+    }
     if (currentStep === 'complete') return isActionPending
     return false
   }
@@ -551,10 +572,12 @@ export function LaunchGate({
                 fontWeight: 700,
                 marginBottom: 6
               }}>
-                Choose Location
+                {backendConnectionMode === 'external' ? 'Verify remote models' : 'Choose model location'}
               </h2>
               <p style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 24 }}>
-                Select where to install the model files.
+                {backendConnectionMode === 'external'
+                  ? 'The GPU machine owns the models and runs inference. LTX Desktop will keep project media on this computer.'
+                  : 'Select where to install the model files used for local inference.'}
               </p>
 
               <div style={{
@@ -580,11 +603,12 @@ export function LaunchGate({
                   />
                   <button
                     onClick={async () => {
-                      const result = await window.electronAPI?.openModelsDirChangeDialog()
+                      const result = await window.electronAPI.openModelsDirChangeDialog()
                       if (result?.success) {
                         setInstallPath(result.path)
                       }
                     }}
+                    disabled={backendConnectionMode === 'external'}
                     style={{
                       padding: '10px 28px',
                       borderRadius: 9999,
@@ -597,19 +621,21 @@ export function LaunchGate({
                       transition: 'all 0.2s ease'
                     }}
                   >
-                    Browse
+                    {backendConnectionMode === 'external' ? 'Managed remotely' : 'Browse'}
                   </button>
                 </div>
 
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  fontSize: 12,
-                  color: '#a0a0a0',
-                  marginTop: 10
-                }}>
-                  <span>Available: <strong style={{ color: '#fff' }}>{availableSpace}</strong></span>
-                </div>
+                {backendConnectionMode === 'managed-local' && (
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    fontSize: 12,
+                    color: '#a0a0a0',
+                    marginTop: 10
+                  }}>
+                    <span>Available: <strong style={{ color: '#fff' }}>{availableSpace}</strong></span>
+                  </div>
+                )}
               </div>
 
               {/* LTX API Key - Optional but saves ~25 GB download */}
@@ -621,7 +647,7 @@ export function LaunchGate({
               }}>
                 <div style={{ marginBottom: 8 }}>
                   <label style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>
-                    LTX API Key
+                    LTX Cloud API Key
                     <span style={{
                       fontSize: 11,
                       color: '#A98BD9',
@@ -636,7 +662,7 @@ export function LaunchGate({
                   type="password"
                   value={ltxApiKey}
                   onChange={(e) => setLtxApiKey(e.target.value)}
-                  placeholder="Enter API key to skip text encoder download..."
+                  placeholder="Optional cloud key for faster text encoding..."
                   style={{
                     width: '100%',
                     background: '#1a1a1a',
@@ -651,17 +677,17 @@ export function LaunchGate({
                 <p style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
                   {ltxApiKey ? (
                     <span style={{ color: '#6D28D9' }}>
-                      ✓ Text encoder download will be skipped (using API instead)
+                      ✓ Text encoder download will be skipped (using LTX Cloud instead)
                     </span>
                   ) : (
-                    'If you have an LTX API key, entering it here skips the 25 GB text encoder download. ' +
-                    'The API provides faster text encoding (~1s vs 23s local).'
+                    'This is optional and separate from a remote backend access token. ' +
+                    'LTX Cloud provides faster text encoding (~1s vs 23s local) and skips the 25 GB text encoder download.'
                   )}
                 </p>
               </div>
 
               {/* HuggingFace Authentication */}
-              {window.electronAPI.hfGatingEnabled && (
+              {window.electronAPI.hfGatingEnabled && recommendationsLoaded && requiredCheckpointIds.length > 0 && (
               <div style={{
                 marginTop: 24,
                 background: '#2e3445',

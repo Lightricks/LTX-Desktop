@@ -1,4 +1,8 @@
-import { electronAPISchemas, type BackendHealthStatus } from '../shared/electron-api-schema'
+import {
+  electronAPISchemas,
+  SELECTED_FILE_PATH_APPROVAL_CHANNEL,
+  type BackendHealthStatus,
+} from '../shared/electron-api-schema'
 import { HF_GATING_ENABLED } from '../shared/feature-flags'
 
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
@@ -25,7 +29,12 @@ api.onBackendHealthStatus = (cb: (data: BackendHealthStatus) => void) => {
   }
 }
 
-api.getPathForFile = (file: File) => webUtils.getPathForFile(file)
+api.getPathForFile = (file: File) => {
+  const filePath = webUtils.getPathForFile(file)
+  if (!filePath) return ''
+  const approved = ipcRenderer.sendSync(SELECTED_FILE_PATH_APPROVAL_CHANNEL, filePath)
+  return approved === true ? filePath : ''
+}
 
 api.platform = process.platform
 

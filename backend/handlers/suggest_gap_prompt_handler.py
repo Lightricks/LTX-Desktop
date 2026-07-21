@@ -13,6 +13,7 @@ from api_types import (
 )
 from _routes._errors import HTTPError
 from handlers.base import StateHandlerBase
+from handlers.media_handler import MediaHandler
 from pydantic import BaseModel, Field, ValidationError
 from server_utils.media_validation import normalize_optional_path, validate_image_file
 from services.interfaces import HTTPClient, HttpTimeoutError, JSONValue
@@ -66,14 +67,37 @@ def _read_image_file_as_base64(file_path: str | None) -> str | None:
 
 
 class SuggestGapPromptHandler(StateHandlerBase):
-    def __init__(self, state: AppState, lock: RLock, config: RuntimeConfig, http: HTTPClient) -> None:
+    def __init__(
+        self,
+        state: AppState,
+        lock: RLock,
+        config: RuntimeConfig,
+        http: HTTPClient,
+        media_handler: MediaHandler,
+    ) -> None:
         super().__init__(state, lock, config)
         self._http = http
+        self._media = media_handler
 
     def suggest_gap(self, req: SuggestGapPromptRequest) -> SuggestGapPromptResponse:
-        before_frame = _read_image_file_as_base64(req.beforeFrame)
-        after_frame = _read_image_file_as_base64(req.afterFrame)
-        input_image = _read_image_file_as_base64(req.inputImage)
+        before_path = self._media.resolve_input(
+            media_id=req.beforeFrameMediaId,
+            legacy_path=req.beforeFrame,
+            expected_type="image",
+        )
+        after_path = self._media.resolve_input(
+            media_id=req.afterFrameMediaId,
+            legacy_path=req.afterFrame,
+            expected_type="image",
+        )
+        input_path = self._media.resolve_input(
+            media_id=req.inputImageMediaId,
+            legacy_path=req.inputImage,
+            expected_type="image",
+        )
+        before_frame = _read_image_file_as_base64(str(before_path) if before_path is not None else None)
+        after_frame = _read_image_file_as_base64(str(after_path) if after_path is not None else None)
+        input_image = _read_image_file_as_base64(str(input_path) if input_path is not None else None)
         before_prompt = req.beforePrompt
         after_prompt = req.afterPrompt
         gap_duration = req.gapDuration

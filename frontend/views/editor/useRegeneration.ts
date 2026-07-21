@@ -3,8 +3,9 @@ import type { Asset, TimelineClip } from '../../types/project-model'
 import type { GenerationSettings } from '../../components/SettingsPanel'
 import type { GenerationError } from '../../lib/generation-errors'
 import { addVisualAssetToProject } from '../../lib/asset-copy'
-import { ApiClient } from '../../lib/api-client'
+import { ApiClient, type ApiRequestBodyOf } from '../../lib/api-client'
 import { logger } from '../../lib/logger'
+import { prepareBackendMedia } from '../../lib/backend-media'
 import {
   selectAssets,
   selectClips,
@@ -28,6 +29,8 @@ const LEGACY_IMAGE_RESOLUTION_MAP: Record<string, string> = {
   '1920x1080': '1080p',
   '2160p': '2048p',
 }
+
+type SuggestGapPromptBody = NonNullable<ApiRequestBodyOf<'suggestGapPrompt'>>
 
 function normalizeVideoResolution(value: string | undefined): string {
   if (!value) return '540p'
@@ -144,14 +147,17 @@ export function useRegeneration(params: UseRegenerationParams) {
         }
 
         if (framePath) {
-          const result = await ApiClient.suggestGapPrompt({
+          const preparedFrame = await prepareBackendMedia(framePath, 'image')
+          const request: Record<string, unknown> = {
             gapDuration: asset.duration || 5,
             mode: asset.type === 'image' ? 'text-to-image' : 'text-to-video',
             beforePrompt: '',
             afterPrompt: '',
-            beforeFrame: framePath,
             afterFrame: '',
-          })
+          }
+          if (preparedFrame?.path) request.beforeFrame = preparedFrame.path
+          if (preparedFrame?.mediaId) request.beforeFrameMediaId = preparedFrame.mediaId
+          const result = await ApiClient.suggestGapPrompt(request as SuggestGapPromptBody)
           if (!result.ok) {
             throw new Error(result.error.message)
           }

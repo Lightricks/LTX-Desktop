@@ -1,0 +1,1 @@
+"""Opaque media storage service."""

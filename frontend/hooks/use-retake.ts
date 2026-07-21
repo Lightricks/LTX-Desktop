@@ -1,8 +1,10 @@
 import { useCallback, useState } from 'react'
-import { ApiClient } from '../lib/api-client'
+import { ApiClient, type ApiRequestBodyOf } from '../lib/api-client'
 import { logger } from '../lib/logger'
+import { materializeBackendOutput, prepareBackendMedia } from '../lib/backend-media'
 
 export type RetakeMode = 'replace_audio_and_video' | 'replace_video' | 'replace_audio'
+type RetakeBody = NonNullable<ApiRequestBodyOf<'retake'>>
 
 export interface RetakeSubmitParams {
   videoPath: string
@@ -41,13 +43,30 @@ export function useRetake() {
       result: null,
     })
 
-    const result = await ApiClient.retake({
-      video_path: params.videoPath,
+    let preparedVideo
+    try {
+      setState(prev => ({ ...prev, retakeStatus: 'Uploading source video' }))
+      preparedVideo = await prepareBackendMedia(params.videoPath, 'video')
+    } catch (error) {
+      setState({
+        isRetaking: false,
+        retakeStatus: '',
+        retakeError: error instanceof Error ? error.message : String(error),
+        result: null,
+      })
+      return
+    }
+    const request: RetakeBody = {
       start_time: params.startTime,
       duration: params.duration,
       prompt: params.prompt,
       mode: params.mode,
-    })
+    }
+    if (preparedVideo?.path) request.video_path = preparedVideo.path
+    if (preparedVideo?.mediaId) request.video_media_id = preparedVideo.mediaId
+    setState(prev => ({ ...prev, retakeStatus: 'Generating' }))
+
+    const result = await ApiClient.retake(request)
 
     if (!result.ok) {
       logger.error(`Retake error: ${result.error.message}`)
@@ -72,26 +91,40 @@ export function useRetake() {
       return
     }
 
-    if ('video_path' in payload) {
-      setState({
-        isRetaking: false,
-        retakeStatus: 'Retake complete!',
-        retakeError: null,
-        result: {
-          videoPath: payload.video_path,
-        },
-      })
-      return
+    if (payload.status === 'complete' && 'video_path' in payload) {
+      try {
+        const outputPath = await materializeBackendOutput(payload.video_path, payload.artifact)
+        setState({
+          isRetaking: false,
+          retakeStatus: 'Retake complete!',
+          retakeError: null,
+          result: {
+            videoPath: outputPath,
+          },
+        })
+        return
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error)
+        logger.error(`Retake output materialization failed: ${errorMsg}`)
+        setState({
+          isRetaking: false,
+          retakeStatus: '',
+          retakeError: errorMsg,
+          result: null,
+        })
+        return
+      }
     }
 
-    logger.error(`Retake completed without local video payload: ${JSON.stringify(payload.result)}`)
-    const errorMsg = 'Retake completed but no local video file was returned'
+    const errorMsg = 'Retake completed without a downloadable video result'
+    logger.error(`${errorMsg}: ${JSON.stringify(payload)}`)
     setState({
       isRetaking: false,
       retakeStatus: '',
       retakeError: errorMsg,
       result: null,
     })
+
   }, [])
 
   const resetRetake = useCallback(() => {

@@ -32,7 +32,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   modelsDir: '',
 }
 
-type BackendProcessStatus = 'alive' | 'restarting' | 'dead'
+type BackendProcessStatus = 'connecting' | 'alive' | 'restarting' | 'unreachable' | 'dead'
 
 interface AppSettingsContextValue {
   settings: AppSettings
@@ -55,7 +55,13 @@ function toBackendProcessStatus(value: unknown): BackendProcessStatus | null {
   }
 
   const record = value as { status?: unknown }
-  if (record.status === 'alive' || record.status === 'restarting' || record.status === 'dead') {
+  if (
+    record.status === 'connecting'
+    || record.status === 'alive'
+    || record.status === 'restarting'
+    || record.status === 'unreachable'
+    || record.status === 'dead'
+  ) {
     return record.status
   }
   return null

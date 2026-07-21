@@ -1,12 +1,27 @@
-import { app, dialog } from 'electron'
+import { app, dialog, ipcMain } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { checkGPU } from '../gpu'
 import { isPythonReady, downloadPythonEmbed } from '../python-setup'
-import { getBackendHealthStatus, getBackendUrl, getAuthToken, getAdminToken, startPythonBackend } from '../python-backend'
+import {
+  configureBackendConnection,
+  getBackendConnectionMode,
+  getBackendHealthStatus,
+  getBackendUrl,
+  getAuthToken,
+  getAdminToken,
+  startBackendConnection,
+  startPythonBackend,
+  testExternalBackendConnection,
+} from '../python-backend'
 import { getMainWindow } from '../window'
 import { getAnalyticsState, setAnalyticsEnabled, sendAnalyticsEvent } from '../analytics'
 import { handle } from './typed-handle'
+import { getBackendConnectionSummary } from '../app-state'
+import { materializeBackendArtifact, uploadBackendMedia } from '../backend-media-transfer'
+import { getAllowedRoots } from '../config'
+import { approveExistingFilePath, validatePath } from '../path-validation'
+import { SELECTED_FILE_PATH_APPROVAL_CHANNEL } from '../../shared/electron-api-schema'
 
 function getModelsPath(): string {
   const modelsPath = path.join(app.getPath('userData'), 'models')
@@ -68,8 +83,54 @@ function markLicenseAccepted(settingsPath: string): void {
 }
 
 export function registerAppHandlers(): void {
+  ipcMain.on(SELECTED_FILE_PATH_APPROVAL_CHANNEL, (event, selectedPath: unknown) => {
+    try {
+      if (event.sender !== getMainWindow()?.webContents || typeof selectedPath !== 'string') {
+        throw new Error('Invalid selected file approval request')
+      }
+      approveExistingFilePath(selectedPath)
+      event.returnValue = true
+    } catch {
+      event.returnValue = false
+    }
+  })
+
   handle('getBackend', () => {
-    return { url: getBackendUrl() ?? '', token: getAuthToken() ?? '' }
+    return {
+      url: getBackendUrl() ?? '',
+      token: getAuthToken() ?? '',
+      mode: getBackendConnectionMode(),
+    }
+  })
+
+  handle('getBackendConnectionConfig', () => {
+    return getBackendConnectionSummary()
+  })
+
+  handle('testBackendConnection', async ({ url, authToken }) => {
+    try {
+      const serverInfo = await testExternalBackendConnection(url, authToken)
+      return { success: true, serverInfo }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
+  handle('setBackendConnection', async (config) => {
+    try {
+      await configureBackendConnection(config)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
+  handle('startBackendConnection', async () => {
+    await startBackendConnection()
+  })
+
+  handle('retryBackendConnection', async () => {
+    await startBackendConnection()
   })
 
   handle('getModelsPath', () => {
@@ -148,6 +209,25 @@ export function registerAppHandlers(): void {
     return getBackendHealthStatus()
   })
 
+  handle('uploadBackendMedia', async ({ filePath, mediaType }) => {
+    try {
+      const validatedPath = validatePath(filePath, getAllowedRoots())
+      const media = await uploadBackendMedia(validatedPath, mediaType)
+      return { success: true, media }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
+  handle('materializeBackendArtifact', async ({ artifact }) => {
+    try {
+      const materializedPath = await materializeBackendArtifact(artifact)
+      return { success: true, path: materializedPath }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
   handle('getAnalyticsState', () => {
     return getAnalyticsState()
   })
@@ -161,6 +241,9 @@ export function registerAppHandlers(): void {
   })
 
   handle('openModelsDirChangeDialog', async () => {
+    if (getBackendConnectionMode() === 'external') {
+      return { success: false, error: 'Choose the models path on the remote backend, not on this computer' }
+    }
     const mainWindow = getMainWindow()
     if (!mainWindow) return { success: false, error: 'No window' }
 

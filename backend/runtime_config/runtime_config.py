@@ -8,6 +8,7 @@ from pathlib import Path
 import torch
 
 from runtime_config.runtime_policy import LocalGenerationMode
+from runtime_config.server_config import DeploymentMode
 
 
 @dataclass
@@ -26,8 +27,17 @@ class RuntimeConfig:
     backend_port: int
     hf_oauth_client_id: str = ""
     hf_gating_enabled: bool = False
+    deployment_mode: DeploymentMode = "managed_local"
+    public_base_url: str = ""
+    allow_legacy_path_inputs: bool = True
+    models_dir_editable: bool = True
+    models_dir_override: Path | None = None
 
     @property
     def force_api_generations(self) -> bool:
         """Derived: local generation is unavailable for this runtime."""
         return self.local_generations_mode == "unsupported"
+
+    @property
+    def effective_public_base_url(self) -> str:
+        return self.public_base_url.rstrip("/") or f"http://127.0.0.1:{self.backend_port}"

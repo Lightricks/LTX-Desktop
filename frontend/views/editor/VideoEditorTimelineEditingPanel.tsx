@@ -25,8 +25,9 @@ import { addVisualAssetToProject } from '../../lib/asset-copy'
 import { GapGenerationModal } from './GapGenerationModal'
 import { ClipContextMenu, type ClipContextMenuState } from './ClipContextMenu'
 import type { TimelineClip, Track, SubtitleClip, Asset, TextOverlayStyle } from '../../types/project-model'
-import { ApiClient } from '../../lib/api-client'
+import { ApiClient, type ApiRequestBodyOf } from '../../lib/api-client'
 import { pathToFileUrl } from '../../lib/file-url'
+import { prepareBackendMedia } from '../../lib/backend-media'
 import {
   areVideoGenerationSettingsEquivalent,
   getVideoGenerationModelSpecs,
@@ -91,6 +92,7 @@ type TimelineMenuState = { timelineId: string; x: number; y: number } | null
 type GapSelection = { trackIndex: number; startTime: number; endTime: number } | null
 type GapAnchor = { x: number; gapTop: number; gapBottom: number } | null
 type GapGenerateMode = 'text-to-video' | 'image-to-video' | 'text-to-image'
+type SuggestGapPromptBody = NonNullable<ApiRequestBodyOf<'suggestGapPrompt'>>
 
 interface GapGenerationApi {
   generate: (prompt: string, imagePath: string | null, settings: GenerationSettings) => Promise<void>
@@ -754,21 +756,31 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
       let inputImagePath = ''
       const imageFile = gapImageFileRef.current
       if (imageFile && mode === 'image-to-video') {
-        const electronPath = (imageFile as { path?: string }).path
+        const electronPath = window.electronAPI.getPathForFile(imageFile)
         if (electronPath) {
           inputImagePath = electronPath
         }
       }
 
-      const result = await ApiClient.suggestGapPrompt({
+      const [preparedBefore, preparedAfter, preparedInput] = await Promise.all([
+        prepareBackendMedia(beforeFrame, 'image'),
+        prepareBackendMedia(afterFrame, 'image'),
+        prepareBackendMedia(inputImagePath, 'image'),
+      ])
+      const request: Record<string, unknown> = {
         gapDuration: gap.endTime - gap.startTime,
         mode,
         beforePrompt,
         afterPrompt,
-        beforeFrame,
-        afterFrame,
-        ...(inputImagePath ? { inputImage: inputImagePath } : {}),
-      }, {
+      }
+      if (preparedBefore?.path) request.beforeFrame = preparedBefore.path
+      if (preparedBefore?.mediaId) request.beforeFrameMediaId = preparedBefore.mediaId
+      if (preparedAfter?.path) request.afterFrame = preparedAfter.path
+      if (preparedAfter?.mediaId) request.afterFrameMediaId = preparedAfter.mediaId
+      if (preparedInput?.path) request.inputImage = preparedInput.path
+      if (preparedInput?.mediaId) request.inputImageMediaId = preparedInput.mediaId
+
+      const result = await ApiClient.suggestGapPrompt(request as SuggestGapPromptBody, {
         signal: abortController.signal,
       })
       if (!result.ok) {
@@ -882,18 +894,8 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
       } else {
         let imagePath: string | null = null
         if (gapImageFile) {
-          const electronPath = (gapImageFile as { path?: string }).path
-          if (electronPath) {
-            imagePath = electronPath
-          } else {
-            const buf = await gapImageFile.arrayBuffer()
-            const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)))
-            const modelsPath = await window.electronAPI.getModelsPath()
-            const tmpDir = modelsPath.replace(/[/\\]models$/, '')
-            const tmpPath = `${tmpDir}/tmp_gap_image_${Date.now()}.png`
-            await window.electronAPI.saveFile({ filePath: tmpPath, data: b64, encoding: 'base64' })
-            imagePath = tmpPath
-          }
+          imagePath = window.electronAPI.getPathForFile(gapImageFile) || null
+          if (!imagePath) throw new Error('Could not resolve the selected image file')
         }
         await gapGenerationApi.generate(finalPrompt, imagePath, settings)
       }

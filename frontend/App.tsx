@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, AlertCircle, Settings, FileText } from 'lucide-react'
+import { Loader2, AlertCircle, Settings, FileText, Monitor, Server } from 'lucide-react'
 import { ApiClient, type ApiSuccessOf } from './lib/api-client'
 import { ProjectProvider } from './contexts/ProjectContext'
 import { ViewProvider, useView } from './contexts/ViewContext'
@@ -17,18 +17,30 @@ import { SettingsModal, type SettingsTabId } from './components/SettingsModal'
 import { LogViewer } from './components/LogViewer'
 import { ApiGatewayModal, type ApiGatewaySection } from './components/ApiGatewayModal'
 import { Button } from './components/ui/button'
+import { BackendConnectionPanel } from './components/BackendConnectionPanel'
 
 type SetupState = 'loading' | { needsSetup: boolean; needsLicense: boolean }
 type RequiredModelsGateState = 'checking' | 'missing' | 'ready'
+type ConfiguredBackendMode = 'managed-local' | 'external'
 type LtxRecommendation = ApiSuccessOf<'getLtxRecommendation'>
 type LtxUpgradeRecommendation = Extract<LtxRecommendation, { status: 'upgrade' }>
 
 function AppContent() {
   const { currentView } = useView()
-  const { connected, processStatus, isLoading: backendLoading } = useBackend()
+  const {
+    connected,
+    processStatus,
+    isLoading: backendLoading,
+    connectionMode,
+    message: backendMessage,
+  } = useBackend()
   const { settings, saveLtxApiKey, saveFalApiKey, forceApiGenerations, isLoaded, runtimePolicyLoaded } = useAppSettings()
 
   const [pythonReady, setPythonReady] = useState<boolean | null>(null)
+  const [configuredBackendMode, setConfiguredBackendMode] = useState<ConfiguredBackendMode | null>(null)
+  const [configuredBackendUrl, setConfiguredBackendUrl] = useState('')
+  const [pythonSetupSelected, setPythonSetupSelected] = useState(false)
+  const [firstRunComputeConfirmed, setFirstRunComputeConfirmed] = useState(false)
   const [backendStarted, setBackendStarted] = useState(false)
   const [setupState, setSetupState] = useState<SetupState>('loading')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -53,8 +65,9 @@ function AppContent() {
 
   const [apiGatewayRequest, setApiGatewayRequest] = useState<ApiGatewayRequest | null>(null)
 
-  const isBackendRestarting = processStatus === 'restarting'
-  const isBackendDead = processStatus === 'dead'
+  const isBackendRestarting = processStatus === 'restarting' && connectionMode !== 'external'
+  const isBackendDead = processStatus === 'dead' && connectionMode !== 'external'
+  const isExternalBackendUnreachable = processStatus === 'unreachable' && connectionMode === 'external'
   const waitingForRuntimePolicy = processStatus === 'alive' && !runtimePolicyLoaded
 
   useEffect(() => {
@@ -86,11 +99,14 @@ function AppContent() {
   useEffect(() => {
     const check = async () => {
       try {
+        const connection = await window.electronAPI.getBackendConnectionConfig()
+        setConfiguredBackendMode(connection.mode)
+        setConfiguredBackendUrl(connection.url)
         const result = await window.electronAPI.checkPythonReady()
         setPythonReady(result.ready)
       } catch (e) {
         logger.error(`Failed to check Python readiness: ${e}`)
-        setPythonReady(true)
+        setPythonReady(false)
       }
     }
     void check()
@@ -101,9 +117,9 @@ function AppContent() {
     setBackendStarted(true)
     const start = async () => {
       try {
-        logger.info('Starting Python backend...')
-        await window.electronAPI.startPythonBackend()
-        logger.info('Python backend started successfully')
+        logger.info('Starting backend connection...')
+        await window.electronAPI.startBackendConnection()
+        logger.info('Backend connection started successfully')
       } catch (e) {
         logger.error(`Failed to start Python backend: ${e}`)
       }
@@ -342,28 +358,54 @@ function AppContent() {
     </div>
   ) : null
 
-  const showGlobalControls = currentView !== 'home' && connected && setupState !== 'loading' && !setupState.needsSetup
+  const externalBackendBanner = isExternalBackendUnreachable ? (
+    <div className="fixed left-1/2 top-3 z-[70] flex w-[min(44rem,calc(100%-1.5rem))] -translate-x-1/2 items-center gap-3 rounded-lg border border-amber-500/30 bg-zinc-900/95 px-4 py-3 shadow-2xl backdrop-blur-sm">
+      <AlertCircle className="h-5 w-5 flex-shrink-0 text-amber-400" />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-zinc-100">Remote backend disconnected</div>
+        <p className="truncate text-xs text-zinc-400" title={backendMessage ?? undefined}>
+          {backendMessage || 'Local editing remains available while LTX Desktop reconnects.'}
+        </p>
+      </div>
+      <Button
+        variant="outline"
+        className="h-8 flex-shrink-0 border-zinc-700 px-3 text-xs"
+        onClick={() => { void window.electronAPI.retryBackendConnection() }}
+      >
+        Retry
+      </Button>
+      <Button
+        variant="outline"
+        className="h-8 flex-shrink-0 border-zinc-700 px-3 text-xs"
+        onClick={() => {
+          setSettingsInitialTab('compute')
+          setIsSettingsOpen(true)
+        }}
+      >
+        Compute settings
+      </Button>
+    </div>
+  ) : null
+
+  const showGlobalControls = connected && setupState !== 'loading' && !setupState.needsSetup
   const shouldBlockUntilSettingsLoaded = forceApiGenerations && !isLoaded
   const shouldShowForcedFirstRunUpsell = isForcedFirstRun && isLoaded && !settings.hasLtxApiKey
   const shouldShowGlobalForcedUpsell = forceApiGenerations && setupState !== 'loading' && !setupState.needsSetup && isLoaded && !settings.hasLtxApiKey
   const shouldBlockForLtxKey = shouldShowForcedFirstRunUpsell || shouldShowGlobalForcedUpsell
-
-  useEffect(() => {
-    if (shouldBlockForLtxKey && apiGatewayRequest === null) {
-      setApiGatewayRequest({
+  const forcedApiGatewayRequest: ApiGatewayRequest | null = shouldBlockForLtxKey
+    ? {
         requiredKeys: ['ltx'],
         title: 'Connect API Keys',
         description: 'This app is configured for API-only generation. Add your API key to continue.',
         blocking: true,
         includeOptionalMissing: true,
-      })
-    }
-  }, [shouldBlockForLtxKey, apiGatewayRequest])
-
-  const shouldShowGateway = apiGatewayRequest !== null
+      }
+    : null
+  const activeApiGatewayRequest = apiGatewayRequest ?? forcedApiGatewayRequest
+  const shouldShowGateway = activeApiGatewayRequest !== null
 
   const gatewaySections: ApiGatewaySection[] = useMemo(() => {
-    if (!apiGatewayRequest) return []
+    if (!activeApiGatewayRequest) return []
 
     const handleSaveLtxKey = async (apiKey: string) => {
       if (isForcedFirstRun) {
@@ -376,21 +418,21 @@ function AppContent() {
     const sections: ApiGatewaySection[] = [
       {
         keyType: 'ltx',
-        title: 'LTX API',
+        title: 'LTX Cloud API',
         description: 'Video generation, prompt enhancement, and cloud text encoding.',
-        required: apiGatewayRequest.requiredKeys.includes('ltx'),
+        required: activeApiGatewayRequest.requiredKeys.includes('ltx'),
         isConfigured: settings.hasLtxApiKey,
-        inputLabel: 'LTX API key',
-        placeholder: 'Enter your LTX API key...',
+        inputLabel: 'LTX Cloud API key',
+        placeholder: 'Enter your LTX Cloud API key...',
         onSave: handleSaveLtxKey,
         onGetKey: () => window.electronAPI.openLtxApiKeyPage(),
-        getKeyLabel: 'Get LTX API key',
+        getKeyLabel: 'Get LTX Cloud API key',
       },
       {
         keyType: 'fal',
         title: 'FAL AI',
         description: 'Required to generate images with Z Image Turbo.',
-        required: apiGatewayRequest.requiredKeys.includes('fal'),
+        required: activeApiGatewayRequest.requiredKeys.includes('fal'),
         isConfigured: settings.hasFalApiKey,
         inputLabel: 'FAL AI API key',
         placeholder: 'Enter your FAL AI API key...',
@@ -402,11 +444,11 @@ function AppContent() {
 
     return sections.filter((section) => {
       if (section.required) return true
-      if (apiGatewayRequest.includeOptionalMissing) return true
+      if (activeApiGatewayRequest.includeOptionalMissing) return true
       return false
     })
   }, [
-    apiGatewayRequest,
+    activeApiGatewayRequest,
     isForcedFirstRun,
     saveApiKeyForFirstRun,
     saveFalApiKey,
@@ -424,7 +466,27 @@ function AppContent() {
   }
 
   if (pythonReady === false) {
-    return <PythonSetup onReady={() => setPythonReady(true)} />
+    if (configuredBackendMode === 'external' || pythonSetupSelected) {
+      return <PythonSetup onReady={() => setPythonReady(true)} />
+    }
+    return (
+      <div className="h-screen overflow-auto bg-background p-6">
+        <div className="mx-auto flex min-h-full w-full max-w-2xl items-center justify-center">
+          <div className="w-full space-y-5">
+            <div className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-5 text-center">
+              <h2 className="text-xl font-semibold text-white">Choose where inference runs</h2>
+              <p className="mx-auto mt-2 max-w-lg text-sm text-zinc-400">
+                LTX Desktop needs local media tools for project assets and export, even when inference runs on another machine.
+              </p>
+              <Button className="mt-4" onClick={() => setPythonSetupSelected(true)}>
+                Install local media tools
+              </Button>
+            </div>
+            <BackendConnectionPanel />
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (isBackendDead) {
@@ -465,6 +527,7 @@ function AppContent() {
           </div>
         </div>
         {restartingOverlay}
+        {externalBackendBanner}
       </div>
     )
   }
@@ -487,6 +550,31 @@ function AppContent() {
             : handleFirstRunComplete
         }
       />
+    )
+  }
+
+  if (
+    setupState.needsSetup
+    && configuredBackendMode === 'managed-local'
+    && !firstRunComputeConfirmed
+  ) {
+    return (
+      <div className="h-screen overflow-auto bg-background p-6">
+        <div className="mx-auto flex min-h-full w-full max-w-2xl items-center justify-center">
+          <div className="w-full space-y-5">
+            <div className="text-center">
+              <h2 className="text-2xl font-semibold text-white">Choose where generation runs</h2>
+              <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-zinc-400">
+                LTX Desktop and your project files stay on this computer. The models can run here, or on a headless GPU machine such as a workstation or home server.
+              </p>
+            </div>
+            <BackendConnectionPanel
+              onboarding
+              onContinueWithManagedLocal={() => setFirstRunComputeConfirmed(true)}
+            />
+          </div>
+        </div>
+      </div>
     )
   }
 
@@ -516,6 +604,21 @@ function AppContent() {
       {showGlobalControls && (
         <div className="fixed top-[18px] right-3 z-50 flex items-center gap-1">
           <button
+            onClick={() => {
+              setSettingsInitialTab('compute')
+              setIsSettingsOpen(true)
+            }}
+            className="flex h-8 items-center gap-1.5 rounded-md bg-black/40 px-2 text-xs text-zinc-200 ring-1 ring-white/10 backdrop-blur-sm transition-colors hover:bg-zinc-800 hover:text-white"
+            title={connectionMode === 'external'
+              ? `Remote backend: ${configuredBackendUrl || 'connected'}`
+              : 'Models and inference run on this computer'}
+          >
+            {connectionMode === 'external'
+              ? <Server className="h-4 w-4 text-blue-400" />
+              : <Monitor className="h-4 w-4 text-blue-400" />}
+            <span>{connectionMode === 'external' ? 'Remote compute' : 'This computer'}</span>
+          </button>
+          <button
             onClick={() => setIsLogViewerOpen(true)}
             className="h-8 w-8 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
             title="View Backend Logs"
@@ -543,10 +646,10 @@ function AppContent() {
       />
       <ApiGatewayModal
         isOpen={shouldShowGateway}
-        blocking={apiGatewayRequest?.blocking}
+        blocking={activeApiGatewayRequest?.blocking}
         onClose={() => setApiGatewayRequest(null)}
-        title={apiGatewayRequest?.title ?? 'Connect API Keys'}
-        description={apiGatewayRequest?.description ?? 'Add the required API keys to continue.'}
+        title={activeApiGatewayRequest?.title ?? 'Connect API Keys'}
+        description={activeApiGatewayRequest?.description ?? 'Add the required API keys to continue.'}
         sections={gatewaySections}
       />
       {ltxUpgradeRecommendation && (
@@ -596,6 +699,7 @@ function AppContent() {
       )}
 
       {restartingOverlay}
+      {externalBackendBanner}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { execSync } from 'child_process'
 import { logger } from './logger'
-import { getAuthToken, getBackendUrl, getPythonPath } from './python-backend'
+import { getAuthToken, getBackendConnectionMode, getBackendUrl, getPythonPath } from './python-backend'
 
 // Check if NVIDIA GPU is available
 export async function checkGPU(): Promise<{ available: boolean; name?: string; vram?: number }> {
@@ -26,6 +26,10 @@ export async function checkGPU(): Promise<{ available: boolean; name?: string; v
     }
   } catch (error) {
     logger.warn(`Backend GPU check failed, trying direct check: ${error}`)
+  }
+
+  if (getBackendConnectionMode() === 'external') {
+    return { available: false }
   }
 
   // Fallback: try direct Python check

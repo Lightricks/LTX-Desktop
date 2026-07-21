@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NewType, Protocol
 
-from api_types import ModelCheckpointID
+from api_types import ArtifactRef, ModelCheckpointID
 from state.conditioning_cache import ConditioningCache
 
 if TYPE_CHECKING:
@@ -156,6 +156,7 @@ class GenerationRunning:
 class GenerationComplete:
     id: str
     result: str | list[str]
+    artifacts: list[ArtifactRef] = field(default_factory=lambda: list[ArtifactRef]())
 
 
 @dataclass
