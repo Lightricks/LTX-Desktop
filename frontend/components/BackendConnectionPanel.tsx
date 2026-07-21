@@ -1,8 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Check, Loader2, Monitor, Server } from 'lucide-react'
+import { AlertTriangle, Check, Loader2, Monitor, Server } from 'lucide-react'
 import { Button } from './ui/button'
 
 type ConnectionMode = 'managed-local' | 'external'
+
+function isPlainHttpRemoteUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value.trim())
+    const hostname = parsed.hostname.toLowerCase()
+    const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1'
+    return parsed.protocol === 'http:' && !isLoopback
+  } catch {
+    return false
+  }
+}
 
 interface BackendConnectionPanelProps {
   compact?: boolean
@@ -16,12 +27,13 @@ export function BackendConnectionPanel({
   onContinueWithManagedLocal,
 }: BackendConnectionPanelProps) {
   const [mode, setMode] = useState<ConnectionMode>('managed-local')
-  const [url, setUrl] = useState('http://127.0.0.1:18000')
+  const [url, setUrl] = useState('')
   const [authToken, setAuthToken] = useState('')
   const [hasSavedToken, setHasSavedToken] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const usesPlainHttpRemote = mode === 'external' && isPlainHttpRemoteUrl(url)
 
   useEffect(() => {
     void window.electronAPI.getBackendConnectionConfig().then((config) => {
@@ -119,12 +131,12 @@ export function BackendConnectionPanel({
       {mode === 'external' && (
         <div className="space-y-3">
           <label className="block">
-            <span className="mb-1 block text-xs text-zinc-400">Remote backend URL</span>
+            <span className="mb-1 block text-xs text-zinc-400">Backend address from this computer</span>
             <input
               value={url}
               onChange={(event) => setUrl(event.target.value)}
               onKeyDown={(event) => event.stopPropagation()}
-              placeholder="http://127.0.0.1:18000"
+              placeholder="http://gpu-host.local:8000"
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
             />
           </label>
@@ -143,7 +155,18 @@ export function BackendConnectionPanel({
             Use the <code className="text-zinc-400">LTX_AUTH_TOKEN</code> value configured on your GPU machine. This is not an LTX cloud API key.
           </p>
           <p className="text-[11px] leading-relaxed text-zinc-500">
-            SSH example: <code className="text-zinc-400">ssh -N -L 18000:127.0.0.1:8000 user@gpu-host</code>. Plain HTTP is accepted only on localhost; use HTTPS for direct network connections.
+            Direct trusted LAN example: <code className="text-zinc-400">http://gpu-host.local:8000</code>. Configure the backend to listen on its LAN interface.
+          </p>
+          {usesPlainHttpRemote && (
+            <div role="alert" className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+              <span>
+                Trusted-network HTTP sends the access token and media without transport encryption. Use an SSH tunnel or HTTPS on shared or untrusted networks.
+              </span>
+            </div>
+          )}
+          <p className="text-[11px] leading-relaxed text-zinc-500">
+            SSH alternative: <code className="text-zinc-400">ssh -N -L 18000:127.0.0.1:8000 user@gpu-host</code>. Direct HTTPS remains recommended outside a trusted LAN.
           </p>
         </div>
       )}

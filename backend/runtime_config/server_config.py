@@ -60,8 +60,6 @@ def _validate_public_base_url(value: str) -> str:
         raise RuntimeError("LTX_PUBLIC_BASE_URL must be an HTTP(S) origin without a path")
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise RuntimeError("LTX_PUBLIC_BASE_URL must not contain credentials, a query, or a fragment")
-    if parsed.scheme == "http" and not _is_loopback_host(parsed.hostname):
-        raise RuntimeError("LTX_PUBLIC_BASE_URL must use HTTPS unless it points to loopback")
     return candidate
 
 

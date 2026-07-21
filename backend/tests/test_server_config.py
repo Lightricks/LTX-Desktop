@@ -37,11 +37,20 @@ def test_standalone_configuration() -> None:
     assert config.models_dir_editable is False
 
 
-def test_non_loopback_plain_http_public_url_is_rejected() -> None:
-    with pytest.raises(RuntimeError, match="must use HTTPS"):
-        load_server_config(
-            {
-                "LTX_AUTH_TOKEN": "x" * 32,
-                "LTX_PUBLIC_BASE_URL": "http://atom.local:8000",
-            }
-        )
+def test_non_loopback_bind_requires_authentication() -> None:
+    with pytest.raises(RuntimeError, match="requires LTX_AUTH_TOKEN"):
+        load_server_config({"LTX_BIND_HOST": "0.0.0.0"})
+
+
+def test_authenticated_standalone_allows_plain_http_on_a_trusted_lan() -> None:
+    config = load_server_config(
+        {
+            "LTX_DEPLOYMENT_MODE": "standalone",
+            "LTX_AUTH_TOKEN": "x" * 32,
+            "LTX_BIND_HOST": "0.0.0.0",
+            "LTX_PUBLIC_BASE_URL": "http://192.168.1.50:8000",
+        }
+    )
+
+    assert config.bind_host == "0.0.0.0"
+    assert config.public_base_url == "http://192.168.1.50:8000"

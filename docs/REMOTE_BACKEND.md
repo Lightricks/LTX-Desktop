@@ -23,7 +23,8 @@ The standalone server is a trusted, single-user service. It is not designed as a
 
 - Standalone mode requires a bearer token of at least 32 characters.
 - Raw filesystem-path inputs, Basic authentication, query-string authentication, and remote shutdown are disabled.
-- Plain HTTP is supported only through a loopback address. Use an SSH tunnel for a private machine or an HTTPS reverse proxy for a non-loopback address.
+- Plain HTTP is available for a trusted private network when the backend is deliberately bound to a non-loopback interface. The bearer token still protects the API, but the token and media are not encrypted in transit.
+- Use an SSH tunnel or HTTPS when the network is shared, untrusted, or outside your control.
 - Do not expose port 8000 directly to an untrusted LAN or the internet.
 
 ## Start the backend on the GPU machine
@@ -64,6 +65,27 @@ The server is ready when it prints:
 Server running on http://127.0.0.1:8000
 ```
 
+## Connect directly on a trusted LAN
+
+For a private network you control, the backend can listen directly without an SSH tunnel or reverse proxy. This mode remains authenticated and must be enabled explicitly:
+
+```bash
+export LTX_DEPLOYMENT_MODE=standalone
+export LTX_APP_DATA_DIR=/srv/ltx-desktop
+export LTX_MODELS_DIR=/srv/ltx-models
+export LTX_AUTH_TOKEN='replace-with-the-generated-token'
+export LTX_BIND_HOST=0.0.0.0
+export LTX_PORT=8000
+export LTX_PUBLIC_BASE_URL=http://192.168.1.50:8000
+export LTX_ALLOWED_ORIGINS='null,http://localhost:5173,http://127.0.0.1:5173'
+
+uv run python ltx2_server.py
+```
+
+Use a stable hostname or IP address that the desktop machine can resolve; never use `0.0.0.0` as the client URL. In LTX Desktop, enter `http://192.168.1.50:8000` and the bearer token, then test and save the connection.
+
+Binding to a specific private-network address instead of `0.0.0.0` reduces exposure when the host has several interfaces. A host firewall can further restrict the port to the desktop machine or trusted subnet. Authentication prevents unauthorized API use, but HTTP does not prevent another device on the network from observing the token or media in transit.
+
 ## Connect through SSH
 
 On the computer running LTX Desktop, forward local port `18000` to backend port `8000` on the GPU machine:
@@ -86,7 +108,7 @@ The connection requires remote-backend protocol version 2 and verifies media-upl
 
 ## Direct HTTPS connection
 
-For a direct Tailscale or network connection, terminate TLS in a reverse proxy and set `LTX_PUBLIC_BASE_URL` to the externally reachable HTTPS origin. The backend intentionally rejects a non-loopback `http://` public URL.
+For a direct Tailscale, shared-network, or internet connection, terminate TLS in a reverse proxy and set `LTX_PUBLIC_BASE_URL` to the externally reachable HTTPS origin.
 
 Example environment:
 

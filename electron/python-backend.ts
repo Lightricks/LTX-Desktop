@@ -151,10 +151,8 @@ export function normalizeExternalBackendUrl(value: string): string {
     throw new Error('Backend URL must not include a path')
   }
 
-  const hostname = parsed.hostname.toLowerCase()
-  const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1'
-  if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && isLoopback)) {
-    throw new Error('Use HTTPS for remote hosts, or HTTP through a localhost SSH tunnel')
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error('Backend URL must use HTTP or HTTPS')
   }
   return parsed.origin
 }
