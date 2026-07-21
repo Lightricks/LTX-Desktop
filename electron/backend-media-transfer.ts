@@ -13,6 +13,7 @@ import {
   getBackendUrl,
 } from './python-backend'
 import { logger } from './logger'
+import { approvePath } from './path-validation'
 import { MAX_BACKEND_ARTIFACT_BYTES } from '../shared/electron-api-schema'
 
 export type BackendMediaType = 'image' | 'audio' | 'video'
@@ -95,6 +96,7 @@ function safeFilename(value: string): string {
 function transferDirectory(): string {
   const directory = path.join(app.getPath('temp') || os.tmpdir(), 'ltx-desktop', 'backend-transfers')
   fs.mkdirSync(directory, { recursive: true })
+  approvePath(directory)
   if (!cleanedTransferDirectory) {
     cleanedTransferDirectory = true
     const cutoff = Date.now() - 24 * 60 * 60 * 1000
