@@ -174,6 +174,19 @@ echo "  All dependencies installed"
 # Step 7: Clean up
 # ============================================================
 echo ""
+# macOS/Apple Silicon: pre-compile mps-sdpa's zero-copy `mpsgraph_zc` attention
+# extension so it ships prebuilt (end-user Macs have no compiler). MUST run before
+# the setuptools strip below — torch.utils.cpp_extension imports setuptools at load.
+# Output goes INSIDE python-embed (mps-ext-prebuilt/) so it rides the CI python-embed
+# cache and gets bundled with it; the runtime env LTX_MPS_EXT_PREBUILT_DIR points here.
+if [ "$PBS_OS" = "apple-darwin" ] && [ "$PBS_ARCH" = "aarch64" ]; then
+  echo "Step 6.5: Pre-building mps-sdpa mpsgraph_zc attention extension..."
+  # Fatal, not a warning: without this prebuilt .so, end-user Macs (no compiler) fall
+  # back to the leaking pyobjc attention backend and OOM on long generations.
+  PYTHON="$PYTHON_EXE" bash "$SCRIPT_DIR/prebuild-mps-sdpa-ext.sh" "$OUTPUT_PATH/mps-ext-prebuilt"
+fi
+
+echo ""
 echo "Step 7: Cleaning up..."
 
 # Remove __pycache__ and .pyc files
@@ -183,8 +196,12 @@ find "$OUTPUT_PATH" -name "*.pyc" -delete 2>/dev/null || true
 # Remove pip cache and pip itself (not needed at runtime)
 rm -rf "$OUTPUT_PATH/lib/python"*/site-packages/pip 2>/dev/null || true
 rm -rf "$OUTPUT_PATH/lib/python"*/site-packages/pip-*.dist-info 2>/dev/null || true
-rm -rf "$OUTPUT_PATH/lib/python"*/site-packages/setuptools 2>/dev/null || true
-rm -rf "$OUTPUT_PATH/lib/python"*/site-packages/setuptools-*.dist-info 2>/dev/null || true
+# Keep setuptools on macOS: torch.utils.cpp_extension imports it at module top,
+# and it's imported at runtime to load the prebuilt mpsgraph_zc attention extension.
+if [ "$PBS_OS" != "apple-darwin" ]; then
+  rm -rf "$OUTPUT_PATH/lib/python"*/site-packages/setuptools 2>/dev/null || true
+  rm -rf "$OUTPUT_PATH/lib/python"*/site-packages/setuptools-*.dist-info 2>/dev/null || true
+fi
 
 # Remove test directories to save space
 find "$OUTPUT_PATH/lib" -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true

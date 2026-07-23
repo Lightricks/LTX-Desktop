@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, FolderOpen, RefreshCw, ChevronDown, ChevronUp, Download } from 'lucide-react'
+import { X, FolderOpen, RefreshCw, ChevronDown, ChevronUp, Download, Search } from 'lucide-react'
 import { Button } from './ui/button'
 import { logger } from '../lib/logger'
+import { getBackendCredentials } from '../lib/backend'
 
 interface LogViewerProps {
   isOpen: boolean
@@ -9,19 +10,49 @@ interface LogViewerProps {
   embedded?: boolean
 }
 
+// Wraps every case-insensitive occurrence of `query` in the line with a <mark>,
+// keeping all other text as-is -- marks matches instead of hiding non-matching
+// lines, so surrounding context stays visible while searching.
+function highlightMatches(line: string, query: string): React.ReactNode {
+  if (!query) return line
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const parts = line.split(new RegExp(`(${escaped})`, 'gi'))
+  if (parts.length === 1) return line
+  // String.split with a capturing group alternates [text, match, text, match, ...] --
+  // odd indices are always the captured matches.
+  return parts.map((part, i) =>
+    i % 2 === 1
+      ? <mark key={i} className="bg-yellow-500/70 text-black rounded-sm px-0.5">{part}</mark>
+      : <span key={i}>{part}</span>,
+  )
+}
+
 export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps) {
   const [logs, setLogs] = useState<string[]>([])
   const [logPath, setLogPath] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [autoScroll, setAutoScroll] = useState(true)
+  const [searchInput, setSearchInput] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [tokenCopied, setTokenCopied] = useState(false)
   const logContainerRef = useRef<HTMLDivElement>(null)
+  // Autoscroll doesn't make sense while browsing search matches -- remember
+  // the user's prior preference so clearing the search restores it exactly.
+  const savedAutoScrollRef = useRef<boolean | null>(null)
+
+  // Debounce the raw input so typing doesn't fire an IPC round-trip (a full
+  // untruncated log read while searching) on every keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(searchInput.trim()), 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
 
   const fetchLogs = async () => {
     if (!window.electronAPI?.getLogs) return
-    
+
     setIsLoading(true)
     try {
-      const result = await window.electronAPI.getLogs()
+      const result = await window.electronAPI.getLogs({ query: searchQuery || undefined })
       setLogs(result.lines || [])
       setLogPath(result.logPath || '')
     } catch (error) {
@@ -32,13 +63,34 @@ export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps)
   }
 
   useEffect(() => {
-    if (isOpen) {
-      fetchLogs()
-      // Auto-refresh every 2 seconds when open
-      const interval = setInterval(fetchLogs, 2000)
-      return () => clearInterval(interval)
+    if (!isOpen) return
+    fetchLogs()
+    // Live-tail only when NOT searching. A search reads the whole session file and
+    // ships every line over IPC (then re-highlights each), so polling that every 2s is a
+    // large CPU/IPC cost for no gain -- results are a point-in-time view. Fetch once per
+    // query change instead (this effect re-runs on searchQuery), and skip the interval.
+    if (searchQuery) return
+    const interval = setInterval(fetchLogs, 2000)
+    return () => clearInterval(interval)
+  }, [isOpen, searchQuery])
+
+  const matchCount = searchQuery
+    ? logs.filter(l => l.toLowerCase().includes(searchQuery.toLowerCase())).length
+    : 0
+
+  useEffect(() => {
+    const isSearching = Boolean(searchQuery)
+    if (isSearching && savedAutoScrollRef.current === null) {
+      savedAutoScrollRef.current = autoScroll
+      setAutoScroll(false)
+    } else if (!isSearching && savedAutoScrollRef.current !== null) {
+      setAutoScroll(savedAutoScrollRef.current)
+      savedAutoScrollRef.current = null
     }
-  }, [isOpen])
+    // autoScroll intentionally excluded -- this only reacts to searchQuery
+    // transitions, not to the manual toggle (which is disabled while searching anyway).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery])
 
   useEffect(() => {
     if (autoScroll && logContainerRef.current) {
@@ -49,6 +101,24 @@ export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps)
   const handleOpenFolder = async () => {
     if (window.electronAPI?.openLogFolder) {
       await window.electronAPI.openLogFolder()
+    }
+  }
+
+  // Copy the backend Bearer token so local QA/perf scripts can authenticate
+  // against the Electron-spawned backend (its token is random per launch).
+  // Surfaced via a semi-hidden control in the footer (see below).
+  const handleCopyToken = async () => {
+    try {
+      const { token } = await getBackendCredentials()
+      if (!token) {
+        logger.error('No backend token available to copy')
+        return
+      }
+      await navigator.clipboard.writeText(token)
+      setTokenCopied(true)
+      setTimeout(() => setTokenCopied(false), 1200)
+    } catch (error) {
+      logger.error(`Failed to copy backend token: ${error}`)
     }
   }
 
@@ -66,7 +136,7 @@ export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps)
   if (!isOpen) return null
 
   const panel = (
-    <div className={`bg-zinc-900 rounded-lg border border-zinc-700 w-full ${embedded ? 'h-full' : 'max-w-4xl h-[80vh]'} flex flex-col`}>
+    <div className={`bg-zinc-900 rounded-lg border border-zinc-700 w-full ${embedded ? 'h-full' : 'max-w-5xl h-[80vh]'} flex flex-col`}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-zinc-700">
           <div className="flex items-center gap-3">
@@ -109,8 +179,9 @@ export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps)
               variant="ghost"
               size="sm"
               onClick={() => setAutoScroll(!autoScroll)}
-              className={`${autoScroll ? 'text-blue-400' : 'text-zinc-400'} hover:text-white`}
-              title={autoScroll ? 'Auto-scroll enabled' : 'Auto-scroll disabled'}
+              disabled={Boolean(searchQuery)}
+              className={`${autoScroll ? 'text-blue-400' : 'text-zinc-400'} hover:text-white disabled:opacity-40 disabled:cursor-not-allowed`}
+              title={searchQuery ? 'Auto-scroll disabled while searching' : autoScroll ? 'Auto-scroll enabled' : 'Auto-scroll disabled'}
             >
               {autoScroll ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
             </Button>
@@ -125,6 +196,23 @@ export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps)
               </Button>
             )}
           </div>
+        </div>
+
+        {/* Search */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800">
+          <Search className="h-3.5 w-3.5 text-zinc-500 flex-shrink-0" />
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search logs (case-insensitive)..."
+            className="flex-1 bg-transparent text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none"
+          />
+          {searchQuery && (
+            <span className="text-xs text-zinc-500 flex-shrink-0">
+              {matchCount} matching line{matchCount === 1 ? '' : 's'}
+            </span>
+          )}
         </div>
 
         {/* Log content */}
@@ -153,7 +241,7 @@ export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps)
                 
                 return (
                   <div key={index} className={`${lineClass} whitespace-pre-wrap break-all`}>
-                    {line}
+                    {highlightMatches(line, searchQuery)}
                   </div>
                 )
               })}
@@ -163,8 +251,22 @@ export function LogViewer({ isOpen, onClose, embedded = false }: LogViewerProps)
 
         {/* Footer */}
         <div className="flex items-center justify-between p-3 border-t border-zinc-700 text-xs text-zinc-500">
-          <span>{logs.length} lines (last 200)</span>
-          <span>Auto-refreshing every 2s</span>
+          <span>{logs.length} lines {searchQuery ? '(full session)' : '(last 200)'}</span>
+          <div className="flex items-center gap-3">
+            {/* Semi-hidden: copies the backend Bearer token for local QA/perf scripts
+                (the Electron-spawned backend's token is random per launch). Muted until
+                hover so it stays out of the way. */}
+            <button
+              type="button"
+              onClick={() => void handleCopyToken()}
+              className="font-mono tracking-widest text-zinc-700 hover:text-zinc-300 transition-colors"
+              title="Copy backend auth token"
+              aria-label="Copy backend auth token"
+            >
+              {tokenCopied ? 'copied!' : '•••••'}
+            </button>
+            <span>Auto-refreshing every 2s</span>
+          </div>
         </div>
       </div>
   )

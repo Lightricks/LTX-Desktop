@@ -14,15 +14,12 @@ interface UseHfAuthResult {
 const NOOP = async () => {}
 
 export function useHfAuth(enabled: boolean): UseHfAuthResult {
-  const gatingEnabled = window.electronAPI.hfGatingEnabled
-  const [hfAuthStatus, setHfAuthStatus] = useState<HfAuthStatus>(
-    gatingEnabled ? 'not_authenticated' : 'authenticated',
-  )
+  // HF sign-in is useful for gated catalog LoRA/IC-LoRA downloads; catalogs are always on.
+  const [hfAuthStatus, setHfAuthStatus] = useState<HfAuthStatus>('not_authenticated')
   const [hfAuthPolling, setHfAuthPolling] = useState(false)
 
   // One-time check when enabled becomes true
   useEffect(() => {
-    if (!gatingEnabled) return
     if (!enabled) return
     const checkAuth = async () => {
       const result = await ApiClient.getHuggingFaceAuthStatus()
@@ -33,11 +30,10 @@ export function useHfAuth(enabled: boolean): UseHfAuthResult {
       setHfAuthStatus(result.data.status)
     }
     void checkAuth()
-  }, [enabled, gatingEnabled])
+  }, [enabled])
 
   // Poll while waiting for user to complete auth in browser
   useEffect(() => {
-    if (!gatingEnabled) return
     if (!hfAuthPolling) return
     const interval = setInterval(async () => {
       const result = await ApiClient.getHuggingFaceAuthStatus()
@@ -50,7 +46,7 @@ export function useHfAuth(enabled: boolean): UseHfAuthResult {
       if (status === 'authenticated') setHfAuthPolling(false)
     }, 2000)
     return () => clearInterval(interval)
-  }, [hfAuthPolling, gatingEnabled])
+  }, [hfAuthPolling])
 
   const startHuggingFaceLogin = useCallback(async () => {
     const result = await ApiClient.startHuggingFaceLogin()
@@ -80,7 +76,7 @@ export function useHfAuth(enabled: boolean): UseHfAuthResult {
     setHfAuthStatus('not_authenticated')
   }, [])
 
-  if (!gatingEnabled) {
+  if (!enabled) {
     return {
       hfAuthStatus: 'authenticated',
       hfAuthPolling: false,
@@ -89,5 +85,10 @@ export function useHfAuth(enabled: boolean): UseHfAuthResult {
     }
   }
 
-  return { hfAuthStatus, hfAuthPolling, startHuggingFaceLogin, handleHuggingFaceLogout }
+  return {
+    hfAuthStatus,
+    hfAuthPolling,
+    startHuggingFaceLogin,
+    handleHuggingFaceLogout,
+  }
 }

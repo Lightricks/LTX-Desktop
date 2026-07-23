@@ -1,6 +1,6 @@
 {
   "name": "ltx-desktop",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "description": "LTX-2 Video Generation - Desktop App",
   "type": "module",
   "main": "dist-electron/main.js",
@@ -14,8 +14,10 @@
   "packageManager": "pnpm@10.30.3",
   "scripts": {
     "setup:dev": "node scripts/run-script.js scripts/setup-dev",
+    "clean:dev": "node scripts/run-script.js scripts/clean-dev",
     "dev": "vite",
     "dev:debug": "cross-env BACKEND_DEBUG=1 ELECTRON_DEBUG=1 vite",
+    "perf:dev": "node scripts/perf-dev.mjs",
     "typecheck": "concurrently \"pnpm run typecheck:ts\" \"pnpm run typecheck:py\"",
     "typecheck:ts": "tsc --noEmit",
     "typecheck:py": "cd backend && uv run pyright",

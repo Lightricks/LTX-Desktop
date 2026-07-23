@@ -7,7 +7,7 @@ import signal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
-from api_types import GpuInfoResponse, HealthResponse
+from api_types import GpuInfoResponse, HealthResponse, MpsMemoryResponse
 from state import get_state_service
 from app_handler import AppHandler
 
@@ -22,6 +22,11 @@ def route_health(handler: AppHandler = Depends(get_state_service)) -> HealthResp
 @router.get("/api/gpu-info", response_model=GpuInfoResponse)
 def route_gpu_info(handler: AppHandler = Depends(get_state_service)) -> GpuInfoResponse:
     return handler.health.get_gpu_info()
+
+
+@router.get("/api/gpu-info/mps", response_model=MpsMemoryResponse)
+def route_mps_memory(handler: AppHandler = Depends(get_state_service)) -> MpsMemoryResponse:
+    return handler.health.get_mps_memory()
 
 
 def _shutdown_process() -> None:

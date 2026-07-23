@@ -17,7 +17,9 @@ interface UseHfModelAccessResult {
 const NOOP = () => {}
 
 export function useHfModelAccess(modelTypes: readonly ModelCheckpointID[], hfAuthStatus: HfAuthStatus): UseHfModelAccessResult {
-  const gatingEnabled = window.electronAPI.hfGatingEnabled
+  // Bundled checkpoints are public — when signed out there's nothing to verify (treated as
+  // authorized below). The per-repo access check only runs when signed in, covering any future
+  // gated checkpoint without forcing sign-in.
   const [accessMap, setAccessMap] = useState<ModelAccessMap>({})
   const [checking, setChecking] = useState(false)
   const [polling, setPolling] = useState(false)
@@ -44,7 +46,6 @@ export function useHfModelAccess(modelTypes: readonly ModelCheckpointID[], hfAut
 
   // Initial check when authenticated
   useEffect(() => {
-    if (!gatingEnabled) return
     if (hfAuthStatus !== 'authenticated' || modelTypes.length === 0) {
       setAccessMap((current) => (Object.keys(current).length === 0 ? current : {}))
       setPolling(false)
@@ -52,21 +53,21 @@ export function useHfModelAccess(modelTypes: readonly ModelCheckpointID[], hfAut
     }
     void doCheck()
     setPolling(true)
-  }, [hfAuthStatus, modelTypes.length, doCheck, gatingEnabled])
+  }, [hfAuthStatus, modelTypes.length, doCheck])
 
   // Poll while any model is not_authorized
   useEffect(() => {
-    if (!gatingEnabled) return
     if (!polling || hfAuthStatus !== 'authenticated') return
     const interval = setInterval(() => { void doCheck() }, 5000)
     return () => clearInterval(interval)
-  }, [polling, hfAuthStatus, doCheck, gatingEnabled])
+  }, [polling, hfAuthStatus, doCheck])
 
   const recheckAccess = useCallback(() => {
     void doCheck()
   }, [doCheck])
 
-  if (!gatingEnabled) {
+  // Signed out: bundled checkpoints are public, so nothing gates the download.
+  if (hfAuthStatus !== 'authenticated') {
     return { accessMap: {}, allAuthorized: true, checking: false, recheckAccess: NOOP }
   }
 

@@ -72,6 +72,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/enhance-prompt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Route Enhance Prompt
+         * @description POST /api/enhance-prompt.
+         */
+        post: operations["route_enhance_prompt_api_enhance_prompt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Extend */
+        post: operations["route_extend_api_extend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/generate": {
         parameters: {
             query?: never;
@@ -189,6 +226,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/gpu-info/mps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Mps Memory */
+        get: operations["route_mps_memory_api_gpu_info_mps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ic-lora/extract-conditioning": {
         parameters: {
             query?: never;
@@ -217,6 +271,146 @@ export interface paths {
         put?: never;
         /** Route Ic Lora Generate */
         post: operations["route_ic_lora_generate_api_ic_lora_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ic-loras": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route List Ic Loras */
+        get: operations["route_list_ic_loras_api_ic_loras_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ic-loras/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Ic Lora Download */
+        post: operations["route_ic_lora_download_api_ic_loras_download_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ic-loras/download/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Ic Lora Download Progress */
+        get: operations["route_ic_lora_download_progress_api_ic_loras_download_progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/loras": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route List Loras */
+        get: operations["route_list_loras_api_loras_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/loras/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Lora Download */
+        post: operations["route_lora_download_api_loras_download_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/loras/download/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Lora Download Progress */
+        get: operations["route_lora_download_progress_api_loras_download_progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Route List Models
+         * @description Return installed model files. ?type=lora -> regular LoRAs only;
+         *     ?type=ic-lora -> IC-LoRAs only; no type -> all installed models.
+         */
+        get: operations["route_list_models_api_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models/active-ltx-model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Set Active Ltx Model */
+        post: operations["route_set_active_ltx_model_api_models_active_ltx_model_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -257,6 +451,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/models/describe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Describe Checkpoints */
+        post: operations["route_describe_checkpoints_api_models_describe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/models/download": {
         parameters: {
             query?: never;
@@ -268,6 +479,23 @@ export interface paths {
         put?: never;
         /** Route Model Download */
         post: operations["route_model_download_api_models_download_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models/download/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Active Download */
+        get: operations["route_active_download_api_models_download_active_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -334,6 +562,23 @@ export interface paths {
         };
         /** Route Ltx Recommendation */
         get: operations["route_ltx_recommendation_api_models_ltx_recommendation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models/ltx-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Ltx Versions */
+        get: operations["route_ltx_versions_api_models_ltx_versions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -466,8 +711,19 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActiveDownloadResponse */
+        ActiveDownloadResponse: {
+            /** Cp Ids */
+            cp_ids: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            /** Session Id */
+            session_id: string | null;
+        };
         /** AppSettingsPatch */
         AppSettingsPatch: {
+            /** Activeltxmodelid */
+            activeLtxModelId?: ("ltx-2.3-22b-distilled-1.1" | "ltx-2.3-22b-distilled") | null;
+            /** Diffusionstagecacheenabled */
+            diffusionStageCacheEnabled?: boolean | null;
             /** Falapikey */
             falApiKey?: string | null;
             /** Geminiapikey */
@@ -484,14 +740,31 @@ export interface components {
             promptEnhancerEnabledI2V?: boolean | null;
             /** Promptenhancerenabledt2V */
             promptEnhancerEnabledT2V?: boolean | null;
+            /** Promptenhancerproviderpreference */
+            promptEnhancerProviderPreference?: ("local" | "api") | null;
             /** Seedlocked */
             seedLocked?: boolean | null;
             /** Uselocaltextencoder */
             useLocalTextEncoder?: boolean | null;
             /** Usetorchcompile */
             useTorchCompile?: boolean | null;
+            /** Userprefersfalapiimagegenerations */
+            userPrefersFalApiImageGenerations?: boolean | null;
             /** Userprefersltxapivideogenerations */
             userPrefersLtxApiVideoGenerations?: boolean | null;
+        };
+        /** AuthorSpec */
+        AuthorSpec: {
+            /**
+             * Affiliation
+             * @default community
+             * @enum {string}
+             */
+            affiliation: "ltx" | "community";
+            /** Name */
+            name: string;
+            /** Url */
+            url?: string | null;
         };
         /** CancelCancellingResponse */
         CancelCancellingResponse: {
@@ -511,10 +784,17 @@ export interface components {
              */
             status: "no_active_generation";
         };
+        /** CatalogDownloadStartResponse */
+        CatalogDownloadStartResponse: {
+            /** Sessionid */
+            sessionId: string;
+            /** Status */
+            status: string;
+        };
         /** CheckModelAccessRequest */
         CheckModelAccessRequest: {
             /** Cp Ids */
-            cp_ids?: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            cp_ids?: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
         };
         /** CheckModelAccessResponse */
         CheckModelAccessResponse: {
@@ -522,6 +802,35 @@ export interface components {
             access: {
                 [key: string]: "authorized" | "not_authorized";
             };
+        };
+        /** CheckpointDescriptor */
+        CheckpointDescriptor: {
+            /**
+             * Cp Id
+             * @enum {string}
+             */
+            cp_id: "ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo";
+            /** Downloaded */
+            downloaded: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "base" | "upscaler" | "text_encoder" | "image" | "support";
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** DescribeCheckpointsRequest */
+        DescribeCheckpointsRequest: {
+            /** Cp Ids */
+            cp_ids: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+        };
+        /** DescribeCheckpointsResponse */
+        DescribeCheckpointsResponse: {
+            /** Checkpoints */
+            checkpoints: components["schemas"]["CheckpointDescriptor"][];
         };
         /** DownloadProgressCompleteResponse */
         DownloadProgressCompleteResponse: {
@@ -544,11 +853,11 @@ export interface components {
         /** DownloadProgressRunningResponse */
         DownloadProgressRunningResponse: {
             /** All Files */
-            all_files: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            all_files: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
             /** Completed Files */
-            completed_files: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            completed_files: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
             /** Current Downloading File */
-            current_downloading_file: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo") | null;
+            current_downloading_file: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo") | null;
             /** Current File Progress */
             current_file_progress: number;
             /** Error */
@@ -566,6 +875,87 @@ export interface components {
             total_downloaded_bytes: number;
             /** Total Progress */
             total_progress: number;
+        };
+        /**
+         * DownloadSpec
+         * @description HF download location for a catalog item.
+         *
+         *     ``variants`` is always non-empty. The first entry is the default checkpoint
+         *     (preferred for generation / omit-``variant_id`` downloads). See the comment on
+         *     ``LoraCatalogHandler`` listing helpers.
+         */
+        DownloadSpec: {
+            /** Repo Id */
+            repo_id: string;
+            /** Variants */
+            variants: components["schemas"]["DownloadVariant"][];
+        };
+        /**
+         * DownloadVariant
+         * @description One downloadable weights file under a catalog item (e.g. strong vs light).
+         */
+        DownloadVariant: {
+            /** Filename */
+            filename: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /**
+         * EnhancePromptRequest
+         * @description Regular-LoRA, IC-LoRA, and built-in conditioning-type selection are mutually exclusive UI
+         *     surfaces — a request never carries more than one of loraCatalogIds/icLoraId/conditioningType.
+         */
+        EnhancePromptRequest: {
+            /** Conditioningtype */
+            conditioningType?: ("canny" | "depth") | null;
+            /** Icloraid */
+            icLoraId?: string | null;
+            /** Imagepath */
+            imagePath?: string | null;
+            /** Loracatalogids */
+            loraCatalogIds?: string[];
+            /**
+             * Mediatype
+             * @default video
+             * @enum {string}
+             */
+            mediaType: "video" | "image";
+            /** Prompt */
+            prompt: string;
+            /**
+             * Provider
+             * @default local
+             * @enum {string}
+             */
+            provider: "local" | "api";
+        };
+        /** EnhancePromptResponse */
+        EnhancePromptResponse: {
+            /** Enhancedprompt */
+            enhancedPrompt: string;
+        };
+        /** ExtendRequest */
+        ExtendRequest: {
+            /** Duration */
+            duration: number;
+            /**
+             * Mode
+             * @default end
+             * @enum {string}
+             */
+            mode: "start" | "end";
+            /**
+             * Prompt
+             * @default
+             */
+            prompt: string;
+            resolution?: components["schemas"]["TargetResolution"] | null;
+            /** Video Path */
+            video_path: string;
         };
         /** GenerateImageCancelledResponse */
         GenerateImageCancelledResponse: {
@@ -592,6 +982,8 @@ export interface components {
              * @default 1024
              */
             height: number;
+            /** Imagepath */
+            imagePath?: string | null;
             /**
              * Numimages
              * @default 1
@@ -604,6 +996,11 @@ export interface components {
             numSteps: number;
             /** Prompt */
             prompt: string;
+            /**
+             * Strength
+             * @default 0.6
+             */
+            strength: number;
             /**
              * Width
              * @default 1024
@@ -670,6 +1067,8 @@ export interface components {
             fps: 24 | 25 | 48 | 50;
             /** Imagepath */
             imagePath?: string | null;
+            /** Loras */
+            loras?: components["schemas"]["LoraEntry"][];
             /**
              * Model
              * @default fast
@@ -689,15 +1088,21 @@ export interface components {
              * @enum {string}
              */
             resolution: "540p" | "720p" | "1080p" | "1440p" | "2160p";
+            /** Seed */
+            seed?: number | null;
         };
         /** GenerationProgressResponse */
         GenerationProgressResponse: {
             /** Currentstep */
             currentStep: number | null;
+            /** Id */
+            id?: string | null;
             /** Phase */
             phase: string;
             /** Progress */
             progress: number;
+            /** Result */
+            result?: string | string[] | null;
             /**
              * Status
              * @enum {string}
@@ -790,6 +1195,128 @@ export interface components {
              */
             status: "logged_out";
         };
+        /**
+         * IcLoraCatalogItem
+         * @description IC-LoRA — base plus IC-specific preprocessing / controls / default settings.
+         *
+         *     IC-LoRAs always take a driving image/video; `input` is required in practice (the base
+         *     field is optional for plain LoRAs). Enforced by the validator below, so handlers can rely
+         *     on it being present.
+         */
+        IcLoraCatalogItem: {
+            /**
+             * Allows Empty Prompt
+             * @default false
+             */
+            allows_empty_prompt: boolean;
+            /**
+             * Allows Reference Image
+             * @default false
+             */
+            allows_reference_image: boolean;
+            author?: components["schemas"]["AuthorSpec"] | null;
+            /** Base Model */
+            base_model?: string | null;
+            /** Controls */
+            controls?: components["schemas"]["IcLoraControl"][];
+            /** Created At */
+            created_at?: string | null;
+            default_settings?: components["schemas"]["IcLoraSettings"];
+            /** Description */
+            description: string;
+            download: components["schemas"]["DownloadSpec"];
+            /** Enhancement Examples */
+            enhancement_examples?: string[];
+            /** Id */
+            id: string;
+            input?: components["schemas"]["InputSpec"] | null;
+            /** Instructions */
+            instructions?: components["schemas"]["InstructionSection"][];
+            license?: components["schemas"]["LicenseSpec"] | null;
+            media?: components["schemas"]["MediaSpec"] | null;
+            /** Name */
+            name: string;
+            /** Preprocessing */
+            preprocessing?: components["schemas"]["PreprocessingStep"][];
+            prompt_template?: components["schemas"]["PromptTemplateSpec"] | null;
+            /** Recommended Strength */
+            recommended_strength?: number | null;
+            /** Requires Hf Login */
+            requires_hf_login: boolean;
+            /** Tags */
+            tags?: string[];
+            /** Trigger */
+            trigger?: string | null;
+            /** Trigger Placement */
+            trigger_placement?: ("first_token" | "anywhere") | null;
+        };
+        /** IcLoraControl */
+        IcLoraControl: {
+            /** Default */
+            default?: number | string | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @default int
+             * @enum {string}
+             */
+            kind: "int" | "select" | "position_canvas";
+            /** Label */
+            label: string;
+            /** Options */
+            options?: number[] | string[] | null;
+            /** Unit */
+            unit?: string | null;
+            /** Value Labels */
+            value_labels?: {
+                [key: string]: string;
+            } | null;
+        };
+        /** IcLoraDownloadProgressResponse */
+        IcLoraDownloadProgressResponse: {
+            /**
+             * Downloaded Bytes
+             * @default 0
+             */
+            downloaded_bytes: number;
+            /** Error */
+            error?: string | null;
+            /**
+             * Expected Bytes
+             * @default 0
+             */
+            expected_bytes: number;
+            /** Ic Lora Id */
+            ic_lora_id?: string | null;
+            /**
+             * Progress
+             * @default 0
+             */
+            progress: number;
+            /**
+             * Speed Bytes Per Sec
+             * @default 0
+             */
+            speed_bytes_per_sec: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "downloading" | "complete" | "error";
+        };
+        /** IcLoraDownloadRequest */
+        IcLoraDownloadRequest: {
+            /** Ic Lora Id */
+            ic_lora_id: string;
+            /**
+             * Use Hf Auth
+             * @default false
+             */
+            use_hf_auth: boolean;
+            /** Variant Id */
+            variant_id?: string | null;
+        };
         /** IcLoraExtractRequest */
         IcLoraExtractRequest: {
             /**
@@ -840,23 +1367,38 @@ export interface components {
         };
         /** IcLoraGenerateRequest */
         IcLoraGenerateRequest: {
+            /** Audio Mode */
+            audio_mode?: ("source" | "generated" | "off") | null;
             /**
              * Cfg Guidance Scale
              * @default 1
              */
             cfg_guidance_scale: number;
-            /**
-             * Conditioning Strength
-             * @default 1
-             */
-            conditioning_strength: number;
+            /** Conditioning Strength */
+            conditioning_strength?: number | null;
             /**
              * Conditioning Type
              * @enum {string}
              */
-            conditioning_type: "canny" | "depth";
+            conditioning_type: "canny" | "depth" | "custom";
+            /** Control Values */
+            control_values?: {
+                [key: string]: number | string;
+            };
+            /** Control Video Path */
+            control_video_path?: string | null;
+            /** Custom Lora Ref */
+            custom_lora_ref?: string | null;
+            /** Fps Override */
+            fps_override?: number | null;
+            /** Ic Lora Id */
+            ic_lora_id?: string | null;
             /** Images */
             images?: components["schemas"]["IcLoraImageInput"][];
+            /** Input Path */
+            input_path?: string | null;
+            /** Lora Strength */
+            lora_strength?: number | null;
             /**
              * Negative Prompt
              * @default
@@ -867,9 +1409,22 @@ export interface components {
              * @default 30
              */
             num_inference_steps: number;
+            outpaint_pads?: components["schemas"]["OutpaintPads"] | null;
             /** Prompt */
             prompt: string;
-            /** Video Path */
+            resolution?: components["schemas"]["TargetResolution"] | null;
+            /** Resolution Factor */
+            resolution_factor?: number | null;
+            /** Skip Stage 2 */
+            skip_stage_2?: boolean | null;
+            /** Use Lora In Stage 2 */
+            use_lora_in_stage_2?: boolean | null;
+            /** Variant Id */
+            variant_id?: string | null;
+            /**
+             * Video Path
+             * @default
+             */
             video_path: string;
         };
         /** IcLoraImageInput */
@@ -887,11 +1442,107 @@ export interface components {
              */
             strength: number;
         };
+        /** IcLoraListItem */
+        IcLoraListItem: {
+            /** Downloaded */
+            downloaded: boolean;
+            /** Downloaded Variant Ids */
+            downloaded_variant_ids?: string[];
+            ic_lora: components["schemas"]["IcLoraCatalogItem"];
+        };
+        /** IcLoraListResponse */
+        IcLoraListResponse: {
+            /** Ic Loras */
+            ic_loras: components["schemas"]["IcLoraListItem"][];
+        };
+        /** IcLoraSettings */
+        IcLoraSettings: {
+            /**
+             * Audio Mode
+             * @default generated
+             * @enum {string}
+             */
+            audio_mode: "source" | "generated" | "off";
+            /**
+             * Conditioning Strength
+             * @default 1
+             */
+            conditioning_strength: number;
+            /**
+             * Lora Strength
+             * @default 1
+             */
+            lora_strength: number;
+            /**
+             * Resolution Factor
+             * @default 2
+             */
+            resolution_factor: number;
+            /**
+             * Skip Stage 2
+             * @default false
+             */
+            skip_stage_2: boolean;
+            /**
+             * Use Lora In Stage 2
+             * @default false
+             */
+            use_lora_in_stage_2: boolean;
+        };
         /** ImageGenRecommendationResponse */
         ImageGenRecommendationResponse: {
             /** Cp To Download */
-            cp_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo") | null;
+            cp_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo") | null;
         };
+        /** InputSpec */
+        InputSpec: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /**
+             * Optional
+             * @default false
+             */
+            optional: boolean;
+        };
+        /** InstalledModelResponse */
+        InstalledModelResponse: {
+            /** Is Ic Lora */
+            is_ic_lora: boolean;
+            /** Is Lora */
+            is_lora: boolean;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** InstalledModelsResponse */
+        InstalledModelsResponse: {
+            /** Models */
+            models: components["schemas"]["InstalledModelResponse"][];
+        };
+        /** InstructionSection */
+        InstructionSection: {
+            /** Body */
+            body: string | string[];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "summary" | "prompting" | "tips" | "input";
+            /**
+             * Title
+             * @enum {string}
+             */
+            title: "What it does" | "Input" | "Prompt" | "Tips" | "Notes";
+        };
+        JsonValue: unknown;
         /** LTXVideoGenerationModelSpecItem */
         LTXVideoGenerationModelSpecItem: {
             /**
@@ -921,10 +1572,125 @@ export interface components {
                 [key: string]: components["schemas"]["LTXVideoGenerationResolutionSpec"];
             };
         };
+        /** LicenseSpec */
+        LicenseSpec: {
+            /** Name */
+            name: string;
+            /** Url */
+            url?: string | null;
+        };
+        /**
+         * LoraCatalogItem
+         * @description Base catalog entry — used as-is for a plain LoRA.
+         */
+        LoraCatalogItem: {
+            /**
+             * Allows Empty Prompt
+             * @default false
+             */
+            allows_empty_prompt: boolean;
+            author?: components["schemas"]["AuthorSpec"] | null;
+            /** Base Model */
+            base_model?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Description */
+            description: string;
+            download: components["schemas"]["DownloadSpec"];
+            /** Enhancement Examples */
+            enhancement_examples?: string[];
+            /** Id */
+            id: string;
+            input?: components["schemas"]["InputSpec"] | null;
+            /** Instructions */
+            instructions?: components["schemas"]["InstructionSection"][];
+            license?: components["schemas"]["LicenseSpec"] | null;
+            media?: components["schemas"]["MediaSpec"] | null;
+            /** Name */
+            name: string;
+            prompt_template?: components["schemas"]["PromptTemplateSpec"] | null;
+            /** Recommended Strength */
+            recommended_strength?: number | null;
+            /** Requires Hf Login */
+            requires_hf_login: boolean;
+            /** Tags */
+            tags?: string[];
+            /** Trigger */
+            trigger?: string | null;
+            /** Trigger Placement */
+            trigger_placement?: ("first_token" | "anywhere") | null;
+        };
+        /** LoraDownloadProgressResponse */
+        LoraDownloadProgressResponse: {
+            /**
+             * Downloaded Bytes
+             * @default 0
+             */
+            downloaded_bytes: number;
+            /** Error */
+            error?: string | null;
+            /**
+             * Expected Bytes
+             * @default 0
+             */
+            expected_bytes: number;
+            /** Lora Id */
+            lora_id?: string | null;
+            /**
+             * Progress
+             * @default 0
+             */
+            progress: number;
+            /**
+             * Speed Bytes Per Sec
+             * @default 0
+             */
+            speed_bytes_per_sec: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "downloading" | "complete" | "error";
+        };
+        /** LoraDownloadRequest */
+        LoraDownloadRequest: {
+            /** Lora Id */
+            lora_id: string;
+            /**
+             * Use Hf Auth
+             * @default false
+             */
+            use_hf_auth: boolean;
+            /** Variant Id */
+            variant_id?: string | null;
+        };
+        /** LoraEntry */
+        LoraEntry: {
+            /** Ref */
+            ref: string;
+            /**
+             * Scale
+             * @default 1
+             */
+            scale: number;
+        };
+        /** LoraListItem */
+        LoraListItem: {
+            /** Downloaded */
+            downloaded: boolean;
+            /** Downloaded Variant Ids */
+            downloaded_variant_ids?: string[];
+            lora: components["schemas"]["LoraCatalogItem"];
+        };
+        /** LoraListResponse */
+        LoraListResponse: {
+            /** Loras */
+            loras: components["schemas"]["LoraListItem"][];
+        };
         /** LtxDownloadRecommendationResponse */
         LtxDownloadRecommendationResponse: {
             /** Cps To Download */
-            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
             /**
              * Status
              * @constant
@@ -934,7 +1700,7 @@ export interface components {
         /** LtxIcLoraRecommendationResponse */
         LtxIcLoraRecommendationResponse: {
             /** Cps To Download */
-            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
         };
         /** LtxInsufficientFundsErrorResponse */
         LtxInsufficientFundsErrorResponse: {
@@ -945,6 +1711,36 @@ export interface components {
             code: "LTX_INSUFFICIENT_FUNDS";
             /** Message */
             message: string;
+        };
+        /** LtxModelVersionItem */
+        LtxModelVersionItem: {
+            /** Active */
+            active: boolean;
+            /** Cps To Download */
+            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            /** Installed */
+            installed: boolean;
+            /** Is Newest */
+            is_newest: boolean;
+            /** Label */
+            label: string;
+            /**
+             * Model Cp
+             * @enum {string}
+             */
+            model_cp: "ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo";
+            /**
+             * Model Id
+             * @enum {string}
+             */
+            model_id: "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-22b-distilled";
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** LtxModelVersionsResponse */
+        LtxModelVersionsResponse: {
+            /** Versions */
+            versions: components["schemas"]["LtxModelVersionItem"][];
         };
         /** LtxOkRecommendationResponse */
         LtxOkRecommendationResponse: {
@@ -957,14 +1753,14 @@ export interface components {
         /** LtxUpgradeRecommendationResponse */
         LtxUpgradeRecommendationResponse: {
             /** Cps To Delete */
-            cps_to_delete: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            cps_to_delete: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
             /** Cps To Download */
-            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
             /**
              * Ltx Model Id
-             * @constant
+             * @enum {string}
              */
-            ltx_model_id: "ltx-2.3-22b-distilled";
+            ltx_model_id: "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-22b-distilled";
             /**
              * Status
              * @constant
@@ -973,15 +1769,22 @@ export interface components {
             /** Upgrade Message */
             upgrade_message?: string | null;
         };
+        /** MediaSpec */
+        MediaSpec: {
+            /** Demo Video */
+            demo_video?: string | null;
+            /** Thumbnail */
+            thumbnail?: string | null;
+        };
         /** ModelDeleteRequest */
         ModelDeleteRequest: {
             /** Cp Ids */
-            cp_ids?: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            cp_ids?: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
         };
         /** ModelDownloadRequest */
         ModelDownloadRequest: {
             /** Cp Ids */
-            cp_ids?: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            cp_ids?: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
             /**
              * Type
              * @default download
@@ -1011,6 +1814,67 @@ export interface components {
             loaded: boolean;
             /** Name */
             name: string;
+        };
+        /**
+         * MpsMemoryResponse
+         * @description Read-only Apple Silicon MPS memory snapshot, MiB. Fields are None off MPS.
+         */
+        MpsMemoryResponse: {
+            /** Allocated Mib */
+            allocated_mib?: number | null;
+            /** Available */
+            available: boolean;
+            /** Driver Mib */
+            driver_mib?: number | null;
+            /** Recommended Max Mib */
+            recommended_max_mib?: number | null;
+        };
+        /**
+         * OutpaintPads
+         * @description Per-edge pixels to add around the source video (extend-only, so all ≥ 0).
+         *
+         *     The +100% cap (each ≤ the source's axis size) needs the source dimensions, so it's enforced
+         *     in `_outpaint_canvas`, not here.
+         */
+        OutpaintPads: {
+            /** Bottom */
+            bottom: number;
+            /** Left */
+            left: number;
+            /** Right */
+            right: number;
+            /** Top */
+            top: number;
+        };
+        /** PreprocessingStep */
+        PreprocessingStep: {
+            /** Params */
+            params?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Utility */
+            utility: string;
+        };
+        /** PromptTemplatePlaceholder */
+        PromptTemplatePlaceholder: {
+            /** Choices */
+            choices?: string[] | null;
+        };
+        /**
+         * PromptTemplateSpec
+         * @description A fixed prompt structure a LoRA/IC-LoRA requires verbatim (e.g. a two-part
+         *     "Reference shows X. Edited shows Y." restore template, or crossview's enum-constrained
+         *     camera vocabulary). `template` contains `{name}` placeholders; each must have a matching
+         *     entry in `placeholders`. A degenerate template with no placeholders (e.g. "upscale") is a
+         *     fixed, non-generated prompt.
+         */
+        PromptTemplateSpec: {
+            /** Placeholders */
+            placeholders?: {
+                [key: string]: components["schemas"]["PromptTemplatePlaceholder"];
+            };
+            /** Template */
+            template: string;
         };
         /** RetakeCancelledResponse */
         RetakeCancelledResponse: {
@@ -1047,6 +1911,7 @@ export interface components {
              * @default
              */
             prompt: string;
+            resolution?: components["schemas"]["TargetResolution"] | null;
             /** Start Time */
             start_time: number;
             /** Video Path */
@@ -1067,8 +1932,23 @@ export interface components {
             /** Force Api Generations */
             force_api_generations: boolean;
         };
+        /** SetActiveLtxModelRequest */
+        SetActiveLtxModelRequest: {
+            /**
+             * Model Id
+             * @enum {string}
+             */
+            model_id: "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-22b-distilled";
+        };
         /** SettingsResponse */
         SettingsResponse: {
+            /** Activeltxmodelid */
+            activeLtxModelId?: ("ltx-2.3-22b-distilled-1.1" | "ltx-2.3-22b-distilled") | null;
+            /**
+             * Diffusionstagecacheenabled
+             * @default false
+             */
+            diffusionStageCacheEnabled: boolean;
             /**
              * Hasfalapikey
              * @default false
@@ -1109,6 +1989,8 @@ export interface components {
              * @default true
              */
             promptEnhancerEnabledT2V: boolean;
+            /** Promptenhancerproviderpreference */
+            promptEnhancerProviderPreference?: ("local" | "api") | null;
             /**
              * Seedlocked
              * @default false
@@ -1124,6 +2006,11 @@ export interface components {
              * @default false
              */
             useTorchCompile: boolean;
+            /**
+             * Userprefersfalapiimagegenerations
+             * @default false
+             */
+            userPrefersFalApiImageGenerations: boolean;
             /**
              * Userprefersltxapivideogenerations
              * @default false
@@ -1176,10 +2063,21 @@ export interface components {
             /** Suggested Prompt */
             suggested_prompt: string;
         };
+        /**
+         * TargetResolution
+         * @description Desired output resolution for a local generation. The backend corrects it to the
+         *     nearest valid size (snapped down to a multiple of 32, never above the source).
+         */
+        TargetResolution: {
+            /** Height */
+            height: number;
+            /** Width */
+            width: number;
+        };
         /** TextEncoderRecommendationResponse */
         TextEncoderRecommendationResponse: {
             /** Cp To Download */
-            cp_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo") | null;
+            cp_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo") | null;
             /** Expected Size Bytes */
             expected_size_bytes: number;
             /** Expected Size Gb */
@@ -1328,6 +2226,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HuggingFaceAuthStatusResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_enhance_prompt_api_enhance_prompt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnhancePromptRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnhancePromptResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_extend_api_extend_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtendRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetakeVideoResponse"] | components["schemas"]["RetakePayloadResponse"] | components["schemas"]["RetakeCancelledResponse"];
                 };
             };
             /** @description Client Error */
@@ -1595,6 +2577,44 @@ export interface operations {
             };
         };
     };
+    route_mps_memory_api_gpu_info_mps_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MpsMemoryResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
     route_ic_lora_extract_api_ic_lora_extract_conditioning_post: {
         parameters: {
             query?: never;
@@ -1657,6 +2677,328 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IcLoraGenerateCompleteResponse"] | components["schemas"]["IcLoraGenerateCancelledResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_list_ic_loras_api_ic_loras_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IcLoraListResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_ic_lora_download_api_ic_loras_download_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IcLoraDownloadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogDownloadStartResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_ic_lora_download_progress_api_ic_loras_download_progress_get: {
+        parameters: {
+            query: {
+                sessionId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IcLoraDownloadProgressResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_list_loras_api_loras_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoraListResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_lora_download_api_loras_download_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoraDownloadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogDownloadStartResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_lora_download_progress_api_loras_download_progress_get: {
+        parameters: {
+            query: {
+                sessionId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoraDownloadProgressResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_list_models_api_models_get: {
+        parameters: {
+            query?: {
+                type?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstalledModelsResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_set_active_ltx_model_api_models_active_ltx_model_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetActiveLtxModelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
                 };
             };
             /** @description Client Error */
@@ -1763,6 +3105,48 @@ export interface operations {
             };
         };
     };
+    route_describe_checkpoints_api_models_describe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DescribeCheckpointsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DescribeCheckpointsResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
     route_model_download_api_models_download_post: {
         parameters: {
             query?: never;
@@ -1783,6 +3167,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelDownloadStartResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_active_download_api_models_download_active_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveDownloadResponse"];
                 };
             };
             /** @description Client Error */
@@ -1937,6 +3359,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LtxDownloadRecommendationResponse"] | components["schemas"]["LtxUpgradeRecommendationResponse"] | components["schemas"]["LtxOkRecommendationResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_ltx_versions_api_models_ltx_versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LtxModelVersionsResponse"];
                 };
             };
             /** @description Client Error */

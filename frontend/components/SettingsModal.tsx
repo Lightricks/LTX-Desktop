@@ -1,6 +1,7 @@
-import { AlertCircle, Check, Download, Film, Folder, Info, KeyRound, Settings, Sparkles, X, Zap } from 'lucide-react'
+import { AlertCircle, Check, Download, Film, Folder, HardDrive, Info, KeyRound, Settings, Sparkles, X, Zap } from 'lucide-react'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from './ui/button'
+import { BaseModelSection } from './settings/BaseModelSection'
 import { useAppSettings, type AppSettings } from '../contexts/AppSettingsContext'
 import { ApiClient, type ApiSuccessOf } from '../lib/api-client'
 import { logger } from '../lib/logger'
@@ -14,17 +15,91 @@ interface SettingsModalProps {
   initialTab?: TabId
 }
 
-type TabId = 'general' | 'apiKeys' | 'promptEnhancer' | 'about'
+type TabId = 'general' | 'models' | 'apiKeys' | 'promptEnhancer' | 'about'
+
+/** Focuses an API Keys tab input once the modal has switched to that tab.
+ *  Shared by the LTX and FAL key inputs — each call gets its own ref/pending state. */
+function useApiKeyFocus(isOpen: boolean, activeTab: TabId, setActiveTab: (tab: TabId) => void) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [pending, setPending] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'apiKeys' || !pending) return
+
+    const frameId = window.requestAnimationFrame(() => {
+      inputRef.current?.focus()
+    })
+    setPending(false)
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [activeTab, pending, isOpen])
+
+  const openAndFocus = () => {
+    setActiveTab('apiKeys')
+    setPending(true)
+  }
+
+  return { inputRef, openAndFocus }
+}
+
+/** A labelled on/off setting row: bolt icon, title, description, switch, and a status pill.
+ *  Shared by the CUDA-only Torch Compile + Diffusion Stage Cache toggles. */
+function SettingToggle({ title, description, enabled, onToggle, statusOn, statusOff }: {
+  title: string
+  description: React.ReactNode
+  enabled: boolean
+  onToggle: () => void
+  statusOn: string
+  statusOff: string
+}) {
+  return (
+    <div className="space-y-3 pt-4 border-t border-zinc-800">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <svg className="h-4 w-4 text-orange-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+            <label className="text-sm font-medium text-white">{title}</label>
+          </div>
+          <p className="text-xs text-zinc-500 leading-relaxed">{description}</p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onToggle}
+          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+            enabled ? 'bg-orange-500' : 'bg-zinc-700'
+          }`}
+        >
+          <span
+            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+              enabled ? 'translate-x-5' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+
+      <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
+        enabled ? 'bg-orange-500/10 text-orange-400' : 'bg-zinc-800 text-zinc-500'
+      }`}>
+        <div className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-orange-400' : 'bg-zinc-600'}`} />
+        {enabled ? statusOn : statusOff}
+      </div>
+    </div>
+  )
+}
 
 export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
-  const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, forceApiGenerations } = useAppSettings()
+  const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, forceApiGenerations, cudaAvailable } = useAppSettings()
   const onSettingsChange = (next: AppSettings) => updateSettings(next)
   const [activeTab, setActiveTab] = useState<TabId>('general')
+  const ltxApiKey = useApiKeyFocus(isOpen, activeTab, setActiveTab)
+  const falApiKey = useApiKeyFocus(isOpen, activeTab, setActiveTab)
   const [ltxApiKeyInput, setLtxApiKeyInput] = useState('')
-  const ltxApiKeyInputRef = useRef<HTMLInputElement>(null)
-  const [focusLtxApiKeyInputOnTabChange, setFocusLtxApiKeyInputOnTabChange] = useState(false)
   const [falApiKeyInput, setFalApiKeyInput] = useState('')
-  const falApiKeyInputRef = useRef<HTMLInputElement>(null)
   const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('')
   const geminiApiKeyInputRef = useRef<HTMLInputElement>(null)
   const [textEncoderRecommendation, setTextEncoderRecommendation] = useState<ApiSuccessOf<'getTextEncoderRecommendation'> | null>(null)
@@ -57,18 +132,13 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     }
   }, [isOpen, initialTab])
 
+  // The Models tab is hidden in force-API mode; don't let the selection get stuck there
+  // (e.g. via initialTab or a stale value).
   useEffect(() => {
-    if (!isOpen || activeTab !== 'apiKeys' || !focusLtxApiKeyInputOnTabChange) return
-
-    const frameId = window.requestAnimationFrame(() => {
-      ltxApiKeyInputRef.current?.focus()
-    })
-    setFocusLtxApiKeyInputOnTabChange(false)
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
+    if (forceApiGenerations && activeTab === 'models') {
+      setActiveTab('general')
     }
-  }, [activeTab, focusLtxApiKeyInputOnTabChange, isOpen])
+  }, [forceApiGenerations, activeTab])
 
   // Fetch app version when About tab is shown
   useEffect(() => {
@@ -162,16 +232,18 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     })
   }
 
+  const handleToggleDiffusionStageCache = () => {
+    onSettingsChange({
+      ...settings,
+      diffusionStageCacheEnabled: !settings.diffusionStageCacheEnabled,
+    })
+  }
+
   const handleToggleLocalEncoder = () => {
     onSettingsChange({
       ...settings,
       useLocalTextEncoder: !settings.useLocalTextEncoder,
     })
-  }
-
-  const openApiKeysAndFocusLtxInput = () => {
-    setActiveTab('apiKeys')
-    setFocusLtxApiKeyInputOnTabChange(true)
   }
 
   const handlePromptCacheSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -248,6 +320,9 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
 
   const tabs = [
     { id: 'general' as TabId, label: 'General', icon: Settings },
+    // The Models tab is local-model management — irrelevant (and non-functional) when all
+    // generation is forced through the API, so hide it in that mode.
+    ...(!forceApiGenerations ? [{ id: 'models' as TabId, label: 'Models', icon: HardDrive }] : []),
     { id: 'apiKeys' as TabId, label: 'API Keys', icon: KeyRound },
     { id: 'promptEnhancer' as TabId, label: 'Prompt Enhancer', icon: Sparkles },
     { id: 'about' as TabId, label: 'About', icon: Info },
@@ -262,7 +337,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       />
 
       {/* Modal */}
-      <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-xl mx-4">
+      <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-2xl mx-4">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
           <div className="flex items-center gap-2">
@@ -287,7 +362,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+                className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors ${
                   activeTab === tab.id
                     ? 'text-white border-b-2 border-blue-500 -mb-px'
                     : 'text-zinc-400 hover:text-white'
@@ -345,7 +420,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                     }`}
                     onClick={() => {
                       if (!settings.hasLtxApiKey) {
-                        openApiKeysAndFocusLtxInput()
+                        ltxApiKey.openAndFocus()
                         return
                       }
                       onSettingsChange({
@@ -381,6 +456,55 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                 </div>
               )}
 
+              {!forceApiGenerations && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-blue-400" />
+                    <h3 className="text-sm font-semibold text-white">Images Generation</h3>
+                  </div>
+
+                  <div
+                    className={`bg-zinc-800/50 rounded-lg p-4 border-2 transition-colors cursor-pointer ${
+                      settings.userPrefersFalApiImageGenerations ? 'border-blue-500' : 'border-transparent hover:border-zinc-600'
+                    }`}
+                    onClick={() => {
+                      if (!settings.hasFalApiKey) {
+                        falApiKey.openAndFocus()
+                        return
+                      }
+                      onSettingsChange({
+                        ...settings,
+                        userPrefersFalApiImageGenerations: !settings.userPrefersFalApiImageGenerations,
+                      })
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <Zap className="h-4 w-4 text-blue-400" />
+                          <span className="text-sm font-medium text-white">Generate With API</span>
+                        </div>
+                        <p className="text-xs text-zinc-400 mt-1">
+                          Use the FAL API for image generation and editing when a FAL API key is configured.
+                        </p>
+                      </div>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                        settings.userPrefersFalApiImageGenerations ? 'border-blue-500 bg-blue-500' : 'border-zinc-600'
+                      }`}>
+                        {settings.userPrefersFalApiImageGenerations && <Check className="h-3 w-3 text-white" />}
+                      </div>
+                    </div>
+
+                    {!settings.hasFalApiKey && (
+                      <div className="mt-2 text-xs text-amber-400 flex items-center gap-1.5">
+                        <AlertCircle className="h-3 w-3" />
+                        API key required — configure it in the API Keys tab.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Text Encoding Section */}
               {!forceApiGenerations && (
               <div className="space-y-4">
@@ -404,7 +528,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   onClick={() => {
                     if (!settings.useLocalTextEncoder) return
                     if (!settings.hasLtxApiKey) {
-                      openApiKeysAndFocusLtxInput()
+                      ltxApiKey.openAndFocus()
                       return
                     }
                     handleToggleLocalEncoder()
@@ -530,7 +654,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                               e.stopPropagation()
                               void handleDownloadTextEncoder()
                             }}
-                            disabled={!textEncoderRecommendation?.cp_to_download || !teAllAuthorized || hfAuthStatus !== 'authenticated'}
+                            disabled={!textEncoderRecommendation?.cp_to_download || !teAllAuthorized}
                             className="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs"
                           >
                             <Download className="h-3 w-3 mr-2" />
@@ -547,52 +671,32 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               </div>
               )}
 
-              {/* Torch Compile Setting */}
-              <div className="space-y-3 pt-4 border-t border-zinc-800">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <svg className="h-4 w-4 text-orange-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                      </svg>
-                      <label className="text-sm font-medium text-white">
-                        Torch Compile
-                      </label>
-                    </div>
-                    <p className="text-xs text-zinc-500 leading-relaxed">
-                      Compiles the model for optimized inference. <span className="text-orange-400">Experimental:</span> First
-                      generation can take 5-10+ minutes for compilation. Subsequent generations may be
-                      20-40% faster. Requires app restart to take effect.
-                    </p>
-                  </div>
+              {/* Torch Compile + Diffusion Stage Cache -- CUDA only, no-op on MPS/CPU */}
+              {cudaAvailable && (
+                <SettingToggle
+                  title="Torch Compile"
+                  description={<>Compiles the model for optimized inference. <span className="text-orange-400">Experimental:</span> First
+                    generation can take 5-10+ minutes for compilation. Subsequent generations may be
+                    20-40% faster. Requires app restart to take effect.</>}
+                  enabled={settings.useTorchCompile}
+                  onToggle={handleToggleTorchCompile}
+                  statusOn="Optimized inference (recommended)"
+                  statusOff="Standard inference"
+                />
+              )}
 
-                  {/* Toggle Switch */}
-                  <button
-                    onClick={handleToggleTorchCompile}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      settings.useTorchCompile ? 'bg-orange-500' : 'bg-zinc-700'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        settings.useTorchCompile ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                {/* Status indicator */}
-                <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
-                  settings.useTorchCompile
-                    ? 'bg-orange-500/10 text-orange-400'
-                    : 'bg-zinc-800 text-zinc-500'
-                }`}>
-                  <div className={`w-1.5 h-1.5 rounded-full ${
-                    settings.useTorchCompile ? 'bg-orange-400' : 'bg-zinc-600'
-                  }`} />
-                  {settings.useTorchCompile ? 'Optimized inference (recommended)' : 'Standard inference'}
-                </div>
-              </div>
+              {cudaAvailable && (
+                <SettingToggle
+                  title="Diffusion Stage Cache"
+                  description={<>Reuses an already-built transformer across stage 1/stage 2 within one generation
+                    instead of reloading it from disk twice. <span className="text-orange-400">Experimental:</span> only
+                    applies on high-VRAM cards (32GB+); no effect otherwise.</>}
+                  enabled={settings.diffusionStageCacheEnabled}
+                  onToggle={handleToggleDiffusionStageCache}
+                  statusOn="Skipping redundant transformer reloads"
+                  statusOff="Standard behavior"
+                />
+              )}
 
               {/* Seed Lock Setting */}
               <div className="space-y-3 pt-4 border-t border-zinc-800">
@@ -705,6 +809,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
             </>
           )}
 
+          {activeTab === 'models' && !forceApiGenerations && <BaseModelSection />}
+
           {activeTab === 'apiKeys' && (
             <>
               {/* LTX API Key Section */}
@@ -722,7 +828,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                 <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
                   <div className="flex gap-2">
                     <LtxApiKeyInput
-                      ref={ltxApiKeyInputRef}
+                      ref={ltxApiKey.inputRef}
                       value={ltxApiKeyInput}
                       onChange={(e) => setLtxApiKeyInput(e.target.value)}
                       placeholder={settings.hasLtxApiKey ? 'Enter new key to replace...' : 'Enter your LTX API key...'}
@@ -774,13 +880,13 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                 </div>
 
                 <p className="text-xs text-zinc-500 leading-relaxed">
-                  Your FAL AI key is used for generating images with Z Image Turbo when API generations are enabled.
+                  Your FAL AI key is used for generating or editing images with Z Image Turbo when API generations are enabled.
                 </p>
 
                 <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
                   <div className="flex gap-2">
                     <LtxApiKeyInput
-                      ref={falApiKeyInputRef}
+                      ref={falApiKey.inputRef}
                       value={falApiKeyInput}
                       onChange={(e) => setFalApiKeyInput(e.target.value)}
                       placeholder={settings.hasFalApiKey ? 'Enter new key to replace...' : 'Enter your FAL AI API key...'}
@@ -835,7 +941,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                 </div>
 
                 <p className="text-xs text-zinc-500 leading-relaxed">
-                  Your Gemini API key is used for AI-powered prompt suggestions when filling timeline gaps.
+                  Your Gemini API key is used for AI-powered prompt suggestions when filling timeline gaps, and for the Enhance (API) prompt enhancer.
                 </p>
 
                 <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
@@ -896,7 +1002,6 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               </div>
 
               {/* HuggingFace Account */}
-              {window.electronAPI.hfGatingEnabled && (
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <Download className="h-4 w-4 text-orange-400" />
@@ -944,7 +1049,6 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   )}
                 </div>
               </div>
-              )}
             </>
           )}
 

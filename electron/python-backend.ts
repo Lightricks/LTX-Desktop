@@ -4,7 +4,6 @@ import fs from 'fs'
 import path from 'path'
 import { getAppDataDir } from './app-paths'
 import { getCurrentDir, isDev } from './config'
-import { HF_GATING_ENABLED } from '../shared/feature-flags'
 import { logger, writeLog } from './logger'
 import { getCurrentLogFilename } from './logging-management'
 import { getPythonDir } from './python-setup'
@@ -23,9 +22,40 @@ let takeoverInFlight: Promise<void> | null = null
 const STARTUP_PROBE_TIMEOUT_MS = 30_000
 const STARTUP_PROBE_INTERVAL_MS = 500
 const LIVENESS_POLL_INTERVAL_MS = 10_000
-const LIVENESS_FAILURE_THRESHOLD = 3
+const LIVENESS_FAILURE_THRESHOLD = 5
 let livenessMonitorTimer: NodeJS.Timeout | null = null
 let livenessFailureCount = 0
+
+// A local generation can hold the Python process's GIL for long, uninterrupted stretches (MPS
+// PyTorch ops release it far less eagerly than CUDA), which starves the asyncio event loop that
+// would otherwise accept and dispatch the /health request — the backend isn't hung, it's just
+// busy, but the liveness probe can't tell the difference and would otherwise kill it mid-
+// generation. The renderer tells us when one is in flight so we can suspend the kill-on-failure
+// behavior for its duration. Bounded by MAX_SUPPRESSION_MS so a renderer crash/reload that never
+// clears the flag can't permanently disable the safety net for a genuinely hung backend.
+const MAX_SUPPRESSION_MS = 20 * 60_000
+let generationActiveSince: number | null = null
+// Ref-counted: withGenerationActive scopes can overlap (e.g. a second click that 409s fast
+// while the first generation is still running) — a plain boolean would let the loser's exit
+// clear suppression mid-generation. Depth also means only the 0->1 transition stamps
+// generationActiveSince, so an overlapping/looping notification can't keep resetting the
+// MAX_SUPPRESSION_MS clock the comment above promises.
+let activeGenerationCount = 0
+
+export function setGenerationActive(active: boolean): void {
+  if (active) {
+    activeGenerationCount += 1
+    if (generationActiveSince == null) generationActiveSince = Date.now()
+    livenessFailureCount = 0
+    return
+  }
+  activeGenerationCount = Math.max(0, activeGenerationCount - 1)
+  if (activeGenerationCount === 0) generationActiveSince = null
+}
+
+function isLivenessSuppressed(): boolean {
+  return generationActiveSince != null && Date.now() - generationActiveSince < MAX_SUPPRESSION_MS
+}
 
 let backendUrl: string | null = null
 let authToken: string | null = null
@@ -136,6 +166,9 @@ function startLivenessMonitor(): void {
   livenessMonitorTimer = setInterval(() => {
     void (async () => {
       if (!pythonProcess || backendOwnership !== 'managed' || isIntentionalShutdown) {
+        return
+      }
+      if (isLivenessSuppressed()) {
         return
       }
       const healthy = await probeBackendHealth(2000)
@@ -291,6 +324,14 @@ export async function startPythonBackend(): Promise<void> {
         ...process.env,
         PYTHONUNBUFFERED: '1',
         PYTHONNOUSERSITE: '1',
+        // Put the interpreter's bin/ on PATH so torch's C++ extension loader can find
+        // `ninja` — required to load mps-sdpa's zero-copy `mpsgraph_zc` attention
+        // backend on Apple Silicon (even a prebuilt cache needs ninja to load; without
+        // it, mps-sdpa falls back to a Metal-memory-leaking backend). macOS-only so it
+        // can't shadow PATH entries for backend subprocesses on Windows/Linux.
+        ...(process.platform === 'darwin' ? {
+          PATH: `${path.dirname(pythonPath)}${path.delimiter}${process.env.PATH ?? ''}`,
+        } : {}),
         // Only pass LTX_PORT when the developer explicitly set it
         ...(process.env.LTX_PORT ? { LTX_PORT: process.env.LTX_PORT } : {}),
         LTX_AUTH_TOKEN: authToken,
@@ -298,7 +339,11 @@ export async function startPythonBackend(): Promise<void> {
         LTX_LOG_FILE: getCurrentLogFilename(),
         LTX_APP_DATA_DIR: getAppDataDir(),
         LTX_DEV_MODE: isDev ? '1' : '0',
-        LTX_HF_GATING_ENABLED: HF_GATING_ENABLED ? '1' : '0',
+        // Bundled prebuilt mps-sdpa zero-copy extension cache (macOS). Lives inside
+        // python-embed (→ resources/python) so it rides the CI python-embed cache. The
+        // backend direct-imports the .so from here (mps_prebuilt_ext.py), no copy step;
+        // ignored if absent (dev, where torch JIT-builds it instead).
+        LTX_MPS_EXT_PREBUILT_DIR: path.join(getPythonDir(), 'mps-ext-prebuilt', 'mps_sdpa_zc_ext'),
         PYTORCH_ENABLE_MPS_FALLBACK: '1',
         // Set PYTHONHOME for bundled Python on macOS so it finds its stdlib
         ...(!isDev && process.platform !== 'win32' ? {
@@ -361,13 +406,6 @@ export async function startPythonBackend(): Promise<void> {
         backendUrl = readyMatch[1]
         probeGateStarted = true
         void gateAliveOnProbe()
-      } else if (output.includes('Uvicorn running')) {
-        // Fallback for legacy/dev uvicorn output — no parseable URL, so we
-        // can't HTTP-probe. Publish alive on the log signal alone.
-        started = true
-        backendOwnership = 'managed'
-        publishBackendHealthStatus({ status: 'alive' })
-        settleResolve()
       }
     }
 

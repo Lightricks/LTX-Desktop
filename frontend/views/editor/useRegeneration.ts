@@ -78,7 +78,7 @@ export interface UseRegenerationParams {
   projectId: string
   // Generation hook values
   regenGenerate: (prompt: string, imagePath: string | null, settings: GenerationSettings) => Promise<void>
-  regenGenerateImage: (prompt: string, settings: GenerationSettings) => Promise<void>
+  regenGenerateImage: (prompt: string, settings: GenerationSettings, editSource?: string | null) => Promise<void>
   regenVideoPath: string | null
   regenImagePath: string | null
   isRegenerating: boolean
@@ -99,6 +99,7 @@ export function useRegeneration(params: UseRegenerationParams) {
     regenCancel,
     regenReset,
     regenError,
+    shouldVideoGenerateWithLtxApi,
   } = params
   const {
     applyGeneratedTake,
@@ -215,6 +216,29 @@ export function useRegeneration(params: UseRegenerationParams) {
       return
     }
 
+    if (generationParams.mode === 'image-edit') {
+      if (!generationParams.inputImageUrl) {
+        failClipRegeneration(
+          'This edited asset is missing its source image and cannot be regenerated.',
+        )
+        return
+      }
+      void regenGenerateImage(generationParams.prompt, {
+        model: generationParams.model as 'fast' | 'pro',
+        duration: generationParams.duration,
+        videoResolution: '540p',
+        fps: generationParams.fps,
+        audio: generationParams.audio,
+        cameraMotion: generationParams.cameraMotion,
+        imageResolution: normalizeImageResolution(generationParams.resolution),
+        imageAspectRatio: generationParams.imageAspectRatio || '16:9',
+        imageSteps: generationParams.imageSteps || 8,
+        imageEditStrength: generationParams.imageEditStrength,
+        variations: 1,
+      }, generationParams.inputImageUrl)
+      return
+    }
+
     const imagePath = generationParams.mode === 'image-to-video' && generationParams.inputImageUrl
       ? generationParams.inputImageUrl
       : null
@@ -228,6 +252,8 @@ export function useRegeneration(params: UseRegenerationParams) {
       imageResolution: '1080p',
       imageAspectRatio: generationParams.imageAspectRatio || '16:9',
       imageSteps: generationParams.imageSteps || 4,
+      // Local LoRA refs are filesystem paths the cloud API can't resolve.
+      loras: !shouldVideoGenerateWithLtxApi ? generationParams.loras : undefined,
     }
     void regenGenerate(generationParams.prompt, imagePath, rawVideoSettings)
   }, [
@@ -240,6 +266,7 @@ export function useRegeneration(params: UseRegenerationParams) {
     assets,
     clips,
     updateAsset,
+    shouldVideoGenerateWithLtxApi,
   ])
 
   const handleCancelRegeneration = useCallback(() => {

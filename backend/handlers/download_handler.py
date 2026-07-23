@@ -14,6 +14,7 @@ import requests as http_requests
 
 from _routes._errors import HTTPError
 from api_types import (
+    ActiveDownloadResponse,
     CheckModelAccessResponse,
     DownloadProgressCompleteResponse,
     DownloadProgressErrorResponse,
@@ -23,7 +24,7 @@ from api_types import (
     ModelCheckpointID,
 )
 from handlers.base import StateHandlerBase, with_state_lock
-from handlers.hf_auth_utils import require_hf_token
+from handlers.hf_auth_utils import optional_hf_token
 from handlers.models_handler import ModelsHandler
 from runtime_config.model_download_specs import (
     ALL_MODEL_CP_IDS,
@@ -72,6 +73,15 @@ class DownloadHandler(StateHandlerBase):
     @with_state_lock
     def is_download_running(self) -> bool:
         return self.state.downloading_session is not None
+
+    def get_active_download(self) -> ActiveDownloadResponse:
+        session = self.state.downloading_session
+        if session is None:
+            return ActiveDownloadResponse(session_id=None, cp_ids=[])
+        return ActiveDownloadResponse(
+            session_id=str(session.id),
+            cp_ids=sorted(session.files_to_download),
+        )
 
     @with_state_lock
     def start_download(self, cp_ids: set[ModelCheckpointID]) -> DownloadSessionId:
@@ -271,7 +281,10 @@ class DownloadHandler(StateHandlerBase):
             self.finish_download()
             return
 
-        hf_token = require_hf_token(self.state, self._lock) if self.config.hf_gating_enabled else None
+        # Base/bundled checkpoints are public — never require sign-in. Attach the in-app token
+        # if the user happens to be signed in, otherwise download anonymously. (Gated *catalog*
+        # entries are handled separately in lora_catalog_handler and do require auth.)
+        hf_token = optional_hf_token(self.state, self._lock)
 
         try:
             if atomic_commit:
@@ -303,23 +316,24 @@ class DownloadHandler(StateHandlerBase):
         if self.config.force_api_generations:
             raise HTTPError(409, "LOCAL_MODEL_DOWNLOADS_DISABLED_IN_FORCE_API_MODE")
 
-        with self._lock:
-            if self.state.downloading_session is not None:
-                raise HTTPError(409, "DOWNLOAD_ALREADY_RUNNING")
-
+        # Resolve what to download (may raise) before touching the lock.
         if download_type == "upgrade":
             resolved_upgrade = self._models_handler.resolve_upgrade_download(cp_ids)
-            cp_ids_to_download = set(resolved_upgrade.cp_ids)
             ordered_cp_ids = resolved_upgrade.cp_ids
             atomic_commit = True
         elif download_type == "download":
-            cp_ids_to_download = set(cp_ids)
-            ordered_cp_ids = self._discover_download_cp_ids(cp_ids_to_download)
+            ordered_cp_ids = self._discover_download_cp_ids(set(cp_ids))
             atomic_commit = False
         else:
             raise HTTPError(400, "INVALID_DOWNLOAD_REQUEST")
 
-        session_id = self.start_download(set(ordered_cp_ids))
+        # Check-and-set in one lock acquisition (RLock is reentrant, so start_download's own
+        # lock nests fine) — otherwise two concurrent calls both pass the guard and the second
+        # clobbers the first's session, racing on the same staging dir.
+        with self._lock:
+            if self.state.downloading_session is not None:
+                raise HTTPError(409, "DOWNLOAD_ALREADY_RUNNING")
+            session_id = self.start_download(set(ordered_cp_ids))
         self._task_runner.run_background(
             lambda: self._download_worker(ordered_cp_ids, atomic_commit=atomic_commit),
             task_name="model-download",
@@ -331,10 +345,12 @@ class DownloadHandler(StateHandlerBase):
     def check_model_access(self, cp_ids: set[ModelCheckpointID]) -> CheckModelAccessResponse:
         repo_ids = {get_model_cp_spec(cp_id).repo_id for cp_id in cp_ids}
 
-        if not self.config.hf_gating_enabled:
+        # Bundled checkpoints are public, so when the user isn't signed in there's nothing to
+        # verify — treat them all as authorized. When signed in, do a real per-repo check (covers
+        # any future gated checkpoint without forcing sign-in for the common public case).
+        hf_token = optional_hf_token(self.state, self._lock)
+        if hf_token is None:
             return CheckModelAccessResponse(access={repo_id: "authorized" for repo_id in repo_ids})
-
-        hf_token = require_hf_token(self.state, self._lock)
 
         access: dict[str, ModelAccessStatus] = {}
         for repo_id in sorted(repo_ids):

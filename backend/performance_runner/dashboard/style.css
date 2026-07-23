@@ -1,0 +1,75 @@
+:root { --bg:#0f1216; --panel:#171b21; --line:#2a313b; --fg:#e6e9ef; --mut:#8b95a5;
+        --ok:#3fb950; --bad:#f85149; --run:#d29922; --acc:#4c8dff; --field:#0f1216; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg);
+       font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+a { color:var(--acc); text-decoration:none; }
+
+/* subtle scrollbars everywhere (Firefox + WebKit/Chromium) */
+* { scrollbar-width:thin; scrollbar-color:var(--line) transparent; }
+::-webkit-scrollbar { width:8px; height:8px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--line); border-radius:4px; }
+::-webkit-scrollbar-thumb:hover { background:#3a4351; }
+
+/* layout */
+header { display:flex; gap:20px; align-items:center; flex-wrap:wrap;
+         padding:10px 16px; border-bottom:1px solid var(--line);
+         position:sticky; top:0; z-index:10; background:var(--bg); }
+h1 { font-size:15px; margin:0; font-weight:600; }
+.grid { display:grid; grid-template-columns:340px 1fr; gap:14px; padding:14px; }
+.col > .panel + .panel { margin-top:12px; }              /* stack spacing */
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
+.panel h2 { margin:0 0 10px; font-size:12px; text-transform:uppercase;
+            letter-spacing:.06em; color:var(--mut); }
+.panel-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.panel-head h2 { margin:0; }
+.row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0; }
+.mut { color:var(--mut); }
+.pill { padding:2px 8px; border-radius:10px; font-size:12px; border:1px solid var(--line); }
+
+/* controls */
+button { background:#20262e; color:var(--fg); border:1px solid var(--line); border-radius:6px;
+         padding:6px 10px; cursor:pointer; font:inherit; }
+button:hover { border-color:var(--acc); }
+button:disabled { opacity:.45; cursor:not-allowed; border-color:var(--line); }
+button.go { background:var(--acc); border-color:var(--acc); color:#fff; }
+button.stop { background:#2a1416; border-color:#5a2a2a; color:#f0a0a0; padding:2px 8px; font-size:12px; }
+button.ghost { background:transparent; border-color:var(--line); color:var(--mut); padding:2px 8px; font-size:12px; }
+button.ghost:hover { color:var(--fg); border-color:var(--acc); }
+#scenarios .unavail { opacity:.5; }                       /* scenario needs a weight downloaded from the app */
+label.tog { display:flex; align-items:center; gap:8px; margin:6px 0; }
+input, select { background:var(--field); color:var(--fg); border:1px solid var(--line);
+                border-radius:5px; padding:4px 6px; font:inherit; }
+input[type=number] { width:70px; }
+.grow { flex:1; min-width:0; }                           /* shrink-to-fit within a row */
+body.no-cuda .cuda-only { display:none !important; }     /* off CUDA (e.g. MPS): hide Torch Compile / cache-patch controls */
+
+/* scrolling regions (don't grow the viewport) */
+.list { max-height:200px; overflow-y:auto; }
+.list-tall { max-height:420px; overflow-y:auto; }
+.runs-wrap { max-height:300px; overflow-y:auto; }
+td a.result { color:var(--acc); }                        /* RESULT ↗ link in the runs table */
+
+/* runs table */
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th, td { text-align:left; padding:5px 6px; border-bottom:1px solid var(--line); }
+thead th { position:sticky; top:0; background:var(--panel); z-index:1; }
+tbody tr { cursor:pointer; }                              /* rows select a run */
+tbody tr:hover td { background:#1a1f27; }
+tr.sel td { background:#1d2733; }
+.st-running { color:var(--run); } .st-done { color:var(--ok); } .st-failed { color:var(--bad); }
+.v-pass { color:var(--ok); font-weight:600; }
+.v-fail { color:var(--bad); font-weight:600; }
+.v-other { color:var(--mut); font-weight:600; }
+#gpu.warn { color:var(--run); }
+
+/* log + chart */
+.logsrc { font-weight:400; font-size:12px; }
+.logsrc a { color:var(--mut); }
+.logsrc a.active { color:var(--acc); }
+pre#log { height:340px; margin:0; padding:10px; overflow:auto; white-space:pre-wrap; font-size:12px;
+          background:#0b0e12; border:1px solid var(--line); border-radius:6px; }
+#chartScroll { width:100%; overflow-x:auto; }
+#chartInner { height:240px; min-width:100%; }
+canvas { background:#0b0e12; border:1px solid var(--line); border-radius:6px; padding:6px; }

@@ -9,6 +9,16 @@ import {
 
 export type GenerationMode = 'text-to-video' | 'image-to-video' | 'text-to-image'
 
+export interface LoraSelection {
+  ref: string
+  name: string
+  scale: number
+  // Catalog id (e.g. "cozy-felt-style"), when this LoRA was picked from the library —
+  // absent for a manually-added/custom LoRA not in the catalog. Lets the prompt enhancer
+  // look up trigger/instructions without re-matching on filename or display name.
+  catalogId?: string
+}
+
 export interface GenerationSettings {
   model: 'fast' | 'pro'
   duration: number
@@ -17,11 +27,13 @@ export interface GenerationSettings {
   audio: boolean
   cameraMotion: string
   aspectRatio?: string
+  loras?: LoraSelection[]
   // Image-specific settings
   imageResolution: string
   imageAspectRatio: string
   imageSteps: number
   variations?: number  // Number of image variations to generate
+  imageEditStrength?: number  // Denoising strength when editing an existing image
 }
 
 interface SettingsPanelProps {

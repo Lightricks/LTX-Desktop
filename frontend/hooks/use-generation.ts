@@ -1,8 +1,37 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import type { GenerationSettings } from '../components/SettingsPanel'
-import { ApiClient, type ApiRequestBodyOf } from '../lib/api-client'
+import { ApiClient, type ApiRequestBodyOf, type ApiSuccessOf } from '../lib/api-client'
 import { createLocalGenerationError, type GenerationError } from '../lib/generation-errors'
+import { withGenerationActive } from '../lib/generation-active'
 import { useAppSettings } from '../contexts/AppSettingsContext'
+
+const POLLING_INTERVAL_MS = 2000
+
+export const GENERATION_RECOVERY_KEY = 'ltx-generation-recovery'
+
+export interface GenerationRecoveryContext {
+  projectId: string
+  prompt: string
+  // Absent for ic-lora/retake: those recover as standalone video assets (Phase 1),
+  // so there are no video/image settings to restore.
+  settings?: GenerationSettings
+  inputImageUrl?: string
+  inputAudioUrl?: string
+  genType?: 'image' | 'enhance'
+  // Whatever generation id the backend reported at the moment this marker was written — i.e.
+  // immediately BEFORE this generation started. The handler that starts a generation loads its
+  // pipeline (can take many seconds — worse for image models loading checkpoint shards) before
+  // it ever reports a new id, so a poll can otherwise be looking at a stale, unrelated id/result
+  // that predates this marker entirely. Once a later poll observes a DIFFERENT id, that's proof
+  // (single global generation slot) that this marker's own generation has started — see
+  // checkAndConsumeRecovery in lib/generation-recovery.ts.
+  baselineId: string | null
+  // Set once a poll observes an id different from baselineId — i.e. once this marker's own
+  // generation is confirmed to exist. Distinct from baselineId: a LATER id change past this point
+  // means a DIFFERENT generation superseded ours (not that ours just started), which must NOT be
+  // imported under this marker.
+  generationId?: string
+}
 
 interface GenerationState {
   isGenerating: boolean
@@ -19,9 +48,10 @@ type GenerateImageRequest = ApiRequestBodyOf<'generateImage'>
 
 interface UseGenerationReturn extends GenerationState {
   generate: (prompt: string, imagePath: string | null, settings: GenerationSettings, audioPath?: string | null) => Promise<void>
-  generateImage: (prompt: string, settings: GenerationSettings) => Promise<void>
+  generateImage: (prompt: string, settings: GenerationSettings, editSource?: string | null) => Promise<void>
   cancel: () => void
   reset: () => void
+  resumeIfRunning: () => Promise<'running' | 'complete' | 'none'>
 }
 
 const IMAGE_SHORT_SIDE_BY_RESOLUTION: Record<string, number> = {
@@ -83,7 +113,7 @@ function getPhaseMessage(phase: string): string {
 }
 
 export function useGeneration(): UseGenerationReturn {
-  const { settings: appSettings, forceApiGenerations, refreshSettings } = useAppSettings()
+  const { settings: appSettings, shouldImageGenerateWithFalApi, refreshSettings } = useAppSettings()
   const [state, setState] = useState<GenerationState>({
     isGenerating: false,
     progress: 0,
@@ -95,6 +125,58 @@ export function useGeneration(): UseGenerationReturn {
   })
 
   const abortControllerRef = useRef<AbortController | null>(null)
+  const recoveryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const clearRecoveryPolling = () => {
+    if (recoveryIntervalRef.current) {
+      clearInterval(recoveryIntervalRef.current)
+      recoveryIntervalRef.current = null
+    }
+  }
+
+  useEffect(() => clearRecoveryPolling, [])
+
+  // Re-attach to a generation that was running OR finished while the frontend was
+  // unmounted. Polls the backend progress endpoint; localStorage recovery context
+  // (inputs, settings incl. loras) is owned by the caller (GenSpace). Returns the
+  // recovered status so the caller can restore context for 'running' AND 'complete'
+  // (a generation that finished during the unmount window still needs its metadata).
+  const resumeIfRunning = useCallback(async (): Promise<'running' | 'complete' | 'none'> => {
+    const apply = (data: ApiSuccessOf<'getGenerationProgress'>): 'running' | 'complete' | 'other' => {
+      if (data.status === 'complete' && data.result != null) {
+        const vp = typeof data.result === 'string' ? data.result : null
+        const ips = Array.isArray(data.result) ? data.result : []
+        setState({
+          isGenerating: false, progress: 100, statusMessage: 'Complete!',
+          videoPath: vp, imagePath: ips[0] ?? null, imagePaths: ips, error: null,
+        })
+        return 'complete'
+      }
+      if (data.status === 'running') {
+        setState(prev => ({
+          ...prev, isGenerating: true, progress: data.progress,
+          statusMessage: getPhaseMessage(data.phase),
+        }))
+        return 'running'
+      }
+      setState(prev => ({ ...prev, isGenerating: false, statusMessage: '' }))
+      return 'other'
+    }
+
+    const initial = await ApiClient.getGenerationProgress()
+    if (!initial.ok) return 'none'
+    const status = apply(initial.data)
+    if (status === 'complete') return 'complete'
+    if (status !== 'running') return 'none'
+
+    clearRecoveryPolling()
+    recoveryIntervalRef.current = setInterval(async () => {
+      const r = await ApiClient.getGenerationProgress()
+      if (!r.ok) return
+      if (apply(r.data) !== 'running') clearRecoveryPolling()
+    }, POLLING_INTERVAL_MS)
+    return 'running'
+  }, [])
 
   const generate = useCallback(async (
     prompt: string,
@@ -116,129 +198,135 @@ export function useGeneration(): UseGenerationReturn {
       error: null,
     })
 
-    abortControllerRef.current = new AbortController()
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
     let progressInterval: ReturnType<typeof setInterval> | null = null
     let shouldApplyPollingUpdates = true
 
-    try {
-      // Prepare JSON body
-      const body: Record<string, unknown> = {
-        prompt,
-        model: settings.model,
-        duration: settings.duration,
-        resolution: settings.videoResolution,
-        fps: settings.fps,
-        audio: settings.audio,
-        cameraMotion: settings.cameraMotion,
-        negativePrompt: (settings as { negativePrompt?: string }).negativePrompt ?? '',
-        aspectRatio: settings.aspectRatio || '16:9',
-      }
-      if (imagePath) {
-        body.imagePath = imagePath
-      }
-      if (audioPath) {
-        body.audioPath = audioPath
-      }
+    await withGenerationActive(async () => {
+      try {
+        // Prepare JSON body
+        const body: Record<string, unknown> = {
+          prompt,
+          model: settings.model,
+          duration: settings.duration,
+          resolution: settings.videoResolution,
+          fps: settings.fps,
+          audio: settings.audio,
+          cameraMotion: settings.cameraMotion,
+          negativePrompt: (settings as { negativePrompt?: string }).negativePrompt ?? '',
+          aspectRatio: settings.aspectRatio || '16:9',
+        }
+        if (imagePath) {
+          body.imagePath = imagePath
+        }
+        if (audioPath) {
+          body.audioPath = audioPath
+        }
+        if (settings.loras?.length) {
+          body.loras = settings.loras.map(l => ({ ref: l.ref, scale: l.scale }))
+        }
 
-      // Poll for real progress from backend with time-based interpolation
-      let lastPhase = ''
-      let inferenceStartTime = 0
-      // Estimated inference time in seconds based on model
-      const estimatedInferenceTime = settings.model === 'pro' ? 120 : 45
-      
-      const pollProgress = async () => {
-        if (!shouldApplyPollingUpdates) return
-        const result = await ApiClient.getGenerationProgress()
-        if (!result.ok || !shouldApplyPollingUpdates) return
+        // Poll for real progress from backend with time-based interpolation
+        let lastPhase = ''
+        let inferenceStartTime = 0
+        // Estimated inference time in seconds based on model
+        const estimatedInferenceTime = settings.model === 'pro' ? 120 : 45
 
-        const data = result.data
-        let displayProgress = data.progress
-        let statusMessage = getPhaseMessage(data.phase)
+        const pollProgress = async () => {
+          if (!shouldApplyPollingUpdates) return
+          const result = await ApiClient.getGenerationProgress()
+          if (!result.ok || !shouldApplyPollingUpdates) return
 
-        // Time-based interpolation during inference phase
-        if (data.phase === 'inference') {
-          if (lastPhase !== 'inference') {
-            inferenceStartTime = Date.now()
+          const data = result.data
+          let displayProgress = data.progress
+          let statusMessage = getPhaseMessage(data.phase)
+
+          // Time-based interpolation during inference phase
+          if (data.phase === 'inference') {
+            if (lastPhase !== 'inference') {
+              inferenceStartTime = Date.now()
+            }
+            const elapsed = (Date.now() - inferenceStartTime) / 1000
+            // Interpolate from 15% to 95% based on estimated time
+            const inferenceProgress = Math.min(elapsed / estimatedInferenceTime, 0.95)
+            displayProgress = 15 + Math.floor(inferenceProgress * 80)
           }
-          const elapsed = (Date.now() - inferenceStartTime) / 1000
-          // Interpolate from 15% to 95% based on estimated time
-          const inferenceProgress = Math.min(elapsed / estimatedInferenceTime, 0.95)
-          displayProgress = 15 + Math.floor(inferenceProgress * 80)
+
+          // Keep API/local completion as a terminal response state, not polling state.
+          // Polling complete means backend state is finalized, but request can still be in-flight.
+          if (data.phase === 'complete' || data.status === 'complete') {
+            displayProgress = 95
+            statusMessage = 'Finalizing...'
+          }
+
+          lastPhase = data.phase
+
+          setState(prev => ({
+            ...prev,
+            progress: displayProgress,
+            statusMessage,
+          }))
         }
 
-        // Keep API/local completion as a terminal response state, not polling state.
-        // Polling complete means backend state is finalized, but request can still be in-flight.
-        if (data.phase === 'complete' || data.status === 'complete') {
-          displayProgress = 95
-          statusMessage = 'Finalizing...'
-        }
+        progressInterval = setInterval(pollProgress, 500)
 
-        lastPhase = data.phase
-
-        setState(prev => ({
-          ...prev,
-          progress: displayProgress,
-          statusMessage,
-        }))
-      }
-      
-      progressInterval = setInterval(pollProgress, 500)
-
-      // Start generation (HTTP POST - synchronous, returns when done)
-      const result = await ApiClient.generateVideo(body as unknown as GenerateVideoRequest, {
-        signal: abortControllerRef.current.signal,
-      })
-      shouldApplyPollingUpdates = false
-      if (!result.ok) {
-        setState(prev => ({
-          ...prev,
-          isGenerating: false,
-          error: result,
-        }))
-        return
-      }
-
-      const payload = result.data
-      if (payload.status === 'complete') {
-        setState({
-          isGenerating: false,
-          progress: 100,
-          statusMessage: 'Complete!',
-          videoPath: payload.video_path,
-          imagePath: null,
-          imagePaths: [],
-          error: null,
+        // Start generation (HTTP POST - synchronous, returns when done)
+        const result = await ApiClient.generateVideo(body as unknown as GenerateVideoRequest, {
+          signal: abortController.signal,
         })
-      } else if (payload.status === 'cancelled') {
-        setState(prev => ({
-          ...prev,
-          isGenerating: false,
-          statusMessage: 'Cancelled',
-        }))
-      } else {
-        throw new Error('Unexpected response from /api/generate')
-      }
+        shouldApplyPollingUpdates = false
+        if (!result.ok) {
+          setState(prev => ({
+            ...prev,
+            isGenerating: false,
+            error: result,
+          }))
+          return
+        }
 
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        setState(prev => ({
-          ...prev,
-          isGenerating: false,
-          statusMessage: 'Cancelled',
-        }))
-      } else {
-        setState(prev => ({
-          ...prev,
-          isGenerating: false,
-          error: createLocalGenerationError(error instanceof Error ? error.message : 'Unknown error'),
-        }))
+        const payload = result.data
+        if (payload.status === 'complete') {
+          setState({
+            isGenerating: false,
+            progress: 100,
+            statusMessage: 'Complete!',
+            videoPath: payload.video_path,
+            imagePath: null,
+            imagePaths: [],
+            error: null,
+          })
+        } else if (payload.status === 'cancelled') {
+          setState(prev => ({
+            ...prev,
+            isGenerating: false,
+            statusMessage: 'Cancelled',
+          }))
+        } else {
+          throw new Error('Unexpected response from /api/generate')
+        }
+
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          setState(prev => ({
+            ...prev,
+            isGenerating: false,
+            statusMessage: 'Cancelled',
+          }))
+        } else {
+          setState(prev => ({
+            ...prev,
+            isGenerating: false,
+            error: createLocalGenerationError(error instanceof Error ? error.message : 'Unknown error'),
+          }))
+        }
+      } finally {
+        shouldApplyPollingUpdates = false
+        if (progressInterval) {
+          clearInterval(progressInterval)
+        }
       }
-    } finally {
-      shouldApplyPollingUpdates = false
-      if (progressInterval) {
-        clearInterval(progressInterval)
-      }
-    }
+    })
   }, [])
 
   const cancel = useCallback(async () => {
@@ -257,149 +345,161 @@ export function useGeneration(): UseGenerationReturn {
 
   const generateImage = useCallback(async (
     prompt: string,
-    settings: GenerationSettings
+    settings: GenerationSettings,
+    editSource?: string | null,
   ) => {
-    if (forceApiGenerations) {
+    const isEditing = !!editSource
+
+    const openFalConnectDialog = () => {
+      window.dispatchEvent(new CustomEvent('open-api-gateway', {
+        detail: {
+          requiredKeys: ['fal'],
+          title: 'Connect FAL AI',
+          description: `FAL AI is required for ${isEditing ? 'editing' : 'generating'} images with Z Image Turbo when API generations are enabled.`,
+          blocking: false,
+        },
+      }))
+    }
+
+    if (shouldImageGenerateWithFalApi) {
       const settingsResult = await ApiClient.getSettings()
-      if (settingsResult.ok) {
-        if (!settingsResult.data.hasFalApiKey) {
-          void refreshSettings()
-          window.dispatchEvent(new CustomEvent('open-api-gateway', {
-            detail: {
-              requiredKeys: ['fal'],
-              title: 'Connect FAL AI',
-              description: 'FAL AI is required for generating images with Z Image Turbo when API generations are enabled.',
-              blocking: false,
-            },
-          }))
-          return
-        }
-      } else {
-        if (!appSettings.hasFalApiKey) {
-          window.dispatchEvent(new CustomEvent('open-api-gateway', {
-            detail: {
-              requiredKeys: ['fal'],
-              title: 'Connect FAL AI',
-              description: 'FAL AI is required for generating images with Z Image Turbo when API generations are enabled.',
-              blocking: false,
-            },
-          }))
-          return
-        }
+      const hasFalApiKey = settingsResult.ok ? settingsResult.data.hasFalApiKey : appSettings.hasFalApiKey
+      if (!hasFalApiKey) {
+        if (settingsResult.ok) void refreshSettings()
+        openFalConnectDialog()
+        return
       }
     }
 
     const numImages = settings.variations || 1
-    
+
     setState({
       isGenerating: true,
       progress: 0,
-      statusMessage: numImages > 1 ? `Generating ${numImages} images...` : 'Generating image...',
+      statusMessage: isEditing
+        ? 'Editing image...'
+        : numImages > 1 ? `Generating ${numImages} images...` : 'Generating image...',
       videoPath: null,
       imagePath: null,
       imagePaths: [],
       error: null,
     })
 
-    abortControllerRef.current = new AbortController()
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
 
-    try {
-      // Skip prompt enhancement for T2I - use original prompt directly
-      const finalPrompt = prompt
+    await withGenerationActive(async () => {
+      let progressInterval: ReturnType<typeof setInterval> | null = null
+      try {
+        // Skip prompt enhancement for T2I - use original prompt directly
+        const finalPrompt = prompt
 
-      const dims = getImageDimensions(settings)
-      const numSteps = settings.imageSteps || 4
+        // Edit runs at the source image's resolution; width/height are ignored server-side.
+        const dims = isEditing ? { width: 1024, height: 1024 } : getImageDimensions(settings)
+        const numSteps = settings.imageSteps || (isEditing ? 8 : 4)
 
-      // Poll for progress
-      const pollProgress = async () => {
-        const result = await ApiClient.getGenerationProgress()
-        if (!result.ok) return
+        // Poll for progress
+        const pollProgress = async () => {
+          const result = await ApiClient.getGenerationProgress()
+          if (!result.ok) return
 
-        const data = result.data
-        const currentImage = data.currentStep || 0
-        const totalImages = data.totalSteps || numImages
-        setState(prev => ({
-          ...prev,
-          progress: data.progress,
-          statusMessage: data.phase === 'loading_model'
-            ? 'Loading Z-Image Turbo model...'
-            : data.phase === 'inference'
-              ? numImages > 1
-                ? `Generating image ${currentImage + 1}/${totalImages}...`
-                : 'Generating image...'
-              : data.phase === 'complete'
-                ? 'Complete!'
-                : 'Generating...',
-        }))
-      }
-      
-      const progressInterval = setInterval(pollProgress, 500)
-
-      const imageRequest: GenerateImageRequest = {
-        prompt: finalPrompt,
-        width: dims.width,
-        height: dims.height,
-        numSteps,
-        numImages,
-      }
-      const result = await ApiClient.generateImage(imageRequest, {
-        signal: abortControllerRef.current.signal,
-      })
-
-      clearInterval(progressInterval)
-      if (!result.ok) {
-        setState(prev => ({
-          ...prev,
-          isGenerating: false,
-          error: result,
-        }))
-        return
-      }
-
-      const payload = result.data
-      if (payload.status === 'complete') {
-        const rawPaths = payload.image_paths
-        if (rawPaths.length === 0) {
-          throw new Error('Image generation completed without output images')
+          const data = result.data
+          const currentImage = data.currentStep || 0
+          const totalImages = data.totalSteps || numImages
+          setState(prev => ({
+            ...prev,
+            progress: data.progress,
+            statusMessage: data.phase === 'loading_model'
+              ? 'Loading Z-Image Turbo model...'
+              : data.phase === 'inference'
+                ? isEditing
+                  ? 'Editing image...'
+                  : numImages > 1
+                    ? `Generating image ${currentImage + 1}/${totalImages}...`
+                    : 'Generating image...'
+                : data.phase === 'complete'
+                  ? 'Complete!'
+                  : 'Generating...',
+          }))
         }
 
-        setState({
-          isGenerating: false,
-          progress: 100,
-          statusMessage: 'Complete!',
-          videoPath: null,
-          imagePath: rawPaths[0],
-          imagePaths: rawPaths,
-          error: null,
-        })
-      } else if (payload.status === 'cancelled') {
-        setState(prev => ({
-          ...prev,
-          isGenerating: false,
-          statusMessage: 'Cancelled',
-        }))
-      } else {
-        throw new Error('Unexpected response from /api/generate-image')
-      }
+        progressInterval = setInterval(pollProgress, 500)
 
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        setState(prev => ({
-          ...prev,
-          isGenerating: false,
-          statusMessage: 'Cancelled',
-        }))
-      } else {
-        setState(prev => ({
-          ...prev,
-          isGenerating: false,
-          error: createLocalGenerationError(error instanceof Error ? error.message : 'Unknown error'),
-        }))
+        const imageRequest: GenerateImageRequest = {
+          prompt: finalPrompt,
+          width: dims.width,
+          height: dims.height,
+          numSteps,
+          numImages,
+          // strength is ignored server-side unless imagePath is set, but the request type
+          // requires it — send the default rather than the edit-only setting when not editing.
+          strength: isEditing ? (settings.imageEditStrength ?? 0.6) : 0.6,
+          ...(isEditing ? { imagePath: editSource } : {}),
+        }
+        const result = await ApiClient.generateImage(imageRequest, {
+          signal: abortController.signal,
+        })
+
+        if (!result.ok) {
+          setState(prev => ({
+            ...prev,
+            isGenerating: false,
+            error: result,
+          }))
+          return
+        }
+
+        const payload = result.data
+        if (payload.status === 'complete') {
+          const rawPaths = payload.image_paths
+          if (rawPaths.length === 0) {
+            throw new Error('Image generation completed without output images')
+          }
+
+          setState({
+            isGenerating: false,
+            progress: 100,
+            statusMessage: 'Complete!',
+            videoPath: null,
+            imagePath: rawPaths[0],
+            imagePaths: rawPaths,
+            error: null,
+          })
+        } else if (payload.status === 'cancelled') {
+          setState(prev => ({
+            ...prev,
+            isGenerating: false,
+            statusMessage: 'Cancelled',
+          }))
+        } else {
+          throw new Error('Unexpected response from /api/generate-image')
+        }
+
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          setState(prev => ({
+            ...prev,
+            isGenerating: false,
+            statusMessage: 'Cancelled',
+          }))
+        } else {
+          setState(prev => ({
+            ...prev,
+            isGenerating: false,
+            error: createLocalGenerationError(error instanceof Error ? error.message : 'Unknown error'),
+          }))
+        }
+      } finally {
+        if (progressInterval) {
+          clearInterval(progressInterval)
+        }
       }
-    }
-  }, [appSettings.hasFalApiKey, forceApiGenerations, refreshSettings])
+    })
+  }, [appSettings.hasFalApiKey, shouldImageGenerateWithFalApi, refreshSettings])
 
   const reset = useCallback(() => {
+    clearRecoveryPolling()
+    localStorage.removeItem(GENERATION_RECOVERY_KEY)
     setState({
       isGenerating: false,
       progress: 0,
@@ -417,5 +517,6 @@ export function useGeneration(): UseGenerationReturn {
     generateImage,
     cancel,
     reset,
+    resumeIfRunning,
   }
 }

@@ -23,6 +23,7 @@ extraResources:
     filter:
       - "**/*.py"
       - pyproject.toml
+      - runtime_config/lora_catalog.json
       - "!**/__pycache__/**"
       - "!**/*.pyc"
       - "!.venv/**"
@@ -68,7 +69,13 @@ mac:
     # binaries, hitting the macOS 10240 open-files-per-process limit.
     - "/python/.*\\.(py|pyc|pyi|pxd|pyx|h|hpp|cpp|c|cuh|cu|tcl|txt|json|yaml|yml|toml|cfg|md|rst|html|css|enc|msg|cmake|gif|png|jpg|svg|xml|jinja|typed|al)$"
     - "/python/.*\\.dist-info/"
+    # The prebuilt mpsgraph_zc cache's relocatable object is Mach-O but never loaded
+    # (only its .so is dlopen'd); skip signing it — codesign rejects relocatable .o.
+    - "/python/mps-ext-prebuilt/.*\\.o$"
   extraResources:
+    # python-embed includes the prebuilt mps-sdpa mpsgraph_zc extension under
+    # mps-ext-prebuilt/ (prepare-python.sh Step 6.5), so it's bundled to
+    # resources/python/mps-ext-prebuilt — where LTX_MPS_EXT_PREBUILT_DIR points.
     - from: python-embed
       to: python
       filter:

@@ -12,13 +12,15 @@ export function registerLogHandlers(): void {
     writeLog(upperLevel as 'INFO' | 'WARNING' | 'ERROR' | 'DEBUG', 'Renderer', String(message))
   })
 
-  handle('getLogs', () => {
+  handle('getLogs', ({ query }) => {
     try {
       const logPath = getCurrentLogFilename()
       if (fs.existsSync(logPath)) {
         const content = fs.readFileSync(logPath, 'utf-8')
-        const allLines = content.split('\n')
-        const lines = allLines.slice(-200).map(l => l.trimEnd())
+        const allLines = content.split('\n').map(l => l.trimEnd())
+        // A search needs the whole session to find matches, not just the
+        // recent tail we show by default -- skip the truncation while searching.
+        const lines = query ? allLines : allLines.slice(-200)
         return { logPath, lines }
       }
       return { logPath, lines: [] }

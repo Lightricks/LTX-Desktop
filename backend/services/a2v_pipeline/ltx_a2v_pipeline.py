@@ -20,6 +20,7 @@ class LTXa2vPipeline:
         upsampler_path: str,
         device: torch.device,
         streaming_prefetch_count: int | None,
+        loras: list[tuple[str, float]] | None = None,
     ) -> "LTXa2vPipeline":
         return LTXa2vPipeline(
             checkpoint_path=checkpoint_path,
@@ -27,6 +28,7 @@ class LTXa2vPipeline:
             upsampler_path=upsampler_path,
             device=device,
             streaming_prefetch_count=streaming_prefetch_count,
+            loras=loras or [],
         )
 
     def __init__(
@@ -36,18 +38,27 @@ class LTXa2vPipeline:
         upsampler_path: str,
         device: torch.device,
         streaming_prefetch_count: int | None,
+        loras: list[tuple[str, float]] | None = None,
     ) -> None:
-        from ltx_core.quantization import QuantizationPolicy
+        from ltx_core.loader.primitives import LoraPathStrengthAndSDOps
+        from ltx_core.loader.sd_ops import LTXV_LORA_COMFY_RENAMING_MAP
+        from ltx_core.quantization.fp8_cast import build_policy as build_fp8_cast_policy
 
         from services.a2v_pipeline.distilled_a2v_pipeline import DistilledA2VPipeline
 
-        self._streaming_prefetch_count = streaming_prefetch_count
+        lora_entries = [
+            LoraPathStrengthAndSDOps(path=path, strength=scale, sd_ops=LTXV_LORA_COMFY_RENAMING_MAP)
+            for path, scale in (loras or [])
+        ]
+
         self.pipeline = DistilledA2VPipeline(
             distilled_checkpoint_path=checkpoint_path,
             gemma_root=cast(str, gemma_root),
             spatial_upsampler_path=upsampler_path,
+            loras=lora_entries,
             device=device,
-            quantization=QuantizationPolicy.fp8_cast() if device_supports_fp8(device) else None,
+            quantization=build_fp8_cast_policy(checkpoint_path) if device_supports_fp8(device) else None,
+            streaming_prefetch_count=streaming_prefetch_count,
         )
 
     def _run_inference(
@@ -78,7 +89,6 @@ class LTXa2vPipeline:
             audio_start_time=audio_start_time,
             audio_max_duration=audio_max_duration,
             tiling_config=tiling_config,
-            streaming_prefetch_count=self._streaming_prefetch_count,
         )
 
     @torch.inference_mode()

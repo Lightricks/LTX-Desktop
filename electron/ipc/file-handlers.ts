@@ -177,6 +177,20 @@ export function registerFileHandlers(): void {
     return true
   })
 
+  handle('openExternalUrl', async ({ url }) => {
+    const { shell } = await import('electron')
+    // Only https — never let the renderer open file://, custom-scheme, or other handlers.
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      throw new Error('Only https URLs may be opened')
+    }
+    if (parsed.protocol !== 'https:') throw new Error('Only https URLs may be opened')
+    await shell.openExternal(url)
+    return true
+  })
+
   const HF_AUTHORIZE_URL = 'https://huggingface.co/oauth/authorize'
 
   handle('openHuggingFaceAuth', async (params) => {

@@ -59,6 +59,33 @@ def get_device_type(device: str | torch.device | object | None) -> str:
     return "cpu"
 
 
+def compute_edit_dimensions(width: int, height: int) -> tuple[int, int]:
+    """Floor each dimension to a multiple of 16 (Z-Image VAE constraint), min 16.
+
+    Image-to-image runs at the source image's resolution; the diffusers pipeline raises
+    if a dimension is not divisible by vae_scale (=16 for Z-Image).
+    """
+    return (max(16, (width // 16) * 16), max(16, (height // 16) * 16))
+
+
+def clamp_strength(strength: float) -> float:
+    """Clamp img2img strength into the range the diffusers pipeline accepts (0, 1]."""
+    return min(1.0, max(1e-3, strength))
+
+
+def effective_edit_steps(num_inference_steps: int, strength: float) -> int:
+    """Mirror ZImageImg2ImgPipeline.get_timesteps' effective-step count exactly.
+
+    init_timestep = min(steps * strength, steps); t_start = int(max(steps - init_timestep, 0));
+    effective = steps - t_start. Only strength == 0.0 can drive this to 0 (any positive
+    strength, however small, yields at least 1 step) — used unclamped so the guard doesn't
+    mask that one real case.
+    """
+    init_timestep = min(num_inference_steps * strength, num_inference_steps)
+    t_start = int(max(num_inference_steps - init_timestep, 0))
+    return num_inference_steps - t_start
+
+
 def device_supports_fp8(device: str | torch.device | object | None) -> bool:
     return get_device_type(device) == "cuda"
 

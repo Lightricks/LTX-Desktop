@@ -176,6 +176,20 @@ Each service should have:
   - Otherwise use an `*Impl` suffix (e.g. `HTTPClientImpl`)
 - A fake implementation for tests: `Fake<ServiceName>` (e.g. `FakeHTTPClient`)
 
+### Patches: temporary upstream monkey-patches
+
+`services/patches/` holds modules that monkey-patch `ltx_core`/`ltx_pipelines` at import time to work around upstream
+bugs or missing features (e.g. `safetensors_metadata_fix.py`, `pinned_pool_fix.py`). They are wired via side-effecting
+imports in `ltx2_server.py` (`import services.patches.foo_fix  # pyright: ignore[reportUnusedImport]`), not through
+`ServiceBundle`/DI — patching has to happen once, at process startup, before any pipeline code runs.
+
+**Contract**
+
+- Each import comment states the removal condition (e.g. `# Remove once ltx-core includes the fix`) — patches are
+  meant to be temporary.
+- Assert the patched symbol exists before rebinding it, so an upstream refactor fails loudly at startup instead of
+  silently no-op'ing.
+
 ### “Payload” and “Like” conventions
 
 - Report/DTO-like shapes commonly use a `*Payload` suffix (often `TypedDict`) to make “this is a data payload” obvious
@@ -255,6 +269,7 @@ Primary entities:
 - `app_handler.py`: `AppHandler` composition root + service wiring (`ServiceBundle`)
 - `handlers/*`: domain business logic + state transitions (sub-handlers)
 - `services/*`: side-effect services (protocols + real implementations)
+- `services/patches/*`: temporary upstream monkey-patches, imported for side effect in `ltx2_server.py`
 - `tests/*`: integration-style tests + service fakes
 
 **Modularity convention:** prefer many small files over umbrella modules (one route per `_routes/*.py`, one handler per

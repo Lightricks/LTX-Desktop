@@ -41,6 +41,14 @@ class VideoProcessorImpl:
             return None
         return cast(FrameArray, frame)
 
+    def read_image(self, path: str) -> FrameArray:
+        import cv2
+
+        img = cv2.imread(path)
+        if img is None:
+            raise ValueError(f"Could not read image: {path}")
+        return cast(FrameArray, img)
+
     def apply_canny(self, frame: FrameArray) -> FrameArray:
         import cv2
         import numpy as np
@@ -83,7 +91,12 @@ class VideoProcessorImpl:
         import cv2
 
         code = cv2.VideoWriter.fourcc(*fourcc)
-        return cast(VideoWriterLike, cv2.VideoWriter(path, code, fps, size))
+        writer = cv2.VideoWriter(path, code, fps, size)
+        # cv2.VideoWriter doesn't raise on a bad codec/dims/unwritable path — it returns a
+        # no-op writer that silently produces a 0-byte file. Fail loudly here instead.
+        if not writer.isOpened():
+            raise ValueError(f"Could not open video writer for {path} (codec={fourcc}, size={size})")
+        return cast(VideoWriterLike, writer)
 
     def release(self, cap_or_writer: VideoCaptureLike | VideoWriterLike) -> None:
         try:

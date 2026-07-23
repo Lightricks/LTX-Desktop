@@ -116,6 +116,22 @@ class TextHandler(StateHandlerBase):
             return None
         return str(get_existing_cp_path(self.models_dir, get_ltx_model_spec(model_id).text_encoder_cp))
 
+    def resolve_gemma_root_if_downloaded(self) -> str | None:
+        """Like `resolve_gemma_root`, but answers "is the checkpoint present" rather than
+        "should generation prefer local text encoding" — `should_use_local_encoding()`'s
+        API-key tiebreaker (which defaults to API when both are available) answers a different
+        question than local Enhance availability, and gates on a setting the Enhance UI never
+        shows. The frontend's own local-availability check (`getTextEncoderRecommendation`)
+        already uses checkpoint presence alone; this mirrors that for the backend gate.
+        """
+        model_id = get_downloaded_ltx_model_id(self.models_dir)
+        if model_id is None:
+            return None
+        cp_id = get_ltx_model_spec(model_id).text_encoder_cp
+        if not is_cp_downloaded(self.models_dir, cp_id):
+            return None
+        return str(get_existing_cp_path(self.models_dir, cp_id))
+
     def _prepare_api_embeddings(self, prompt: str, enhance_prompt: bool) -> TextEncodingResult | None:
         if self.should_use_local_encoding():
             self.clear_api_embeddings()
@@ -125,6 +141,14 @@ class TextHandler(StateHandlerBase):
         if not settings.ltx_api_key:
             self.clear_api_embeddings()
             return None
+
+        # The LTX API rejects an empty prompt (returns None), but an empty prompt is valid for
+        # some IC-LoRAs (e.g. outpainting fills from the scene). Local gemma encodes "" fine; to
+        # match that in API mode — where there's no gemma fallback — encode a neutral placeholder
+        # so we still get usable embeddings. Nothing to enhance for an empty prompt, so skip it.
+        if not prompt.strip():
+            prompt = " "
+            enhance_prompt = False
 
         cached = self._get_cached_prompt(prompt, enhance_prompt)
         if cached is not None:

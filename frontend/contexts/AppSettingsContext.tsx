@@ -4,14 +4,21 @@ import { ApiClient, type ApiSuccessOf } from '../lib/api-client'
 
 export interface AppSettings {
   useTorchCompile: boolean
+  diffusionStageCacheEnabled: boolean
   hasLtxApiKey: boolean
   userPrefersLtxApiVideoGenerations: boolean
   hasFalApiKey: boolean
+  userPrefersFalApiImageGenerations: boolean
   hasGeminiApiKey: boolean
   useLocalTextEncoder: boolean
   promptCacheSize: number
   promptEnhancerEnabledT2V: boolean
   promptEnhancerEnabledI2V: boolean
+  // The user's explicit prompt-enhancer provider choice, persisted so it survives restarts.
+  // null means no active choice yet — the enhancer defaults to whichever provider is available
+  // without writing that default back here; only an explicit pick (never an automatic fallback
+  // when the preferred provider is temporarily unavailable) sets this.
+  promptEnhancerProviderPreference: 'local' | 'api' | null
   seedLocked: boolean
   lockedSeed: number
   modelsDir: string
@@ -19,14 +26,17 @@ export interface AppSettings {
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   useTorchCompile: false,
+  diffusionStageCacheEnabled: false,
   hasLtxApiKey: false,
   userPrefersLtxApiVideoGenerations: false,
   hasFalApiKey: false,
+  userPrefersFalApiImageGenerations: false,
   hasGeminiApiKey: false,
   useLocalTextEncoder: false,
   promptCacheSize: 1,
   promptEnhancerEnabledT2V: false,
   promptEnhancerEnabledI2V: false,
+  promptEnhancerProviderPreference: null,
   seedLocked: false,
   lockedSeed: 42,
   modelsDir: '',
@@ -45,6 +55,8 @@ interface AppSettingsContextValue {
   saveGeminiApiKey: (value: string) => Promise<void>
   forceApiGenerations: boolean
   shouldVideoGenerateWithLtxApi: boolean
+  shouldImageGenerateWithFalApi: boolean
+  cudaAvailable: boolean
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
@@ -64,14 +76,17 @@ function toBackendProcessStatus(value: unknown): BackendProcessStatus | null {
 function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
   return {
     useTorchCompile: data.useTorchCompile ?? DEFAULT_APP_SETTINGS.useTorchCompile,
+    diffusionStageCacheEnabled: data.diffusionStageCacheEnabled ?? DEFAULT_APP_SETTINGS.diffusionStageCacheEnabled,
     hasLtxApiKey: data.hasLtxApiKey ?? DEFAULT_APP_SETTINGS.hasLtxApiKey,
     userPrefersLtxApiVideoGenerations: data.userPrefersLtxApiVideoGenerations ?? DEFAULT_APP_SETTINGS.userPrefersLtxApiVideoGenerations,
     hasFalApiKey: data.hasFalApiKey ?? DEFAULT_APP_SETTINGS.hasFalApiKey,
+    userPrefersFalApiImageGenerations: data.userPrefersFalApiImageGenerations ?? DEFAULT_APP_SETTINGS.userPrefersFalApiImageGenerations,
     hasGeminiApiKey: data.hasGeminiApiKey ?? DEFAULT_APP_SETTINGS.hasGeminiApiKey,
     useLocalTextEncoder: data.useLocalTextEncoder ?? DEFAULT_APP_SETTINGS.useLocalTextEncoder,
     promptCacheSize: data.promptCacheSize ?? DEFAULT_APP_SETTINGS.promptCacheSize,
     promptEnhancerEnabledT2V: data.promptEnhancerEnabledT2V ?? DEFAULT_APP_SETTINGS.promptEnhancerEnabledT2V,
     promptEnhancerEnabledI2V: data.promptEnhancerEnabledI2V ?? DEFAULT_APP_SETTINGS.promptEnhancerEnabledI2V,
+    promptEnhancerProviderPreference: data.promptEnhancerProviderPreference ?? DEFAULT_APP_SETTINGS.promptEnhancerProviderPreference,
     seedLocked: data.seedLocked ?? DEFAULT_APP_SETTINGS.seedLocked,
     lockedSeed: data.lockedSeed ?? DEFAULT_APP_SETTINGS.lockedSeed,
     modelsDir: data.modelsDir ?? DEFAULT_APP_SETTINGS.modelsDir,
@@ -79,12 +94,14 @@ function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
 }
 
 type RuntimePolicyPayload = ApiSuccessOf<'getRuntimePolicy'>
+type GpuInfoPayload = ApiSuccessOf<'getGpuInfo'>
 
 export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS)
   const [isLoaded, setIsLoaded] = useState(false)
   const [runtimePolicyLoaded, setRuntimePolicyLoaded] = useState(false)
   const [forceApiGenerations, setForceApiGenerations] = useState(true)
+  const [cudaAvailable, setCudaAvailable] = useState(false)
   const [backendProcessStatus, setBackendProcessStatus] = useState<BackendProcessStatus | null>(null)
 
   useEffect(() => {
@@ -119,6 +136,26 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     }
 
     void fetchRuntimePolicy()
+
+    return () => {
+      cancelled = true
+    }
+  }, [backendProcessStatus])
+
+  useEffect(() => {
+    if (backendProcessStatus !== 'alive') return
+
+    let cancelled = false
+
+    const fetchGpuInfo = async () => {
+      const result = await ApiClient.getGpuInfo()
+      if (!result.ok || cancelled) return
+
+      const payload = result.data as GpuInfoPayload
+      setCudaAvailable(Boolean(payload.cuda_available))
+    }
+
+    void fetchGpuInfo()
 
     return () => {
       cancelled = true
@@ -237,6 +274,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
 
   const shouldVideoGenerateWithLtxApi =
     forceApiGenerations || (settings.userPrefersLtxApiVideoGenerations && settings.hasLtxApiKey)
+  const shouldImageGenerateWithFalApi =
+    forceApiGenerations || (settings.userPrefersFalApiImageGenerations && settings.hasFalApiKey)
 
   const contextValue = useMemo<AppSettingsContextValue>(
     () => ({
@@ -250,8 +289,10 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       saveGeminiApiKey,
       forceApiGenerations,
       shouldVideoGenerateWithLtxApi,
+      shouldImageGenerateWithFalApi,
+      cudaAvailable,
     }),
-    [forceApiGenerations, isLoaded, refreshSettings, runtimePolicyLoaded, saveFalApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, updateSettings],
+    [cudaAvailable, forceApiGenerations, isLoaded, refreshSettings, runtimePolicyLoaded, saveFalApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi, updateSettings],
   )
 
   return <AppSettingsContext.Provider value={contextValue}>{children}</AppSettingsContext.Provider>

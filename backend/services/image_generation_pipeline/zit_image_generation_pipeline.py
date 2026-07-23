@@ -10,7 +10,12 @@ import torch
 from diffusers.pipelines.auto_pipeline import ZImagePipeline  # type: ignore[reportUnknownVariableType]
 from PIL.Image import Image as PILImage
 
-from services.services_utils import ImagePipelineOutputLike, PILImageType, get_device_type
+from services.services_utils import (
+    ImagePipelineOutputLike,
+    PILImageType,
+    clamp_strength,
+    get_device_type,
+)
 
 
 @dataclass(slots=True)
@@ -29,6 +34,7 @@ class ZitImageGenerationPipeline:
     def __init__(self, model_path: str, device: str | None = None) -> None:
         self._device: str | None = None
         self._cpu_offload_active = False
+        self._img2img: Any = None
         self.pipeline = ZImagePipeline.from_pretrained(  # type: ignore[reportUnknownMemberType]
             model_path,
             torch_dtype=torch.bfloat16,
@@ -37,10 +43,15 @@ class ZitImageGenerationPipeline:
             self.to(device)
 
     def _resolve_generator_device(self) -> str:
-        if self._cpu_offload_active:
-            return "cuda"
+        # The configured runtime device is authoritative. With enable_model_cpu_offload()
+        # the pipeline's _execution_device can read as "cpu", but the generator must live
+        # on the actual compute device. This previously returned "cuda" whenever offload
+        # was active — but offload is enabled on MPS too, so on a Mac it built a CUDA
+        # generator and failed ("Cannot get CUDA generator without ATen_cuda library").
         if self._device is not None:
             return self._device
+        if self._cpu_offload_active:
+            return "cuda"
 
         execution_device = getattr(self.pipeline, "_execution_device", None)
         return get_device_type(execution_device)
@@ -86,6 +97,42 @@ class ZitImageGenerationPipeline:
         )
         return self._normalize_output(output)
 
+    def _ensure_img2img_pipeline(self) -> Any:
+        if self._img2img is not None:
+            return self._img2img
+        try:
+            from diffusers import ZImageImg2ImgPipeline  # type: ignore[attr-defined]
+        except Exception as e:
+            raise RuntimeError("DIFFUSERS_IMG2IMG_UNAVAILABLE") from e
+        # Reuse the loaded components so no second copy of the weights lands in VRAM.
+        pipeline_any = cast(Any, self.pipeline)
+        self._img2img = ZImageImg2ImgPipeline(**pipeline_any.components)  # type: ignore[reportUnknownMemberType]
+        return self._img2img
+
+    @torch.inference_mode()
+    def edit(
+        self,
+        prompt: str,
+        image: PILImageType,
+        strength: float,
+        num_inference_steps: int,
+        seed: int,
+    ) -> ImagePipelineOutputLike:
+        img2img = self._ensure_img2img_pipeline()
+
+        generator = torch.Generator(device=self._resolve_generator_device()).manual_seed(seed)
+        output = img2img(
+            prompt=prompt,
+            image=image,
+            strength=clamp_strength(strength),
+            num_inference_steps=num_inference_steps,
+            guidance_scale=0.0,  # Turbo is guidance-free; img2img defaults to 5.0.
+            generator=generator,
+            output_type="pil",
+            return_dict=True,
+        )
+        return self._normalize_output(output)
+
     def to(self, device: str) -> None:
         runtime_device = get_device_type(device)
         if runtime_device in ("cuda", "mps"):
@@ -95,3 +142,7 @@ class ZitImageGenerationPipeline:
             self._cpu_offload_active = False
             self.pipeline.to(runtime_device)  # type: ignore[reportUnknownMemberType]
         self._device = runtime_device
+        # The base pipeline's offload hooks/device placement may have changed; drop the
+        # cached img2img wrapper so it's rebuilt fresh (cheap — no weight reload) against
+        # the current state next time edit() runs, instead of risking stale device info.
+        self._img2img = None

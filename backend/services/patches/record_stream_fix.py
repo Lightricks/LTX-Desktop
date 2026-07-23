@@ -11,6 +11,13 @@ without touching allocator metadata.
 
 Remove this patch once the upstream ltx-core package includes the fix.
 
+NOTE: the upstream MPS-support work rewrote the weight-streaming subsystem
+(`ltx_core.layer_streaming` -> `ltx_core.block_streaming`). When that module is
+absent this patch cleanly no-ops — the CUDA record_stream workaround only ever
+applied to the old LayerStreamingWrapper, and it is irrelevant on MPS. Whether
+the RTX 5090 allocator issue still needs a workaround under the new
+block_streaming path must be re-evaluated on CUDA before shipping there.
+
 Usage:
     import services.patches.record_stream_fix  # noqa: F401
 """
@@ -19,12 +26,22 @@ from __future__ import annotations
 
 import functools
 import itertools
+import logging
 from typing import Any
 
 import torch
 from torch import nn
 
-from ltx_core.layer_streaming import LayerStreamingWrapper
+try:
+    from ltx_core.layer_streaming import LayerStreamingWrapper
+
+    _AVAILABLE = True
+except ModuleNotFoundError:
+    _AVAILABLE = False
+    logging.getLogger(__name__).info(
+        "record_stream_fix: ltx_core.layer_streaming absent (streaming subsystem rewritten "
+        "upstream to block_streaming) — skipping CUDA record_stream patch."
+    )
 
 
 def _patched_register_hooks(self: LayerStreamingWrapper) -> None:
@@ -82,18 +99,17 @@ def _patched_register_hooks(self: LayerStreamingWrapper) -> None:
         self._hooks.extend([h1, h2])
 
 
-_original_teardown = LayerStreamingWrapper.teardown
+if _AVAILABLE:
+    _original_teardown = LayerStreamingWrapper.teardown
 
+    def _patched_teardown(self: LayerStreamingWrapper) -> None:
+        # Clear held GPU references before the original teardown evicts layers.
+        if hasattr(self, "_gpu_refs"):
+            torch.cuda.synchronize(device=self._target_device)
+            self._gpu_refs.clear()
+            self._ref_events.clear()
+        _original_teardown(self)
 
-def _patched_teardown(self: LayerStreamingWrapper) -> None:
-    # Clear held GPU references before the original teardown evicts layers.
-    if hasattr(self, "_gpu_refs"):
-        torch.cuda.synchronize(device=self._target_device)
-        self._gpu_refs.clear()
-        self._ref_events.clear()
-    _original_teardown(self)
-
-
-# Apply patches.
-LayerStreamingWrapper._register_hooks = _patched_register_hooks  # type: ignore[assignment]
-LayerStreamingWrapper.teardown = _patched_teardown  # type: ignore[assignment]
+    # Apply patches.
+    LayerStreamingWrapper._register_hooks = _patched_register_hooks  # type: ignore[assignment]
+    LayerStreamingWrapper.teardown = _patched_teardown  # type: ignore[assignment]

@@ -5,13 +5,17 @@ import { ProjectProvider } from './contexts/ProjectContext'
 import { ViewProvider, useView } from './contexts/ViewContext'
 import { KeyboardShortcutsProvider } from './contexts/KeyboardShortcutsContext'
 import { AppSettingsProvider, useAppSettings } from './contexts/AppSettingsContext'
+import { DevFlagsProvider } from './contexts/DevFlagsContext'
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
+import { DevPanel } from './components/DevPanel'
 import { useBackend } from './hooks/use-backend'
+import { useGenerationRecoveryWatcher } from './hooks/use-generation-recovery-watcher'
 import { logger } from './lib/logger'
 import { Home } from './views/Home'
 import { Project } from './views/Project'
 import { LaunchGate } from './components/FirstRunSetup'
 import { LtxUpgradePrompt } from './components/LtxUpgradePrompt'
+import { dismissUpgrade, isUpgradeDismissed } from './lib/upgrade-prompt-dismissals'
 import { PythonSetup } from './components/PythonSetup'
 import { SettingsModal, type SettingsTabId } from './components/SettingsModal'
 import { LogViewer } from './components/LogViewer'
@@ -27,6 +31,9 @@ function AppContent() {
   const { currentView } = useView()
   const { connected, processStatus, isLoading: backendLoading } = useBackend()
   const { settings, saveLtxApiKey, saveFalApiKey, forceApiGenerations, isLoaded, runtimePolicyLoaded } = useAppSettings()
+  // Always mounted here (unlike GenSpace, which unmounts on every view/tab switch) so a
+  // generation that finishes while its project isn't open still gets persisted.
+  useGenerationRecoveryWatcher()
 
   const [pythonReady, setPythonReady] = useState<boolean | null>(null)
   const [backendStarted, setBackendStarted] = useState(false)
@@ -263,7 +270,7 @@ function AppContent() {
     }
 
     const recommendation = result.data
-    if (recommendation.status === 'upgrade' && recommendation.ltx_model_id !== dismissedUpgradeTargetId) {
+    if (recommendation.status === 'upgrade' && recommendation.ltx_model_id !== dismissedUpgradeTargetId && !isUpgradeDismissed(recommendation.ltx_model_id)) {
       setLtxUpgradeRecommendation(recommendation)
       return
     }
@@ -296,7 +303,7 @@ function AppContent() {
       }
 
       const recommendation = result.data
-      if (recommendation.status === 'upgrade' && recommendation.ltx_model_id !== dismissedUpgradeTargetId) {
+      if (recommendation.status === 'upgrade' && recommendation.ltx_model_id !== dismissedUpgradeTargetId && !isUpgradeDismissed(recommendation.ltx_model_id)) {
         setLtxUpgradeRecommendation(recommendation)
         return
       }
@@ -321,6 +328,13 @@ function AppContent() {
 
   const handleDismissLtxUpgradePrompt = useCallback(() => {
     if (!ltxUpgradeRecommendation) return
+    setDismissedUpgradeTargetId(ltxUpgradeRecommendation.ltx_model_id)
+    setLtxUpgradeRecommendation(null)
+  }, [ltxUpgradeRecommendation])
+
+  const handleDontShowLtxUpgradeAgain = useCallback(() => {
+    if (!ltxUpgradeRecommendation) return
+    dismissUpgrade(ltxUpgradeRecommendation.ltx_model_id)  // persist for this model id
     setDismissedUpgradeTargetId(ltxUpgradeRecommendation.ltx_model_id)
     setLtxUpgradeRecommendation(null)
   }, [ltxUpgradeRecommendation])
@@ -389,7 +403,7 @@ function AppContent() {
       {
         keyType: 'fal',
         title: 'FAL AI',
-        description: 'Required to generate images with Z Image Turbo.',
+        description: 'Required to generate or edit images with Z Image Turbo.',
         required: apiGatewayRequest.requiredKeys.includes('fal'),
         isConfigured: settings.hasFalApiKey,
         inputLabel: 'FAL AI API key',
@@ -553,6 +567,7 @@ function AppContent() {
         <LtxUpgradePrompt
           recommendation={ltxUpgradeRecommendation}
           onClose={handleDismissLtxUpgradePrompt}
+          onDontShowAgain={handleDontShowLtxUpgradeAgain}
           onComplete={handleCompleteLtxUpgradePrompt}
         />
       )}
@@ -606,8 +621,11 @@ export default function App() {
       <ViewProvider>
         <KeyboardShortcutsProvider>
           <AppSettingsProvider>
-            <AppContent />
-            <KeyboardShortcutsModal />
+            <DevFlagsProvider>
+              <AppContent />
+              <KeyboardShortcutsModal />
+              <DevPanel />
+            </DevFlagsProvider>
           </AppSettingsProvider>
         </KeyboardShortcutsProvider>
       </ViewProvider>

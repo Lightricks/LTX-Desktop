@@ -9,7 +9,7 @@ from services.interfaces import (
     GpuInfo,
     HTTPClient,
     HttpResponseLike,
-    HttpTimeoutError,
+    HttpTransportError,
     IcLoraPipeline,
     LTXAPIClient,
     ModelDownloader,
@@ -22,7 +22,7 @@ from services.interfaces import (
 
 __all__ = [
     "HttpResponseLike",
-    "HttpTimeoutError",
+    "HttpTransportError",
     "HTTPClient",
     "ModelDownloader",
     "GpuCleaner",

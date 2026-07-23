@@ -12,6 +12,7 @@
     "dist",
     "tmp",
     "scripts",
+    "performance_runner",
     "profile_results",
     "services/patches"
   ],

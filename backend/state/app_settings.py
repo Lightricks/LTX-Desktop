@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, TypeGuard, TypeVar, cast, get_args
+from typing import Any, Literal, TypeGuard, TypeVar, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator
+
+from api_types import LTXLocalModelId
 
 
 def _to_camel_case(field_name: str) -> str:
@@ -47,17 +49,25 @@ class SettingsPatchModel(SettingsBaseModel):
 
 class AppSettings(SettingsBaseModel):
     use_torch_compile: bool = False
+    diffusion_stage_cache_enabled: bool = False
     ltx_api_key: str = ""
     user_prefers_ltx_api_video_generations: bool = False
     fal_api_key: str = ""
+    user_prefers_fal_api_image_generations: bool = False
     use_local_text_encoder: bool = False
     prompt_cache_size: int = 100
     prompt_enhancer_enabled_t2v: bool = True
     prompt_enhancer_enabled_i2v: bool = False
+    # The user's explicit choice, persisted so it survives restarts. None means no active choice
+    # has been made yet — the UI defaults to whichever provider is available, preferring local,
+    # without writing that default back here. Only an explicit user pick (not an automatic
+    # fallback when the preferred provider is temporarily unavailable) ever sets this.
+    prompt_enhancer_provider_preference: Literal["local", "api"] | None = None
     gemini_api_key: str = ""
     seed_locked: bool = False
     locked_seed: int = 42
     models_dir: str = ""
+    active_ltx_model_id: LTXLocalModelId | None = None
 
     @field_validator("prompt_cache_size", mode="before")
     @classmethod
@@ -116,17 +126,21 @@ UpdateSettingsRequest = AppSettingsPatch
 
 class SettingsResponse(SettingsBaseModel):
     use_torch_compile: bool = False
+    diffusion_stage_cache_enabled: bool = False
     has_ltx_api_key: bool = False
     user_prefers_ltx_api_video_generations: bool = False
     has_fal_api_key: bool = False
+    user_prefers_fal_api_image_generations: bool = False
     use_local_text_encoder: bool = False
     prompt_cache_size: int = 100
     prompt_enhancer_enabled_t2v: bool = True
     prompt_enhancer_enabled_i2v: bool = False
+    prompt_enhancer_provider_preference: Literal["local", "api"] | None = None
     has_gemini_api_key: bool = False
     seed_locked: bool = False
     locked_seed: int = 42
     models_dir: str = ""
+    active_ltx_model_id: LTXLocalModelId | None = None
 
 
 def to_settings_response(settings: AppSettings) -> SettingsResponse:
@@ -145,4 +159,11 @@ def should_video_generate_with_ltx_api(*, force_api_generations: bool, settings:
     has_ltx_api_key = bool(settings.ltx_api_key.strip())
     return force_api_generations or (
         settings.user_prefers_ltx_api_video_generations and has_ltx_api_key
+    )
+
+
+def should_image_generate_with_fal_api(*, force_api_generations: bool, settings: AppSettings) -> bool:
+    has_fal_api_key = bool(settings.fal_api_key.strip())
+    return force_api_generations or (
+        settings.user_prefers_fal_api_image_generations and has_fal_api_key
     )

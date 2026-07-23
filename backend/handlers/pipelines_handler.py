@@ -12,9 +12,9 @@ from handlers.base import StateHandlerBase
 from handlers.text_handler import TextHandler
 from runtime_config.model_download_specs import (
     IMG_GEN_MODEL_CP_ID,
-    get_downloaded_ltx_model_id,
     get_existing_cp_path,
     get_ltx_model_spec,
+    resolve_active_ltx_model_id,
 )
 from runtime_config.runtime_policy import streaming_prefetch_count_for_mode
 from services.interfaces import (
@@ -106,7 +106,9 @@ class PipelinesHandler(StateHandlerBase):
         te.service.install_patches(lambda: self.state)
 
     def _require_downloaded_ltx_model_id(self) -> LTXLocalModelId:
-        model_id = get_downloaded_ltx_model_id(self.models_dir)
+        model_id = resolve_active_ltx_model_id(
+            self.models_dir, self.state.app_settings.active_ltx_model_id
+        )
         if model_id is None:
             raise HTTPError(409, "NO_DOWNLOADED_LTX_MODEL")
         return model_id
@@ -119,6 +121,20 @@ class PipelinesHandler(StateHandlerBase):
         if self._runtime_device == "mps":
             logger.info("Skipping torch.compile() for %s - not supported on MPS", state.pipeline.pipeline_kind)
             return state
+        if self.config.use_sage_attention:
+            # SageAttention's Python-level kernel forces a Dynamo graph break at every
+            # attention call. The resume graph Dynamo builds for the code after each
+            # break doesn't inherit the video/audio tensors' pre-existing mark_dynamic
+            # annotations, so it specializes their sequence-length dim to whatever
+            # shape it first sees — then hard-fails (ConstraintViolationError) on any
+            # later call with a different frame count or resolution. The two features
+            # conflict; SageAttention already provides its own speedup, so skip
+            # compilation rather than compiling a graph that can only serve one shape.
+            logger.info(
+                "Skipping torch.compile() for %s - conflicts with SageAttention's graph breaks",
+                state.pipeline.pipeline_kind,
+            )
+            return state
 
         try:
             state.pipeline.compile_transformer()
@@ -127,7 +143,9 @@ class PipelinesHandler(StateHandlerBase):
             logger.warning("Failed to compile transformer: %s", exc, exc_info=True)
         return state
 
-    def _create_video_pipeline(self, model_type: VideoPipelineModelType) -> VideoPipelineState:
+    def _create_video_pipeline(
+        self, model_type: VideoPipelineModelType, loras: list[tuple[str, float]] | None = None
+    ) -> VideoPipelineState:
         gemma_root = self._text_handler.resolve_gemma_root()
         model_id = self._require_downloaded_ltx_model_id()
         spec = get_ltx_model_spec(model_id)
@@ -140,11 +158,14 @@ class PipelinesHandler(StateHandlerBase):
             upsampler_path,
             self.config.device,
             streaming_prefetch_count_for_mode(self.config.local_generations_mode),
+            loras=loras or [],
         )
 
         state = VideoPipelineState(
             pipeline=pipeline,
             is_compiled=False,
+            loras=tuple(loras) if loras else (),
+            gemma_root=gemma_root,
         )
         return self._compile_if_enabled(state)
 
@@ -236,21 +257,41 @@ class PipelinesHandler(StateHandlerBase):
         elif should_cleanup:
             self._gpu_cleaner.cleanup()
 
-    def load_gpu_pipeline(self, model_type: VideoPipelineModelType) -> VideoPipelineState:
+    def evict_gpu_pipeline_for_prompt_enhancement(self) -> None:
+        """Free whatever big pipeline is resident before a standalone Gemma enhance call.
+
+        The prompt enhancer never claims the GPU slot itself — it loads/frees Gemma inside a
+        single call, same as every other local Gemma use in this codebase — but it still needs
+        the VRAM a resident video/image pipeline is holding.
+        """
+        self._evict_gpu_pipeline_for_swap()
+
+    def load_gpu_pipeline(
+        self,
+        model_type: VideoPipelineModelType,
+        loras: list[tuple[str, float]] | None = None,
+    ) -> VideoPipelineState:
         self._install_text_patches_if_needed()
 
+        requested_loras = tuple(loras) if loras else ()
+        requested_gemma_root = self._text_handler.resolve_gemma_root()
         state: VideoPipelineState | None = None
         with self._lock:
             if self._pipeline_matches_model_type(model_type):
                 match self.state.gpu_slot:
-                    case GpuSlot(active_pipeline=VideoPipelineState() as existing_state):
+                    case GpuSlot(
+                        active_pipeline=VideoPipelineState() as existing_state
+                    ) if (
+                        existing_state.loras == requested_loras
+                        and existing_state.gemma_root == requested_gemma_root
+                    ):
                         state = existing_state
                     case _:
                         pass
 
         if state is None:
             self._evict_gpu_pipeline_for_swap()
-            state = self._create_video_pipeline(model_type)
+            state = self._create_video_pipeline(model_type, loras=loras)
             with self._lock:
                 self.state.gpu_slot = GpuSlot(active_pipeline=state)
                 self._assert_invariants()
@@ -260,20 +301,26 @@ class PipelinesHandler(StateHandlerBase):
     def load_ic_lora(
         self,
         lora_path: str,
-        depth_model_path: str,
+        depth_model_path: str | None = None,
+        lora_strength: float = 1.0,
     ) -> ICLoraState:
         self._install_text_patches_if_needed()
 
+        gemma_root = self._text_handler.resolve_gemma_root()
         with self._lock:
             match self.state.gpu_slot:
                 case GpuSlot(
                     active_pipeline=ICLoraState(
                         lora_path=current_lora_path,
                         depth_model_path=current_depth_model_path,
+                        lora_strength=current_lora_strength,
+                        gemma_root=current_gemma_root,
                     ) as state
                 ) if (
                     current_lora_path == lora_path
                     and current_depth_model_path == depth_model_path
+                    and current_lora_strength == lora_strength
+                    and current_gemma_root == gemma_root
                 ):
                     return state
                 case _:
@@ -285,18 +332,25 @@ class PipelinesHandler(StateHandlerBase):
 
         pipeline = self._ic_lora_pipeline_class.create(
             str(get_existing_cp_path(self.models_dir, model_spec.model_cp)),
-            self._text_handler.resolve_gemma_root(),
+            gemma_root,
             str(get_existing_cp_path(self.models_dir, model_spec.upscale_cp)),
             lora_path,
             self.config.device,
             streaming_prefetch_count_for_mode(self.config.local_generations_mode),
+            lora_strength,
         )
-        depth_pipeline = self._depth_processor_pipeline_class.create(depth_model_path, self.config.device)
+        depth_pipeline = (
+            self._depth_processor_pipeline_class.create(depth_model_path, self.config.device)
+            if depth_model_path is not None
+            else None
+        )
         state = ICLoraState(
             pipeline=pipeline,
             lora_path=lora_path,
             depth_pipeline=depth_pipeline,
             depth_model_path=depth_model_path,
+            lora_strength=lora_strength,
+            gemma_root=gemma_root,
         )
 
         with self._lock:
@@ -304,12 +358,16 @@ class PipelinesHandler(StateHandlerBase):
             self._assert_invariants()
         return state
 
-    def load_a2v_pipeline(self) -> A2VPipelineState:
+    def load_a2v_pipeline(self, loras: list[tuple[str, float]] | None = None) -> A2VPipelineState:
         self._install_text_patches_if_needed()
 
+        requested_loras = tuple(loras) if loras else ()
+        gemma_root = self._text_handler.resolve_gemma_root()
         with self._lock:
             match self.state.gpu_slot:
-                case GpuSlot(active_pipeline=A2VPipelineState() as state):
+                case GpuSlot(active_pipeline=A2VPipelineState() as state) if (
+                    state.loras == requested_loras and state.gemma_root == gemma_root
+                ):
                     return state
                 case _:
                     pass
@@ -320,12 +378,13 @@ class PipelinesHandler(StateHandlerBase):
 
         pipeline = self._a2v_pipeline_class.create(
             str(get_existing_cp_path(self.models_dir, model_spec.model_cp)),
-            self._text_handler.resolve_gemma_root(),
+            gemma_root,
             str(get_existing_cp_path(self.models_dir, model_spec.upscale_cp)),
             self.config.device,
             streaming_prefetch_count_for_mode(self.config.local_generations_mode),
+            loras=loras or [],
         )
-        state = A2VPipelineState(pipeline=pipeline)
+        state = A2VPipelineState(pipeline=pipeline, loras=requested_loras, gemma_root=gemma_root)
 
         with self._lock:
             self.state.gpu_slot = GpuSlot(active_pipeline=state)
@@ -336,32 +395,42 @@ class PipelinesHandler(StateHandlerBase):
         self._install_text_patches_if_needed()
 
         quantized = device_supports_fp8(self.config.device)
+        gemma_root = self._text_handler.resolve_gemma_root()
 
         with self._lock:
             match self.state.gpu_slot:
                 case GpuSlot(
-                    active_pipeline=RetakePipelineState(distilled=current_distilled, quantized=current_quantized) as state
-                ) if current_distilled == distilled and current_quantized == quantized:
+                    active_pipeline=RetakePipelineState(
+                        distilled=current_distilled, quantized=current_quantized, gemma_root=current_gemma_root
+                    ) as state
+                ) if (
+                    current_distilled == distilled
+                    and current_quantized == quantized
+                    and current_gemma_root == gemma_root
+                ):
                     return state
                 case _:
                     pass
 
         self._evict_gpu_pipeline_for_swap()
 
-        from ltx_core.quantization import QuantizationPolicy
+        from ltx_core.quantization.fp8_cast import build_policy as build_fp8_cast_policy
 
-        quantization = QuantizationPolicy.fp8_cast() if quantized else None
         model_id = self._require_downloaded_ltx_model_id()
         model_spec = get_ltx_model_spec(model_id)
+        checkpoint_path = str(get_existing_cp_path(self.models_dir, model_spec.model_cp))
+        quantization = build_fp8_cast_policy(checkpoint_path) if quantized else None
         pipeline = self._retake_pipeline_class.create(
-            checkpoint_path=str(get_existing_cp_path(self.models_dir, model_spec.model_cp)),
-            gemma_root=self._text_handler.resolve_gemma_root(),
+            checkpoint_path=checkpoint_path,
+            gemma_root=gemma_root,
             device=self.config.device,
             streaming_prefetch_count=streaming_prefetch_count_for_mode(self.config.local_generations_mode),
             loras=[],
             quantization=quantization,
         )
-        state = RetakePipelineState(pipeline=pipeline, distilled=distilled, quantized=quantized)
+        state = RetakePipelineState(
+            pipeline=pipeline, distilled=distilled, quantized=quantized, gemma_root=gemma_root
+        )
 
         with self._lock:
             self.state.gpu_slot = GpuSlot(active_pipeline=state)

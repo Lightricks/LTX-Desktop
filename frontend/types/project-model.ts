@@ -5,7 +5,9 @@ export const generationModeValues = [
   'image-to-video',
   'audio-to-video',
   'text-to-image',
+  'image-edit',
   'retake',
+  'extend',
   'ic-lora',
 ] as const
 
@@ -61,15 +63,24 @@ export const generationParamsSchema = z.object({
   cameraMotion: z.string(),
   imageAspectRatio: z.string().optional(),
   imageSteps: z.number().optional(),
+  imageEditStrength: z.number().optional(),
   inputImageUrl: z.string().optional(),
   inputAudioUrl: z.string().optional(),
   retakeVideoPath: z.string().optional(),
   retakeStartTime: z.number().optional(),
   retakeDuration: z.number().optional(),
   retakeMode: z.string().optional(),
+  extendVideoPath: z.string().optional(),
+  extendDuration: z.number().optional(),
+  extendDirection: z.string().optional(),
   icLoraVideoPath: z.string().optional(),
   icLoraConditioningType: z.string().optional(),
   icLoraConditioningStrength: z.number().optional(),
+  loras: z.array(z.object({
+    ref: z.string(),
+    name: z.string(),
+    scale: z.number(),
+  })).optional(),
 })
 
 export const assetTakeSchema = z.object({

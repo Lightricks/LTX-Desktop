@@ -1,0 +1,1895 @@
+{
+  "schema_version": 1,
+  "loras": [
+    {
+      "id": "fpv-motion",
+      "name": "FPV Motion",
+      "description": "Smoother FPV drone-style camera motion \u2014 steady, low-speed flying moves through the scene.",
+      "download": {
+        "repo_id": "chsengni/ltx2.3-fpv-motion",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "ltx2.3_fpv_motion.safetensors",
+            "size_bytes": 308666208
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "chsengni",
+        "url": "https://huggingface.co/chsengni",
+        "affiliation": "community"
+      },
+      "license": {
+        "name": "Apache-2.0",
+        "url": "https://huggingface.co/chsengni/ltx2.3-fpv-motion"
+      },
+      "base_model": "LTX-2.3",
+      "created_at": "2026-06-08",
+      "tags": [
+        "motion"
+      ],
+      "recommended_strength": 1.0,
+      "media": {
+        "demo_video": "fpv_motion_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Adds smoother FPV (first-person-view) drone-style camera motion \u2014 steady, low-speed flying moves through the scene."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "No trigger word \u2014 describe an FPV / drone shot.",
+            "Example: a smooth low-speed FPV drone flight gliding through a forest canyon at golden hour."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "LoRA strength ~1.0. Text-to-video \u2014 no input clip needed."
+        }
+      ]
+    },
+    {
+      "id": "crt-animation-terminal",
+      "name": "CRT / Retro Terminal",
+      "description": "Late-80s / early-90s CRT-monitor look \u2014 scanlines, phosphor glow, chromatic aberration, signal noise.",
+      "download": {
+        "repo_id": "lovis93/crt-animation-terminal-ltx-2.3-lora",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "crtanim_10000.safetensors",
+            "size_bytes": 428150680
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "lovis93",
+        "url": "https://huggingface.co/lovis93",
+        "affiliation": "community"
+      },
+      "license": {
+        "name": "Apache-2.0",
+        "url": "https://huggingface.co/lovis93/crt-animation-terminal-ltx-2.3-lora"
+      },
+      "base_model": "LTX-2.3",
+      "tags": [
+        "style"
+      ],
+      "trigger": "crtanim,",
+      "recommended_strength": 1.0,
+      "media": {
+        "demo_video": "crt_animation_terminal_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Locks generations into a real late-80s / early-90s CRT-monitor look \u2014 scanlines, phosphor glow, chromatic aberration, barrel curvature, dithering, signal noise and choppy limited-frame motion."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Trigger word crtanim, as the first token of every prompt.",
+            "Example: crtanim, a retro terminal booting up with green phosphor text, scanlines and signal noise.",
+            "For on-screen text, quote the exact short string: crtanim, a CRT aesthetic with scanlines, green phosphor glow, bloom, and chromatic aberration, a terminal typing out exactly \"$ ls -la\"."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": [
+            "LoRA strength ~1.0. Text-to-video \u2014 no input clip needed.",
+            "If the prompt calls for on-screen text, keep it to short strings (1\u20133 words) \u2014 longer text renders unreliably.",
+            "The look defaults to static framing; if camera movement is wanted, state it explicitly in the prompt rather than assuming it."
+          ]
+        }
+      ],
+      "trigger_placement": "first_token"
+    },
+    {
+      "id": "openwheel-tcam-style",
+      "name": "Open-Wheel Motorsport T-Cam",
+      "description": "Onboard T-cam / cockpit-cam open-wheel motorsport look \u2014 halo-structure POV of V6-hybrid-era F1-style race cars on track.",
+      "download": {
+        "repo_id": "mxturbo/Openwheel-motorsports-Cockpit-T-Cam-LTX2.3",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "openwheel-t-cam-ltx2.3_000000500.safetensors",
+            "size_bytes": 1348027408
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "mxturbo",
+        "url": "https://huggingface.co/mxturbo",
+        "affiliation": "community"
+      },
+      "license": {
+        "name": "Apache-2.0",
+        "url": "https://huggingface.co/mxturbo/Openwheel-motorsports-Cockpit-T-Cam-LTX2.3"
+      },
+      "base_model": "LTX-2.3",
+      "created_at": "2026-05-28",
+      "tags": [
+        "style"
+      ],
+      "recommended_strength": 1.0,
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Renders onboard T-cam / cockpit-cam open-wheel motorsport shots \u2014 the halo-structure POV of V6-hybrid-era F1-style cars on track, with sponsor liveries, curbs, and wet-weather racing."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "No single trigger word \u2014 use the onboard phrasing from the model card. '16LV6HybridF1' names the car type.",
+            "Example: T-cam onboard view looking over the silver and cyan central halo structure of a red 16LV6HybridF1 car on a wet track, accelerating down a straight past sponsor bridges."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "LoRA strength ~1.0. Trained on T-cam/cockpit footage of current open-wheel categories. Text-to-video \u2014 no input clip needed."
+        }
+      ],
+      "media": {
+        "demo_video": "openwheel_tcam_style_demo.mp4"
+      }
+    },
+    {
+      "id": "fantasy-anime-style",
+      "name": "Cinematic Fantasy Anime",
+      "description": "Cel-shaded high-fantasy anime illustration look \u2014 grounded fantasy worlds and characters in a cinematic anime style.",
+      "download": {
+        "repo_id": "vrgamedevgirl84/LTX_2.3_Fantasy_Anime_Style_LoRa",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "Fantasy_Anime.safetensors",
+            "size_bytes": 352679880
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "vrgamedevgirl84",
+        "url": "https://huggingface.co/vrgamedevgirl84",
+        "affiliation": "community"
+      },
+      "base_model": "LTX-2.3",
+      "tags": [
+        "style"
+      ],
+      "trigger": "f4nt4sy4n1m6",
+      "recommended_strength": 1.0,
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Renders scenes as a cinematic, cel-shaded high-fantasy anime illustration \u2014 grounded fantasy worlds, characters, and creatures with consistent anime styling (no IP used in training)."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Trigger word f4nt4sy4n1m6 (also try 'cinematic fantasy anime cel-shaded illustration'); works without it too.",
+            "Example: f4nt4sy4n1m6 cinematic fantasy anime cel-shaded illustration, hand-drawn linework and painted shading, high-end fantasy anime film look. A young fantasy mage with flowing silver hair and expressive determined eyes stands on a windswept cliff at dusk, wearing an intricately layered fantasy robe with glowing arcane trim. She raises one hand and summons a swirling orb of glowing blue magic, radiant particles and wisps of light spiraling around her as her hair and robe billow in the magical wind. Beside her floats a small glowing spirit creature \u2014 a delicate fox-like being made of soft light and drifting embers, its form shimmering. Behind them, an epic fantasy landscape of floating rock islands and distant spires fades into atmospheric haze under a dramatic violet-and-gold sky with two moons. Vivid magical atmosphere, cinematic fantasy lighting, expressive character animation, painterly cel-shaded finish, dramatic storytelling composition. Swelling orchestral fantasy music, the hum of magic, and wind."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "LoRA strength ~1.0. Text-to-video \u2014 no input clip needed."
+        }
+      ],
+      "media": {
+        "demo_video": "fantasy_anime_style_demo.mp4"
+      },
+      "trigger_placement": "anywhere",
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      }
+    },
+    {
+      "id": "fantasy-realism-style",
+      "name": "Cinematic Fantasy Realism",
+      "description": "Grounded high-fantasy live-action cinematic look \u2014 realistic fantasy worlds, characters, and creatures.",
+      "download": {
+        "repo_id": "vrgamedevgirl84/LTX_2.3_Fantasy_Realism_Style_LoRa",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "Fantasy_Realism.safetensors",
+            "size_bytes": 352679888
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "vrgamedevgirl84",
+        "url": "https://huggingface.co/vrgamedevgirl84",
+        "affiliation": "community"
+      },
+      "base_model": "LTX-2.3",
+      "tags": [
+        "style"
+      ],
+      "trigger": "f4nt4sy",
+      "recommended_strength": 1.0,
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Renders scenes as a grounded high-fantasy, live-action cinematic film \u2014 realistic fantasy worlds, characters, armor, and creatures with a consistent cinematic identity (no IP used in training)."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Trigger word f4nt4sy (also try 'cinematic fantasy realism'); works without it too.",
+            "Example: f4nt4sy cinematic fantasy realism, premium live-action fantasy cinema shot, high-end fantasy film look. A weathered fantasy knight in realistic battle-worn plate armor stands in a misty mountain pass at dawn, her face showing natural skin texture and a tense, determined expression, breath fogging in the cold air, her tattered cloak and hair moving naturally in the wind. Before her looms a massive realistic dragon with believable scaled anatomy, leathery textured wings, and glowing amber eyes, lowering its great head and exhaling a slow plume of smoke, water dripping from its scales. Volumetric shafts of dawn light cut through the drifting mist and swirling ash between towering craggy cliffs, embers floating in the air. The knight slowly raises her worn steel sword, the two locked in a tense standoff. Grounded cinematic realism, natural material detail, volumetric atmospheric lighting, dramatic fantasy film mood, believable physical detail, cinematic color grading. Deep atmospheric orchestral score, a low dragon rumble, wind, and dripping water."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "LoRA strength ~1.0. Text-to-video \u2014 no input clip needed."
+        }
+      ],
+      "media": {
+        "demo_video": "fantasy_realism_style_demo.mp4"
+      },
+      "trigger_placement": "anywhere",
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      }
+    },
+    {
+      "id": "cinematic-cyberpunk-style",
+      "name": "Cinematic Sci-Fi Cyberpunk",
+      "description": "Cinematic cyberpunk neo-noir look \u2014 rainy neon-lit streets, wet reflective pavement, holographic UI, teal-orange and magenta lighting.",
+      "download": {
+        "repo_id": "vrgamedevgirl84/LTX_2.3_Cinematic_Sci-fi-Cyberpunk_Style_LoRa",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "Cinematic_sci-fi-cyberpunk.safetensors",
+            "size_bytes": 352679888
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "vrgamedevgirl84",
+        "url": "https://huggingface.co/vrgamedevgirl84",
+        "affiliation": "community"
+      },
+      "base_model": "LTX-2.3",
+      "tags": [
+        "style"
+      ],
+      "trigger": "C6b4rP8nk",
+      "recommended_strength": 1.0,
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Renders scenes with a cinematic cyberpunk neo-noir mood \u2014 moody rainy cityscapes, wet reflective pavement, atmospheric fog and steam, glowing holographic interfaces, and teal-orange / magenta neon lighting."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Trigger word C6b4rP8nk.",
+            "Example: C6b4rP8nk cinematic cyberpunk neo-noir aesthetic, futuristic cityscape. A sleek figure in a glowing-accented visor helmet and a wet armored jacket rides a futuristic neon-lit motorcycle at high speed through a rain-soaked megacity canyon at night, weaving between traffic. The bike's cyan underglow and magenta tail-light streak reflections across the wet asphalt as spray kicks up behind it, rain streaking past through the neon haze. Towering skyscrapers rise on both sides, plastered with giant glowing holographic advertisements and flickering magenta and cyan neon signage, their light smearing in the motion. The camera tracks dynamically alongside the rider, low to the wet ground, the city lights blurring past in a rush of teal-orange cinematic glow, drifting fog and steam rising from street vents. High-contrast shadows, moody atmospheric depth, gritty but polished detail, cinematic composition. Driving synth score, roaring bike engine, hissing rain, and rushing wind."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "LoRA strength ~1.0. Text-to-video \u2014 no input clip needed."
+        }
+      ],
+      "media": {
+        "demo_video": "cinematic_cyberpunk_style_demo.mp4"
+      },
+      "trigger_placement": "anywhere",
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      }
+    },
+    {
+      "id": "claymation-style",
+      "name": "Claymation Style",
+      "description": "Stop-motion claymation diorama look \u2014 hand-sculpted clay, fingerprints, miniature sets.",
+      "download": {
+        "repo_id": "vrgamedevgirl84/LTX_2.3_Clay_Mation_Style_LoRa",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "Claymation.safetensors",
+            "size_bytes": 352679880
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "vrgamedevgirl84",
+        "url": "https://huggingface.co/vrgamedevgirl84",
+        "affiliation": "community"
+      },
+      "base_model": "LTX-2.3",
+      "tags": [
+        "style"
+      ],
+      "trigger": "claymation style",
+      "recommended_strength": 1.0,
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Renders scenes in a handcrafted claymation diorama style inspired by classic stop-motion \u2014 sculpted clay subjects with visible fingerprints, rounded forms and miniature set environments."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Trigger phrases like 'claymation style', 'stop motion clay', 'clay diorama', 'sculpted clay figure' or 'miniature clay scene'.",
+            "Example: claymation style, stop motion clay, a handcrafted clay diorama of an adorable clay cat making pottery in a cozy clay studio. The cat has soft grey sculpted clay fur with visible fingerprints and hand-shaped textures, big friendly eyes, tiny ears, and a little clay apron, sitting at a spinning clay pottery wheel. Its clay paws gently cup a lump of brown clay as the wheel spins, the clay slowly rising and curving upward under its paws into a smooth, elegant clay vase, the shape forming gracefully as it works. The cat then lifts the finished clay vase and holds it up proudly, turning it to show it off with a delighted smile. Around it, the cozy clay studio has wooden clay shelves lined with finished clay pots and bowls in earthy colors, little clay tools on the bench, a warm clay window with soft light, and sculpted clay plants, all with tactile handmade clay surfaces and visible sculpting marks. Warm cinematic lighting, shallow depth of field, stop-motion animation aesthetic with subtle bouncy handmade movement, cozy heartwarming storybook mood, with the soft hum of the pottery wheel, gentle shaping sounds, and calm studio ambience."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "LoRA strength ~1.0. Text-to-video \u2014 no input clip needed."
+        }
+      ],
+      "media": {
+        "demo_video": "claymation_style_demo.mp4"
+      },
+      "trigger_placement": "anywhere",
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      }
+    },
+    {
+      "id": "cozy-felt-style",
+      "name": "Cozy Felt Style",
+      "description": "Handcrafted felt-cutout diorama look \u2014 layered felt, visible stitching, plush textures.",
+      "download": {
+        "repo_id": "vrgamedevgirl84/LTX2.3_Cozy_Felt_Style_LoRa",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "CozyFelt.safetensors",
+            "size_bytes": 352679880
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "vrgamedevgirl84",
+        "url": "https://huggingface.co/vrgamedevgirl84",
+        "affiliation": "community"
+      },
+      "base_model": "LTX-2.3",
+      "tags": [
+        "style"
+      ],
+      "trigger": "F3ltCut0u7",
+      "recommended_strength": 1.0,
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Renders scenes as a cozy felt-cutout cinematic diorama \u2014 subjects and environments look assembled from soft felt pieces, with layered shapes, visible stitching, fuzzy fibers and embroidery detail."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Trigger word F3ltCut0u7 (also try 'felt cutout style', 'handcrafted felt diorama' or 'stitched felt textures').",
+            "Example: F3ltCut0u7 handcrafted felt cutout cinematic diorama style, everything constructed from soft layered felt with visible stitched seams, fuzzy fibers, plush rounded edges, and embroidered details. A cinematic shot of a cool felt red fox performing a lively sequence of skateboard tricks in a sunny felt skatepark at golden hour. The red fox is a normal four-legged fox with soft ginger-orange layered felt fur, a creamy white chest, pointed felt ears, tiny felt sunglasses, and a confident embroidered grin. Its anatomy is clear and correct throughout: exactly two front paws and exactly two back paws, four legs in total, and one single fluffy plush tail, every limb clearly visible in its natural place. The fox cruises in fast on its little felt skateboard, then pops a bouncy ollie, hopping the board up off the ground with its back paws and landing cleanly. It rolls up a curved felt ramp and catches a little air at the top, grabbing the edge of the board with one front paw, its fluffy tail streaming behind, before dropping back down. Then it leans hard into a smooth carving turn, one front paw trailing coolly, and finishes by rolling up to a stop and popping the board up into its front paws with a proud grin. Throughout, its four legs and single tail stay clearly defined and in their natural places. Around it, a colorful felt skatepark with curved felt ramps, stitched concrete, little felt rails, and graffiti-style felt murals, warm golden sunlight casting soft shadows. The camera tracks dynamically alongside the fox, with brief slow-motion on the jumps. Cool, energetic yet cozy handcrafted storybook mood, with the rumble of skateboard wheels, the pop of the board, and cheerful park sounds."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "LoRA strength ~1.0. Text-to-video \u2014 no input clip needed."
+        }
+      ],
+      "media": {
+        "demo_video": "cozy_felt_style_demo.mp4"
+      },
+      "trigger_placement": "anywhere",
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      }
+    },
+    {
+      "id": "fantasy-painterly-style",
+      "name": "Fantasy Painterly Style",
+      "description": "Painterly fantasy cinematic look \u2014 oil-paint brushwork, luminous magical lighting.",
+      "download": {
+        "repo_id": "vrgamedevgirl84/LTX_2.3_Fantasy_Painterly_Style_LoRa",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "Fantasy_Painterly.safetensors",
+            "size_bytes": 352679888
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "vrgamedevgirl84",
+        "url": "https://huggingface.co/vrgamedevgirl84",
+        "affiliation": "community"
+      },
+      "base_model": "LTX-2.3",
+      "tags": [
+        "style"
+      ],
+      "trigger": "D4rkP41nt3r",
+      "recommended_strength": 1.0,
+      "media": {
+        "demo_video": "fantasy_painterly_style_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Renders scenes as fantasy painterly cinematic imagery \u2014 expressive brush strokes, layered oil-paint texture, luminous magical lighting and atmospheric depth."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Main trigger word D4rkP41nt3r (works without it too); 'fantasy realism painting' or 'magical painterly lighting' also nudge the style.",
+            "Example: D4rkP41nt3r cinematic oil painting, epic fantasy painterly scene, high fantasy illustration with visible brushwork, layered oil-paint textures, and luminous magical lighting. A dramatic cinematic close-up on the face and shoulders of a fierce fantasy sorceress, her striking features rendered in rich painterly brushwork with soft blended skin tones and expressive determined eyes glowing faintly with inner fire. Strands of her dark windswept hair drift across her face, painted in layered strokes, and an ornate jeweled headpiece catches warm light. She slowly raises one hand into the lower frame, conjuring a swirling orb of molten fire and glowing embers that casts flickering orange-and-gold light across her face and the painted planes of her cheekbones, warm highlights and deep shadows shifting as the flames dance. Wisps of smoke and floating embers drift past in soft atmospheric haze, the dark background a blurred painterly wash of deep blues and warm firelight. Rich oil-paint textures, visible brush strokes, glowing magical highlights, dramatic cinematic lighting contrast, tonal depth, soft color transitions. Low ambient score, the crackle of magical flame, and a soft breath."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "LoRA strength ~1.0. Text-to-video \u2014 no input clip needed."
+        }
+      ],
+      "trigger_placement": "anywhere",
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      }
+    },
+    {
+      "id": "paper-cutout-style",
+      "name": "Paper Cut-Out Style",
+      "description": "Handcrafted paper-cutout diorama look \u2014 stacked paper layers, clean cut edges, tape seams.",
+      "download": {
+        "repo_id": "vrgamedevgirl84/LTX_2.3_Paper_Cut_Out_Style_LoRa",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "PaperCutOutStyle.safetensors",
+            "size_bytes": 352679880
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "vrgamedevgirl84",
+        "url": "https://huggingface.co/vrgamedevgirl84",
+        "affiliation": "community"
+      },
+      "base_model": "LTX-2.3",
+      "tags": [
+        "style"
+      ],
+      "trigger": "Pap3rCut0u7",
+      "recommended_strength": 1.0,
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Renders scenes as a cozy paper-cut-out cinematic diorama \u2014 subjects look assembled from layered paper with clean cut edges, folds, slight curl and tape seams."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Main trigger word Pap3rCut0u7.",
+            "Example: Pap3rCut0u7 handcrafted paper cut-out cinematic diorama style, everything constructed from layered paper pieces with visible cut edges, stacked paper layers, slight paper curl, folded paper details, and gentle layered shadows. A cute little paper rabbit with layered white-and-grey cut-paper fur, long folded paper ears, and simple round paper eyes sits at a small paper table doing origami. It carefully folds a flat square of paper with its little paper paws, creasing and turning it step by step, until it forms a neat little folded paper airplane. The rabbit holds up the finished paper airplane proudly, then draws its arm back and throws it \u2014 the little paper airplane glides smoothly forward through the air, banking and looping gently across the cozy paper room before soaring off. Around it, a warm paper-craft room with stacked paper books, little folded paper decorations, a paper window with cut-paper sunlight streaming in, and layered paper plants, all with visible cut edges and soft layered shadows. The camera follows the folding, then tracks the airplane's flight. Warm, cheerful, whimsical handcrafted storybook mood, with soft paper folding and creasing sounds, a gentle whoosh of the gliding airplane, and cozy ambience."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "LoRA strength ~1.0. Text-to-video \u2014 no input clip needed."
+        }
+      ],
+      "media": {
+        "demo_video": "paper_cutout_style_demo.mp4"
+      },
+      "trigger_placement": "anywhere",
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      }
+    },
+    {
+      "id": "soft-enhance-style",
+      "name": "Soft Enhance",
+      "description": "Natural detail enhancer \u2014 adds subtle detail and clarity and softens LTX 2.3's harsher contrast for a smoother, more natural finish.",
+      "download": {
+        "repo_id": "vrgamedevgirl84/LTX_2.3_Soft_Enhance_Style_LoRa",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "LTX2.3_Soft_Enhance.safetensors",
+            "size_bytes": 352679864
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "vrgamedevgirl84",
+        "url": "https://huggingface.co/vrgamedevgirl84",
+        "affiliation": "community"
+      },
+      "base_model": "LTX-2.3",
+      "tags": [
+        "enhance"
+      ],
+      "recommended_strength": 1.0,
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "A natural detail enhancer: adds subtle detail, improves clarity, and softens LTX 2.3's stronger contrast for a smoother, more organic finish \u2014 detail stays present without looking over-sharpened."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "No trigger word \u2014 just apply it to any text-to-video prompt.",
+            "Example: A cinematic beauty close-up portrait of a pretty young woman with clear radiant skin, delicate features, expressive bright eyes, and soft colorful makeup with a touch of shimmer. She stands against a vibrant backdrop glowing with bright saturated colors \u2014 soft blends of pink, teal, orange, and purple light washing across the scene. Colorful soft lighting falls flatteringly across her face, warm and cool tones mingling on her skin with a subtle catchlight in her eyes, and a few strands of hair drift softly in a light breeze. Behind her, blurred colorful bokeh lights sparkle in vivid hues. She gives a gentle warm smile and a slow blink, breathing softly, tiny natural movements in her expression. Rich vibrant color, smooth gradual tonal transitions, refined natural skin texture, glowing colorful highlights, photorealistic, cinematic, soft flattering lighting, fine natural detail, gentle shallow depth of field, clean refined natural finish. Upbeat ambient tone."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "LoRA strength ~1.0; lower it for a lighter touch. The softer counterpart to Crisp Enhance \u2014 combine and balance the two for a custom look. Text-to-video \u2014 no input clip needed."
+        }
+      ],
+      "media": {
+        "demo_video": "soft_enhance_style_demo.mp4"
+      },
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      }
+    },
+    {
+      "id": "wild-west-style",
+      "name": "Wild West Style",
+      "description": "Grounded, cinematic Wild West frontier look \u2014 weathered cowboys, dusty towns, sunbaked landscapes.",
+      "download": {
+        "repo_id": "vrgamedevgirl84/LTX_2.3_Wild_West_Style_LoRa",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "Wild_West.safetensors",
+            "size_bytes": 705198384
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "vrgamedevgirl84",
+        "url": "https://huggingface.co/vrgamedevgirl84",
+        "affiliation": "community"
+      },
+      "base_model": "LTX-2.3",
+      "tags": [
+        "style"
+      ],
+      "trigger": "W1ldW4st",
+      "recommended_strength": 1.0,
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Gives footage a realistic Wild West frontier style: period-authentic western clothing, worn leather, saloons, desert plains and a dusty, sunbaked cinematic atmosphere."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Main trigger word W1ldW4st (works without it too).",
+            "Example: W1ldW4st cinematic realistic Wild West video, grounded frontier western footage. A weathered cowboy gallops hard down the main street of a sunbaked frontier town on a powerful chestnut horse, leaning low over its neck as it thunders forward at full speed, hooves kicking up a churning cloud of dust behind them. His duster and hat strap whip violently in the wind, his face set with urgent determination, reins gripped tight. Townsfolk scatter and turn to look from wooden porches as he races past weathered saloons and storefronts, chickens flapping out of the way, a swirl of dust and debris trailing in his wake. Harsh sunlight, dust billowing through the air, dusty realistic textures, sunbaked atmospheric depth, authentic western town environment. The camera tracks dynamically alongside the galloping rider. Grounded frontier storytelling tone, cinematic frontier atmosphere, urgent high-energy chase mood, photorealistic. A driving tense score, thundering hooves, whipping wind, and shouts."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "Strength 1.0 in the samples; 0.5\u20131.0 is usable."
+        }
+      ],
+      "media": {
+        "demo_video": "wild_west_style_demo.mp4"
+      },
+      "trigger_placement": "anywhere",
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      }
+    },
+    {
+      "id": "product-ad-style",
+      "name": "Product Ad Style",
+      "description": "Cinematic product-commercial look \u2014 luxury brand visuals, perfume/cosmetics ads, tech and fashion product shots with premium studio lighting.",
+      "download": {
+        "repo_id": "SOLRICKS/ltx-2.3-product-ad-style",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "LTX23_Product_Commercial_LoRA.safetensors",
+            "size_bytes": 337360792
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "SOLRICKS",
+        "url": "https://huggingface.co/SOLRICKS",
+        "affiliation": "community"
+      },
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      },
+      "base_model": "LTX-2.3",
+      "created_at": "2026-07-06",
+      "tags": [
+        "style"
+      ],
+      "input": {
+        "kind": "image",
+        "optional": true
+      },
+      "trigger": "srx_commercial",
+      "recommended_strength": 0.85,
+      "media": {
+        "demo_video": "product_ad_style_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Applies a cinematic product-ad look \u2014 advertising-style lighting, glossy reflections, premium framing \u2014 for perfume, cosmetics, tech, fashion, and studio product shots."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Include the trigger word srx_commercial.",
+            "Example: srx_commercial, a high-end cinematic product commercial with a polished premium advertising aesthetic. The elegant AVENSOR steel watch stands center-frame in a flawless studio commercial setting as the camera slowly and smoothly orbits around it. Immaculate glossy reflections glide across the polished stainless-steel case and bracelet, the brushed metal links gleaming with controlled studio highlights, crisp specular glints tracing the faceted hour markers and the crown as a soft light sweeps across the watch. Smooth reflections shift elegantly across the dark sunburst dial and sapphire glass, everything rendered with clean, refined, premium commercial polish. Soft professional studio lighting with a warm moody gradient backdrop, gentle falloff, and a mirror-clean reflection resting on the glossy surface below. Premium high-end advertising aesthetic, cinematic commercial lighting, immaculate glossy reflections, crisp product detail, shallow depth of field, slow graceful camera movement, sleek luxurious sophisticated mood, photorealistic. Refined ambient commercial music and a polished atmospheric tone."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": [
+            "Recommended strength ~0.85.",
+            "Image-to-video works best when you provide a product image (preserves shape, logo, design).",
+            "Text-to-video is usable but product details and labels may be less consistent."
+          ]
+        }
+      ],
+      "trigger_placement": "anywhere"
+    },
+    {
+      "id": "cinemagraph-motion",
+      "name": "Cinemagraph Motion",
+      "description": "Selective-motion cinemagraph look \u2014 the whole scene stays frozen except one detail, which loops its motion seamlessly.",
+      "download": {
+        "repo_id": "Lightricks/LTX-2.3-22b-LoRA-Cinemagraph",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "ltx-2.3-22b-lora-cinemagraph-0.9.safetensors",
+            "size_bytes": 201453416
+          }
+        ]
+      },
+      "requires_hf_login": true,
+      "author": {
+        "name": "LTX",
+        "url": "https://huggingface.co/Lightricks",
+        "affiliation": "ltx"
+      },
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      },
+      "base_model": "LTX-2.3",
+      "created_at": "2026-07-06",
+      "tags": [
+        "motion"
+      ],
+      "input": {
+        "kind": "image"
+      },
+      "trigger": "CINEMAGRAPH_MOTION",
+      "trigger_placement": "first_token",
+      "recommended_strength": 2.0,
+      "media": {
+        "demo_video": "cinemagraph_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Turns a still image into a cinemagraph-style video: the camera is locked off and the entire scene stays completely frozen except for one selected detail, which loops its motion seamlessly (e.g. only a reflection, only drifting clouds, only falling tears)."
+        },
+        {
+          "kind": "input",
+          "title": "Input",
+          "body": "A single reference image to animate \u2014 runs through the normal image-to-video flow, no special preprocessing."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Trigger word CINEMAGRAPH_MOTION as the first token, then state the camera is locked-off/static, name everything that stays completely frozen, then name the one specific detail that moves and how, ending with 'seamless natural loop'.",
+            "Example: CINEMAGRAPH_MOTION, tripod locked-off static camera, zero camera movement, the parrot head remains completely frozen, beak locked in place, feathers locked in place, neck locked in place, body locked in place, sunglasses frame locked in place, palm trees, beach, ocean, sky, and background remain completely frozen, only the volcano eruption reflected inside the sunglasses lenses moves, in each lens the reflected volcano erupts dramatically — a powerful fountain of bright molten lava bursts and sprays high into the air from the crater, thick dark ash and billowing smoke plume upward and roll outward across the reflected sky, glowing rivers of orange lava stream and cascade down the volcano's slopes, showers of bright embers and sparks fly up and rain down, the eruption growing more intense and active, all animating continuously and vividly inside both lenses, the lens frames and parrot do not move at all, everything outside the moving reflection stays perfectly still, seamless natural loop."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": [
+            "Works best on short clips \u2014 5\u20136 seconds.",
+            "LoRA strength ~1.0.",
+            "Out of scope: camera movement, character/body movement, complex dynamic scenes, or multiple moving subjects \u2014 it's trained on static, locked-off camera footage only. Describe everything except the one animated detail as frozen.",
+            "If using a negative prompt, exclude terms like camera movement, pan, tilt, zoom, parallax, whole image moving, background sliding, person moving."
+          ]
+        }
+      ],
+      "enhancement_examples": [
+        "CINEMAGRAPH_MOTION, tripod locked-off static camera, zero camera movement, the man, face, hair, clothing, beach, sky, and background remain completely frozen, only the beach reflection inside his sunglasses moves, reflected time-lapse of ocean waves roll and shimmer in the lenses, everything outside the glasses stays still, seamless natural loop.",
+        "CINEMAGRAPH_MOTION, tripod locked-off static camera, zero camera movement, the man and cow remain completely frozen, only the clouds in the sky move in fast time-lapse, clouds drift and roll across the sky, grass and foreground remain still, seamless natural loop.",
+        "CINEMAGRAPH_MOTION, tripod locked-off static camera, zero camera movement, the woman is frozen, her face, eyes, hair, clothing, seat, and airplane interior remain completely frozen, only the illustrated tear drops move downward along her cheeks like a cutout collage animation, seamless natural loop."
+      ]
+    }
+  ],
+  "ic_loras": [
+    {
+      "id": "clean-plate",
+      "name": "Clean Plate",
+      "description": "Remove people and vehicles from a video and reconstruct the static background.",
+      "tags": [
+        "restore"
+      ],
+      "download": {
+        "repo_id": "Lightricks/LTX-2.3-22b-IC-LoRA-Clean-Plate",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "ltx-2.3-22b-ic-lora-clean-plate-1.0.safetensors",
+            "size_bytes": 327309305
+          }
+        ]
+      },
+      "requires_hf_login": true,
+      "author": {
+        "name": "LTX",
+        "url": "https://huggingface.co/Lightricks",
+        "affiliation": "ltx"
+      },
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      },
+      "input": {
+        "kind": "video"
+      },
+      "preprocessing": [],
+      "media": {
+        "demo_video": "clean_plate_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Removes people, pedestrians and vehicles from a video, reconstructing the static background behind them for VFX/compositing clean plates. Best when subjects are partial or edge occluders with visible background — large first-person body parts filling the frame are out of scope."
+        },
+        {
+          "kind": "input",
+          "title": "Input",
+          "body": "A video with the subjects to remove. Trained at 1024×576/576×1024, 49 frames @ 25fps (min 8k+1 frames); validated up to 1920×1088."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "No trigger word — describe the desired empty scene, not a removal command. Name the specific people/objects to exclude.",
+            "Example: An empty clean plate of the exact same location: identical background, environment, structures and lighting as the source video, with no people, no humans, no figures, and no body parts such as heads, arms, hands or legs anywhere in the frame. No cast shadows or reflections of people. Static photorealistic footage, natural daylight, high detail."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "LoRA strength 1.0. Name specific objects to remove in both positive and negative prompts for best results."
+        }
+      ],
+      "default_settings": {
+        "skip_stage_2": true,
+        "resolution_factor": 1.5,
+        "audio_mode": "source"
+      }
+    },
+    {
+      "id": "3d-render-to-real",
+      "name": "3D Render to Photoreal",
+      "description": "Turn a rough 3D viewport render (Blender blockout, game-engine viewport) into a photorealistic, cinematic video.",
+      "tags": [
+        "transform"
+      ],
+      "trigger": "3DREAL",
+      "download": {
+        "repo_id": "fal/LTX-2.3-3DREAL-LoRA",
+        "variants": [
+          {
+            "id": "strong-v2",
+            "label": "Strong (v2)",
+            "filename": "3DREAL-strong-v2.safetensors",
+            "size_bytes": 327287352
+          },
+          {
+            "id": "light",
+            "label": "Light",
+            "filename": "3DREAL-light.safetensors",
+            "size_bytes": 163708856
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "lovis93",
+        "url": "https://huggingface.co/lovis93",
+        "affiliation": "community"
+      },
+      "license": {
+        "name": "Other",
+        "url": "https://huggingface.co/fal/LTX-2.3-3DREAL-LoRA"
+      },
+      "input": {
+        "kind": "video"
+      },
+      "allows_reference_image": true,
+      "preprocessing": [],
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Turns a rough grey 3D viewport render \u2014 Blender blockout, game-engine viewport or other CG/synthetic render \u2014 into a photorealistic, film-quality video, keeping the exact composition, camera move and layout of the input."
+        },
+        {
+          "kind": "input",
+          "title": "Input",
+          "body": "A 3D / CG render video (low-poly blockout, game viewport). An optional photoreal reference image can seed the first frame."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Trigger word 3DREAL, then describe the photoreal result.",
+            "Example: 3DREAL a photorealistic cinematic harbor at dawn, fishing boats moored, soft volumetric light."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "Composition and camera are locked to the input render; the prompt drives realism, materials and lighting. Download Strong (v2) or Light from the library card \u2014 Light is a subtler push."
+        }
+      ],
+      "default_settings": {
+        "skip_stage_2": true,
+        "resolution_factor": 1.5,
+        "audio_mode": "source"
+      },
+      "media": {
+        "demo_video": "3dreal_demo.mp4"
+      },
+      "trigger_placement": "first_token"
+    },
+    {
+      "id": "day-to-night",
+      "name": "Day to Night",
+      "description": "Relight a daytime shot to look like it was filmed at night.",
+      "tags": [
+        "relight"
+      ],
+      "download": {
+        "repo_id": "Lightricks/LTX-2.3-22b-IC-LoRA-Day-To-Night",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "ltx-2.3-22b-ic-lora-day-to-night-0.9.safetensors",
+            "size_bytes": 327309305
+          }
+        ]
+      },
+      "requires_hf_login": true,
+      "author": {
+        "name": "LTX",
+        "url": "https://huggingface.co/Lightricks",
+        "affiliation": "ltx"
+      },
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      },
+      "input": {
+        "kind": "video"
+      },
+      "preprocessing": [],
+      "media": {
+        "demo_video": "day_to_night_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Re-renders a daytime clip as the same shot at night. Composition, framing, camera move and subject motion are held frame-for-frame; your prompt only drives the new lighting, brightness and colour temperature."
+        },
+        {
+          "kind": "input",
+          "title": "Input",
+          "body": "A daytime video. Best near the training bucket: ~768\u00d7448 (or 448\u00d7768) at 97 frames (~4s), 24fps."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "No trigger word \u2014 describe the night scene and its light sources.",
+            "Example: A realistic nighttime scene. A cafe interior looking out at a dark city street, warm overhead lights casting amber reflections on the furniture."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": [
+            "LoRA strength 1.0.",
+            "Longer clips are possible but the relight can drift over the shot.",
+            "Indoor scenes or heavily artificial-light sources are outside the primary training distribution \u2014 outdoor daylight-to-night conversions are the strongest case."
+          ]
+        }
+      ],
+      "default_settings": {
+        "skip_stage_2": true,
+        "resolution_factor": 1.5,
+        "audio_mode": "source"
+      }
+    },
+    {
+      "id": "colorization",
+      "name": "Colorization",
+      "description": "Add realistic color to a grayscale video.",
+      "tags": [
+        "restore"
+      ],
+      "trigger": "COLORIZE",
+      "download": {
+        "repo_id": "Lightricks/LTX-2.3-22b-IC-LoRA-Colorization",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "ltx-2.3-22b-ic-lora-colorization-0.9.safetensors",
+            "size_bytes": 906071437
+          }
+        ]
+      },
+      "requires_hf_login": true,
+      "author": {
+        "name": "LTX",
+        "url": "https://huggingface.co/Lightricks",
+        "affiliation": "ltx"
+      },
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      },
+      "input": {
+        "kind": "video"
+      },
+      "preprocessing": [],
+      "media": {
+        "demo_video": "colorization_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Restores natural colour to grayscale, monochrome or desaturated video, keeping the subject, framing and geometry identical."
+        },
+        {
+          "kind": "input",
+          "title": "Input",
+          "body": "A grayscale / B&W video. Training bucket is ~960\u00d7544 at 121 frames, 24fps."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Trigger word COLORIZE, in a two-part shape \u2014 first describe the grayscale reference, then the colours you want: 'Reference shows {grayscale scene}. Edited shows the same scene with natural colors restored. COLORIZE {vivid colour description}.'",
+            "Example: Reference shows a wild rabbit on textured boulders in high-contrast monochrome. Edited shows the same scene with natural colors restored. COLORIZE a brown cottontail with warm tan and grey-brown fur on grey stone."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": [
+            "Keep the identity and framing wording identical between the two halves \u2014 change only the colour words.",
+            "LoRA strength ~1.0; don't render far above the training bucket or colour weakens.",
+            "Not a fix for blur, compression artifacts, noise or low resolution \u2014 pair with Deblur/Decompression/Upscale first if the source needs that too."
+          ]
+        }
+      ],
+      "default_settings": {
+        "skip_stage_2": true,
+        "resolution_factor": 1.5,
+        "audio_mode": "source"
+      },
+      "prompt_template": {
+        "template": "Reference shows {reference}. Edited shows the same scene with natural colors restored. COLORIZE {result}.",
+        "placeholders": {
+          "reference": {},
+          "result": {}
+        }
+      }
+    },
+    {
+      "id": "decompression",
+      "name": "Decompression",
+      "description": "Remove compression artifacts and restore a degraded video.",
+      "tags": [
+        "restore"
+      ],
+      "trigger": "ENHANCE QUALITY",
+      "download": {
+        "repo_id": "Lightricks/LTX-2.3-22b-IC-LoRA-Decompression",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "ltx-2.3-22b-ic-lora-decompression-0.9.safetensors",
+            "size_bytes": 906071437
+          }
+        ]
+      },
+      "requires_hf_login": true,
+      "author": {
+        "name": "LTX",
+        "url": "https://huggingface.co/Lightricks",
+        "affiliation": "ltx"
+      },
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      },
+      "input": {
+        "kind": "video"
+      },
+      "preprocessing": [],
+      "media": {
+        "demo_video": "decompression_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Strips compression artifacts \u2014 macroblocking, chroma bleed, ringing, banding \u2014 from low-bitrate video. It is not a denoiser or upscaler."
+        },
+        {
+          "kind": "input",
+          "title": "Input",
+          "body": "A heavily compressed / low-bitrate video. Trained at 960\u00d7544 \u00d7 121 frames, 24fps."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Trigger phrase ENHANCE QUALITY, in the two-part shape: 'Reference shows {scene}, heavily compressed with visible macroblocking, chroma bleed and ringing. Edited shows the same scene restored to high quality with sharp detail and clean edges. ENHANCE QUALITY {scene}.'",
+            "Example: Reference shows a rabbit between mossy boulders, heavily compressed with macroblocking and ringing. Edited shows the same scene restored, sharp and clean. ENHANCE QUALITY a reddish-brown rabbit between mossy grey boulders in soft daylight."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": [
+            "Use stage-1-only and render near the training resolution so the result stays aligned to the reference.",
+            "LoRA strength 1.0.",
+            "Not a general restoration model — it targets compression artifacts specifically, not defocus/motion blur, noise/grain, colorization or upscaling."
+          ]
+        }
+      ],
+      "default_settings": {
+        "skip_stage_2": true,
+        "resolution_factor": 1.5,
+        "audio_mode": "source"
+      },
+      "prompt_template": {
+        "template": "Reference shows {reference}, heavily compressed with visible macroblocking, chroma bleed and ringing. Edited shows the same scene restored to high quality with sharp detail and clean edges. ENHANCE QUALITY {result}.",
+        "placeholders": {
+          "reference": {},
+          "result": {}
+        }
+      }
+    },
+    {
+      "id": "deblur",
+      "name": "Deblur",
+      "description": "Sharpen and remove blur from a video.",
+      "tags": [
+        "restore"
+      ],
+      "trigger": "DEBLUR",
+      "download": {
+        "repo_id": "Lightricks/LTX-2.3-22b-IC-LoRA-Deblur",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "ltx-2.3-22b-ic-lora-deblur-0.9.safetensors",
+            "size_bytes": 906071437
+          }
+        ]
+      },
+      "requires_hf_login": true,
+      "author": {
+        "name": "LTX",
+        "url": "https://huggingface.co/Lightricks",
+        "affiliation": "ltx"
+      },
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      },
+      "input": {
+        "kind": "video"
+      },
+      "preprocessing": [],
+      "media": {
+        "demo_video": "deblur_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Regenerates out-of-focus footage in sharp focus, preserving subject, framing and geometry. Handles genuine defocus only \u2014 not motion blur, compression repair, denoise or upscale."
+        },
+        {
+          "kind": "input",
+          "title": "Input",
+          "body": "A defocused video, used directly as the reference. Trained at 960\u00d7544 \u00d7 121 frames, 24fps; renders well up to 1920\u00d71088."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Trigger word DEBLUR, in the two-part shape: 'Reference shows {scene}, heavily out of focus with soft defocused blur. Edited shows the same scene in sharp focus with crisp detail. DEBLUR {scene}.'",
+            "Example: Reference shows a butterfly on a pink flower, heavily out of focus. Edited shows the same scene in sharp focus. DEBLUR a vibrant butterfly resting on a bright pink flower."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": [
+            "LoRA strength 1.0; lower toward 0.8 if it over-sharpens.",
+            "Handles genuine defocus only — not motion blur, compression artifacts, denoising or super-resolution.",
+            "Extremely blurred content where detail is truly gone will be hallucinated rather than faithfully reconstructed — don't expect it to recover detail that isn't there."
+          ]
+        }
+      ],
+      "default_settings": {
+        "skip_stage_2": true,
+        "resolution_factor": 1.5,
+        "audio_mode": "source"
+      },
+      "prompt_template": {
+        "template": "Reference shows {reference}, heavily out of focus with soft defocused blur. Edited shows the same scene in sharp focus with crisp detail. DEBLUR {result}.",
+        "placeholders": {
+          "reference": {},
+          "result": {}
+        }
+      }
+    },
+    {
+      "id": "cross-eyed",
+      "name": "Cross-Eyed",
+      "description": "Turn a close-up portrait's eyes permanently crossed (inward), keeping expression and framing.",
+      "tags": [
+        "transform"
+      ],
+      "download": {
+        "repo_id": "Lightricks/LTX-2.3-22b-IC-LoRA-Cross-Eyed",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "ltx-2.3-22b-ic-lora-cross-eyed-0.9.safetensors",
+            "size_bytes": 327309305
+          }
+        ]
+      },
+      "requires_hf_login": true,
+      "author": {
+        "name": "LTX",
+        "url": "https://huggingface.co/Lightricks",
+        "affiliation": "ltx"
+      },
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      },
+      "input": {
+        "kind": "video"
+      },
+      "preprocessing": [],
+      "media": {
+        "demo_video": "cross_eyed_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Turns a close-up portrait's straight eyes into permanent convergent strabismus (inward-turned / crossed eyes), while keeping facial expression, head movement, lighting and camera framing."
+        },
+        {
+          "kind": "input",
+          "title": "Input",
+          "body": "A close-up portrait video with straight eyes. Frame count must satisfy frames % 8 == 1 (e.g. 49); buckets 960\u00d7544\u00d749 or 544\u00d7960\u00d749."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "No trigger word \u2014 describe the crossed-eye result directly.",
+            "Example: A close-up portrait video of a man with permanent severe convergent strabismus. Both eyes are continuously turned inward toward the nose throughout the shot. The subject maintains natural facial expression, head movement, lighting, and camera framing."
+          ]
+        }
+      ],
+      "default_settings": {
+        "skip_stage_2": true,
+        "resolution_factor": 1.5,
+        "audio_mode": "source"
+      }
+    },
+    {
+      "id": "water-simulation",
+      "name": "Water Simulation",
+      "description": "Add simulated water / fluid VFX to a scene.",
+      "tags": [
+        "effect"
+      ],
+      "trigger": "ADD WATER",
+      "download": {
+        "repo_id": "Lightricks/LTX-2.3-22b-IC-LoRA-Water-Simulation",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "ltx-2.3-22b-ic-lora-water-simulation-0.9.safetensors",
+            "size_bytes": 906071437
+          }
+        ]
+      },
+      "requires_hf_login": true,
+      "author": {
+        "name": "LTX",
+        "url": "https://huggingface.co/Lightricks",
+        "affiliation": "ltx"
+      },
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      },
+      "input": {
+        "kind": "video"
+      },
+      "preprocessing": [],
+      "media": {
+        "demo_video": "water_simulation_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Adds water and fluid VFX \u2014 rivers, surf, rain, waterfalls, floods, splashes, spray, wet-surface speculars \u2014 onto a dry clip, keeping subject, clothing, pose, framing and background fixed."
+        },
+        {
+          "kind": "input",
+          "title": "Input",
+          "body": "A dry 'before' video at 24fps, 1920\u00d71088 (or 1088\u00d71920). Up to ~185 frames (~7.7s)."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Trigger phrase ADD WATER (required), in the two-part shape: 'Reference shows {dry scene}. Edited shows the same scene with water added. ADD WATER {water description}.'",
+            "Example: Reference shows a brown rabbit on mossy rocks. Edited shows the same scene with water added. ADD WATER a fast-flowing river with white foam rushing over and around the rocks behind the rabbit."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": [
+            "Be concrete about water type and motion.",
+            "LoRA strength ~1.2; use stage-1-only at native resolution to hold identity."
+          ]
+        }
+      ],
+      "default_settings": {
+        "skip_stage_2": true,
+        "resolution_factor": 1.5,
+        "audio_mode": "source"
+      },
+      "prompt_template": {
+        "template": "Reference shows {reference}. Edited shows the same scene with water added. ADD WATER {result}.",
+        "placeholders": {
+          "reference": {},
+          "result": {}
+        }
+      }
+    },
+    {
+      "id": "ingredients",
+      "name": "Ingredients",
+      "description": "Keep a subject consistent across a video from a reference sheet.",
+      "tags": [
+        "compose"
+      ],
+      "download": {
+        "repo_id": "Lightricks/LTX-2.3-22b-IC-LoRA-Ingredients",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors",
+            "size_bytes": 1308778338
+          }
+        ]
+      },
+      "requires_hf_login": true,
+      "author": {
+        "name": "LTX",
+        "url": "https://huggingface.co/Lightricks",
+        "affiliation": "ltx"
+      },
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      },
+      "input": {
+        "kind": "image"
+      },
+      "preprocessing": [
+        {
+          "utility": "image_to_frames",
+          "params": {
+            "fps": 24
+          }
+        }
+      ],
+      "media": {
+        "demo_video": "ingredients_demo.mp4"
+      },
+      "controls": [
+        {
+          "id": "duration",
+          "label": "Duration",
+          "default": 5,
+          "options": [
+            5,
+            6,
+            8,
+            10,
+            20
+          ],
+          "unit": "s"
+        }
+      ],
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Drives a video from a reference sheet \u2014 a single composite image of characters, props and locations \u2014 so those elements stay visually consistent across the shot."
+        },
+        {
+          "kind": "input",
+          "title": "Input",
+          "body": "A reference sheet image laying out each element in its own panel. Training bucket 768\u00d7448, 121 frames, 24fps."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Two labelled parts, no caps trigger \u2014 first describe each panel of the sheet, then describe the action: 'Reference sheet: {panels \u2014 characters, props, settings}. Generated video: {the action}.'",
+            "Example: Reference sheet: a 3D owl mascot shown from several angles; a bright grocery aisle. Generated video: a high-quality 3D animated commercial outside a modern 'FreshMart' store."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": [
+            "Give characters clean close-ups / turnarounds and larger panels \u2014 bigger, clearer panels carry over more faithfully and prevent identity drift.",
+            "LoRA strength ~1.4.",
+            "The generated video won't invent identities that aren't on the reference sheet \u2014 every character, prop or location it needs to render must have its own panel.",
+            "Suggested negative prompt: worst quality, inconsistent motion, blurry, jittery, distorted."
+          ]
+        }
+      ],
+      "default_settings": {
+        "skip_stage_2": true,
+        "resolution_factor": 1.5,
+        "audio_mode": "generated"
+      },
+      "prompt_template": {
+        "template": "Reference sheet: {panels}. Generated video: {action}.",
+        "placeholders": {
+          "panels": {},
+          "action": {}
+        }
+      }
+    },
+    {
+      "id": "instant-shave",
+      "name": "Instant Shave",
+      "description": "Remove a beard / facial hair from a person in a video.",
+      "tags": [
+        "transform"
+      ],
+      "trigger": "REMOVEBEARD",
+      "download": {
+        "repo_id": "Lightricks/LTX-2.3-22b-IC-LoRA-Instant-Shave",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "ltx-2.3-22b-ic-lora-instant-shave-0.9.safetensors",
+            "size_bytes": 654465349
+          }
+        ]
+      },
+      "requires_hf_login": true,
+      "author": {
+        "name": "LTX",
+        "url": "https://huggingface.co/Lightricks",
+        "affiliation": "ltx"
+      },
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      },
+      "input": {
+        "kind": "video"
+      },
+      "preprocessing": [],
+      "media": {
+        "demo_video": "instant_shave_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Removes facial hair \u2014 beard, moustache, stubble \u2014 from a person in the video, while keeping identity, expression, motion, lighting and composition."
+        },
+        {
+          "kind": "input",
+          "title": "Input",
+          "body": "A reference video of the bearded subject. 960\u00d7544 (or 544\u00d7960) at 25fps, 33\u2013121 frames; match the clip's fps to 25."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Trigger word REMOVEBEARD, prepended, then describe the clean-shaven result.",
+            "Example: REMOVEBEARD completely smooth and clean-shaven, bare skin, no beard, no stubble, no facial hair."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": [
+            "LoRA strength 1.0; keep the training resolution to hold identity across the clip.",
+            "Identity can drift and residual stubble/shadow may persist on longer clips — shorter clips near the training length are more reliable.",
+            "Suggested negative prompt: beard, mustache, facial hair, stubble, worst quality, inconsistent motion, blurry, jittery, distorted."
+          ]
+        }
+      ],
+      "default_settings": {
+        "skip_stage_2": true,
+        "resolution_factor": 1.5,
+        "audio_mode": "source"
+      },
+      "trigger_placement": "first_token"
+    },
+    {
+      "id": "outpainting",
+      "name": "Outpainting",
+      "description": "Extend a video beyond its frame \u2014 widen it, change the aspect ratio, or fill new canvas around the shot.",
+      "tags": [
+        "compose"
+      ],
+      "download": {
+        "repo_id": "Lightricks/LTX-2.3-22b-IC-LoRA-In-Outpainting",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+            "size_bytes": 1308778338
+          }
+        ]
+      },
+      "requires_hf_login": true,
+      "allows_empty_prompt": true,
+      "author": {
+        "name": "LTX",
+        "url": "https://huggingface.co/Lightricks",
+        "affiliation": "ltx"
+      },
+      "license": {
+        "name": "LTX-2 Community License",
+        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
+      },
+      "input": {
+        "kind": "video"
+      },
+      "preprocessing": [
+        {
+          "utility": "outpaint_canvas",
+          "params": {}
+        }
+      ],
+      "media": {
+        "demo_video": "outpainting_demo.mp4"
+      },
+      "controls": [
+        {
+          "id": "outpaint_pads",
+          "kind": "position_canvas",
+          "label": "Canvas"
+        }
+      ],
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Extends a clip past its original frame. The source video sits on a larger canvas and the model paints the new surrounding region, matching the existing scene by default or following your prompt."
+        },
+        {
+          "kind": "input",
+          "title": "Input",
+          "body": "Any video. Drag the canvas edges to add space on any side (or drop in a corner to do two at once), and reposition the video within the canvas. Aspect-ratio presets (16:9 / 1:1 / 9:16 / 21:9) snap the canvas to that shape."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "No trigger word. Leave the prompt empty to just extend the scene, or write a plain description of what should appear in the new area.",
+            "Example: a sandy beach with crashing waves along the bottom of the frame."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "Outpaint only (inpainting isn't supported here). LoRA strength 1.0. Keep additions modest \u2014 very large extensions are harder for the model to fill convincingly."
+        }
+      ],
+      "default_settings": {
+        "skip_stage_2": true,
+        "resolution_factor": 1.0,
+        "audio_mode": "source"
+      }
+    },
+    {
+      "id": "greenscreen-avatar",
+      "name": "Greenscreen Avatar",
+      "description": "Turn a vertical talking-head clip into the same person on a flat green chroma-key background, ready to composite.",
+      "tags": [
+        "effect"
+      ],
+      "download": {
+        "repo_id": "OmerHagage/ltx2-greenscreen-avatar-ic-lora-vertical-v1",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "lora_weights_step_05000.safetensors",
+            "size_bytes": 1308756416
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "Omer Hagage",
+        "url": "https://huggingface.co/OmerHagage",
+        "affiliation": "community"
+      },
+      "license": {
+        "name": "MIT",
+        "url": "https://huggingface.co/OmerHagage/ltx2-greenscreen-avatar-ic-lora-vertical-v1"
+      },
+      "base_model": "LTX-2.3",
+      "created_at": "2026-05-13",
+      "input": {
+        "kind": "video"
+      },
+      "preprocessing": [],
+      "media": {
+        "demo_video": "greenscreen_avatar_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Transforms a vertical talking-head clip into the same person on a flat green chroma-key background \u2014 keyed and ready to composite onto any background. Sized for portrait/mobile formats (Reels, Shorts, TikTok)."
+        },
+        {
+          "kind": "input",
+          "title": "Input",
+          "body": "A vertical (portrait) talking-head video \u2014 a person facing the camera."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Describe the greenscreen talking head. Example: 'A person talking directly to the camera against a flat green chroma-key background. Natural lip sync, occasional blinks, subtle head movements. Soft natural lighting, photorealistic, sharp focus, stable framing.'"
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "Vertical (portrait) clips. Stage-1-only at native resolution holds identity; raise the resolution factor if you have VRAM headroom."
+        }
+      ],
+      "default_settings": {
+        "skip_stage_2": true,
+        "resolution_factor": 1.0,
+        "audio_mode": "source"
+      }
+    },
+    {
+      "id": "upscale",
+      "name": "Upscale (Refine)",
+      "description": "Generative second-pass refinement \u2014 turn a soft / low-res clip into a cleaner, more detailed one.",
+      "tags": [
+        "restore"
+      ],
+      "trigger": "upscale",
+      "download": {
+        "repo_id": "Zlikwid/LTX_2.3_Upscale_IC_Lora",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "ltx2.3_upscale_ic-lora_06250.safetensors",
+            "size_bytes": 327287384
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "Zlikwid",
+        "url": "https://huggingface.co/Zlikwid",
+        "affiliation": "community"
+      },
+      "license": {
+        "name": "Other",
+        "url": "https://huggingface.co/Zlikwid/LTX_2.3_Upscale_IC_Lora"
+      },
+      "input": {
+        "kind": "video"
+      },
+      "preprocessing": [],
+      "media": {
+        "demo_video": "upscale_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "A generative refinement pass, not a plain upscaler \u2014 runs a soft or low-res clip back through LTX 2.3 to recover cleaner detail. Output can shift with settings, so it's meant as a second stage (e.g. after a stage-1-only run)."
+        },
+        {
+          "kind": "input",
+          "title": "Input",
+          "body": "Bicubic-upscale your source to the target resolution first, then feed that as the reference video. Example: 640\u00d7360 \u2192 bicubic to 1280\u00d7720 \u2192 upscale pass."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Trigger word: upscale (that's the whole prompt this LoRA expects)."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "Results depend on source quality, resolution, frame count and strength. Checkpoint is the 6250-step weights."
+        }
+      ],
+      "default_settings": {
+        "skip_stage_2": true,
+        "resolution_factor": 1.5,
+        "audio_mode": "source"
+      },
+      "prompt_template": {
+        "template": "upscale",
+        "placeholders": {}
+      }
+    },
+    {
+      "id": "crossview-prompt",
+      "name": "CrossView Prompt",
+      "description": "Re-render a reference clip from a new camera angle \u2014 same scene and subject, different viewpoint. Uses a fixed camera-angle prompt vocabulary.",
+      "tags": [
+        "camera"
+      ],
+      "trigger": "crossview.",
+      "download": {
+        "repo_id": "Cseti/LTX2.3-22B_IC-LoRA-CrossView-Prompt",
+        "variants": [
+          {
+            "id": "default",
+            "label": "Default",
+            "filename": "LTX2.3-22B_IC-LoRA-CrossView-Prompt_v0.9_13700.safetensors",
+            "size_bytes": 100767456
+          }
+        ]
+      },
+      "requires_hf_login": false,
+      "author": {
+        "name": "Cseti",
+        "url": "https://huggingface.co/Cseti",
+        "affiliation": "community"
+      },
+      "license": {
+        "name": "Apache-2.0",
+        "url": "https://huggingface.co/Cseti/LTX2.3-22B_IC-LoRA-CrossView-Prompt"
+      },
+      "base_model": "LTX-2.3",
+      "created_at": "2026-07-11",
+      "input": {
+        "kind": "video"
+      },
+      "preprocessing": [],
+      "media": {
+        "demo_video": "crossview_demo.mp4"
+      },
+      "instructions": [
+        {
+          "kind": "summary",
+          "title": "What it does",
+          "body": "Acts as a virtual second camera: take a reference video and a short camera-angle prompt, and re-render the same scene from the requested viewpoint while keeping subject and content."
+        },
+        {
+          "kind": "input",
+          "title": "Input",
+          "body": "A reference video of the scene you want to re-shoot from a new angle. No starting image needed."
+        },
+        {
+          "kind": "prompting",
+          "title": "Prompt",
+          "body": [
+            "Every prompt must start with the trigger crossview. and follow this template (use the exact phrases):",
+            "crossview. new camera angle: {azimuth}, {elevation}, {distance}.",
+            "Azimuth: same angle \u00b7 slightly to the left \u00b7 slightly to the right \u00b7 to the left \u00b7 to the right \u00b7 far to the left \u00b7 far to the right",
+            "Elevation: lower \u00b7 same height \u00b7 higher",
+            "Distance: closer \u00b7 same distance \u00b7 further",
+            "Example: crossview. new camera angle: to the right, lower, closer."
+          ]
+        },
+        {
+          "kind": "tips",
+          "title": "Tips",
+          "body": "Best on small, single-step angle changes. For a larger viewpoint shift, chain several small steps \u2014 feed the generated view back in as the new reference and apply another small angle. Views from behind are out of range (frontal sector only, about \u00b160\u00b0)."
+        }
+      ],
+      "default_settings": {
+        "skip_stage_2": true,
+        "resolution_factor": 1.5,
+        "audio_mode": "source",
+        "lora_strength": 1.5
+      },
+      "prompt_template": {
+        "template": "crossview. new camera angle: {azimuth}, {elevation}, {distance}.",
+        "placeholders": {
+          "azimuth": {
+            "choices": [
+              "same angle",
+              "slightly to the left",
+              "slightly to the right",
+              "to the left",
+              "to the right",
+              "far to the left",
+              "far to the right"
+            ]
+          },
+          "elevation": {
+            "choices": [
+              "lower",
+              "same height",
+              "higher"
+            ]
+          },
+          "distance": {
+            "choices": [
+              "closer",
+              "same distance",
+              "further"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
