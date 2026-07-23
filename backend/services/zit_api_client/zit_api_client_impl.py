@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from typing import Any, cast
 
 from services.http_client.http_client import HTTPClient
@@ -9,6 +10,7 @@ from services.services_utils import JSONValue
 
 FAL_API_BASE_URL = "https://fal.run"
 FAL_TEXT_TO_IMAGE_ENDPOINT = "/fal-ai/z-image/turbo"
+FAL_IMAGE_TO_IMAGE_ENDPOINT = "/fal-ai/z-image/turbo/image-to-image"
 
 DEFAULT_OUTPUT_FORMAT = "png"
 DEFAULT_ACCELERATION = "regular"
@@ -42,6 +44,34 @@ class ZitAPIClientImpl:
         }
         return self._submit_and_download(
             endpoint=FAL_TEXT_TO_IMAGE_ENDPOINT,
+            api_key=api_key,
+            payload=payload,
+        )
+
+    def generate_image_to_image(
+        self,
+        *,
+        api_key: str,
+        prompt: str,
+        image_bytes: bytes,
+        strength: float,
+        seed: int,
+        num_inference_steps: int,
+    ) -> bytes:
+        data_uri = "data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii")
+        payload: dict[str, JSONValue] = {
+            "prompt": prompt,
+            "image_url": data_uri,
+            "strength": strength,
+            "num_inference_steps": num_inference_steps,
+            "seed": seed,
+            "num_images": 1,
+            "output_format": DEFAULT_OUTPUT_FORMAT,
+            "acceleration": DEFAULT_ACCELERATION,
+            "enable_safety_checker": DEFAULT_ENABLE_SAFETY_CHECKER,
+        }
+        return self._submit_and_download(
+            endpoint=FAL_IMAGE_TO_IMAGE_ENDPOINT,
             api_key=api_key,
             payload=payload,
         )

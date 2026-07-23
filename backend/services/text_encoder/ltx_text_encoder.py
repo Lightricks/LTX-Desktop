@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import logging
 import pickle
 import time
@@ -19,6 +20,33 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class _CpuUnpickler(pickle.Unpickler):
+    """Unpickler that maps torch storages to CPU on load.
+
+    The LTX API returns conditioning pickled with tensors that were on CUDA. Plain
+    ``pickle.loads`` routes each storage through ``torch.storage._load_from_bytes`` ->
+    ``torch.load`` with no ``map_location``, which raises on a machine without CUDA
+    (Apple Silicon / CPU-only). Overriding that one symbol injects ``map_location='cpu'``
+    so the tensors deserialize on CPU; callers then ``.to(device)`` as needed.
+    """
+
+    def find_class(self, module: str, name: str) -> Any:
+        if module == "torch.storage" and name == "_load_from_bytes":
+
+            def _load_from_bytes_cpu(b: bytes) -> Any:
+                return torch.load(io.BytesIO(b), map_location="cpu")
+
+            return _load_from_bytes_cpu
+        # Restrict deserialization to torch's rebuild helpers + stdlib containers. The
+        # payload comes from a network response; without this, a compromised / MITM'd
+        # response could name any importable callable (os.system, builtins.eval, …) and
+        # turn unpickling into RCE. A module-level allowlist blocks that while still
+        # admitting whatever torch rebuild symbol the conditioning stream actually uses.
+        if module.split(".", 1)[0] == "torch" or module == "collections":
+            return super().find_class(module, name)
+        raise pickle.UnpicklingError(f"disallowed pickle global: {module}.{name}")
+
+
 class LTXTextEncoder:
     """Stateless text encoding operations with idempotent monkey-patching."""
 
@@ -26,6 +54,7 @@ class LTXTextEncoder:
         self.device = device
         self.http = http
         self.ltx_api_base_url = ltx_api_base_url
+        self._prompt_encoder_init_patched = False
         self._prompt_encoder_patched = False
         self._cleanup_memory_patched = False
 
@@ -43,10 +72,12 @@ class LTXTextEncoder:
         when gemma_root is falsy, creating a stub that the __call__ patch will
         intercept before any model loading.
         """
+        if self._prompt_encoder_init_patched:
+            return
         try:
             from ltx_pipelines.utils.blocks import PromptEncoder
 
-            original_init = PromptEncoder.__init__
+            original_init = PromptEncoder.__init__  # type: ignore[reportUnknownVariableType, reportUnknownMemberType]
 
             def patched_init(
                 self_encoder: PromptEncoder,
@@ -54,17 +85,22 @@ class LTXTextEncoder:
                 gemma_root: str,
                 dtype: Any,
                 device: Any,
-                registry: Any = None,
+                *args: Any,
+                **kwargs: Any,
             ) -> None:
+                # Forward *args/**kwargs verbatim so this patch tracks the real
+                # PromptEncoder.__init__ signature (registry, offload_mode,
+                # text_encoder_builder, ...) instead of pinning a fixed arg list.
                 if not gemma_root:
                     self_encoder._dtype = dtype  # type: ignore[attr-defined]
                     self_encoder._device = device  # type: ignore[attr-defined]
                     self_encoder._text_encoder_builder = None  # type: ignore[attr-defined]
                     self_encoder._embeddings_processor_builder = None  # type: ignore[attr-defined]
                     return
-                original_init(self_encoder, checkpoint_path, gemma_root, dtype, device, registry)
+                original_init(self_encoder, checkpoint_path, gemma_root, dtype, device, *args, **kwargs)
 
             PromptEncoder.__init__ = patched_init  # type: ignore[assignment]
+            self._prompt_encoder_init_patched = True
             logger.info("Installed PromptEncoder.__init__ patch for None gemma_root")
         except Exception as exc:
             logger.warning("Failed to patch PromptEncoder.__init__: %s", exc, exc_info=True)
@@ -201,7 +237,9 @@ class LTXTextEncoder:
                 logger.warning("LTX API error %s: %s", response.status_code, response.text)
                 return None
 
-            conditioning = pickle.loads(response.content)  # noqa: S301
+            # Map CUDA storages to CPU during unpickling so this works on non-CUDA hosts
+            # (Apple Silicon / CPU-only); the tensors are moved to self.device below.
+            conditioning = _CpuUnpickler(io.BytesIO(response.content)).load()  # noqa: S301
             if not conditioning or len(conditioning) == 0:
                 logger.warning("LTX API returned unexpected conditioning format")
                 return None

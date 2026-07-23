@@ -11,6 +11,7 @@ class FakeGpuInfo:
         self.mps_available = False
         self.gpu_name: str | None = None
         self.vram_gb: int | None = None
+        self.available_ram_gb: int | None = None
         self.gpu_info: GpuTelemetryPayload = {"name": "Unknown", "vram": 0, "vramUsed": 0}
 
     def get_gpu_info(self) -> GpuTelemetryPayload:
@@ -30,3 +31,6 @@ class FakeGpuInfo:
 
     def get_vram_total_gb(self) -> int | None:
         return self.vram_gb
+
+    def get_available_ram_gb(self) -> int | None:
+        return self.available_ram_gb

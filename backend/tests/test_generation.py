@@ -83,6 +83,60 @@ class TestGenerate:
         pipeline = fake_services.fast_video_pipeline
         assert len(pipeline.generate_calls) == 1
 
+    def test_t2v_loras_forwarded_to_pipeline(self, client, test_state, fake_services, create_fake_model_files, create_fake_lora):
+        create_fake_model_files()
+        _enable_local_text_encoding(test_state)
+        lora_ref = create_fake_lora("style.safetensors")
+
+        r = client.post(
+            "/api/generate",
+            json={**_T2V_JSON, "loras": [{"ref": lora_ref, "scale": 0.8}]},
+        )
+
+        assert r.status_code == 200
+        pipeline = fake_services.fast_video_pipeline
+        assert pipeline.create_loras[-1] == [(lora_ref, 0.8)]
+
+    def test_same_loras_reuse_loaded_pipeline(self, client, test_state, fake_services, create_fake_model_files, create_fake_lora):
+        create_fake_model_files()
+        _enable_local_text_encoding(test_state)
+        lora_ref = create_fake_lora("a.safetensors")
+        body = {**_T2V_JSON, "loras": [{"ref": lora_ref, "scale": 1.0}]}
+
+        assert client.post("/api/generate", json=body).status_code == 200
+        assert client.post("/api/generate", json=body).status_code == 200
+
+        # Same loras → pipeline built once and reused across both requests.
+        assert fake_services.fast_video_pipeline.create_loras == [[(lora_ref, 1.0)]]
+
+    def test_changed_loras_reload_pipeline(self, client, test_state, fake_services, create_fake_model_files, create_fake_lora):
+        create_fake_model_files()
+        _enable_local_text_encoding(test_state)
+        lora_ref = create_fake_lora("b.safetensors")
+
+        assert client.post("/api/generate", json={**_T2V_JSON}).status_code == 200
+        assert client.post(
+            "/api/generate",
+            json={**_T2V_JSON, "loras": [{"ref": lora_ref, "scale": 0.5}]},
+        ).status_code == 200
+
+        # Different loras → pipeline rebuilt (cache miss on the loras key).
+        assert fake_services.fast_video_pipeline.create_loras == [
+            [],
+            [(lora_ref, 0.5)],
+        ]
+
+    def test_t2v_loras_unknown_ref_rejected(self, client, test_state, create_fake_model_files):
+        create_fake_model_files()
+        _enable_local_text_encoding(test_state)
+
+        r = client.post(
+            "/api/generate",
+            json={**_T2V_JSON, "loras": [{"ref": "/etc/passwd", "scale": 0.8}]},
+        )
+
+        assert r.status_code == 400
+
     def test_already_running(self, client, test_state):
         _fake_running_generation_state(test_state)
 
@@ -205,6 +259,29 @@ class TestA2VGenerate:
         assert call["audio_path"] == str(audio_file)
         assert call["audio_start_time"] == 0.0
         assert call["audio_max_duration"] is None
+
+    def test_a2v_loras_forwarded_to_pipeline(self, client, test_state, fake_services, create_fake_model_files, create_fake_lora, tmp_path):
+        create_fake_model_files()
+        _enable_local_text_encoding(test_state)
+        audio_file = tmp_path / "test_audio.wav"
+        _write_test_wav(audio_file)
+        lora_ref = create_fake_lora("groove.safetensors")
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A music video",
+                "resolution": "540p",
+                "model": "fast",
+                "duration": 5,
+                "fps": 24,
+                "audioPath": str(audio_file),
+                "loras": [{"ref": lora_ref, "scale": 0.7}],
+            },
+        )
+
+        assert r.status_code == 200
+        assert fake_services.a2v_pipeline.create_loras[-1] == [(lora_ref, 0.7)]
 
     def test_a2v_rejects_missing_audio_file(self, client, test_state, create_fake_model_files):
         create_fake_model_files()
@@ -1199,6 +1276,15 @@ class TestGenerateImage:
         assert r.status_code == 200
         assert r.json()["status"] == "cancelled"
 
+    def test_partial_outputs_cleaned_up_on_mid_batch_error(self, client, fake_services, create_fake_model_files, tmp_path):
+        create_fake_model_files(include_zit=True)
+        fake_services.image_generation_pipeline.fail_generate_after = 1
+        fake_services.image_generation_pipeline.raise_on_generate = RuntimeError("GPU OOM")
+
+        r = client.post("/api/generate-image", json={"prompt": "test", "numImages": 3})
+        assert r.status_code == 500
+        assert list((tmp_path / "outputs").glob("zit_image_*.png")) == []
+
 
 class TestForcedApiGenerateImage:
     def test_generate_image_routes_to_zit_api(self, client, test_state, fake_services):
@@ -1234,6 +1320,17 @@ class TestForcedApiGenerateImage:
 
         assert r.status_code == 200
         assert r.json()["status"] == "cancelled"
+
+    def test_partial_outputs_cleaned_up_on_mid_batch_error(self, client, test_state, fake_services, tmp_path):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.fal_api_key = "fal-key"
+        fake_services.zit_api_client.fail_text_to_image_after = 1
+        fake_services.zit_api_client.raise_on_text_to_image = RuntimeError("boom")
+
+        r = client.post("/api/generate-image", json={"prompt": "A cat", "numImages": 3})
+
+        assert r.status_code == 500
+        assert list((tmp_path / "outputs").glob("zit_api_image_*.png")) == []
 
 
 class TestEmptyPromptRejected:
@@ -1290,6 +1387,21 @@ class TestEnhancePromptFlag:
 
         assert len(fake_services.text_encoder.encode_calls) == 1
         assert fake_services.text_encoder.encode_calls[0]["enhance_prompt"] is False
+
+    def test_empty_prompt_api_encoding_uses_placeholder(
+        self, test_state, fake_services, create_fake_model_files
+    ):
+        # The LTX API rejects an empty prompt, but empty prompts are valid for some IC-LoRAs
+        # (e.g. outpainting). In API mode (no gemma fallback) the empty prompt must be encoded
+        # via a neutral placeholder instead of raising "API text encoding failed".
+        self._setup_api_encoding(test_state, fake_services, create_fake_model_files)
+
+        # Must not raise.
+        test_state.text.prepare_text_encoding("", enhance_prompt=True)
+
+        assert len(fake_services.text_encoder.encode_calls) == 1
+        assert fake_services.text_encoder.encode_calls[0]["prompt"] == " "  # placeholder, not ""
+        assert fake_services.text_encoder.encode_calls[0]["enhance_prompt"] is False  # nothing to enhance
 
     def test_i2v_enhance_enabled(self, client, test_state, fake_services, create_fake_model_files, make_test_image, tmp_path):
         self._setup_api_encoding(test_state, fake_services, create_fake_model_files)

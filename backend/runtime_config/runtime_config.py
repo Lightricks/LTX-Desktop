@@ -25,7 +25,9 @@ class RuntimeConfig:
     dev_mode: bool
     backend_port: int
     hf_oauth_client_id: str = ""
-    hf_gating_enabled: bool = False
+    lora_catalog_source: str = ""
+    # Bundled catalog used as a fallback when lora_catalog_source is a URL that fails to fetch.
+    lora_catalog_fallback_path: str = ""
 
     @property
     def force_api_generations(self) -> bool:

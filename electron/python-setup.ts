@@ -136,25 +136,7 @@ export async function preDownloadPythonForUpdate(
     || `https://github.com/Lightricks/ltx-desktop/releases/download/v${newVersion}`
 
   // Fetch the new version's deps hash
-  let newHash: string | null = null
-  if (isLocalPath(baseUrl)) {
-    // Local testing: read hash from the directory or the archive's extracted deps-hash.txt
-    const hashFile = baseUrl.endsWith('.tar.gz')
-      ? null // Can't read hash from a single tar.gz without extracting
-      : path.join(baseUrl, 'deps-hash.txt')
-    newHash = hashFile ? readHash(hashFile) : null
-  } else {
-    const hashUrl = `${baseUrl}/python-deps-hash.txt`
-    const hashDest = path.join(app.getPath('userData'), 'python-next-hash-check.txt')
-    try {
-      await downloadFileRaw(hashUrl, hashDest)
-      newHash = readHash(hashDest)
-    } catch (err) {
-      logger.warn( `[python-setup] Could not fetch new version deps hash: ${err}`)
-    } finally {
-      try { fs.unlinkSync(hashDest) } catch { /* ignore */ }
-    }
-  }
+  const newHash = await fetchRemoteDepsHash(baseUrl, 'python-next-hash-check.txt')
 
   if (!newHash) {
     logger.info( '[python-setup] No deps hash available for new version, skipping pre-download')
@@ -275,6 +257,28 @@ function isLocalPath(source: string): boolean {
 }
 
 /**
+ * Fetch the deps-hash for a python-embed source (local dir/archive or remote base URL),
+ * without downloading the full archive. Returns null if unavailable.
+ */
+async function fetchRemoteDepsHash(base: string, tempFileName: string): Promise<string | null> {
+  if (isLocalPath(base)) {
+    if (base.endsWith('.tar.gz')) return null // can't inspect a single tar.gz without extracting
+    return readHash(path.join(base, 'deps-hash.txt'))
+  }
+  const hashUrl = `${base}/python-deps-hash.txt`
+  const hashDest = path.join(app.getPath('userData'), tempFileName)
+  try {
+    await downloadFileRaw(hashUrl, hashDest)
+    return readHash(hashDest)
+  } catch (err) {
+    logger.warn( `[python-setup] Could not fetch deps hash from ${hashUrl}: ${err}`)
+    return null
+  } finally {
+    try { fs.unlinkSync(hashDest) } catch { /* ignore */ }
+  }
+}
+
+/**
  * Acquire the python-embed archive from a source (local, GitHub, or CDN).
  * Returns once the archive is written to archivePath.
  */
@@ -342,12 +346,42 @@ export async function downloadPythonEmbed(
     const base = getArchiveBase()
     logger.info( `[python-setup] Archive base: ${base}`)
 
+    // Verify the source's deps hash matches what this build expects before downloading
+    // the (multi-GB) archive. A version-tagged release can be stale relative to the
+    // currently bundled backend code (e.g. deps changed without a version bump), so a
+    // successful download from `base` is not by itself proof the content is correct.
+    const expectedHash = readHash(getBundledHashPath())
+    let source = base
+    if (expectedHash) {
+      const remoteHash = await fetchRemoteDepsHash(base, `${getPythonArchivePrefix()}-hash-check.txt`)
+      if (remoteHash === null && isLocalPath(base)) {
+        // A local archive (dev/testing) has no sidecar hash to fetch, so the check is
+        // unverifiable rather than mismatched — skip it instead of hard-failing, which
+        // otherwise makes a valid local python-embed.tar.gz unusable whenever a bundled
+        // hash is present.
+        logger.warn(`[python-setup] Local archive at ${base}: no remote deps hash to verify, skipping check`)
+      } else if (remoteHash !== expectedHash) {
+        const fallbackUrl = getFallbackArchiveUrl()
+        if (!fallbackUrl || isLocalPath(base)) {
+          throw new Error(
+            `Python deps hash mismatch at ${base} (expected ${expectedHash}, got ${remoteHash ?? 'unknown'}) and no CDN fallback available`
+          )
+        }
+        logger.warn(
+          `[python-setup] Archive at ${base} has deps hash ${remoteHash ?? 'unknown'}, expected ${expectedHash} — using hash-addressed CDN instead`
+        )
+        source = fallbackUrl
+      }
+    } else {
+      logger.warn( '[python-setup] No bundled deps hash found, skipping archive verification')
+    }
+
     try {
-      await acquireArchive(base, archivePath, cleanupFiles, onProgress)
+      await acquireArchive(source, archivePath, cleanupFiles, onProgress)
     } catch (primaryErr) {
       // Primary source failed — try CDN fallback
       const fallbackUrl = getFallbackArchiveUrl()
-      if (!fallbackUrl || isLocalPath(base)) {
+      if (!fallbackUrl || isLocalPath(source) || source === fallbackUrl) {
         throw primaryErr
       }
 

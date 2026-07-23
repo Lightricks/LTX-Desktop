@@ -329,6 +329,13 @@ export class ApiClient {
     return requestEndpointResult('/api/models/download/progress', 'get', [] as const, undefined, path)
   }
 
+  static listModels(
+    query?: QueryFor<'/api/models', 'get'>,
+  ): Promise<EndpointResult<'/api/models', 'get'>> {
+    const path = `/api/models${buildQueryString(query as Record<string, unknown>)}`
+    return requestEndpointResult('/api/models', 'get', [] as const, undefined, path)
+  }
+
   
   static getLtxRecommendation = makeEndpointClient('/api/models/ltx-recommendation', 'get')
 
@@ -338,11 +345,21 @@ export class ApiClient {
 
   static getTextEncoderRecommendation = makeEndpointClient('/api/models/text-encoder-recommendation', 'get')
 
+  static describeCheckpoints = makeEndpointClient('/api/models/describe', 'post')
+
+  static getActiveDownload = makeEndpointClient('/api/models/download/active', 'get')
+
+  static getLtxVersions = makeEndpointClient('/api/models/ltx-versions', 'get')
+
+  static setActiveLtxModel = makeEndpointClient('/api/models/active-ltx-model', 'post')
+
   static startModelDownload = makeEndpointClient('/api/models/download', 'post')
 
   static deleteModels = makeEndpointClient('/api/models/delete', 'delete')
 
   static getRuntimePolicy = makeEndpointClient('/api/runtime-policy', 'get')
+
+  static getGpuInfo = makeEndpointClient('/api/gpu-info', 'get')
 
   static getSettings = makeEndpointClient('/api/settings', 'get')
 
@@ -364,7 +381,13 @@ export class ApiClient {
 
   static generateImage = makeEndpointClient('/api/generate-image', 'post')
 
+  static enhancePrompt = makeEndpointClient('/api/enhance-prompt', 'post', {
+    exactErrorStatuses: [404, 409] as const,
+  })
+
   static retake = makeEndpointClient('/api/retake', 'post')
+
+  static extend = makeEndpointClient('/api/extend', 'post')
 
   static startHuggingFaceLogin = makeEndpointClient('/api/auth/huggingface/login', 'post')
 
@@ -377,6 +400,28 @@ export class ApiClient {
   static generateIcLora = makeEndpointClient('/api/ic-lora/generate', 'post')
 
   static extractIcLoraConditioning = makeEndpointClient('/api/ic-lora/extract-conditioning', 'post')
+
+  static listIcLoras = makeEndpointClient('/api/ic-loras', 'get')
+
+  static startIcLoraDownload = makeEndpointClient('/api/ic-loras/download', 'post')
+
+  static getIcLoraDownloadProgress(
+    query: QueryFor<'/api/ic-loras/download/progress', 'get'>,
+  ): Promise<EndpointResult<'/api/ic-loras/download/progress', 'get'>> {
+    const path = `/api/ic-loras/download/progress${buildQueryString(query as Record<string, unknown>)}`
+    return requestEndpointResult('/api/ic-loras/download/progress', 'get', [] as const, undefined, path)
+  }
+
+  static listLoras = makeEndpointClient('/api/loras', 'get')
+
+  static startLoraDownload = makeEndpointClient('/api/loras/download', 'post')
+
+  static getLoraDownloadProgress(
+    query: QueryFor<'/api/loras/download/progress', 'get'>,
+  ): Promise<EndpointResult<'/api/loras/download/progress', 'get'>> {
+    const path = `/api/loras/download/progress${buildQueryString(query as Record<string, unknown>)}`
+    return requestEndpointResult('/api/loras/download/progress', 'get', [] as const, undefined, path)
+  }
 }
 
 type ApiClientMethodName = keyof typeof ApiClient

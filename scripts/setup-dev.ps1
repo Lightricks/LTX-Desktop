@@ -1,4 +1,4 @@
-# Windows development setup for LTX Desktop
+﻿# Windows development setup for LTX Desktop
 
 $ErrorActionPreference = "Stop"
 

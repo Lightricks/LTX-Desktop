@@ -9,7 +9,12 @@ from typing import Final, cast
 import torch
 
 from api_types import ImageConditioningInput
-from services.ltx_pipeline_common import default_tiling_config, encode_video_output, video_chunks_number
+from services.ltx_pipeline_common import (
+    default_tiling_config,
+    encode_video_output,
+    offload_mode_for_prefetch_count,
+    video_chunks_number,
+)
 from services.services_utils import AudioOrNone, TilingConfigType, device_supports_fp8
 
 
@@ -23,6 +28,7 @@ class LTXFastVideoPipeline:
         upsampler_path: str,
         device: torch.device,
         streaming_prefetch_count: int | None,
+        loras: list[tuple[str, float]] | None = None,
     ) -> "LTXFastVideoPipeline":
         return LTXFastVideoPipeline(
             checkpoint_path=checkpoint_path,
@@ -30,6 +36,7 @@ class LTXFastVideoPipeline:
             upsampler_path=upsampler_path,
             device=device,
             streaming_prefetch_count=streaming_prefetch_count,
+            loras=loras or [],
         )
 
     def __init__(
@@ -39,24 +46,34 @@ class LTXFastVideoPipeline:
         upsampler_path: str,
         device: torch.device,
         streaming_prefetch_count: int | None,
+        loras: list[tuple[str, float]] | None = None,
     ) -> None:
-        from ltx_core.quantization import QuantizationPolicy
+        from ltx_core.loader.primitives import LoraPathStrengthAndSDOps
+        from ltx_core.loader.sd_ops import LTXV_LORA_COMFY_RENAMING_MAP
+        from ltx_core.quantization.fp8_cast import build_policy as build_fp8_cast_policy
         from ltx_pipelines.distilled import DistilledPipeline
 
         self._checkpoint_path = checkpoint_path
         self._gemma_root = gemma_root
         self._upsampler_path = upsampler_path
         self._device = device
-        self._streaming_prefetch_count = streaming_prefetch_count
-        self._quantization = QuantizationPolicy.fp8_cast() if device_supports_fp8(device) else None
+        self._offload_mode = offload_mode_for_prefetch_count(streaming_prefetch_count, device)
+        self._quantization = build_fp8_cast_policy(checkpoint_path) if device_supports_fp8(device) else None
+        self._loras = loras or []
+
+        lora_entries = [
+            LoraPathStrengthAndSDOps(path=path, strength=scale, sd_ops=LTXV_LORA_COMFY_RENAMING_MAP)
+            for path, scale in self._loras
+        ]
 
         self.pipeline = DistilledPipeline(
             distilled_checkpoint_path=checkpoint_path,
             gemma_root=cast(str, gemma_root),
             spatial_upsampler_path=upsampler_path,
-            loras=[],
+            loras=lora_entries,
             device=device,
             quantization=self._quantization,
+            offload_mode=self._offload_mode,
         )
 
     def _run_inference(
@@ -81,7 +98,6 @@ class LTXFastVideoPipeline:
             frame_rate=frame_rate,
             images=[_LtxImageInput(img.path, img.frame_idx, img.strength) for img in images],
             tiling_config=tiling_config,
-            streaming_prefetch_count=self._streaming_prefetch_count,
         )
 
     @torch.inference_mode()
@@ -133,14 +149,23 @@ class LTXFastVideoPipeline:
                 os.unlink(output_path)
 
     def compile_transformer(self) -> None:
+        from ltx_core.loader.primitives import LoraPathStrengthAndSDOps
+        from ltx_core.loader.sd_ops import LTXV_LORA_COMFY_RENAMING_MAP
+        from ltx_core.model.transformer.compiling import CompilationConfig
         from ltx_pipelines.distilled import DistilledPipeline
+
+        lora_entries = [
+            LoraPathStrengthAndSDOps(path=path, strength=scale, sd_ops=LTXV_LORA_COMFY_RENAMING_MAP)
+            for path, scale in self._loras
+        ]
 
         self.pipeline = DistilledPipeline(
             distilled_checkpoint_path=self._checkpoint_path,
             gemma_root=cast(str, self._gemma_root),
             spatial_upsampler_path=self._upsampler_path,
-            loras=[],
+            loras=lora_entries,
             device=self._device,
             quantization=self._quantization,
-            torch_compile=True,
+            offload_mode=self._offload_mode,
+            compilation_config=CompilationConfig(),
         )

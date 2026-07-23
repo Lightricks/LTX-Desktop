@@ -10,9 +10,56 @@ from runtime_config.runtime_policy import (
 )
 
 
-def test_darwin_always_unsupported() -> None:
+def test_darwin_without_mps_unsupported() -> None:
+    assert (
+        decide_local_generation_mode(system="Darwin", cuda_available=False, vram_gb=None, mps_available=False, ram_gb=64)
+        == "unsupported"
+    )
+
+
+def test_darwin_with_low_ram_unsupported() -> None:
+    assert (
+        decide_local_generation_mode(system="Darwin", cuda_available=False, vram_gb=None, mps_available=True, ram_gb=14)
+        == "unsupported"
+    )
+
+
+def test_darwin_with_unknown_ram_unsupported() -> None:
+    assert (
+        decide_local_generation_mode(system="Darwin", cuda_available=False, vram_gb=None, mps_available=True, ram_gb=None)
+        == "unsupported"
+    )
+
+
+def test_darwin_streams_below_full_resident_floor() -> None:
+    assert (
+        decide_local_generation_mode(system="Darwin", cuda_available=False, vram_gb=None, mps_available=True, ram_gb=15)
+        == "streaming_models_loading"
+    )
+    assert (
+        decide_local_generation_mode(system="Darwin", cuda_available=False, vram_gb=None, mps_available=True, ram_gb=48)
+        == "streaming_models_loading"
+    )
+    assert (
+        decide_local_generation_mode(system="Darwin", cuda_available=False, vram_gb=None, mps_available=True, ram_gb=84)
+        == "streaming_models_loading"
+    )
+
+
+def test_darwin_full_resident_at_and_above_floor() -> None:
+    assert (
+        decide_local_generation_mode(system="Darwin", cuda_available=False, vram_gb=None, mps_available=True, ram_gb=85)
+        == "full_models_loading"
+    )
+    assert (
+        decide_local_generation_mode(system="Darwin", cuda_available=False, vram_gb=None, mps_available=True, ram_gb=128)
+        == "full_models_loading"
+    )
+
+
+def test_darwin_defaults_to_unsupported_without_mps_kwargs() -> None:
+    """Backward-compat: existing call sites that don't pass mps_available/ram_gb stay unsupported."""
     assert decide_local_generation_mode(system="Darwin", cuda_available=True, vram_gb=64) == "unsupported"
-    assert decide_local_generation_mode(system="Darwin", cuda_available=False, vram_gb=None) == "unsupported"
 
 
 def test_windows_without_cuda_unsupported() -> None:

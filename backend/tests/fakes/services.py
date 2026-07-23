@@ -8,10 +8,33 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from PIL import Image
-from api_types import ImageConditioningInput, VideoCameraMotion
+from api_types import (
+    ExtendMode,
+    ImageConditioningInput,
+    InstructionSection,
+    IcLoraCatalogItem,
+    IcLoraControl,
+    LoraCatalogFile,
+    LoraCatalogItem,
+    DownloadSpec,
+    DownloadVariant,
+    InputSpec,
+    PreprocessingStep,
+    IcLoraSettings,
+    RetakeMode,
+    VideoCameraMotion,
+)
 from services.interfaces import VideoInfoPayload
 from services.ltx_api_client.ltx_api_client import LTXRetakeResult
 from tests.fakes.fake_gpu_info import FakeGpuInfo
+
+
+def _dl(repo_id: str, filename: str, size_bytes: int = 10) -> DownloadSpec:
+    """Single-checkpoint DownloadSpec (first/only variant = default)."""
+    return DownloadSpec(
+        repo_id=repo_id,
+        variants=[DownloadVariant(id="default", label="Default", filename=filename, size_bytes=size_bytes)],
+    )
 
 
 @dataclass
@@ -119,15 +142,18 @@ class FakeLTXAPIClient:
         self.image_to_video_calls: list[dict[str, Any]] = []
         self.audio_to_video_calls: list[dict[str, Any]] = []
         self.retake_calls: list[dict[str, Any]] = []
+        self.extend_calls: list[dict[str, Any]] = []
         self.raise_on_upload_file: Exception | None = None
         self.raise_on_text_to_video: Exception | None = None
         self.raise_on_image_to_video: Exception | None = None
         self.raise_on_audio_to_video: Exception | None = None
         self.raise_on_retake: Exception | None = None
+        self.raise_on_extend: Exception | None = None
         self.text_to_video_result = b"fake-ltx-api-t2v-video"
         self.image_to_video_result = b"fake-ltx-api-i2v-video"
         self.audio_to_video_result = b"fake-ltx-api-a2v-video"
         self.retake_result = LTXRetakeResult(video_bytes=b"fake-ltx-api-retake-video", result_payload=None)
+        self.extend_result = LTXRetakeResult(video_bytes=b"fake-ltx-api-extend-video", result_payload=None)
         self.upload_file_results: dict[str, str] = {}
 
     def upload_file(
@@ -237,7 +263,7 @@ class FakeLTXAPIClient:
         start_time: float,
         duration: float,
         prompt: str,
-        mode: str,
+        mode: RetakeMode,
     ) -> LTXRetakeResult:
         self.retake_calls.append(
             {
@@ -253,13 +279,40 @@ class FakeLTXAPIClient:
             raise self.raise_on_retake
         return self.retake_result
 
+    def extend(
+        self,
+        *,
+        api_key: str,
+        video_path: str,
+        duration: float,
+        prompt: str,
+        mode: ExtendMode,
+    ) -> LTXRetakeResult:
+        self.extend_calls.append(
+            {
+                "api_key": api_key,
+                "video_path": video_path,
+                "duration": duration,
+                "prompt": prompt,
+                "mode": mode,
+            }
+        )
+        if self.raise_on_extend is not None:
+            raise self.raise_on_extend
+        return self.extend_result
+
 
 class FakeZitAPIClient:
     def __init__(self) -> None:
         self.configured = True
         self.text_to_image_calls: list[dict[str, Any]] = []
         self.raise_on_text_to_image: Exception | None = None
+        self.fail_text_to_image_after: int | None = None  # raise once len(calls) exceeds this
         self.text_to_image_result = b"fake-zit-api-image"
+        self.image_to_image_calls: list[dict[str, Any]] = []
+        self.raise_on_image_to_image: Exception | None = None
+        self.fail_image_to_image_after: int | None = None  # raise once len(calls) exceeds this
+        self.image_to_image_result = b"fake-zit-api-edit"
 
     def is_configured(self) -> bool:
         return self.configured
@@ -285,8 +338,35 @@ class FakeZitAPIClient:
             }
         )
         if self.raise_on_text_to_image is not None:
-            raise self.raise_on_text_to_image
+            if self.fail_text_to_image_after is None or len(self.text_to_image_calls) > self.fail_text_to_image_after:
+                raise self.raise_on_text_to_image
         return self.text_to_image_result
+
+    def generate_image_to_image(
+        self,
+        *,
+        api_key: str,
+        prompt: str,
+        image_bytes: bytes,
+        strength: float,
+        seed: int,
+        num_inference_steps: int,
+    ) -> bytes:
+        self.image_to_image_calls.append(
+            {
+                "api_key": api_key,
+                "prompt": prompt,
+                "image_bytes": image_bytes,
+                "image_bytes_len": len(image_bytes),
+                "strength": strength,
+                "seed": seed,
+                "num_inference_steps": num_inference_steps,
+            }
+        )
+        if self.raise_on_image_to_image is not None:
+            if self.fail_image_to_image_after is None or len(self.image_to_image_calls) > self.fail_image_to_image_after:
+                raise self.raise_on_image_to_image
+        return self.image_to_image_result
 
 
 class FakeModelDownloader:
@@ -310,7 +390,7 @@ class FakeModelDownloader:
         on_progress: Callable[[int], None] | None = None,
     ) -> Path:
         self._raise_if_needed()
-        self.calls.append({"kind": "file", "repo_id": repo_id, "filename": filename, "local_dir": local_dir, "on_progress": on_progress})
+        self.calls.append({"kind": "file", "repo_id": repo_id, "filename": filename, "local_dir": local_dir, "token": token, "on_progress": on_progress})
 
         if on_progress is not None:
             on_progress(512)
@@ -348,6 +428,102 @@ class FakeModelDownloader:
         (root / "model.safetensors").write_bytes(b"\x00" * 1024)
 
         return root
+
+
+class FakeLoraCatalogProvider:
+    def __init__(self, catalog: LoraCatalogFile | None = None) -> None:
+        self._catalog = catalog or LoraCatalogFile(
+            schema_version=1,
+            ic_loras=[
+                IcLoraCatalogItem(
+                    id="ingredients-v1",
+                    name="Ingredients",
+                    description="d",
+                    download=_dl("Lightricks/x", "i.safetensors"),
+                    requires_hf_login=True,
+                    input=InputSpec(kind="image"),
+                    preprocessing=[PreprocessingStep(utility="image_to_frames", params={})],
+                    controls=[IcLoraControl(id="duration", label="Duration", default=5, options=[5, 8])],
+                    instructions=[InstructionSection(kind="summary", title="What it does", body="use it")],
+                    default_settings=IcLoraSettings(skip_stage_2=True),
+                ),
+                IcLoraCatalogItem(
+                    id="colorize-v1",
+                    name="Colorize",
+                    description="d",
+                    download=_dl("Lightricks/y", "c.safetensors"),
+                    requires_hf_login=True,
+                    input=InputSpec(kind="video"),
+                    preprocessing=[],
+                    instructions=[InstructionSection(kind="summary", title="What it does", body="use it")],
+                    default_settings=IcLoraSettings(skip_stage_2=True),
+                ),
+                IcLoraCatalogItem(
+                    id="outpaint-v1",
+                    name="Outpainting",
+                    description="d",
+                    download=_dl("Lightricks/op", "op.safetensors"),
+                    requires_hf_login=True,
+                    allows_empty_prompt=True,
+                    input=InputSpec(kind="video"),
+                    preprocessing=[PreprocessingStep(utility="outpaint_canvas", params={})],
+                    controls=[IcLoraControl(id="outpaint_pads", kind="position_canvas", label="Canvas")],
+                    instructions=[InstructionSection(kind="summary", title="What it does", body="use it")],
+                    default_settings=IcLoraSettings(skip_stage_2=True),
+                ),
+                IcLoraCatalogItem(
+                    id="refimg-v1",
+                    name="Render to Real",
+                    description="d",
+                    download=_dl("Lightricks/rr", "rr.safetensors"),
+                    requires_hf_login=False,
+                    allows_reference_image=True,
+                    input=InputSpec(kind="video"),
+                    preprocessing=[],
+                    instructions=[InstructionSection(kind="summary", title="What it does", body="use it")],
+                    default_settings=IcLoraSettings(skip_stage_2=True),
+                ),
+                IcLoraCatalogItem(
+                    id="multi-v1",
+                    name="Multi Variant",
+                    description="d",
+                    download=DownloadSpec(
+                        repo_id="org/multi",
+                        variants=[
+                            DownloadVariant(id="strong", label="Strong", filename="strong.safetensors", size_bytes=10),
+                            DownloadVariant(id="light", label="Light", filename="light.safetensors", size_bytes=5),
+                        ],
+                    ),
+                    requires_hf_login=False,
+                    input=InputSpec(kind="video"),
+                    preprocessing=[],
+                    instructions=[InstructionSection(kind="summary", title="What it does", body="use it")],
+                    default_settings=IcLoraSettings(skip_stage_2=True),
+                ),
+            ],
+            loras=[
+                LoraCatalogItem(
+                    id="cozy-felt-v1",
+                    name="Cozy Felt",
+                    description="d",
+                    download=_dl("vrg/felt", "felt.safetensors", size_bytes=20),
+                    requires_hf_login=False,
+                    trigger="F3ltCut0u7",
+                    trigger_placement="anywhere",
+                    tags=["style"],
+                    recommended_strength=1.0,
+                ),
+            ],
+        )
+
+    def get_catalog(self) -> LoraCatalogFile:
+        return self._catalog
+
+    def get_ic_lora(self, ic_lora_id: str) -> IcLoraCatalogItem | None:
+        return next((r for r in self._catalog.ic_loras if r.id == ic_lora_id), None)
+
+    def get_lora(self, lora_id: str) -> LoraCatalogItem | None:
+        return next((r for r in self._catalog.loras if r.id == lora_id), None)
 
 
 class FakeGpuCleaner:
@@ -428,6 +604,11 @@ class FakeVideoProcessor:
         cap.position += 1
         return frame
 
+    def read_image(self, path: str) -> Any:  # noqa: ARG002
+        import numpy as np
+
+        return np.zeros((64, 64, 3), dtype=np.uint8)
+
     def apply_canny(self, frame: Any) -> Any:
         return f"canny:{frame}"
 
@@ -456,6 +637,7 @@ class _FakeVideoPipelineBase:
         self.generate_calls: list[dict[str, Any]] = []
         self.warmup_calls: list[dict[str, Any]] = []
         self.compile_calls = 0
+        self.create_loras: list[list[tuple[str, float]]] = []
         self.raise_on_generate: Exception | None = None
 
     def _record_generate(self, payload: dict[str, Any]) -> None:
@@ -493,11 +675,13 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
         upsampler_path: str,
         device: str | object,
         streaming_prefetch_count: int | None,
+        loras: list[tuple[str, float]] | None = None,
     ) -> "FakeFastVideoPipeline":
         del checkpoint_path, gemma_root, upsampler_path, device, streaming_prefetch_count
         pipeline = FakeFastVideoPipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeFastVideoPipeline singleton is not bound")
+        pipeline.create_loras.append(list(loras or []))
         return pipeline
 
     def generate(
@@ -554,15 +738,63 @@ class FakeImageGenerationPipeline:
         self.device: str | None = None
         self.generate_calls: list[dict[str, Any]] = []
         self.raise_on_generate: Exception | None = None
+        self.fail_generate_after: int | None = None  # raise once len(generate_calls) exceeds this
+        self.edit_calls: list[dict[str, Any]] = []
+        self.raise_on_edit: Exception | None = None
+        self.fail_edit_after: int | None = None  # raise once len(edit_calls) exceeds this
 
     def generate(self, **kwargs: Any) -> FakeZitOutput:
         self.generate_calls.append(kwargs)
         if self.raise_on_generate is not None:
-            raise self.raise_on_generate
+            if self.fail_generate_after is None or len(self.generate_calls) > self.fail_generate_after:
+                raise self.raise_on_generate
         return FakeZitOutput(color="blue")
+
+    def edit(self, **kwargs: Any) -> FakeZitOutput:
+        self.edit_calls.append(kwargs)
+        if self.raise_on_edit is not None:
+            if self.fail_edit_after is None or len(self.edit_calls) > self.fail_edit_after:
+                raise self.raise_on_edit
+        return FakeZitOutput(color="green")
 
     def to(self, device: str) -> None:
         self.device = device
+
+
+class FakePromptEnhancerPipeline:
+    _singleton: ClassVar["FakePromptEnhancerPipeline | None"] = None
+
+    @classmethod
+    def bind_singleton(cls, pipeline: "FakePromptEnhancerPipeline") -> None:
+        cls._singleton = pipeline
+
+    @staticmethod
+    def create(gemma_root: str, device: str) -> "FakePromptEnhancerPipeline":
+        del gemma_root, device
+        pipeline = FakePromptEnhancerPipeline._singleton
+        if pipeline is None:
+            raise RuntimeError("FakePromptEnhancerPipeline singleton is not bound")
+        return pipeline
+
+    def __init__(self) -> None:
+        self.enhance_t2v_calls: list[dict[str, Any]] = []
+        self.enhance_i2v_calls: list[dict[str, Any]] = []
+        self.raise_on_enhance: Exception | None = None
+        self.enhanced_prompt: str = "enhanced prompt"
+
+    def enhance_t2v(self, prompt: str, system_prompt: str | None, seed: int) -> str:
+        self.enhance_t2v_calls.append({"prompt": prompt, "system_prompt": system_prompt, "seed": seed})
+        if self.raise_on_enhance is not None:
+            raise self.raise_on_enhance
+        return self.enhanced_prompt
+
+    def enhance_i2v(self, prompt: str, image_path: str, system_prompt: str | None, seed: int) -> str:
+        self.enhance_i2v_calls.append(
+            {"prompt": prompt, "image_path": image_path, "system_prompt": system_prompt, "seed": seed}
+        )
+        if self.raise_on_enhance is not None:
+            raise self.raise_on_enhance
+        return self.enhanced_prompt
 
 
 class FakeIcLoraPipeline:
@@ -580,8 +812,9 @@ class FakeIcLoraPipeline:
         lora_path: str,
         device: str | object,
         streaming_prefetch_count: int | None,
+        lora_strength: float = 1.0,
     ) -> "FakeIcLoraPipeline":
-        del checkpoint_path, gemma_root, upsampler_path, lora_path, device, streaming_prefetch_count
+        del checkpoint_path, gemma_root, upsampler_path, lora_path, device, streaming_prefetch_count, lora_strength
         pipeline = FakeIcLoraPipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeIcLoraPipeline singleton is not bound")
@@ -668,15 +901,18 @@ class FakeA2VPipeline:
         upsampler_path: str,
         device: str | object,
         streaming_prefetch_count: int | None,
+        loras: list[tuple[str, float]] | None = None,
     ) -> "FakeA2VPipeline":
         del checkpoint_path, gemma_root, upsampler_path, device, streaming_prefetch_count
         pipeline = FakeA2VPipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeA2VPipeline singleton is not bound")
+        pipeline.create_loras.append(list(loras or []))
         return pipeline
 
     def __init__(self) -> None:
         self.generate_calls: list[dict[str, Any]] = []
+        self.create_loras: list[list[tuple[str, float]]] = []
         self.raise_on_generate: Exception | None = None
 
     def generate(self, **kwargs: Any) -> None:
@@ -714,7 +950,9 @@ class FakeRetakePipeline:
 
     def __init__(self) -> None:
         self.generate_calls: list[dict[str, Any]] = []
+        self.extend_calls: list[dict[str, Any]] = []
         self.raise_on_generate: Exception | None = None
+        self.raise_on_extend: Exception | None = None
 
     def generate(self, **kwargs: Any) -> None:
         self.generate_calls.append(kwargs)
@@ -724,6 +962,15 @@ class FakeRetakePipeline:
         output_path = Path(kwargs["output_path"])
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"fake-retake-video")
+
+    def extend(self, **kwargs: Any) -> None:
+        self.extend_calls.append(kwargs)
+        if self.raise_on_extend is not None:
+            raise self.raise_on_extend
+
+        output_path = Path(kwargs["output_path"])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"fake-extend-video")
 
 
 class FakeTextEncoder:
@@ -754,6 +1001,7 @@ class FakeServices:
     http: FakeHTTPClient = field(default_factory=FakeHTTPClient)
     gpu_cleaner: FakeGpuCleaner = field(default_factory=FakeGpuCleaner)
     model_downloader: FakeModelDownloader = field(default_factory=FakeModelDownloader)
+    lora_catalog_provider: FakeLoraCatalogProvider = field(default_factory=FakeLoraCatalogProvider)
     gpu_info: FakeGpuInfo = field(default_factory=FakeGpuInfo)
     video_processor: FakeVideoProcessor = field(default_factory=FakeVideoProcessor)
     text_encoder: FakeTextEncoder = field(default_factory=FakeTextEncoder)
@@ -767,6 +1015,7 @@ class FakeServices:
     pose_processor_pipeline: FakePoseProcessorPipeline = field(default_factory=FakePoseProcessorPipeline)
     a2v_pipeline: FakeA2VPipeline = field(default_factory=FakeA2VPipeline)
     retake_pipeline: FakeRetakePipeline = field(default_factory=FakeRetakePipeline)
+    prompt_enhancer_pipeline: FakePromptEnhancerPipeline = field(default_factory=FakePromptEnhancerPipeline)
 
     def __post_init__(self) -> None:
         FakeFastVideoPipeline.bind_singleton(self.fast_video_pipeline)
@@ -776,3 +1025,4 @@ class FakeServices:
         FakePoseProcessorPipeline.bind_singleton(self.pose_processor_pipeline)
         FakeA2VPipeline.bind_singleton(self.a2v_pipeline)
         FakeRetakePipeline.bind_singleton(self.retake_pipeline)
+        FakePromptEnhancerPipeline.bind_singleton(self.prompt_enhancer_pipeline)

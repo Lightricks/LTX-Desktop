@@ -1,16 +1,10 @@
 import path from 'path'
+import { fileURLToPath } from 'url'
 
 const isWindows = process.platform === 'win32'
 
 function normalize(p: string): string {
   return isWindows ? path.resolve(p).toLowerCase() : path.resolve(p)
-}
-
-function stripFileUrl(fileUrl: string): string {
-  let raw = fileUrl
-  if (raw.startsWith('file:///')) raw = raw.slice(8)
-  else if (raw.startsWith('file://')) raw = raw.slice(7)
-  return decodeURIComponent(raw).replace(/\//g, path.sep)
 }
 
 const approvedPaths = new Set<string>()
@@ -20,7 +14,9 @@ export function approvePath(filePath: string): void {
 }
 
 export function validatePath(inputPath: string, allowedRoots: string[]): string {
-  const cleaned = inputPath.startsWith('file://') ? stripFileUrl(inputPath) : inputPath
+  // fileURLToPath correctly handles the leading slash (POSIX file:///Users/... →
+  // /Users/...), Windows drive letters (file:///C:/... → C:\...) and %-decoding.
+  const cleaned = inputPath.startsWith('file://') ? fileURLToPath(inputPath) : inputPath
   const resolved = path.resolve(cleaned)
   const norm = normalize(resolved)
 

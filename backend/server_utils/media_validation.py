@@ -75,6 +75,18 @@ def validate_image_file(path: str) -> Path:
     return file_path
 
 
+def image_mime_type(path: str) -> str:
+    """Real MIME type of an already-validated image file, from its actual PIL-detected format —
+    not the file extension. Callers that inline image bytes into a third-party API request (e.g.
+    Gemini's ``inlineData``) must declare the type matching the real bytes; this app accepts more
+    formats than just JPEG (see ``_ALLOWED_IMAGE_FORMATS``), so a hardcoded ``image/jpeg`` mismatches
+    real input on any non-JPEG file.
+    """
+    with Image.open(path) as img:
+        fmt = str(img.format or "JPEG").lower()
+    return f"image/{fmt}"
+
+
 def _read_header(file_path: Path, *, num_bytes: int = 64) -> bytes:
     try:
         with file_path.open("rb") as handle:

@@ -6,7 +6,33 @@ import pytest
 
 from services.ltx_api_client.ltx_api_client_impl import LTXAPIClientImpl
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError
+from services.http_client.http_client import HttpTransportError
 from tests.fakes.services import FakeHTTPClient, FakeResponse
+
+
+def _async_client(http: FakeHTTPClient) -> LTXAPIClientImpl:
+    # Tiny poll interval so the submit→poll→download loop runs instantly in tests.
+    return LTXAPIClientImpl(
+        http=http,
+        ltx_api_base_url="https://api.ltx.video",
+        poll_interval_s=0.0,
+        async_max_wait_s=5.0,
+    )
+
+
+def _queue_upload(http: FakeHTTPClient) -> None:
+    http.queue(
+        "post",
+        FakeResponse(
+            status_code=200,
+            json_payload={
+                "upload_url": "https://upload.example.com/extend",
+                "storage_uri": "storage://extend/123",
+                "required_headers": {},
+            },
+        ),
+    )
+    http.queue("put", FakeResponse(status_code=200))
 
 
 def test_generate_text_to_video_returns_binary_content() -> None:
@@ -433,6 +459,137 @@ def test_retake_422_maps_to_safety_filter_error(tmp_path) -> None:
             mode="replace_audio_and_video",
         )
     assert exc.value.status_code == 422
+
+
+def test_extend_async_submits_polls_and_downloads(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    # submit -> 202 with job id
+    http.queue("post", FakeResponse(status_code=202, json_payload={"id": "job-1"}))
+    # poll: processing, then completed with a result url
+    http.queue("get", FakeResponse(status_code=200, json_payload={"status": "processing"}))
+    http.queue(
+        "get",
+        FakeResponse(
+            status_code=200,
+            json_payload={"status": "completed", "result": {"video_url": "https://cdn.example.com/extended.mp4"}},
+        ),
+    )
+    # download
+    http.queue("get", FakeResponse(status_code=200, content=b"extended-bytes"))
+
+    client = _async_client(http)
+    result = client.extend(
+        api_key="test-key",
+        video_path=input_path,
+        duration=12.0,
+        prompt="continue the motion",
+        mode="end",
+    )
+
+    assert result.video_bytes == b"extended-bytes"
+    assert result.result_payload is None
+    submit_call = next(c for c in http.calls if c.url == "https://api.ltx.video/v2/extend")
+    assert submit_call.json_payload is not None
+    assert submit_call.json_payload["video_uri"] == "storage://extend/123"
+    assert submit_call.json_payload["duration"] == 12.0
+    assert submit_call.json_payload["mode"] == "end"
+    poll_calls = [c for c in http.calls if c.url == "https://api.ltx.video/v2/extend/job-1"]
+    assert len(poll_calls) == 2
+    assert http.calls[-1].url == "https://cdn.example.com/extended.mp4"
+
+
+def test_extend_async_retries_transient_poll_blip(tmp_path) -> None:
+    # A single transport blip on a poll GET must not discard the minutes-long job — the
+    # poll is retried and the job still completes.
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue("post", FakeResponse(status_code=202, json_payload={"id": "job-3"}))
+    http.queue("get", HttpTransportError("connection reset"))  # transient blip, retried
+    http.queue(
+        "get",
+        FakeResponse(
+            status_code=200,
+            json_payload={"status": "completed", "result": {"video_url": "https://cdn.example.com/extended.mp4"}},
+        ),
+    )
+    http.queue("get", FakeResponse(status_code=200, content=b"extended-bytes"))
+
+    client = _async_client(http)
+    result = client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end")
+    assert result.video_bytes == b"extended-bytes"
+
+
+def test_extend_async_unknown_terminal_status_surfaces(tmp_path) -> None:
+    # An unrecognized terminal status (not completed / not in-progress) is surfaced as a
+    # failure instead of being polled until the timeout hides it behind a 504.
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue("post", FakeResponse(status_code=202, json_payload={"id": "job-4"}))
+    http.queue("get", FakeResponse(status_code=200, json_payload={"status": "rejected"}))
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="rejected") as exc:
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end")
+    assert exc.value.status_code == 500
+
+
+def test_extend_async_job_failed_raises(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue("post", FakeResponse(status_code=202, json_payload={"id": "job-2"}))
+    http.queue(
+        "get",
+        FakeResponse(
+            status_code=200,
+            json_payload={"status": "failed", "error": {"message": "model exploded"}},
+        ),
+    )
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="model exploded"):
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end")
+
+
+def test_extend_async_422_maps_to_safety_filter(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue("post", FakeResponse(status_code=422, text="filtered"))
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="Content rejected by safety filters") as exc:
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end")
+    assert exc.value.status_code == 422
+
+
+def test_extend_async_connection_reset_maps_to_504(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    # The submit POST fails at the transport layer (connection reset surfaced as timeout).
+    http.queue("post", HttpTransportError("Connection reset by peer"))
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="please retry") as exc:
+        client.extend(api_key="k", video_path=input_path, duration=12.0, prompt="", mode="end")
+    assert exc.value.status_code == 504
+
+
+def test_extend_async_completed_without_url_raises(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue("post", FakeResponse(status_code=202, json_payload={"id": "job-3"}))
+    http.queue("get", FakeResponse(status_code=200, json_payload={"status": "completed", "result": {}}))
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="without a video_url"):
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end")
 
 
 def test_retake_upload_init_failure_maps_message() -> None:

@@ -5,10 +5,16 @@ description = "LTX-2 Video Generation Backend"
 requires-python = ">=3.12"
 dependencies = [
     "pillow>=10.3.0",
-    "torch>=2.3.0",
+    # macOS caps at <2.12: ltx-core imports torchaudio (audio VAE), torchaudio tops out at
+    # 2.11.0 with empty torch metadata, so an uncapped torch resolves to 2.12.1 and the
+    # torchaudio 2.11.0 ABI mismatch crashes `import torchaudio` on Apple Silicon. Pinning
+    # torch to 2.11.x keeps torch+torchaudio in lockstep. win/linux use the cu128 index below.
+    "torch>=2.3.0; sys_platform != 'darwin'",
+    "torch>=2.3.0,<2.12; sys_platform == 'darwin'",
     "huggingface-hub>=0.23.0",
     "tqdm>=4.66.0",
     "pynvml>=11.5.0; sys_platform != 'darwin'",
+    "psutil>=5.9.0",
     "pydantic>=2.7.0",
     # LTX-2 inference dependencies
     "ltx-core",
@@ -22,6 +28,11 @@ dependencies = [
     "transformers>=4.52,<5",
     "sentencepiece>=0.1.99",
     "sageattention>=1.0.0; sys_platform != 'darwin'",
+    # ninja is required (on PATH) for torch to JIT-build mps-sdpa's zero-copy
+    # `mpsgraph_zc` attention backend on Apple Silicon. Without it, mps-sdpa
+    # silently falls back to the pyobjc `mpsgraph` backend, which leaks Metal
+    # memory per attention call and OOMs longer generations. macOS-only.
+    "ninja>=1.11; sys_platform == 'darwin'",
     "opencv-python-headless>=4.8.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
@@ -40,9 +51,14 @@ torch = [
     { index = "pytorch-cu128", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
 ]
 torchaudio = { index = "pytorch-cu128" }
+# PyPI's sageattention caps at 1.0.6 (Nov 2024, predates Blackwell/RTX 50xx support) and
+# can't host per-torch/CUDA wheel variants anyway. woct0rdho's Windows fork ships prebuilt
+# 2.2.0 wheels with bundled sm120 kernels for CUDA>=12.8 — matches our torch2.10.0+cu128 pin.
+# Linux keeps resolving sageattention from PyPI (no reported Blackwell crashes there yet).
+sageattention = { url = "https://github.com/woct0rdho/SageAttention/releases/download/v2.2.0-windows.post5/sageattention-2.2.0+cu128torch2.10.0andhigher.post5-cp310-abi3-win_amd64.whl", marker = "sys_platform == 'win32'" }
 diffusers = { git = "https://github.com/huggingface/diffusers.git", rev = "01de02e8b4f2cc91df4f3e91cb6535ebcbeb490c" }
-ltx-core = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-core", rev = "a2c3f24078eb918171967f74b6f66b756b29ee45" }
-ltx-pipelines = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-pipelines", rev = "a2c3f24078eb918171967f74b6f66b756b29ee45" }
+ltx-core = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-core", rev = "9377758131b1ffde4b7f766804590a6617bf2ab9" }
+ltx-pipelines = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-pipelines", rev = "9377758131b1ffde4b7f766804590a6617bf2ab9" }
 
 [project.optional-dependencies]
 test = ["pytest>=8.0", "requests>=2.31", "httpx>=0.27"]

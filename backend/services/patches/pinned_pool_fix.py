@@ -17,6 +17,13 @@ Benefits (measured on RTX 5090, 22B distilled, spc=2, FP8):
 
 Remove this patch once the upstream ltx-core package includes the fix.
 
+NOTE: the upstream MPS-support work rewrote the weight-streaming subsystem
+(`ltx_core.layer_streaming` -> `ltx_core.block_streaming`). When that module is
+absent this patch cleanly no-ops — it only ever applied to the old _LayerStore,
+and it is irrelevant on MPS (DISK streaming). Whether the new block_streaming
+pins all blocks upfront (the waste this patch fixed) must be re-evaluated on CUDA
+before shipping there.
+
 Usage:
     import services.patches.pinned_pool_fix  # noqa: F401
 """
@@ -24,11 +31,21 @@ Usage:
 from __future__ import annotations
 
 import itertools
+import logging
 
 import torch
 from torch import nn
 
-from ltx_core.layer_streaming import _LayerStore
+try:
+    from ltx_core.layer_streaming import _LayerStore
+
+    _AVAILABLE = True
+except ModuleNotFoundError:
+    _AVAILABLE = False
+    logging.getLogger(__name__).info(
+        "pinned_pool_fix: ltx_core.layer_streaming absent (streaming subsystem rewritten "
+        "upstream to block_streaming) — skipping bounded-pinned-pool patch."
+    )
 
 
 def _patched_init(self: _LayerStore, layers: nn.ModuleList, target_device: torch.device) -> None:
@@ -91,12 +108,13 @@ def _patched_cleanup(self: _LayerStore) -> None:
 
 
 # Apply patches
-assert hasattr(_LayerStore, "__init__"), "_LayerStore.__init__ not found — patch needs updating."
-assert hasattr(_LayerStore, "move_to_gpu"), "_LayerStore.move_to_gpu not found — patch needs updating."
-assert hasattr(_LayerStore, "evict_to_cpu"), "_LayerStore.evict_to_cpu not found — patch needs updating."
-assert hasattr(_LayerStore, "cleanup"), "_LayerStore.cleanup not found — patch needs updating."
+if _AVAILABLE:
+    assert hasattr(_LayerStore, "__init__"), "_LayerStore.__init__ not found — patch needs updating."
+    assert hasattr(_LayerStore, "move_to_gpu"), "_LayerStore.move_to_gpu not found — patch needs updating."
+    assert hasattr(_LayerStore, "evict_to_cpu"), "_LayerStore.evict_to_cpu not found — patch needs updating."
+    assert hasattr(_LayerStore, "cleanup"), "_LayerStore.cleanup not found — patch needs updating."
 
-_LayerStore.__init__ = _patched_init  # type: ignore[assignment]
-_LayerStore.move_to_gpu = _patched_move_to_gpu  # type: ignore[assignment]
-_LayerStore.evict_to_cpu = _patched_evict_to_cpu  # type: ignore[assignment]
-_LayerStore.cleanup = _patched_cleanup  # type: ignore[assignment]
+    _LayerStore.__init__ = _patched_init  # type: ignore[assignment]
+    _LayerStore.move_to_gpu = _patched_move_to_gpu  # type: ignore[assignment]
+    _LayerStore.evict_to_cpu = _patched_evict_to_cpu  # type: ignore[assignment]
+    _LayerStore.cleanup = _patched_cleanup  # type: ignore[assignment]

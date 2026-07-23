@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import assert_never, cast, get_args
@@ -65,6 +66,10 @@ class LTXLocalModelSpec:
     ic_loras_spec: LtxIcLorasSpec
     relevance: LTXLocalModelRelevance
     supported_pipelines: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], ...]
+    version_label: str
+    # The single newest model the app should recommend/upgrade to. Exactly one spec sets this
+    # True (enforced in _validate_ltx_specs) so "latest" is explicit, not tuple-order-dependent.
+    is_latest: bool = False
 
 
 def _local_resolution_spec(
@@ -84,6 +89,32 @@ DEPTH_PROCESSOR_CP_ID: ModelCheckpointID = "dpt-hybrid-midas"
 PERSON_DETECTOR_CP_ID: ModelCheckpointID = "yolox-l-torchscript"
 POSE_PROCESSOR_CP_ID: ModelCheckpointID = "dw-ll-ucoco-384-bs5"
 
+_DISTILLED_PIPELINES: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], ...] = (
+    (
+        "fast",
+        LTXVideoGenerationSpec(
+            display_name="LTX 2.3 Fast",
+            supported_resolutions_durations={
+                "540p": _local_resolution_spec(
+                    fps_to_durations={
+                        24: (5, 6, 8, 10, 20),
+                    },
+                ),
+                "720p": _local_resolution_spec(
+                    fps_to_durations={
+                        24: (5, 6, 8, 10),
+                    },
+                ),
+                "1080p": _local_resolution_spec(
+                    fps_to_durations={
+                        24: (5,),
+                    },
+                ),
+            },
+        ),
+    ),
+)
+
 
 def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
     match cp_id:
@@ -95,10 +126,29 @@ def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
                 repo_id="Lightricks/LTX-2.3",
                 description="Main transformer model",
             )
+        case "ltx-2.3-22b-distilled-1.1":
+            return ModelCheckpointSpec(
+                relative_path=Path("ltx-2.3-22b-distilled-1.1.safetensors"),
+                expected_size_bytes=46_149_345_334,
+                is_folder=False,
+                repo_id="Lightricks/LTX-2.3",
+                description="Main transformer model",
+            )
         case "ltx-2.3-spatial-upscaler-x2-1.0":
+            # Superseded by 1.1, but kept as a known checkpoint so persisted settings /
+            # in-flight sessions referencing it still validate, and an orphaned on-disk
+            # copy can be listed/deleted rather than failing enum validation.
             return ModelCheckpointSpec(
                 relative_path=Path("ltx-2.3-spatial-upscaler-x2-1.0.safetensors"),
-                expected_size_bytes=1_900_000_000,
+                expected_size_bytes=995_743_504,
+                is_folder=False,
+                repo_id="Lightricks/LTX-2.3",
+                description="2x upscaler (legacy)",
+            )
+        case "ltx-2.3-spatial-upscaler-x2-1.1":
+            return ModelCheckpointSpec(
+                relative_path=Path("ltx-2.3-spatial-upscaler-x2-1.1.safetensors"),
+                expected_size_bytes=995_743_560,
                 is_folder=False,
                 repo_id="Lightricks/LTX-2.3",
                 description="2x upscaler",
@@ -155,44 +205,45 @@ def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
             assert_never(cp_id)
 
 
+_DISTILLED_IC_LORAS = LtxIcLorasSpec(
+    depth_cp="ltx-2.3-22b-ic-lora-union-control-ref0.5",
+    canny_cp="ltx-2.3-22b-ic-lora-union-control-ref0.5",
+    pose_cp="ltx-2.3-22b-ic-lora-union-control-ref0.5",
+)
+
+# What's-new for the distilled 1.1 upgrade, authored here and surfaced in the upgrade prompt
+# (one improvement per line; the UI renders them as a bulleted "What's new" list).
+_DISTILLED_1_1_WHATS_NEW = (
+    "Fixes glitches and quality degradation in the final frames of longer clips (15s+).\n"
+    "Removes stray text, logos, and watermark-like overlays that could appear near the end of long videos.\n"
+    "Keeps fine detail consistent through to the last frame."
+)
+
+
 def get_ltx_model_spec(model_id: LTXLocalModelId) -> LTXLocalModelSpec:
     match model_id:
+        case "ltx-2.3-22b-distilled-1.1":
+            return LTXLocalModelSpec(
+                model_cp="ltx-2.3-22b-distilled-1.1",
+                upscale_cp="ltx-2.3-spatial-upscaler-x2-1.1",
+                text_encoder_cp="gemma-3-12b-it-qat-q4_0-unquantized",
+                ic_loras_spec=_DISTILLED_IC_LORAS,
+                relevance=LTXLocalModelRelevant(
+                    upgrade_messages={"ltx-2.3-22b-distilled": _DISTILLED_1_1_WHATS_NEW},
+                ),
+                supported_pipelines=_DISTILLED_PIPELINES,
+                version_label="1.1",
+                is_latest=True,
+            )
         case "ltx-2.3-22b-distilled":
             return LTXLocalModelSpec(
                 model_cp="ltx-2.3-22b-distilled",
-                upscale_cp="ltx-2.3-spatial-upscaler-x2-1.0",
+                upscale_cp="ltx-2.3-spatial-upscaler-x2-1.1",
                 text_encoder_cp="gemma-3-12b-it-qat-q4_0-unquantized",
-                ic_loras_spec=LtxIcLorasSpec(
-                    depth_cp="ltx-2.3-22b-ic-lora-union-control-ref0.5",
-                    canny_cp="ltx-2.3-22b-ic-lora-union-control-ref0.5",
-                    pose_cp="ltx-2.3-22b-ic-lora-union-control-ref0.5",
-                ),
+                ic_loras_spec=_DISTILLED_IC_LORAS,
                 relevance=LTXLocalModelRelevant(upgrade_messages={}),
-                supported_pipelines=(
-                    (
-                        "fast",
-                        LTXVideoGenerationSpec(
-                            display_name="LTX 2.3 Fast",
-                            supported_resolutions_durations={
-                                "540p": _local_resolution_spec(
-                                    fps_to_durations={
-                                        24: (5, 6, 8, 10, 20),
-                                    },
-                                ),
-                                "720p": _local_resolution_spec(
-                                    fps_to_durations={
-                                        24: (5, 6, 8, 10),
-                                    },
-                                ),
-                                "1080p": _local_resolution_spec(
-                                    fps_to_durations={
-                                        24: (5,),
-                                    },
-                                ),
-                            },
-                        ),
-                    ),
-                ),
+                supported_pipelines=_DISTILLED_PIPELINES,
+                version_label="1.0",
             )
         case _:
             assert_never(model_id)
@@ -206,13 +257,10 @@ def get_ltx_cps() -> set[ModelCheckpointID]:
 
 
 def get_latest_ltx_model_id() -> LTXLocalModelId:
-    relevant: list[LTXLocalModelId] = []
-    for model_id in ALL_LTX_LOCAL_MODEL_IDS:
-        if isinstance(get_ltx_model_spec(model_id).relevance, LTXLocalModelRelevant):
-            relevant.append(model_id)
-    if len(relevant) != 1:
-        raise RuntimeError(f"Expected exactly one relevant LTX model, found {len(relevant)}")
-    return relevant[0]
+    latest: list[LTXLocalModelId] = [m for m in ALL_LTX_LOCAL_MODEL_IDS if get_ltx_model_spec(m).is_latest]
+    if len(latest) != 1:
+        raise RuntimeError(f"Exactly one LTX model must set is_latest=True, found {len(latest)}")
+    return latest[0]
 
 
 def get_ltx_model_id_for_cp(cp_id: ModelCheckpointID) -> LTXLocalModelId | None:
@@ -325,6 +373,31 @@ def get_downloaded_ltx_model_id(models_dir: Path) -> LTXLocalModelId | None:
     return downloaded[0]
 
 
+def _ltx_generation_bundle_on_disk(models_dir: Path, model_id: LTXLocalModelId) -> bool:
+    """True when the always-required generation checkpoints for ``model_id`` are present.
+
+    Transformer + upscaler are required regardless of settings; the text encoder is
+    optional (an LTX API key encodes prompts instead), so it isn't checked here.
+    """
+    spec = get_ltx_model_spec(model_id)
+    return is_cp_downloaded(models_dir, spec.model_cp) and is_cp_downloaded(models_dir, spec.upscale_cp)
+
+
+def resolve_active_ltx_model_id(
+    models_dir: Path, preferred: LTXLocalModelId | None
+) -> LTXLocalModelId | None:
+    # Only honour ``preferred`` if its full generation bundle is on disk — otherwise it would
+    # be picked and then die in get_existing_cp_path on a missing companion (e.g. upscaler).
+    if preferred is not None and _ltx_generation_bundle_on_disk(models_dir, preferred):
+        return preferred
+    # Prefer a version that can actually generate (newest first); fall back to whatever
+    # transformer is on disk as a last resort so a partial install still resolves to something.
+    for model_id in ALL_LTX_LOCAL_MODEL_IDS:
+        if _ltx_generation_bundle_on_disk(models_dir, model_id):
+            return model_id
+    return get_downloaded_ltx_model_id(models_dir)
+
+
 def _validate_model_cp_specs() -> None:
     relative_paths: dict[Path, ModelCheckpointID] = {}
     for cp_id in ALL_MODEL_CP_IDS:
@@ -344,3 +417,95 @@ def _validate_ltx_specs() -> None:
 
 _validate_model_cp_specs()
 _validate_ltx_specs()
+
+
+# --- IC-LoRA weights ---
+IC_LORA_SUBDIR = "ic-loras"
+
+
+def _safe_segment(value: str, label: str) -> str:
+    if not value or "/" in value or "\\" in value or ".." in value:
+        raise ValueError(f"Unsafe {label}: {value!r}")
+    return value
+
+
+def resolve_ic_lora_path(models_dir: Path, ic_lora_id: str, filename: str) -> Path:
+    rid = _safe_segment(ic_lora_id, "ic_lora_id")
+    name = _safe_segment(filename, "filename")
+    return models_dir / IC_LORA_SUBDIR / rid / name
+
+
+def _find_installed(
+    models_dir: Path,
+    item_id: str,
+    filenames: list[str],
+    resolve: Callable[[Path, str, str], Path],
+) -> Path | None:
+    for filename in filenames:
+        path = resolve(models_dir, item_id, filename)
+        if path.exists():
+            return path
+    return None
+
+
+def _downloaded_variant_ids(
+    models_dir: Path,
+    item_id: str,
+    variants: list[tuple[str, str]],
+    resolve: Callable[[Path, str, str], Path],
+) -> list[str]:
+    return [
+        variant_id
+        for variant_id, filename in variants
+        if resolve(models_dir, item_id, filename).exists()
+    ]
+
+
+def is_ic_lora_downloaded(models_dir: Path, ic_lora_id: str, filename: str) -> bool:
+    return resolve_ic_lora_path(models_dir, ic_lora_id, filename).exists()
+
+
+def find_installed_ic_lora_path(models_dir: Path, ic_lora_id: str, filenames: list[str]) -> Path | None:
+    """Return the first existing weights path among ``filenames`` (preferred order)."""
+    return _find_installed(models_dir, ic_lora_id, filenames, resolve_ic_lora_path)
+
+
+def is_any_ic_lora_variant_downloaded(models_dir: Path, ic_lora_id: str, filenames: list[str]) -> bool:
+    return find_installed_ic_lora_path(models_dir, ic_lora_id, filenames) is not None
+
+
+def downloaded_ic_lora_variant_ids(
+    models_dir: Path, ic_lora_id: str, variants: list[tuple[str, str]]
+) -> list[str]:
+    """Return variant ids whose weights file exists. ``variants`` is ``(id, filename)``."""
+    return _downloaded_variant_ids(models_dir, ic_lora_id, variants, resolve_ic_lora_path)
+
+
+# --- Plain LoRA weights (catalog + manually-placed). Files land under "loras/<id>/" so the
+#     model scanner classifies them as is_lora && !is_ic_lora. ---
+LORA_SUBDIR = "loras"
+
+
+def resolve_lora_path(models_dir: Path, lora_id: str, filename: str) -> Path:
+    lid = _safe_segment(lora_id, "lora_id")
+    name = _safe_segment(filename, "filename")
+    return models_dir / LORA_SUBDIR / lid / name
+
+
+def is_lora_downloaded(models_dir: Path, lora_id: str, filename: str) -> bool:
+    return resolve_lora_path(models_dir, lora_id, filename).exists()
+
+
+def find_installed_lora_path(models_dir: Path, lora_id: str, filenames: list[str]) -> Path | None:
+    return _find_installed(models_dir, lora_id, filenames, resolve_lora_path)
+
+
+def is_any_lora_variant_downloaded(models_dir: Path, lora_id: str, filenames: list[str]) -> bool:
+    return find_installed_lora_path(models_dir, lora_id, filenames) is not None
+
+
+def downloaded_lora_variant_ids(
+    models_dir: Path, lora_id: str, variants: list[tuple[str, str]]
+) -> list[str]:
+    """Return variant ids whose weights file exists. ``variants`` is ``(id, filename)``."""
+    return _downloaded_variant_ids(models_dir, lora_id, variants, resolve_lora_path)

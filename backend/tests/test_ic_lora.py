@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
+import json
+import struct
 from pathlib import Path
 
 from tests.http_error_assertions import assert_http_error
 from tests.fakes import FakeCapture
+
+
+def _write_ic_lora_file(path: Path) -> None:
+    """Header-only safetensors carrying the IC-LoRA reference marker."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    blob = json.dumps({"__metadata__": {"reference_downscale_factor": "1"}}).encode("utf-8")
+    with open(path, "wb") as f:
+        f.write(struct.pack("<Q", len(blob)))
+        f.write(blob)
 
 
 class TestIcLoraExtractConditioning:
@@ -72,3 +83,110 @@ class TestIcLoraGenerate:
         assert response.status_code == 200
         assert response.json()["status"] == "complete"
         assert Path(response.json()["video_path"]).exists()
+
+    def test_canny_does_not_require_depth_cp(self, client, test_state, create_fake_model_files, create_fake_ic_lora_files):
+        # canny preprocessing uses apply_canny, not the depth processor, so generation
+        # must succeed even when the depth cp isn't installed (previously 500'd).
+        create_fake_model_files()
+        create_fake_ic_lora_files(include_depth=False)
+        test_state.state.app_settings.use_local_text_encoder = True
+
+        video_path = test_state.config.outputs_dir / "test_video.mp4"
+        video_path.write_bytes(b"\x00" * 100)
+        test_state.video_processor.register_video(str(video_path), FakeCapture(frames=["frame-a", "frame-b"]))
+
+        response = client.post(
+            "/api/ic-lora/generate",
+            json={
+                "video_path": str(video_path),
+                "conditioning_type": "canny",
+                "prompt": "test prompt",
+                "images": [],
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "complete"
+
+    def test_local_ic_lora_recoverable_via_progress(self, client, test_state, create_fake_model_files, create_fake_ic_lora_files):
+        # IC-LoRA is local-only and drives the generation state machine, so a page that
+        # unmounted mid-generation can recover the output via /generation/progress.
+        create_fake_model_files()
+        create_fake_ic_lora_files()
+        test_state.state.app_settings.use_local_text_encoder = True
+
+        video_path = test_state.config.outputs_dir / "test_video_recover.mp4"
+        video_path.write_bytes(b"\x00" * 100)
+        test_state.video_processor.register_video(str(video_path), FakeCapture(frames=["frame-a", "frame-b"]))
+
+        response = client.post(
+            "/api/ic-lora/generate",
+            json={
+                "video_path": str(video_path),
+                "conditioning_type": "canny",
+                "prompt": "test prompt",
+                "images": [],
+            },
+        )
+        assert response.status_code == 200
+        result_path = response.json()["video_path"]
+
+        progress = client.get("/api/generation/progress").json()
+        assert progress["status"] == "complete"
+        assert progress["result"] == result_path
+
+    def test_custom_uses_supplied_control_video(
+        self, client, test_state, fake_services, create_fake_model_files, create_fake_ic_lora_files
+    ):
+        # Custom IC-LoRA: user's own weights + a pre-rendered control video. No
+        # preprocessing — the control video is fed to the pipeline directly.
+        create_fake_model_files()
+        create_fake_ic_lora_files()
+        test_state.state.app_settings.use_local_text_encoder = True
+
+        lora_ref = test_state.config.default_models_dir / "loras" / "my-custom-ic-lora.safetensors"
+        _write_ic_lora_file(lora_ref)
+        control_video = test_state.config.outputs_dir / "control.mp4"
+        control_video.write_bytes(b"\x00" * 100)
+        test_state.video_processor.register_video(
+            str(control_video), FakeCapture(frames=["c0", "c1", "c2"], fps=24)
+        )
+
+        response = client.post(
+            "/api/ic-lora/generate",
+            json={
+                "video_path": "",
+                "conditioning_type": "custom",
+                "custom_lora_ref": str(lora_ref),
+                "control_video_path": str(control_video),
+                "prompt": "make it night",
+                "images": [],
+            },
+        )
+        assert response.status_code == 200
+        result_path = response.json()["video_path"]
+
+        # The pipeline got the supplied control video verbatim — not a derived _control_*.mp4.
+        call = fake_services.ic_lora_pipeline.generate_calls[-1]
+        assert call["video_conditioning"] == [(str(control_video), 1.0)]
+        assert call["num_frames"] == 3
+
+        # Recoverable via the progress endpoint, like every other local generation.
+        progress = client.get("/api/generation/progress").json()
+        assert progress["status"] == "complete"
+        assert progress["result"] == result_path
+
+    def test_custom_requires_lora_and_control_video(self, client, test_state, create_fake_model_files, create_fake_ic_lora_files):
+        create_fake_model_files()
+        create_fake_ic_lora_files()
+        test_state.state.app_settings.use_local_text_encoder = True
+
+        response = client.post(
+            "/api/ic-lora/generate",
+            json={
+                "video_path": "",
+                "conditioning_type": "custom",
+                "prompt": "make it night",
+                "images": [],
+            },
+        )
+        assert response.status_code == 400

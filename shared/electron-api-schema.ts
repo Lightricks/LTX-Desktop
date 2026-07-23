@@ -119,6 +119,10 @@ export const electronAPISchemas = {
     input: z.object({ repoId: z.string() }),
     output: z.boolean(),
   },
+  openExternalUrl: {
+    input: z.object({ url: z.string() }),
+    output: z.boolean(),
+  },
   openHuggingFaceAuth: {
     input: z.object({
       clientId: z.string(),
@@ -141,7 +145,7 @@ export const electronAPISchemas = {
 
   // Logs
   getLogs: {
-    input: z.object({}),
+    input: z.object({ query: z.string().optional() }),
     output: logsResponse,
   },
   getLogPath: {
@@ -276,6 +280,13 @@ export const electronAPISchemas = {
     input: z.object({}),
     output: backendHealthStatus.nullable(),
   },
+  // Tells the liveness monitor a generation is known to be in flight, so it doesn't mistake a
+  // long-running local generation (MPS/CUDA compute can starve the backend's own event loop for
+  // tens of seconds, delaying /health) for a genuinely hung process and kill it mid-generation.
+  notifyGenerationActive: {
+    input: z.object({ active: z.boolean() }),
+    output: z.void(),
+  },
 
   // Video processing
   extractVideoFrame: {
@@ -293,6 +304,12 @@ export const electronAPISchemas = {
   openModelsDirChangeDialog: {
     input: z.object({}),
     output: ipcResult({ path: z.string() }),
+  },
+  openModelsFolder: {
+    // No path argument by design — the main process resolves the configured models dir
+    // from the backend so a renderer can't ask to open an arbitrary location.
+    input: z.object({}),
+    output: ipcResult({}),
   },
 
   // Analytics
@@ -324,5 +341,4 @@ export type ElectronAPI = InvokeAPI & {
   onBackendHealthStatus: (cb: (data: BackendHealthStatus) => void) => (() => void)
   getPathForFile: (file: File) => string
   platform: string
-  hfGatingEnabled: boolean
 }

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
+
+from frame_math import compute_num_frames
 import tempfile
 import time
 import uuid
@@ -21,14 +23,17 @@ from api_types import (
     GenerateVideoRequest,
     GenerateVideoResponse,
     ImageConditioningInput,
+    LoraEntry,
     VideoCameraMotion,
 )
+from runtime_config.models_scanner import resolve_lora_ref
 from _routes._errors import HTTPError
 from api_model_specs import (
     build_generate_video_model_specs_response,
     validate_generate_video_request,
 )
 from handlers.base import StateHandlerBase
+from server_utils.heartbeat import log_heartbeat
 from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
 from handlers.text_handler import TextHandler
@@ -92,81 +97,88 @@ class VideoGenerationHandler(StateHandlerBase):
         if use_api_specs:
             return self._generate_forced_api(req)
 
-        if self._generation.is_generation_running():
-            raise HTTPError(409, "Generation already in progress")
+        with self._generation.reserved_generation_start():
 
-        resolution = req.resolution
-        duration = req.duration
-        fps = req.fps
+            resolution = req.resolution
+            duration = req.duration
+            fps = req.fps
 
-        audio_path = normalize_optional_path(req.audioPath)
-        if audio_path:
-            return self._generate_a2v(req, duration, fps, audio_path=audio_path)
+            audio_path = normalize_optional_path(req.audioPath)
+            if audio_path:
+                return self._generate_a2v(req, duration, fps, audio_path=audio_path)
 
-        logger.info("Resolution %s - using fast pipeline", resolution)
+            logger.info("Resolution %s - using fast pipeline", resolution)
 
-        RESOLUTION_MAP_16_9: dict[str, tuple[int, int]] = {
-            "540p": (960, 544),
-            "720p": (1280, 704),
-            "1080p": (1920, 1088),
-        }
+            RESOLUTION_MAP_16_9: dict[str, tuple[int, int]] = {
+                "540p": (960, 544),
+                "720p": (1280, 704),
+                "1080p": (1920, 1088),
+            }
 
-        def get_16_9_size(res: str) -> tuple[int, int]:
-            size = RESOLUTION_MAP_16_9.get(res)
-            if size is None:
-                raise HTTPError(400, "INVALID_LOCAL_RESOLUTION")
-            return size
+            def get_16_9_size(res: str) -> tuple[int, int]:
+                size = RESOLUTION_MAP_16_9.get(res)
+                if size is None:
+                    raise HTTPError(400, "INVALID_LOCAL_RESOLUTION")
+                return size
 
-        def get_9_16_size(res: str) -> tuple[int, int]:
-            w, h = get_16_9_size(res)
-            return h, w
+            def get_9_16_size(res: str) -> tuple[int, int]:
+                w, h = get_16_9_size(res)
+                return h, w
 
-        match req.aspectRatio:
-            case "9:16":
-                width, height = get_9_16_size(resolution)
-            case "16:9":
-                width, height = get_16_9_size(resolution)
+            match req.aspectRatio:
+                case "9:16":
+                    width, height = get_9_16_size(resolution)
+                case "16:9":
+                    width, height = get_16_9_size(resolution)
 
-        num_frames = self._compute_num_frames(duration, fps)
+            num_frames = self._compute_num_frames(duration, fps)
 
-        image = None
-        image_path = normalize_optional_path(req.imagePath)
-        if image_path:
-            image = self._prepare_image(image_path, width, height)
-            logger.info("Image: %s -> %sx%s", image_path, width, height)
+            image = None
+            image_path = normalize_optional_path(req.imagePath)
+            if image_path:
+                image = self._prepare_image(image_path, width, height)
+                logger.info("Image: %s -> %sx%s", image_path, width, height)
 
-        generation_id = self._make_generation_id()
-        seed = self._resolve_seed()
+            generation_id = self._make_generation_id()
+            seed = req.seed if req.seed is not None else self._resolve_seed()
+            loras = self._resolve_loras(req.loras)
 
+            try:
+                self._pipelines.load_gpu_pipeline("fast", loras=loras)
+                self._generation.start_generation(generation_id)
+
+                output_path = self.generate_video(
+                    prompt=req.prompt,
+                    image=image,
+                    height=height,
+                    width=width,
+                    num_frames=num_frames,
+                    fps=fps,
+                    seed=seed,
+                    camera_motion=req.cameraMotion,
+                    negative_prompt=req.negativePrompt,
+                    loras=loras,
+                )
+
+                self._generation.complete_generation(output_path)
+                return GenerateVideoCompleteResponse(status="complete", video_path=output_path)
+
+            except HTTPError as e:
+                self._generation.fail_generation(e.detail)
+                raise
+            except Exception as e:
+                self._generation.fail_generation(str(e))
+                if "cancelled" in str(e).lower():
+                    logger.info("Generation cancelled by user")
+                    return GenerateVideoCancelledResponse(status="cancelled")
+
+                raise HTTPError(500, str(e)) from e
+
+    def _resolve_loras(self, loras: list[LoraEntry]) -> list[tuple[str, float]]:
         try:
-            self._pipelines.load_gpu_pipeline("fast")
-            self._generation.start_generation(generation_id)
-
-            output_path = self.generate_video(
-                prompt=req.prompt,
-                image=image,
-                height=height,
-                width=width,
-                num_frames=num_frames,
-                fps=fps,
-                seed=seed,
-                camera_motion=req.cameraMotion,
-                negative_prompt=req.negativePrompt,
-            )
-
-            self._generation.complete_generation(output_path)
-            return GenerateVideoCompleteResponse(status="complete", video_path=output_path)
-
-        except HTTPError as e:
-            self._generation.fail_generation(e.detail)
-            raise
-        except Exception as e:
-            self._generation.fail_generation(str(e))
-            if "cancelled" in str(e).lower():
-                logger.info("Generation cancelled by user")
-                return GenerateVideoCancelledResponse(status="cancelled")
-
-            raise HTTPError(500, str(e)) from e
+            return [(str(resolve_lora_ref(self.models_dir, e.ref)), e.scale) for e in loras]
+        except ValueError as exc:
+            raise HTTPError(400, str(exc)) from exc
 
     def generate_video(
         self,
@@ -179,6 +191,7 @@ class VideoGenerationHandler(StateHandlerBase):
         seed: int,
         camera_motion: VideoCameraMotion,
         negative_prompt: str,
+        loras: list[tuple[str, float]] | None = None,
     ) -> str:
         t_total_start = time.perf_counter()
         gen_mode = "i2v" if image is not None else "t2v"
@@ -191,7 +204,7 @@ class VideoGenerationHandler(StateHandlerBase):
 
         self._generation.update_progress("loading_model", 5, 0, total_steps)
         t_load_start = time.perf_counter()
-        pipeline_state = self._pipelines.load_gpu_pipeline("fast")
+        pipeline_state = self._pipelines.load_gpu_pipeline("fast", loras=loras)
         t_load_end = time.perf_counter()
         logger.info("[%s] Pipeline load: %.2fs", gen_mode, t_load_end - t_load_start)
 
@@ -228,16 +241,17 @@ class VideoGenerationHandler(StateHandlerBase):
             width = round(width / 64) * 64
 
             t_inference_start = time.perf_counter()
-            pipeline_state.pipeline.generate(
-                prompt=enhanced_prompt,
-                seed=seed,
-                height=height,
-                width=width,
-                num_frames=num_frames,
-                frame_rate=fps,
-                images=images,
-                output_path=str(output_path),
-            )
+            with log_heartbeat(f"{gen_mode} inference"):
+                pipeline_state.pipeline.generate(
+                    prompt=enhanced_prompt,
+                    seed=seed,
+                    height=height,
+                    width=width,
+                    num_frames=num_frames,
+                    frame_rate=fps,
+                    images=images,
+                    output_path=str(output_path),
+                )
             t_inference_end = time.perf_counter()
             logger.info("[%s] Inference: %.2fs", gen_mode, t_inference_end - t_inference_start)
 
@@ -284,12 +298,13 @@ class VideoGenerationHandler(StateHandlerBase):
         if image_path:
             image = self._prepare_image(image_path, width, height)
 
-        seed = self._resolve_seed()
+        seed = req.seed if req.seed is not None else self._resolve_seed()
+        loras = self._resolve_loras(req.loras)
 
         generation_id = self._make_generation_id()
 
         try:
-            a2v_state = self._pipelines.load_a2v_pipeline()
+            a2v_state = self._pipelines.load_a2v_pipeline(loras=loras)
             self._generation.start_generation(generation_id)
 
             enhanced_prompt = req.prompt + self.config.camera_motion_prompts.get(req.cameraMotion, "")
@@ -382,158 +397,147 @@ class VideoGenerationHandler(StateHandlerBase):
 
     @staticmethod
     def _compute_num_frames(duration: int, fps: int) -> int:
-        n = ((duration * fps) // 8) * 8 + 1
-        return max(n, 9)
-
-    def _resolve_seed(self) -> int:
-        settings = self.state.app_settings
-        if settings.seed_locked:
-            logger.info("Using locked seed: %s", settings.locked_seed)
-            return settings.locked_seed
-        if self.config.dev_mode:
-            return 1000
-        return int(time.time()) % 2147483647
+        return compute_num_frames(duration, fps)
 
     def _make_output_path(self) -> Path:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return self.config.outputs_dir / f"ltx2_video_{timestamp}_{self._make_generation_id()}.mp4"
 
     def _generate_forced_api(self, req: GenerateVideoRequest) -> GenerateVideoResponse:
-        if self._generation.is_generation_running():
-            raise HTTPError(409, "Generation already in progress")
+        with self._generation.reserved_generation_start():
 
-        generation_id = self._make_generation_id()
-        self._generation.start_api_generation(generation_id)
+            generation_id = self._make_generation_id()
+            self._generation.start_api_generation(generation_id)
 
-        audio_path = normalize_optional_path(req.audioPath)
-        image_path = normalize_optional_path(req.imagePath)
-        has_input_audio = bool(audio_path)
-        has_input_image = bool(image_path)
+            audio_path = normalize_optional_path(req.audioPath)
+            image_path = normalize_optional_path(req.imagePath)
+            has_input_audio = bool(audio_path)
+            has_input_image = bool(image_path)
 
-        try:
-            self._generation.update_progress("validating_request", 5, None, None)
+            try:
+                self._generation.update_progress("validating_request", 5, None, None)
 
-            api_key = self.state.app_settings.ltx_api_key.strip()
-            logger.info("Forced API generation route selected (key_present=%s)", bool(api_key))
-            if not api_key:
-                raise HTTPError(400, "PRO_API_KEY_REQUIRED")
+                api_key = self.state.app_settings.ltx_api_key.strip()
+                logger.info("Forced API generation route selected (key_present=%s)", bool(api_key))
+                if not api_key:
+                    raise HTTPError(400, "PRO_API_KEY_REQUIRED")
 
-            requested_model = req.model
-            api_model_id = FORCED_API_MODEL_MAP.get(requested_model)
-            if api_model_id is None:
-                raise HTTPError(500, "INVALID_FORCED_API_MODEL_CONFIG")
+                requested_model = req.model
+                api_model_id = FORCED_API_MODEL_MAP.get(requested_model)
+                if api_model_id is None:
+                    raise HTTPError(500, "INVALID_FORCED_API_MODEL_CONFIG")
 
-            resolution_label = req.resolution
-            resolution_by_aspect = FORCED_API_RESOLUTION_MAP.get(resolution_label)
-            if resolution_by_aspect is None:
-                raise HTTPError(500, "INVALID_FORCED_API_RESOLUTION_CONFIG")
+                resolution_label = req.resolution
+                resolution_by_aspect = FORCED_API_RESOLUTION_MAP.get(resolution_label)
+                if resolution_by_aspect is None:
+                    raise HTTPError(500, "INVALID_FORCED_API_RESOLUTION_CONFIG")
 
-            aspect_ratio = req.aspectRatio
-            if aspect_ratio not in FORCED_API_ALLOWED_ASPECT_RATIOS:
-                raise HTTPError(400, "INVALID_FORCED_API_ASPECT_RATIO")
+                aspect_ratio = req.aspectRatio
+                if aspect_ratio not in FORCED_API_ALLOWED_ASPECT_RATIOS:
+                    raise HTTPError(400, "INVALID_FORCED_API_ASPECT_RATIO")
 
-            api_resolution = resolution_by_aspect[aspect_ratio]
+                api_resolution = resolution_by_aspect[aspect_ratio]
 
-            prompt = req.prompt
+                prompt = req.prompt
 
-            if self._generation.is_generation_cancelled():
-                raise RuntimeError("Generation was cancelled")
+                if self._generation.is_generation_cancelled():
+                    raise RuntimeError("Generation was cancelled")
 
-            if has_input_audio:
-                validated_audio_path = validate_audio_file(audio_path)
-                validated_image_path: Path | None = None
-                if image_path is not None:
+                if has_input_audio:
+                    validated_audio_path = validate_audio_file(audio_path)
+                    validated_image_path: Path | None = None
+                    if image_path is not None:
+                        validated_image_path = validate_image_file(image_path)
+
+                    self._generation.update_progress("uploading_audio", 20, None, None)
+                    audio_uri = self._ltx_api_client.upload_file(
+                        api_key=api_key,
+                        file_path=str(validated_audio_path),
+                    )
+                    image_uri: str | None = None
+                    if validated_image_path is not None:
+                        self._generation.update_progress("uploading_image", 35, None, None)
+                        image_uri = self._ltx_api_client.upload_file(
+                            api_key=api_key,
+                            file_path=str(validated_image_path),
+                        )
+                    self._generation.update_progress("inference", 55, None, None)
+                    video_bytes = self._ltx_api_client.generate_audio_to_video(
+                        api_key=api_key,
+                        prompt=prompt,
+                        audio_uri=audio_uri,
+                        image_uri=image_uri,
+                        model=api_model_id,
+                        resolution=api_resolution,
+                    )
+                    self._generation.update_progress("downloading_output", 85, None, None)
+                elif has_input_image:
                     validated_image_path = validate_image_file(image_path)
 
-                self._generation.update_progress("uploading_audio", 20, None, None)
-                audio_uri = self._ltx_api_client.upload_file(
-                    api_key=api_key,
-                    file_path=str(validated_audio_path),
-                )
-                image_uri: str | None = None
-                if validated_image_path is not None:
-                    self._generation.update_progress("uploading_image", 35, None, None)
+                    duration = req.duration
+                    fps = req.fps
+
+                    generate_audio = req.audio
+                    self._generation.update_progress("uploading_image", 20, None, None)
                     image_uri = self._ltx_api_client.upload_file(
                         api_key=api_key,
                         file_path=str(validated_image_path),
                     )
-                self._generation.update_progress("inference", 55, None, None)
-                video_bytes = self._ltx_api_client.generate_audio_to_video(
-                    api_key=api_key,
-                    prompt=prompt,
-                    audio_uri=audio_uri,
-                    image_uri=image_uri,
-                    model=api_model_id,
-                    resolution=api_resolution,
-                )
-                self._generation.update_progress("downloading_output", 85, None, None)
-            elif has_input_image:
-                validated_image_path = validate_image_file(image_path)
+                    self._generation.update_progress("inference", 55, None, None)
+                    video_bytes = self._ltx_api_client.generate_image_to_video(
+                        api_key=api_key,
+                        prompt=prompt,
+                        image_uri=image_uri,
+                        model=api_model_id,
+                        resolution=api_resolution,
+                        duration=float(duration),
+                        fps=float(fps),
+                        generate_audio=generate_audio,
+                        camera_motion=req.cameraMotion,
+                    )
+                    self._generation.update_progress("downloading_output", 85, None, None)
+                else:
+                    duration = req.duration
+                    fps = req.fps
 
-                duration = req.duration
-                fps = req.fps
+                    generate_audio = req.audio
+                    self._generation.update_progress("inference", 55, None, None)
+                    video_bytes = self._ltx_api_client.generate_text_to_video(
+                        api_key=api_key,
+                        prompt=prompt,
+                        model=api_model_id,
+                        resolution=api_resolution,
+                        duration=float(duration),
+                        fps=float(fps),
+                        generate_audio=generate_audio,
+                        camera_motion=req.cameraMotion,
+                    )
+                    self._generation.update_progress("downloading_output", 85, None, None)
 
-                generate_audio = req.audio
-                self._generation.update_progress("uploading_image", 20, None, None)
-                image_uri = self._ltx_api_client.upload_file(
-                    api_key=api_key,
-                    file_path=str(validated_image_path),
-                )
-                self._generation.update_progress("inference", 55, None, None)
-                video_bytes = self._ltx_api_client.generate_image_to_video(
-                    api_key=api_key,
-                    prompt=prompt,
-                    image_uri=image_uri,
-                    model=api_model_id,
-                    resolution=api_resolution,
-                    duration=float(duration),
-                    fps=float(fps),
-                    generate_audio=generate_audio,
-                    camera_motion=req.cameraMotion,
-                )
-                self._generation.update_progress("downloading_output", 85, None, None)
-            else:
-                duration = req.duration
-                fps = req.fps
+                if self._generation.is_generation_cancelled():
+                    raise RuntimeError("Generation was cancelled")
 
-                generate_audio = req.audio
-                self._generation.update_progress("inference", 55, None, None)
-                video_bytes = self._ltx_api_client.generate_text_to_video(
-                    api_key=api_key,
-                    prompt=prompt,
-                    model=api_model_id,
-                    resolution=api_resolution,
-                    duration=float(duration),
-                    fps=float(fps),
-                    generate_audio=generate_audio,
-                    camera_motion=req.cameraMotion,
-                )
-                self._generation.update_progress("downloading_output", 85, None, None)
+                output_path = self._write_forced_api_video(video_bytes)
+                if self._generation.is_generation_cancelled():
+                    output_path.unlink(missing_ok=True)
+                    raise RuntimeError("Generation was cancelled")
 
-            if self._generation.is_generation_cancelled():
-                raise RuntimeError("Generation was cancelled")
-
-            output_path = self._write_forced_api_video(video_bytes)
-            if self._generation.is_generation_cancelled():
-                output_path.unlink(missing_ok=True)
-                raise RuntimeError("Generation was cancelled")
-
-            self._generation.update_progress("complete", 100, None, None)
-            self._generation.complete_generation(str(output_path))
-            return GenerateVideoCompleteResponse(status="complete", video_path=str(output_path))
-        except HTTPError as e:
-            self._generation.fail_generation(e.detail)
-            raise
-        except LTXAPIClientError as e:
-            mapped_error = self._map_ltx_api_generation_error(e)
-            self._generation.fail_generation(mapped_error.detail)
-            raise mapped_error from e
-        except Exception as e:
-            self._generation.fail_generation(str(e))
-            if "cancelled" in str(e).lower():
-                logger.info("Generation cancelled by user")
-                return GenerateVideoCancelledResponse(status="cancelled")
-            raise HTTPError(500, str(e)) from e
+                self._generation.update_progress("complete", 100, None, None)
+                self._generation.complete_generation(str(output_path))
+                return GenerateVideoCompleteResponse(status="complete", video_path=str(output_path))
+            except HTTPError as e:
+                self._generation.fail_generation(e.detail)
+                raise
+            except LTXAPIClientError as e:
+                mapped_error = self._map_ltx_api_generation_error(e)
+                self._generation.fail_generation(mapped_error.detail)
+                raise mapped_error from e
+            except Exception as e:
+                self._generation.fail_generation(str(e))
+                if "cancelled" in str(e).lower():
+                    logger.info("Generation cancelled by user")
+                    return GenerateVideoCancelledResponse(status="cancelled")
+                raise HTTPError(500, str(e)) from e
 
     def _write_forced_api_video(self, video_bytes: bytes) -> Path:
         output_path = self._make_output_path()

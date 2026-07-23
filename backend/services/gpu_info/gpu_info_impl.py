@@ -9,6 +9,7 @@ import subprocess
 import sys
 from typing import Protocol, cast
 
+import psutil
 import torch
 
 from services.gpu_info.gpu_info import GpuTelemetryPayload
@@ -140,3 +141,13 @@ class GpuInfoImpl:
                 return None
 
         return None
+
+    def get_available_ram_gb(self) -> int | None:
+        """Free/available system RAM, not total -- used to gate local generation on
+        Apple Silicon (unified memory shared with the OS/app, so total RAM alone
+        overstates real headroom)."""
+        try:
+            return int(psutil.virtual_memory().available // (1024**3))
+        except Exception:
+            logger.warning("Failed to query available system RAM", exc_info=True)
+            return None
