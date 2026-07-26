@@ -433,10 +433,10 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <Zap className="h-4 w-4 text-blue-400" />
-                          <span className="text-sm font-medium text-white">Generate With API</span>
+                          <span className="text-sm font-medium text-white">Use LTX API Models</span>
                         </div>
                         <p className="text-xs text-zinc-400 mt-1">
-                          Use LTX API for video generation when an LTX API key is configured.
+                          Unlocks LTX-2.3 Fast and Pro in the model selector. Local generation supports Fast only.
                         </p>
                       </div>
                       <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
