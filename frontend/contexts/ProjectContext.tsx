@@ -179,11 +179,14 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       createdAt: Date.now(),
     }
 
-    mutateProject(projectId, project => ({
+    const persistedProject = mutateProject(projectId, project => ({
       ...project,
       assets: [newAsset, ...project.assets],
       updatedAt: Date.now(),
     }))
+    if (!persistedProject) {
+      throw new Error(`Cannot add asset: project ${projectId} was not found`)
+    }
 
     return newAsset
   }, [mutateProject])
