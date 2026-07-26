@@ -84,6 +84,27 @@ def test_cache_hit_reuses_model_without_rebuilding() -> None:
     assert stage_1.build_count == 1
     assert stage_2.build_count == 0, "stage_2 should reuse stage_1's cached build"
     assert model_1 is model_2
+    assert model_1.freed_to == "meta", "a consumed cache hit must free before decoder construction"
+    assert dsc._cached_model is None
+    assert dsc._cached_key is None
+
+
+def test_third_identical_stage_rebuilds_after_consumed_hit() -> None:
+    stage_1 = _FakeStage(_single_gpu_builder("ckpt.safetensors"))
+    stage_2 = _FakeStage(_single_gpu_builder("ckpt.safetensors"))
+    stage_3 = _FakeStage(_single_gpu_builder("ckpt.safetensors"))
+
+    with dsc._cached_transformer_ctx(stage_1):
+        pass
+    with dsc._cached_transformer_ctx(stage_2):
+        pass
+    with dsc._cached_transformer_ctx(stage_3):
+        pass
+
+    assert stage_1.build_count == 1
+    assert stage_2.build_count == 0
+    assert stage_3.build_count == 1
+    assert dsc._cached_model is not None
 
 
 def test_cache_miss_on_different_checkpoint_evicts_old_model() -> None:

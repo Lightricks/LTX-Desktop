@@ -1946,7 +1946,7 @@ export interface components {
             activeLtxModelId?: ("ltx-2.3-22b-distilled-1.1" | "ltx-2.3-22b-distilled") | null;
             /**
              * Diffusionstagecacheenabled
-             * @default false
+             * @default true
              */
             diffusionStageCacheEnabled: boolean;
             /**
