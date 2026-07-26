@@ -17,6 +17,16 @@ interface TimelineGap {
 
 type GapGenerateMode = 'text-to-video' | 'image-to-video' | 'text-to-image'
 
+export interface GapFrameConditioning {
+  imagePath: string | null
+  imageFile: File | null
+  reverseResult: boolean
+}
+
+interface FrameOverride {
+  file: File
+  previewUrl: string
+}
 
 interface GapGenerationModalProps {
   selectedGap: TimelineGap | null
@@ -41,7 +51,7 @@ interface GapGenerationModalProps {
   regenStatusMessage: string
   regenProgress: number
   regenReset: () => void
-  handleGapGenerate: () => void
+  handleGapGenerate: (conditioning: GapFrameConditioning) => void
   handleCloseGap: () => void
   setSelectedGap: (gap: TimelineGap | null) => void
   gapApplyAudioToTrack: boolean
@@ -119,8 +129,8 @@ export function GapGenerationModal({
 
   const [startFrameEnabled, setStartFrameEnabled] = useState(true)
   const [endFrameEnabled, setEndFrameEnabled] = useState(false)
-  const [startFrameOverride, setStartFrameOverride] = useState<string | null>(null)
-  const [endFrameOverride, setEndFrameOverride] = useState<string | null>(null)
+  const [startFrameOverride, setStartFrameOverride] = useState<FrameOverride | null>(null)
+  const [endFrameOverride, setEndFrameOverride] = useState<FrameOverride | null>(null)
   const startFrameInputRef = useRef<HTMLInputElement>(null)
   const endFrameInputRef = useRef<HTMLInputElement>(null)
 
@@ -131,20 +141,52 @@ export function GapGenerationModal({
     setEndFrameOverride(null)
   }, [gapGenerateMode])
 
-  const displayedBeforeFrame = startFrameOverride ?? gapBeforeFrame
-  const displayedAfterFrame = endFrameOverride ?? gapAfterFrame
+  const displayedBeforeFrame = startFrameOverride?.previewUrl
+    ?? (gapBeforeFrame ? pathToFileUrl(gapBeforeFrame) : null)
+  const displayedAfterFrame = endFrameOverride?.previewUrl
+    ?? (gapAfterFrame ? pathToFileUrl(gapAfterFrame) : null)
 
   const handleFrameFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
-    setter: (v: string | null) => void,
+    setter: (v: FrameOverride | null) => void,
     onSelect: () => void
   ) => {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = (ev) => { setter(ev.target?.result as string); onSelect() }
+    reader.onload = (ev) => {
+      setter({ file, previewUrl: ev.target?.result as string })
+      onSelect()
+    }
     reader.readAsDataURL(file)
     e.target.value = ''
+  }
+
+  const handleGenerate = () => {
+    if (!isVideoMode || gapImageFile) {
+      handleGapGenerate({ imagePath: null, imageFile: null, reverseResult: false })
+      return
+    }
+
+    if (startFrameEnabled && (startFrameOverride || gapBeforeFrame)) {
+      handleGapGenerate({
+        imagePath: startFrameOverride ? null : gapBeforeFrame,
+        imageFile: startFrameOverride?.file ?? null,
+        reverseResult: false,
+      })
+      return
+    }
+
+    if (endFrameEnabled && (endFrameOverride || gapAfterFrame)) {
+      handleGapGenerate({
+        imagePath: endFrameOverride ? null : gapAfterFrame,
+        imageFile: endFrameOverride?.file ?? null,
+        reverseResult: true,
+      })
+      return
+    }
+
+    handleGapGenerate({ imagePath: null, imageFile: null, reverseResult: false })
   }
 
   return (
@@ -229,7 +271,7 @@ export function GapGenerationModal({
                     onClick={() => { if (startFrameEnabled) { setStartFrameEnabled(false) } else { setStartFrameEnabled(true); setEndFrameEnabled(false) } }}
                   >
                     <img
-                      src={pathToFileUrl(displayedBeforeFrame)}
+                      src={displayedBeforeFrame}
                       alt=""
                       className={`w-full h-full object-cover transition-all duration-300 ${
                         !startFrameEnabled ? 'grayscale opacity-50' : ''
@@ -295,7 +337,7 @@ export function GapGenerationModal({
                     onClick={() => { if (endFrameEnabled) { setEndFrameEnabled(false) } else { setEndFrameEnabled(true); setStartFrameEnabled(false) } }}
                   >
                     <img
-                      src={pathToFileUrl(displayedAfterFrame)}
+                      src={displayedAfterFrame}
                       alt=""
                       className={`w-full h-full object-cover transition-all duration-300 ${
                         !endFrameEnabled ? 'grayscale opacity-50' : ''
@@ -480,7 +522,7 @@ export function GapGenerationModal({
                 Cancel
               </button>
               <button
-                onClick={handleGapGenerate}
+                onClick={handleGenerate}
                 disabled={isRegenerating || !gapPrompt.trim() || (isVideoMode && !gapCanGenerateVideo)}
                 className="px-4 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
               >
