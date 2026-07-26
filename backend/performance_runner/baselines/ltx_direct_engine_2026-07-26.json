@@ -1,0 +1,13 @@
+{
+  "schema": "ltx.hd-benchmark.external-baseline.v1",
+  "qualification": "Historical direct-engine baseline; not an Electron app-entrypoint result. Use only to reconstruct pre-change expectations.",
+  "source_repo": "/Users/paulericksen/projects/ltx-desktop",
+  "source_entrypoint": "backend/engine/generate_v23.py",
+  "runs": [
+    {"requested": {"width": 704, "height": 480, "frames": 97}, "actual": {"width": 704, "height": 448, "frames": 96}, "mode": "eager", "wall_seconds": 36.45, "peak_rss_gib": 35.20, "peak_physical_gib": 38.81},
+    {"requested": {"width": 704, "height": 480, "frames": 97}, "actual": {"width": 704, "height": 448, "frames": 96}, "mode": "low_ram", "wall_seconds": 36.54, "peak_rss_gib": 15.45, "peak_physical_gib": 23.03, "byte_identical_to_eager": true},
+    {"requested": {"width": 1280, "height": 704, "frames": 97}, "actual": {"width": 1280, "height": 704, "frames": 96}, "mode": "eager", "wall_seconds": 129.87, "peak_rss_gib": 35.20, "peak_physical_gib": 45.42},
+    {"requested": {"width": 1280, "height": 704, "frames": 97}, "actual": {"width": 1280, "height": 704, "frames": 96}, "mode": "low_ram", "wall_seconds": 129.35, "peak_rss_gib": 15.45, "peak_physical_gib": 45.61},
+    {"requested": {"width": 1280, "height": 704, "frames": 97}, "actual": {"width": 1280, "height": 704, "frames": 96}, "mode": "low_ram_vae_0_5", "wall_seconds": 133.66, "peak_rss_gib": 15.45, "peak_physical_gib": 34.316, "psnr_db": 49.2577, "ssim": 0.993787}
+  ]
+}

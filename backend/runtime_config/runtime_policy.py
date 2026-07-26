@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Literal
 
 LocalGenerationMode = Literal[
@@ -9,6 +10,26 @@ LocalGenerationMode = Literal[
     "streaming_models_loading",
     "unsupported",
 ]
+FastVideoEngine = Literal["torch", "mlx"]
+FastVideoEnginePreference = Literal["auto", "torch", "mlx"]
+FastVideoExecutionMode = Literal["eager", "low_ram", "unsupported"]
+
+MLX_RUNTIME_VERSION = "0.14.20.dev1"
+MLX_RUNTIME_REVISION = "3171bac4ba901c0237faea2678c34034b37abc2a"
+MLX_BF16_MODEL_SOURCE = "dgrauet/ltx-2.3-mlx"
+MLX_Q8_MODEL_SOURCE = "dgrauet/ltx-2.3-mlx-q8"
+TORCH_RUNTIME_REVISION = "9377758131b1ffde4b7f766804590a6617bf2ab9"
+
+# BF16 block streaming was validated by the MLX runtime for 32 GB Macs. Eager
+# materialization needs substantially more headroom, so keep the automatic
+# threshold conservative and use block streaming below it.
+MLX_BF16_EAGER_FLOOR_GB = 64
+
+
+@dataclass(frozen=True, slots=True)
+class FastVideoEngineDecision:
+    engine: FastVideoEngine
+    reason: str
 
 # Below this, local generation isn't viable at all on Darwin. Roughly matches the
 # measured ~13 GB RSS of the distilled pipeline streaming on an M4 Pro, plus margin
@@ -116,3 +137,80 @@ def streaming_prefetch_count_for_mode(mode: LocalGenerationMode) -> int | None:
     if mode == "streaming_models_loading":
         return 2
     raise AssertionError(f"Unexpected LocalGenerationMode: {mode!r}")
+
+
+def decide_fast_video_execution_mode(
+    engine: FastVideoEngine,
+    local_mode: LocalGenerationMode,
+    available_ram_gb: int | None,
+) -> FastVideoExecutionMode:
+    """Choose eager vs low-RAM loading for the selected Fast pipeline.
+
+    Torch keeps its existing, separately qualified policy. MLX BF16 can stream
+    transformer blocks directly from mmap and therefore uses a lower, explicit
+    eager threshold without changing the policy used by Retake/Extend/A2V/
+    IC-LoRA Torch fallbacks.
+    """
+    if local_mode == "unsupported":
+        return "unsupported"
+    if engine == "torch":
+        return "eager" if local_mode == "full_models_loading" else "low_ram"
+    if available_ram_gb is not None and available_ram_gb >= MLX_BF16_EAGER_FLOOR_GB:
+        return "eager"
+    return "low_ram"
+
+
+def decide_fast_video_engine(
+    *,
+    preference: FastVideoEnginePreference,
+    mlx_runtime_eligible: bool,
+    mlx_model_cached: bool,
+    use_local_text_encoding: bool,
+    mlx_quality_qualified: bool = True,
+) -> FastVideoEngineDecision:
+    """Resolve Fast T2V/I2V without silently dropping prepared embeddings.
+
+    ``auto`` is capability-aware: MLX is selected only for requests whose text
+    is encoded locally by the MLX pipeline, and only when both runtime and BF16
+    weights are already available. An explicit MLX preference may download the
+    configured model on first use, but still fails closed to Torch when the
+    platform/runtime cannot execute MLX.
+    """
+    if preference == "torch":
+        return FastVideoEngineDecision("torch", "Torch was explicitly selected.")
+    if preference == "mlx":
+        if mlx_runtime_eligible:
+            suffix = (
+                " BF16 weights are cached."
+                if mlx_model_cached
+                else " BF16 weights are not cached and may download on first use."
+            )
+            return FastVideoEngineDecision("mlx", "MLX was explicitly selected." + suffix)
+        return FastVideoEngineDecision(
+            "torch",
+            "MLX was explicitly requested but is unavailable on this runtime; using Torch.",
+        )
+    if not use_local_text_encoding:
+        return FastVideoEngineDecision(
+            "torch",
+            "Prepared/API text embeddings require the feature-complete Torch pipeline.",
+        )
+    if not mlx_quality_qualified:
+        return FastVideoEngineDecision(
+            "torch",
+            "MLX q8 is expert-only and is never auto-selected after quality qualification.",
+        )
+    if not mlx_runtime_eligible:
+        return FastVideoEngineDecision(
+            "torch",
+            "MLX auto-selection requires Apple Silicon, MPS, and the pinned MLX runtime.",
+        )
+    if not mlx_model_cached:
+        return FastVideoEngineDecision(
+            "torch",
+            "MLX BF16 weights are not cached; auto mode avoids an unannounced model download.",
+        )
+    return FastVideoEngineDecision(
+        "mlx",
+        "MLX auto-selected for Fast T2V/I2V with local text encoding and cached BF16 weights.",
+    )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from threading import RLock
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from _routes._errors import HTTPError
 from api_types import LTXLocalModelId
@@ -16,7 +16,10 @@ from runtime_config.model_download_specs import (
     get_ltx_model_spec,
     resolve_active_ltx_model_id,
 )
-from runtime_config.runtime_policy import streaming_prefetch_count_for_mode
+from runtime_config.runtime_policy import (
+    decide_fast_video_execution_mode,
+    streaming_prefetch_count_for_mode,
+)
 from services.interfaces import (
     A2VPipeline,
     DepthProcessorPipeline,
@@ -55,6 +58,7 @@ class PipelinesHandler(StateHandlerBase):
         text_handler: TextHandler,
         gpu_cleaner: GpuCleaner,
         fast_video_pipeline_class: type[FastVideoPipeline],
+        mlx_fast_video_pipeline_class: type[FastVideoPipeline],
         image_generation_pipeline_class: type[ImageGenerationPipeline],
         ic_lora_pipeline_class: type[IcLoraPipeline],
         depth_processor_pipeline_class: type[DepthProcessorPipeline],
@@ -67,6 +71,7 @@ class PipelinesHandler(StateHandlerBase):
         self._text_handler = text_handler
         self._gpu_cleaner = gpu_cleaner
         self._fast_video_pipeline_class = fast_video_pipeline_class
+        self._mlx_fast_video_pipeline_class = mlx_fast_video_pipeline_class
         self._image_generation_pipeline_class = image_generation_pipeline_class
         self._ic_lora_pipeline_class = ic_lora_pipeline_class
         self._depth_processor_pipeline_class = depth_processor_pipeline_class
@@ -82,10 +87,14 @@ class PipelinesHandler(StateHandlerBase):
             case _:
                 return
 
-    def _pipeline_matches_model_type(self, model_type: VideoPipelineModelType) -> bool:
+    def _pipeline_matches_model_type(
+        self,
+        model_type: VideoPipelineModelType,
+        runtime_engine: Literal["torch", "mlx"],
+    ) -> bool:
         match self.state.gpu_slot:
-            case GpuSlot(active_pipeline=VideoPipelineState(pipeline=pipeline)):
-                return pipeline.pipeline_kind == model_type
+            case GpuSlot(active_pipeline=VideoPipelineState(pipeline=pipeline, runtime_engine=active_engine)):
+                return pipeline.pipeline_kind == model_type and active_engine == runtime_engine
             case _:
                 return False
 
@@ -114,6 +123,8 @@ class PipelinesHandler(StateHandlerBase):
         return model_id
 
     def _compile_if_enabled(self, state: VideoPipelineState) -> VideoPipelineState:
+        if state.runtime_engine == "mlx":
+            return state
         if not self.state.app_settings.use_torch_compile:
             return state
         if state.is_compiled:
@@ -144,7 +155,10 @@ class PipelinesHandler(StateHandlerBase):
         return state
 
     def _create_video_pipeline(
-        self, model_type: VideoPipelineModelType, loras: list[tuple[str, float]] | None = None
+        self,
+        model_type: VideoPipelineModelType,
+        loras: list[tuple[str, float]] | None = None,
+        runtime_engine: Literal["torch", "mlx"] = "torch",
     ) -> VideoPipelineState:
         gemma_root = self._text_handler.resolve_gemma_root()
         model_id = self._require_downloaded_ltx_model_id()
@@ -152,18 +166,36 @@ class PipelinesHandler(StateHandlerBase):
         checkpoint_path = str(get_existing_cp_path(self.models_dir, spec.model_cp))
         upsampler_path = str(get_existing_cp_path(self.models_dir, spec.upscale_cp))
 
-        pipeline = self._fast_video_pipeline_class.create(
+        pipeline_class = (
+            self._mlx_fast_video_pipeline_class
+            if runtime_engine == "mlx"
+            else self._fast_video_pipeline_class
+        )
+        if runtime_engine == "mlx":
+            execution_mode = decide_fast_video_execution_mode(
+                "mlx",
+                self.config.local_generations_mode,
+                self.config.available_ram_gb,
+            )
+            streaming_prefetch_count = 2 if execution_mode == "low_ram" else None
+        else:
+            streaming_prefetch_count = streaming_prefetch_count_for_mode(
+                self.config.local_generations_mode
+            )
+
+        pipeline = pipeline_class.create(
             checkpoint_path,
             gemma_root,
             upsampler_path,
             self.config.device,
-            streaming_prefetch_count_for_mode(self.config.local_generations_mode),
+            streaming_prefetch_count,
             loras=loras or [],
         )
 
         state = VideoPipelineState(
             pipeline=pipeline,
             is_compiled=False,
+            runtime_engine=runtime_engine,
             loras=tuple(loras) if loras else (),
             gemma_root=gemma_root,
         )
@@ -174,6 +206,10 @@ class PipelinesHandler(StateHandlerBase):
             self._ensure_no_running_generation()
             self.state.gpu_slot = None
             self._assert_invariants()
+        self._gpu_cleaner.cleanup()
+
+    def cleanup_runtime_caches(self) -> None:
+        """Release allocator/cache memory while preserving a reusable pipeline."""
         self._gpu_cleaner.cleanup()
 
     def park_image_generation_pipeline_on_cpu(self) -> None:
@@ -270,6 +306,7 @@ class PipelinesHandler(StateHandlerBase):
         self,
         model_type: VideoPipelineModelType,
         loras: list[tuple[str, float]] | None = None,
+        runtime_engine: Literal["torch", "mlx"] = "torch",
     ) -> VideoPipelineState:
         self._install_text_patches_if_needed()
 
@@ -277,7 +314,7 @@ class PipelinesHandler(StateHandlerBase):
         requested_gemma_root = self._text_handler.resolve_gemma_root()
         state: VideoPipelineState | None = None
         with self._lock:
-            if self._pipeline_matches_model_type(model_type):
+            if self._pipeline_matches_model_type(model_type, runtime_engine):
                 match self.state.gpu_slot:
                     case GpuSlot(
                         active_pipeline=VideoPipelineState() as existing_state
@@ -291,7 +328,11 @@ class PipelinesHandler(StateHandlerBase):
 
         if state is None:
             self._evict_gpu_pipeline_for_swap()
-            state = self._create_video_pipeline(model_type, loras=loras)
+            state = self._create_video_pipeline(
+                model_type,
+                loras=loras,
+                runtime_engine=runtime_engine,
+            )
             with self._lock:
                 self.state.gpu_slot = GpuSlot(active_pipeline=state)
                 self._assert_invariants()

@@ -102,3 +102,13 @@ class TestMpsMemory:
         assert isinstance(data["available"], bool)
         for key in ("allocated_mib", "driver_mib", "recommended_max_mib"):
             assert data[key] is None or isinstance(data[key], int)
+
+
+class TestRuntimeTelemetry:
+    def test_returns_process_system_and_lease_snapshot(self, client):
+        r = client.get("/api/runtime-telemetry")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["process_rss_mib"] > 0
+        assert data["system_total_mib"] >= data["system_available_mib"] > 0
+        assert data["local_metal_lease_status"] in {"idle", "waiting", "held"}

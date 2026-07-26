@@ -82,7 +82,13 @@ class ImageGenerationHandler(StateHandlerBase):
                 )
 
             generation_id = uuid.uuid4().hex[:8]
+            lease = None
             try:
+                lease = self._generation.acquire_local_metal_lease(
+                    generation_id=generation_id,
+                    workload="image_generation",
+                    reason="Torch local image generation",
+                )
                 self._pipelines.load_image_generation_pipeline_to_gpu()
                 self._generation.start_generation(generation_id)
                 output_paths = self.generate_image(
@@ -101,6 +107,10 @@ class ImageGenerationHandler(StateHandlerBase):
                     logger.info("Image generation cancelled by user")
                     return GenerateImageCancelledResponse(status="cancelled")
                 raise HTTPError(500, str(e)) from e
+            finally:
+                if lease is not None:
+                    self._pipelines.cleanup_runtime_caches()
+                    lease.close()
 
     def _edit(
         self,
@@ -131,7 +141,13 @@ class ImageGenerationHandler(StateHandlerBase):
             )
 
         generation_id = uuid.uuid4().hex[:8]
+        lease = None
         try:
+            lease = self._generation.acquire_local_metal_lease(
+                generation_id=generation_id,
+                workload="image_edit",
+                reason="Torch local image editing",
+            )
             self._pipelines.load_image_generation_pipeline_to_gpu()
             self._generation.start_generation(generation_id)
             output_paths = self.edit_image(
@@ -150,6 +166,10 @@ class ImageGenerationHandler(StateHandlerBase):
                 logger.info("Image edit cancelled by user")
                 return GenerateImageCancelledResponse(status="cancelled")
             raise HTTPError(500, str(e)) from e
+        finally:
+            if lease is not None:
+                self._pipelines.cleanup_runtime_caches()
+                lease.close()
 
     def edit_image(
         self,

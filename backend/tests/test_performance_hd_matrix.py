@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+import fcntl
+import json
+from pathlib import Path
+
+from performance_runner import hd_matrix as bench
+from performance_runner import lease_interop
+
+
+def test_matrix_covers_multiple_resolutions_durations_and_i2v() -> None:
+    cases = bench.default_matrix()
+    assert {case.resolution for case in cases} == {"540p", "720p", "1080p"}
+    assert {case.duration for case in cases} >= {5, 8}
+    assert any(case.image_conditioned for case in cases)
+
+
+def test_distilled_payload_has_no_fake_teacache_or_tiling_switch() -> None:
+    payload = bench.default_matrix()[0].payload(None)
+    assert not any("tea" in key.lower() for key in payload)
+    assert not any("tile" in key.lower() for key in payload)
+
+
+def test_shared_flock_treats_payload_as_untrusted_diagnostics(tmp_path: Path) -> None:
+    lock_path = tmp_path / "local-metal.lock"
+    lock_path.write_text(json.dumps({"schema": bench.LOCK_SCHEMA, "pid": 999999}), encoding="utf-8")
+    assert bench.probe_metal_lock(lock_path)["observed"] == "acquired"
+    with open(lock_path, "a+", encoding="utf-8") as owner:
+        fcntl.flock(owner.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert bench.probe_metal_lock(lock_path)["observed"] == "contended"
+        fcntl.flock(owner.fileno(), fcntl.LOCK_UN)
+    assert bench.probe_metal_lock(lock_path)["observed"] == "acquired"
+
+
+def test_strict_validator_hard_fails_missing_authoritative_fields() -> None:
+    failures = bench.strict_failures({})
+    assert "missing authoritative worker physical footprint" in failures
+    assert "missing explicit cleanup/post-cleanup telemetry" in failures
+    assert "shared Metal lease not held during local generation" in failures
+
+
+def test_interop_timeline_requires_ordered_owners_cpu_progress_and_release() -> None:
+    events = [
+        {"owner_product": "LTX Desktop", "electron_request_active": True},
+        {"owner_product": "LTX Desktop", "electron_request_active": False},
+        {"owner_product": "AI Studio", "electron_request_active": False},
+    ]
+    assert lease_interop.validate_timeline(events, {"observed": "acquired"}, [{"ok": True}]) == []
+    bad = lease_interop.validate_timeline(
+        [{"owner_product": "AI Studio", "electron_request_active": True}],
+        {"observed": "contended"},
+        [{"ok": False}],
+    )
+    assert "AI Studio held Metal while the Electron request was active" in bad
+    assert "production flock remained held after both harness jobs were terminal" in bad
+
+
+def test_strict_validator_accepts_complete_torch_evidence() -> None:
+    row = {
+        "runtime_summary": {"peak_rss_gib": 1, "peak_physical_footprint_gib": 2},
+        "runtime_policy": {"auto_fast_video_engine": "torch"},
+        "progress_phases": ["inference"], "cleanup_evidence": [{"status": "cleanup"}],
+        "lease": {"running_probe": {"observed": "contended"}, "terminal_probe": {"observed": "acquired"}},
+        "dimensions": {"requested": {"resolution": "720p"}, "resolved": {"width": 1280}, "actual": {"width": 1280}},
+        "hashes": {"recipe_sha256": "a", "prompt_sha256": "b", "source_sha256": "c", "repo_head": "d"},
+    }
+    assert bench.strict_failures(row) == []

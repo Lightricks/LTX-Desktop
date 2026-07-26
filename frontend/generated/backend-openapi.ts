@@ -638,6 +638,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runtime-telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Runtime Telemetry */
+        get: operations["route_runtime_telemetry_api_runtime_telemetry_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings": {
         parameters: {
             query?: never;
@@ -1929,8 +1946,96 @@ export interface components {
         };
         /** RuntimePolicyResponse */
         RuntimePolicyResponse: {
+            /**
+             * Auto Fast Video Engine
+             * @enum {string}
+             */
+            auto_fast_video_engine: "torch" | "mlx" | "cloud";
+            /** Auto Selection Reason */
+            auto_selection_reason: string;
+            /** Automatic Tiling */
+            automatic_tiling: boolean;
+            /** Capability Engines */
+            capability_engines: {
+                [key: string]: "torch" | "mlx" | "cloud";
+            };
+            /**
+             * Execution Mode
+             * @enum {string}
+             */
+            execution_mode: "eager" | "low_ram" | "unsupported";
+            /**
+             * Fast Video Engine Preference
+             * @enum {string}
+             */
+            fast_video_engine_preference: "auto" | "torch" | "mlx";
             /** Force Api Generations */
             force_api_generations: boolean;
+            /** Mlx Model Source */
+            mlx_model_source: string;
+            /**
+             * Mlx Model Variant
+             * @enum {string}
+             */
+            mlx_model_variant: "bf16" | "q8";
+            /** Provenance */
+            provenance: components["schemas"]["RuntimeProvenanceItem"][];
+            /** Quality Warning */
+            quality_warning?: string | null;
+        };
+        /** RuntimeProvenanceItem */
+        RuntimeProvenanceItem: {
+            /** Component */
+            component: string;
+            /** Revision */
+            revision?: string | null;
+            /** Source */
+            source: string;
+            /** Version */
+            version: string;
+        };
+        /** RuntimeTelemetryResponse */
+        RuntimeTelemetryResponse: {
+            /** Active Engine */
+            active_engine?: ("torch" | "mlx" | "cloud") | null;
+            /** Active Pipeline */
+            active_pipeline?: string | null;
+            /** Local Metal Lease Owner */
+            local_metal_lease_owner?: {
+                [key: string]: unknown;
+            } | null;
+            /** Local Metal Lease Reason */
+            local_metal_lease_reason?: string | null;
+            /**
+             * Local Metal Lease Status
+             * @enum {string}
+             */
+            local_metal_lease_status: "idle" | "waiting" | "held";
+            /**
+             * Local Metal Lease Waited Seconds
+             * @default 0
+             */
+            local_metal_lease_waited_seconds: number;
+            /** Mlx Active Mib */
+            mlx_active_mib?: number | null;
+            /** Mlx Cache Mib */
+            mlx_cache_mib?: number | null;
+            /** Mlx Peak Mib */
+            mlx_peak_mib?: number | null;
+            /** Mps Allocated Mib */
+            mps_allocated_mib?: number | null;
+            /** Mps Driver Mib */
+            mps_driver_mib?: number | null;
+            /** Mps Recommended Max Mib */
+            mps_recommended_max_mib?: number | null;
+            /** Process Rss Mib */
+            process_rss_mib: number;
+            /** Sampled At */
+            sampled_at: string;
+            /** System Available Mib */
+            system_available_mib: number;
+            /** System Total Mib */
+            system_total_mib: number;
         };
         /** SetActiveLtxModelRequest */
         SetActiveLtxModelRequest: {
@@ -3515,6 +3620,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RuntimePolicyResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_runtime_telemetry_api_runtime_telemetry_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeTelemetryResponse"];
                 };
             };
             /** @description Client Error */

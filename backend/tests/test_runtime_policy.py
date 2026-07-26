@@ -8,7 +8,11 @@ def test_runtime_policy_true(client, test_state):
 
     response = client.get("/api/runtime-policy")
     assert response.status_code == 200
-    assert response.json() == {"force_api_generations": True}
+    data = response.json()
+    assert data["force_api_generations"] is True
+    assert data["auto_fast_video_engine"] == "cloud"
+    assert data["execution_mode"] == "unsupported"
+    assert data["provenance"]
 
 
 def test_runtime_policy_false(client, test_state):
@@ -16,4 +20,8 @@ def test_runtime_policy_false(client, test_state):
 
     response = client.get("/api/runtime-policy")
     assert response.status_code == 200
-    assert response.json() == {"force_api_generations": False}
+    data = response.json()
+    assert data["force_api_generations"] is False
+    assert data["auto_fast_video_engine"] == "torch"
+    assert data["execution_mode"] == "eager"
+    assert data["capability_engines"]["retake"] == "torch"

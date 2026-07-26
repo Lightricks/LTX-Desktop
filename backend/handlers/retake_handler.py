@@ -172,17 +172,22 @@ class RetakeHandler(StateHandlerBase):
 
             target_width, target_height = resolve_target_resolution(resolution, source_width, source_height)
 
-            try:
-                self._text.prepare_text_encoding(prompt, enhance_prompt=False)
-            except RuntimeError as exc:
-                raise HTTPError(400, str(exc)) from exc
-
             generation_id = uuid.uuid4().hex[:8]
             seed = self._resolve_seed()
             output_path = self.config.outputs_dir / f"retake_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{generation_id}.mp4"
             regenerate_video, regenerate_audio = self._resolve_retake_mode(mode)
 
+            lease = None
             try:
+                lease = self._generation.acquire_local_metal_lease(
+                    generation_id=generation_id,
+                    workload="retake",
+                    reason="Torch local retake generation",
+                )
+                try:
+                    self._text.prepare_text_encoding(prompt, enhance_prompt=False)
+                except RuntimeError as exc:
+                    raise HTTPError(400, str(exc)) from exc
                 pipeline_state = self._pipelines.load_retake_pipeline(distilled=True)
                 self._generation.start_generation(generation_id)
                 self._generation.update_progress("loading_model", 5, 0, 1)
@@ -225,6 +230,9 @@ class RetakeHandler(StateHandlerBase):
                 raise HTTPError(500, f"Generation error: {exc}") from exc
             finally:
                 self._text.clear_api_embeddings()
+                if lease is not None:
+                    self._pipelines.cleanup_runtime_caches()
+                    lease.close()
 
     @staticmethod
     def _resolve_retake_mode(mode: RetakeMode) -> tuple[bool, bool]:

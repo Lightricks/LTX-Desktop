@@ -90,8 +90,47 @@ class MpsMemoryResponse(BaseModel):
     recommended_max_mib: int | None = None
 
 
+RuntimeEngine: TypeAlias = Literal["torch", "mlx", "cloud"]
+
+
+class RuntimeProvenanceItem(BaseModel):
+    component: str
+    version: str
+    revision: str | None = None
+    source: str
+
+
 class RuntimePolicyResponse(BaseModel):
     force_api_generations: bool
+    fast_video_engine_preference: Literal["auto", "torch", "mlx"]
+    auto_fast_video_engine: Literal["torch", "mlx", "cloud"]
+    auto_selection_reason: str
+    execution_mode: Literal["eager", "low_ram", "unsupported"]
+    automatic_tiling: bool
+    mlx_model_source: str
+    mlx_model_variant: Literal["bf16", "q8"]
+    quality_warning: str | None = None
+    capability_engines: dict[str, RuntimeEngine]
+    provenance: list[RuntimeProvenanceItem]
+
+
+class RuntimeTelemetryResponse(BaseModel):
+    sampled_at: str
+    active_engine: RuntimeEngine | None = None
+    active_pipeline: str | None = None
+    process_rss_mib: int
+    system_total_mib: int
+    system_available_mib: int
+    mlx_active_mib: int | None = None
+    mlx_cache_mib: int | None = None
+    mlx_peak_mib: int | None = None
+    mps_allocated_mib: int | None = None
+    mps_driver_mib: int | None = None
+    mps_recommended_max_mib: int | None = None
+    local_metal_lease_status: Literal["idle", "waiting", "held"]
+    local_metal_lease_reason: str | None = None
+    local_metal_lease_waited_seconds: float = 0.0
+    local_metal_lease_owner: dict[str, object] | None = None
 
 
 class GenerationProgressResponse(BaseModel):

@@ -359,6 +359,8 @@ export class ApiClient {
 
   static getRuntimePolicy = makeEndpointClient('/api/runtime-policy', 'get')
 
+  static getRuntimeTelemetry = makeEndpointClient('/api/runtime-telemetry', 'get')
+
   static getGpuInfo = makeEndpointClient('/api/gpu-info', 'get')
 
   static getSettings = makeEndpointClient('/api/settings', 'get')

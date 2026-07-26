@@ -1,4 +1,4 @@
-import { AlertCircle, Check, Download, Film, Folder, HardDrive, Info, KeyRound, Settings, Sparkles, X, Zap } from 'lucide-react'
+import { Activity, AlertCircle, Check, Download, Film, Folder, HardDrive, Info, KeyRound, Settings, Sparkles, X, Zap } from 'lucide-react'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from './ui/button'
 import { BaseModelSection } from './settings/BaseModelSection'
@@ -15,7 +15,7 @@ interface SettingsModalProps {
   initialTab?: TabId
 }
 
-type TabId = 'general' | 'models' | 'apiKeys' | 'promptEnhancer' | 'about'
+type TabId = 'general' | 'models' | 'apiKeys' | 'promptEnhancer' | 'performance' | 'about'
 
 /** Focuses an API Keys tab input once the modal has switched to that tab.
  *  Shared by the LTX and FAL key inputs — each call gets its own ref/pending state. */
@@ -93,7 +93,17 @@ function SettingToggle({ title, description, enabled, onToggle, statusOn, status
 }
 
 export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
-  const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, forceApiGenerations, cudaAvailable } = useAppSettings()
+  const {
+    settings,
+    updateSettings,
+    saveLtxApiKey,
+    saveFalApiKey,
+    saveGeminiApiKey,
+    forceApiGenerations,
+    cudaAvailable,
+    mpsAvailable,
+    runtimePolicy,
+  } = useAppSettings()
   const onSettingsChange = (next: AppSettings) => updateSettings(next)
   const [activeTab, setActiveTab] = useState<TabId>('general')
   const ltxApiKey = useApiKeyFocus(isOpen, activeTab, setActiveTab)
@@ -124,6 +134,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const [showModelLicense, setShowModelLicense] = useState(false)
   const [analyticsEnabled, setAnalyticsEnabled] = useState(false)
   const [projectAssetsPath, setProjectAssetsPath] = useState('')
+  const [runtimeTelemetry, setRuntimeTelemetry] = useState<ApiSuccessOf<'getRuntimeTelemetry'> | null>(null)
 
   // Sync active tab with initialTab prop when modal opens
   useEffect(() => {
@@ -145,6 +156,21 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     if (activeTab !== 'about' || appVersion) return
     window.electronAPI.getAppInfo().then(info => setAppVersion(info.version)).catch(() => {})
   }, [activeTab, appVersion])
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'performance') return
+    let cancelled = false
+    const poll = async () => {
+      const result = await ApiClient.getRuntimeTelemetry()
+      if (result.ok && !cancelled) setRuntimeTelemetry(result.data)
+    }
+    void poll()
+    const interval = window.setInterval(() => { void poll() }, 1000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [activeTab, isOpen])
 
   // Fetch analytics state when modal opens
   useEffect(() => {
@@ -325,6 +351,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     ...(!forceApiGenerations ? [{ id: 'models' as TabId, label: 'Models', icon: HardDrive }] : []),
     { id: 'apiKeys' as TabId, label: 'API Keys', icon: KeyRound },
     { id: 'promptEnhancer' as TabId, label: 'Prompt Enhancer', icon: Sparkles },
+    { id: 'performance' as TabId, label: 'Performance', icon: Activity },
     { id: 'about' as TabId, label: 'About', icon: Info },
   ]
 
@@ -671,7 +698,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               </div>
               )}
 
-              {/* Torch Compile + Diffusion Stage Cache -- CUDA only, no-op on MPS/CPU */}
+              {/* torch.compile remains CUDA-only. */}
               {cudaAvailable && (
                 <SettingToggle
                   title="Torch Compile"
@@ -685,12 +712,11 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                 />
               )}
 
-              {cudaAvailable && (
+              {(cudaAvailable || mpsAvailable) && (
                 <SettingToggle
                   title="Diffusion Stage Cache"
                   description={<>Reuses an already-built transformer across stage 1/stage 2 within one generation
-                    instead of reloading it from disk twice. <span className="text-orange-400">Experimental:</span> only
-                    applies on high-VRAM cards (32GB+); no effect otherwise.</>}
+                    instead of reloading it from disk twice, then releases it before VAE decode. <span className="text-orange-400">Experimental:</span> applies to the official Torch runtime; MLX manages stages independently.</>}
                   enabled={settings.diffusionStageCacheEnabled}
                   onToggle={handleToggleDiffusionStageCache}
                   statusOn="Skipping redundant transformer reloads"
@@ -1137,6 +1163,122 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                 )}
               </div>
             </>
+          )}
+
+          {activeTab === 'performance' && (
+            <div className="space-y-5">
+              <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3 border border-zinc-700/50">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">Local runtime policy</h3>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Capability-aware selection keeps feature-rich requests on Torch and uses MLX only where parity is qualified.
+                    </p>
+                  </div>
+                  <span className="text-xs uppercase tracking-wide px-2 py-1 rounded bg-blue-500/10 text-blue-300">
+                    {runtimePolicy?.auto_fast_video_engine ?? '...'}
+                  </span>
+                </div>
+                {runtimePolicy && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-zinc-900/60 rounded p-3">
+                        <div className="text-zinc-500">Preference</div>
+                        <div className="text-zinc-200 mt-1">{runtimePolicy.fast_video_engine_preference}</div>
+                      </div>
+                      <div className="bg-zinc-900/60 rounded p-3">
+                        <div className="text-zinc-500">Memory mode</div>
+                        <div className="text-zinc-200 mt-1">
+                          {runtimePolicy.execution_mode}{runtimePolicy.automatic_tiling ? ' + auto tiling' : ''}
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-zinc-400">{runtimePolicy.auto_selection_reason}</p>
+                    <div className="text-xs text-zinc-500 break-all">
+                      Model: <span className="text-zinc-300">{runtimePolicy.mlx_model_source}</span> ({runtimePolicy.mlx_model_variant})
+                    </div>
+                    {runtimePolicy.quality_warning && (
+                      <div className="text-xs text-amber-300 bg-amber-500/10 rounded p-3">
+                        {runtimePolicy.quality_warning}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-white">Live memory</h3>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {[
+                    ['Process RSS', runtimeTelemetry?.process_rss_mib],
+                    ['System available', runtimeTelemetry?.system_available_mib],
+                    ['MLX active', runtimeTelemetry?.mlx_active_mib],
+                    ['MLX peak', runtimeTelemetry?.mlx_peak_mib],
+                    ['MPS allocated', runtimeTelemetry?.mps_allocated_mib],
+                    ['MPS driver', runtimeTelemetry?.mps_driver_mib],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="bg-zinc-800/50 rounded p-3 border border-zinc-700/40">
+                      <div className="text-zinc-500">{label}</div>
+                      <div className="text-zinc-200 mt-1">
+                        {typeof value === 'number' ? `${value.toLocaleString()} MiB` : '—'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-zinc-800/50 rounded-lg p-4 space-y-2 border border-zinc-700/50">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-white">Shared local accelerator</h3>
+                  <span className={`text-xs px-2 py-1 rounded ${
+                    runtimeTelemetry?.local_metal_lease_status === 'waiting'
+                      ? 'bg-amber-500/10 text-amber-300'
+                      : runtimeTelemetry?.local_metal_lease_status === 'held'
+                        ? 'bg-emerald-500/10 text-emerald-300'
+                        : 'bg-zinc-700 text-zinc-400'
+                  }`}>
+                    {runtimeTelemetry?.local_metal_lease_status ?? 'idle'}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-500">
+                  LTX apps coordinate through one advisory Metal lease so two heavy local renders cannot exhaust unified memory.
+                </p>
+                {runtimeTelemetry?.local_metal_lease_reason && (
+                  <p className="text-xs text-zinc-300">{runtimeTelemetry.local_metal_lease_reason}</p>
+                )}
+                {runtimeTelemetry?.local_metal_lease_owner && (
+                  <p className="text-xs text-zinc-400">
+                    Owner: {String(runtimeTelemetry.local_metal_lease_owner.product ?? 'unknown')}
+                    {' '}· PID {String(runtimeTelemetry.local_metal_lease_owner.pid ?? '?')}
+                    {' '}· {runtimeTelemetry.local_metal_lease_waited_seconds.toFixed(1)}s
+                  </p>
+                )}
+              </div>
+
+              {runtimePolicy && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-white">Capability routing</h3>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                    {Object.entries(runtimePolicy.capability_engines).map(([capability, engine]) => (
+                      <div key={capability} className="flex justify-between gap-2 border-b border-zinc-800 pb-1">
+                        <span className="text-zinc-500">{capability.replace(/_/g, ' ')}</span>
+                        <span className="text-zinc-300 uppercase">{engine}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <h3 className="text-sm font-semibold text-white pt-2">Runtime provenance</h3>
+                  {runtimePolicy.provenance.map(item => (
+                    <div key={item.component} className="text-xs bg-zinc-800/40 rounded p-3">
+                      <div className="flex justify-between gap-3">
+                        <span className="text-zinc-200">{item.component}</span>
+                        <span className="text-zinc-400">{item.version}</span>
+                      </div>
+                      {item.revision && <div className="text-zinc-600 font-mono mt-1 truncate">{item.revision}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           {activeTab === 'about' && (

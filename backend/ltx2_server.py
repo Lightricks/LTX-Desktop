@@ -200,7 +200,14 @@ DEFAULT_APP_SETTINGS = AppSettings()
 
 from app_factory import DEFAULT_ALLOWED_ORIGINS, create_app
 from state import RuntimeConfig, build_initial_state
-from runtime_config.runtime_policy import LocalGenerationMode, decide_local_generation_mode
+from runtime_config.mlx_runtime import discover_mlx_runtime
+from runtime_config.runtime_policy import (
+    FastVideoEnginePreference,
+    LocalGenerationMode,
+    MLX_BF16_MODEL_SOURCE,
+    MLX_Q8_MODEL_SOURCE,
+    decide_local_generation_mode,
+)
 from server_utils.model_layout_migration import migrate_legacy_models_layout
 from services.gpu_info.gpu_info_impl import GpuInfoImpl
 
@@ -243,6 +250,64 @@ def _resolve_local_generations_mode() -> LocalGenerationMode:
 
 LOCAL_GENERATIONS_MODE = _resolve_local_generations_mode()
 
+
+def _resolve_fast_video_engine_preference() -> FastVideoEnginePreference:
+    raw = os.environ.get("LTX_FAST_VIDEO_ENGINE", "auto").strip().lower()
+    if raw in {"auto", "torch", "mlx"}:
+        return cast(FastVideoEnginePreference, raw)
+    logger.warning("Ignoring invalid LTX_FAST_VIDEO_ENGINE=%r; using auto", raw)
+    return "auto"
+
+
+def _is_mlx_model_cached(model_source: str) -> bool:
+    local_path = Path(model_source).expanduser()
+    if local_path.exists():
+        return True
+    try:
+        from huggingface_hub import scan_cache_dir
+
+        return any(repo.repo_id == model_source for repo in scan_cache_dir().repos)
+    except Exception:
+        logger.warning("Failed to inspect the Hugging Face cache for %s", model_source, exc_info=True)
+        return False
+
+
+FAST_VIDEO_ENGINE_PREFERENCE = _resolve_fast_video_engine_preference()
+_mlx_model_variant_raw = os.environ.get("LTX_MLX_MODEL_VARIANT", "bf16").strip().lower()
+if _mlx_model_variant_raw not in {"bf16", "q8"}:
+    logger.warning("Ignoring invalid LTX_MLX_MODEL_VARIANT=%r; using bf16", _mlx_model_variant_raw)
+    _mlx_model_variant_raw = "bf16"
+MLX_MODEL_VARIANT = _mlx_model_variant_raw
+MLX_MODEL_SOURCE = os.environ.get(
+    "LTX_MLX_MODEL_ID",
+    MLX_Q8_MODEL_SOURCE if MLX_MODEL_VARIANT == "q8" else MLX_BF16_MODEL_SOURCE,
+)
+_gpu_info_for_runtime = GpuInfoImpl()
+AVAILABLE_RAM_GB = (
+    _gpu_info_for_runtime.get_available_ram_gb()
+    if platform.system() == "Darwin"
+    else None
+)
+MLX_RUNTIME = discover_mlx_runtime()
+MLX_RUNTIME_ELIGIBLE = bool(
+    platform.system() == "Darwin"
+    and platform.machine().lower() in {"arm64", "aarch64"}
+    and _gpu_info_for_runtime.get_mps_available()
+    and MLX_RUNTIME.compatible
+)
+MLX_MODEL_CACHED = _is_mlx_model_cached(MLX_MODEL_SOURCE)
+logger.info(
+    "Fast runtime preference=%s mlx_eligible=%s runtime_version=%s runtime_revision=%s "
+    "model=%s cached=%s variant=%s",
+    FAST_VIDEO_ENGINE_PREFERENCE,
+    MLX_RUNTIME_ELIGIBLE,
+    MLX_RUNTIME.version,
+    MLX_RUNTIME.revision,
+    MLX_MODEL_SOURCE,
+    MLX_MODEL_CACHED,
+    MLX_MODEL_VARIANT,
+)
+
 CAMERA_MOTION_PROMPTS = {
     "none": "",
     "static": ", static camera, locked off shot, no camera movement",
@@ -273,6 +338,18 @@ runtime_config = RuntimeConfig(
     dev_mode=os.environ.get("LTX_DEV_MODE") == "1",
     hf_oauth_client_id=HF_OAUTH_CLIENT_ID,
     backend_port=int(os.environ.get("LTX_PORT", "") or PORT),
+    fast_video_engine_preference=FAST_VIDEO_ENGINE_PREFERENCE,
+    mlx_runtime_eligible=MLX_RUNTIME_ELIGIBLE,
+    mlx_model_cached=MLX_MODEL_CACHED,
+    mlx_model_source=MLX_MODEL_SOURCE,
+    mlx_model_variant=cast(Any, MLX_MODEL_VARIANT),
+    mlx_runtime_version=MLX_RUNTIME.version,
+    mlx_runtime_revision=MLX_RUNTIME.revision,
+    mlx_runtime_source=MLX_RUNTIME.source,
+    mlx_runtime_dirty=MLX_RUNTIME.dirty,
+    mlx_core_version=MLX_RUNTIME.core_version,
+    mlx_framework_version=MLX_RUNTIME.mlx_version,
+    available_ram_gb=AVAILABLE_RAM_GB,
     lora_catalog_source=str(Path(__file__).parent / "runtime_config" / "lora_catalog.json"),
     lora_catalog_fallback_path=str(Path(__file__).parent / "runtime_config" / "lora_catalog.json"),
 )

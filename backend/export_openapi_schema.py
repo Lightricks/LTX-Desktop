@@ -64,6 +64,7 @@ def _build_schema() -> dict[str, object]:
             ltx_api_client=cast(Any, fake.ltx_api_client),
             zit_api_client=cast(Any, fake.zit_api_client),
             fast_video_pipeline_class=cast(Any, type(fake.fast_video_pipeline)),
+            mlx_fast_video_pipeline_class=cast(Any, type(fake.fast_video_pipeline)),
             image_generation_pipeline_class=cast(Any, type(fake.image_generation_pipeline)),
             ic_lora_pipeline_class=cast(Any, type(fake.ic_lora_pipeline)),
             depth_processor_pipeline_class=cast(Any, type(fake.depth_processor_pipeline)),
