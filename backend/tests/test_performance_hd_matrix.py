@@ -5,6 +5,7 @@ import fcntl
 import json
 from pathlib import Path
 
+from performance_runner import analyze_metal_trace
 from performance_runner import hd_matrix as bench
 from performance_runner import lease_interop
 
@@ -79,3 +80,27 @@ def test_strict_validator_accepts_complete_torch_evidence() -> None:
         "hashes": {"recipe_sha256": "a", "prompt_sha256": "b", "source_sha256": "c", "repo_head": "d"},
     }
     assert bench.strict_failures(row) == []
+
+
+def test_metal_trace_analyzer_resolves_nested_process_references(tmp_path: Path) -> None:
+    export = tmp_path / "gpu_intervals.xml"
+    export.write_text(
+        """<trace-query-result><node>
+        <row>
+          <start-time id="1">100</start-time><duration id="2">5000</duration>
+          <gpu-channel-name id="3" fmt="Compute">Compute</gpu-channel-name><sentinel/>
+          <duration id="4">0</duration><metal-nesting-level id="5">0</metal-nesting-level>
+          <formatted-label id="6" fmt="Command Buffer 0:Compute Command 0     ( python3.11 (42) )  0xabc">
+            <process id="11" fmt="python3.11 (42)"><pid>42</pid></process>
+          </formatted-label>
+          <gpu-state/><connection-uuid64/><render-buffer-depth/><process ref="11"/>
+          <metal-device-name/><metal-object-label/><formatted-label/><size-in-bytes/>
+          <metal-command-buffer-id fmt="0x1"/><metal-command-buffer-id fmt="0x2"/><uint64>3</uint64>
+        </row>
+        </node></trace-query-result>""",
+        encoding="utf-8",
+    )
+    report = analyze_metal_trace.analyze_gpu_intervals(export, 42)
+    assert report["interval_count"] == 1
+    assert report["channels"] == [{"channel": "Compute", "count": 1, "sum_interval_seconds": 0.000005}]
+    assert report["top_dispatches"][0]["command_buffer_id"] == "0x1"

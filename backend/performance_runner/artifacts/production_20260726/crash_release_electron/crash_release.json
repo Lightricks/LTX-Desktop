@@ -1,0 +1,52 @@
+{
+  "scope": "kernel flock owner SIGKILL simulation; neither product server was crashed",
+  "while_owner_alive": {
+    "schema": "ltx.benchmark.lock-probe.v1",
+    "lease_path": "/Users/paulericksen/Library/Application Support/LTX Shared/local-metal.lock",
+    "observed": "contended",
+    "holder_payload": {
+      "event": "local_metal_lock_released",
+      "path": "/Users/paulericksen/Library/Application Support/LTX Shared/local-metal.lock",
+      "owner": {
+        "schema": "ltx.local-metal-lock.v1",
+        "product": "ai-studio",
+        "pid": 42378,
+        "ppid": 40452,
+        "job_id": "ed180459",
+        "workload": "ltx-2.3-generation",
+        "reason": "ordinary local LTX-2.3 render",
+        "acquired_at_utc": "2026-07-27T00:00:04.464298+00:00",
+        "host": "Pauls-MacBook-Pro.local"
+      },
+      "released_at_utc": "2026-07-27T00:00:05.121637+00:00"
+    },
+    "holder_payload_schema_valid": false,
+    "timestamp": 1785110417.09242,
+    "monotonic_ns": 342523036082250
+  },
+  "after_sigkill": {
+    "schema": "ltx.benchmark.lock-probe.v1",
+    "lease_path": "/Users/paulericksen/Library/Application Support/LTX Shared/local-metal.lock",
+    "observed": "acquired",
+    "holder_payload": {
+      "event": "local_metal_lock_released",
+      "path": "/Users/paulericksen/Library/Application Support/LTX Shared/local-metal.lock",
+      "owner": {
+        "schema": "ltx.local-metal-lock.v1",
+        "product": "ai-studio",
+        "pid": 42378,
+        "ppid": 40452,
+        "job_id": "ed180459",
+        "workload": "ltx-2.3-generation",
+        "reason": "ordinary local LTX-2.3 render",
+        "acquired_at_utc": "2026-07-27T00:00:04.464298+00:00",
+        "host": "Pauls-MacBook-Pro.local"
+      },
+      "released_at_utc": "2026-07-27T00:00:05.121637+00:00"
+    },
+    "holder_payload_schema_valid": false,
+    "timestamp": 1785110417.094078,
+    "monotonic_ns": 342523037735416
+  },
+  "pass": true
+}

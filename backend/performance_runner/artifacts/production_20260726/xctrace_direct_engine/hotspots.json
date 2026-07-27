@@ -1,0 +1,391 @@
+{
+  "schema": "ltx.metal-hotspot-report.v1",
+  "source_export": "/Users/paulericksen/projects/ltx-desktop-electron/backend/performance_runner/artifacts/production_20260726/xctrace_direct_engine/gpu_intervals.xml",
+  "target_pid": 54125,
+  "interval_count": 22159,
+  "trace_window_seconds": 56.438584375,
+  "sum_interval_seconds": 52.300371667,
+  "duration_ms": {
+    "mean": 2.360231583871113,
+    "median": 1.38375,
+    "p95": 7.9506712,
+    "p99": 9.122231279999962,
+    "max": 33.928375
+  },
+  "channels": [
+    {
+      "channel": "Compute",
+      "count": 22149,
+      "sum_interval_seconds": 52.298434959
+    },
+    {
+      "channel": "Fragment",
+      "count": 10,
+      "sum_interval_seconds": 0.001936708
+    }
+  ],
+  "label_groups": [
+    {
+      "label": "Command Buffer 0:Compute Command 0",
+      "count": 20804,
+      "sum_interval_seconds": 51.280439953
+    },
+    {
+      "label": "Command Buffer 0:Compute Command 1",
+      "count": 350,
+      "sum_interval_seconds": 0.448542333
+    },
+    {
+      "label": "Command Buffer 0:Compute Command 2",
+      "count": 280,
+      "sum_interval_seconds": 0.329260706
+    },
+    {
+      "label": "Command Buffer 0:Compute Command 5",
+      "count": 131,
+      "sum_interval_seconds": 0.086180545
+    },
+    {
+      "label": "Command Buffer 0:Compute Command 3",
+      "count": 211,
+      "sum_interval_seconds": 0.057650971
+    },
+    {
+      "label": "Command Buffer 0:Compute Command 4",
+      "count": 154,
+      "sum_interval_seconds": 0.03583012
+    },
+    {
+      "label": "Command Buffer 0:Compute Command 8",
+      "count": 55,
+      "sum_interval_seconds": 0.030191043
+    },
+    {
+      "label": "Command Buffer 0:Compute Command 6",
+      "count": 103,
+      "sum_interval_seconds": 0.025114327
+    },
+    {
+      "label": "Command Buffer 0:Compute Command 7",
+      "count": 62,
+      "sum_interval_seconds": 0.003280459
+    },
+    {
+      "label": "Command Buffer 0:Compute Command 10",
+      "count": 4,
+      "sum_interval_seconds": 0.002637875
+    },
+    {
+      "label": "Command Buffer 0:Compute Command 9",
+      "count": 5,
+      "sum_interval_seconds": 0.001243335
+    }
+  ],
+  "top_dispatches": [
+    {
+      "start_ns": 58478020416,
+      "duration_ns": 33928375,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x40264c4",
+      "command_buffer_id": "0x60301691c",
+      "encoder_id": "0x60301691d",
+      "submission_id": "67,265,732",
+      "start_seconds": 58.478020416,
+      "duration_ms": 33.928375
+    },
+    {
+      "start_ns": 3845270041,
+      "duration_ns": 32951792,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x400b7d2",
+      "command_buffer_id": "0x60300a907",
+      "encoder_id": "0x60300a908",
+      "submission_id": "67,155,922",
+      "start_seconds": 3.845270041,
+      "duration_ms": 32.951792
+    },
+    {
+      "start_ns": 58085982125,
+      "duration_ns": 25966833,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x4026371",
+      "command_buffer_id": "0x6030168fb",
+      "encoder_id": "0x6030168fc",
+      "submission_id": "67,265,393",
+      "start_seconds": 58.085982125,
+      "duration_ms": 25.966833
+    },
+    {
+      "start_ns": 57886002208,
+      "duration_ns": 25946542,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x40262c2",
+      "command_buffer_id": "0x6030168e9",
+      "encoder_id": "0x6030168ea",
+      "submission_id": "67,265,218",
+      "start_seconds": 57.886002208,
+      "duration_ms": 25.946542
+    },
+    {
+      "start_ns": 58886018916,
+      "duration_ns": 25928792,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x402662c",
+      "command_buffer_id": "0x60301693e",
+      "encoder_id": "0x60301693f",
+      "submission_id": "67,266,092",
+      "start_seconds": 58.886018916,
+      "duration_ms": 25.928792
+    },
+    {
+      "start_ns": 58686031666,
+      "duration_ns": 25917875,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x4026573",
+      "command_buffer_id": "0x60301692c",
+      "encoder_id": "0x60301692d",
+      "submission_id": "67,265,907",
+      "start_seconds": 58.686031666,
+      "duration_ms": 25.917875
+    },
+    {
+      "start_ns": 57685999875,
+      "duration_ns": 25149000,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x4026124",
+      "command_buffer_id": "0x6030168da",
+      "encoder_id": "0x6030168db",
+      "submission_id": "67,264,804",
+      "start_seconds": 57.685999875,
+      "duration_ms": 25.149
+    },
+    {
+      "start_ns": 42390477958,
+      "duration_ns": 24413583,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x4020a7a",
+      "command_buffer_id": "0x603014bac",
+      "encoder_id": "0x603014bad",
+      "submission_id": "67,242,618",
+      "start_seconds": 42.390477958,
+      "duration_ms": 24.413583
+    },
+    {
+      "start_ns": 35279558166,
+      "duration_ns": 23188125,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x401df6a",
+      "command_buffer_id": "0x60301352c",
+      "encoder_id": "0x60301352d",
+      "submission_id": "67,231,594",
+      "start_seconds": 35.279558166,
+      "duration_ms": 23.188125
+    },
+    {
+      "start_ns": 35999744458,
+      "duration_ns": 23054333,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x401e3c6",
+      "command_buffer_id": "0x603013773",
+      "encoder_id": "0x603013774",
+      "submission_id": "67,232,710",
+      "start_seconds": 35.999744458,
+      "duration_ms": 23.054333
+    },
+    {
+      "start_ns": 23460940500,
+      "duration_ns": 21874500,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x4019517",
+      "command_buffer_id": "0x603010e0b",
+      "encoder_id": "0x603010e0c",
+      "submission_id": "67,212,567",
+      "start_seconds": 23.4609405,
+      "duration_ms": 21.8745
+    },
+    {
+      "start_ns": 27052850500,
+      "duration_ns": 20222333,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x401ab6d",
+      "command_buffer_id": "0x603011a16",
+      "encoder_id": "0x603011a17",
+      "submission_id": "67,218,285",
+      "start_seconds": 27.0528505,
+      "duration_ms": 20.222333
+    },
+    {
+      "start_ns": 4187496916,
+      "duration_ns": 20132792,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 1     ( python3.11 (54125) )  0x400bb28",
+      "command_buffer_id": "0x60300a9bc",
+      "encoder_id": "0x60300a9be",
+      "submission_id": "67,156,776",
+      "start_seconds": 4.187496916,
+      "duration_ms": 20.132792
+    },
+    {
+      "start_ns": 3934889833,
+      "duration_ns": 18933583,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 1     ( python3.11 (54125) )  0x400b89c",
+      "command_buffer_id": "0x60300a913",
+      "encoder_id": "0x60300a915",
+      "submission_id": "67,156,124",
+      "start_seconds": 3.934889833,
+      "duration_ms": 18.933583
+    },
+    {
+      "start_ns": 44276251000,
+      "duration_ns": 18729458,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x40215ab",
+      "command_buffer_id": "0x603015168",
+      "encoder_id": "0x603015169",
+      "submission_id": "67,245,483",
+      "start_seconds": 44.276251,
+      "duration_ms": 18.729458
+    },
+    {
+      "start_ns": 32127840416,
+      "duration_ns": 18157250,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x401cad7",
+      "command_buffer_id": "0x603012adb",
+      "encoder_id": "0x603012adc",
+      "submission_id": "67,226,327",
+      "start_seconds": 32.127840416,
+      "duration_ms": 18.15725
+    },
+    {
+      "start_ns": 59093994666,
+      "duration_ns": 17954959,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x40266d2",
+      "command_buffer_id": "0x60301694d",
+      "encoder_id": "0x60301694e",
+      "submission_id": "67,266,258",
+      "start_seconds": 59.093994666,
+      "duration_ms": 17.954959
+    },
+    {
+      "start_ns": 59294006208,
+      "duration_ns": 17941500,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x4026781",
+      "command_buffer_id": "0x60301695f",
+      "encoder_id": "0x603016960",
+      "submission_id": "67,266,433",
+      "start_seconds": 59.294006208,
+      "duration_ms": 17.9415
+    },
+    {
+      "start_ns": 27744204625,
+      "duration_ns": 17670333,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x401afb7",
+      "command_buffer_id": "0x603011c5d",
+      "encoder_id": "0x603011c5e",
+      "submission_id": "67,219,383",
+      "start_seconds": 27.744204625,
+      "duration_ms": 17.670333
+    },
+    {
+      "start_ns": 39227983875,
+      "duration_ns": 17573666,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x401f769",
+      "command_buffer_id": "0x6030141c4",
+      "encoder_id": "0x6030141c5",
+      "submission_id": "67,237,737",
+      "start_seconds": 39.227983875,
+      "duration_ms": 17.573666
+    },
+    {
+      "start_ns": 29659806500,
+      "duration_ns": 17274083,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x401bb7e",
+      "command_buffer_id": "0x6030122ad",
+      "encoder_id": "0x6030122ae",
+      "submission_id": "67,222,398",
+      "start_seconds": 29.6598065,
+      "duration_ms": 17.274083
+    },
+    {
+      "start_ns": 35103428250,
+      "duration_ns": 16151666,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x401de4d",
+      "command_buffer_id": "0x603013498",
+      "encoder_id": "0x603013499",
+      "submission_id": "67,231,309",
+      "start_seconds": 35.10342825,
+      "duration_ms": 16.151666
+    },
+    {
+      "start_ns": 41278970458,
+      "duration_ns": 15950083,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x40203d7",
+      "command_buffer_id": "0x60301483e",
+      "encoder_id": "0x60301483f",
+      "submission_id": "67,240,919",
+      "start_seconds": 41.278970458,
+      "duration_ms": 15.950083
+    },
+    {
+      "start_ns": 29304280416,
+      "duration_ns": 15439292,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x401b959",
+      "command_buffer_id": "0x603012186",
+      "encoder_id": "0x603012187",
+      "submission_id": "67,221,849",
+      "start_seconds": 29.304280416,
+      "duration_ms": 15.439292
+    },
+    {
+      "start_ns": 38152304583,
+      "duration_ns": 15408500,
+      "channel": "Compute",
+      "depth": 0,
+      "label": "Command Buffer 0:Compute Command 0     ( python3.11 (54125) )  0x401f0d4",
+      "command_buffer_id": "0x603013e56",
+      "encoder_id": "0x603013e57",
+      "submission_id": "67,236,052",
+      "start_seconds": 38.152304583,
+      "duration_ms": 15.4085
+    }
+  ],
+  "limitations": [
+    "Metal System Trace recorded Shader Timeline: Disabled, so kernel symbols and per-shader counters are unavailable.",
+    "GPU intervals can be nested; summed interval duration is not GPU wall time or utilization.",
+    "Rows are filtered to the target child PID so unrelated system Metal activity is excluded."
+  ]
+}

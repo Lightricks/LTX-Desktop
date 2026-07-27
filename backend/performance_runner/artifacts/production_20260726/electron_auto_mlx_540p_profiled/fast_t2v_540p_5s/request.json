@@ -1,0 +1,15 @@
+{
+  "prompt": "A slow, steady lateral camera move reveals the scene with natural subject motion and physically consistent lighting.",
+  "resolution": "540p",
+  "model": "fast",
+  "cameraMotion": "none",
+  "negativePrompt": "",
+  "duration": 5,
+  "fps": 24,
+  "audio": false,
+  "imagePath": null,
+  "audioPath": null,
+  "aspectRatio": "16:9",
+  "seed": 424242,
+  "loras": []
+}

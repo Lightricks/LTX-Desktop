@@ -22,6 +22,13 @@ artifact perf.hd_matrix {
   summary: "Explicit-execute FastAPI HD matrix with runtime-policy capture, a terminal post-job runtime sample for the isolated MLX JSONL profile, exact production-flock probes, complete macOS rusage_info_v2 process/physical sampling plus CPU/GPU samples, output hashes/probes, optional cross-run quality and blinded-review artifacts, no-model SIGKILL flock-release evidence, and strict missing-evidence failures."
 }
 
+artifact perf.metal_trace_analyzer {
+  path: "backend/performance_runner/analyze_metal_trace.py"
+  status: implemented
+  confidence: 0.98
+  summary: "Streams a focused xctrace metal-gpu-intervals XML export, resolves shared and nested XML definition references, filters unrelated system Metal rows by the exact target PID, and emits channel, label-group, percentile, and slowest-dispatch evidence with explicit Shader Timeline and nested-interval limitations."
+}
+
 truth perf.production_path {
   status: implemented
   confidence: 0.99

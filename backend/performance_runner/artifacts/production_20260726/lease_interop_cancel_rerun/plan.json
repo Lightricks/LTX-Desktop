@@ -1,0 +1,14 @@
+{
+  "schema": "ltx.local-metal-interop.plan.v1",
+  "production_lease": "/Users/paulericksen/Library/Application Support/LTX Shared/local-metal.lock",
+  "sequence": [
+    "Electron local Fast job acquires",
+    "AI Studio local job queues/blocks",
+    "CPU-only status/performance reads continue",
+    "Electron releases",
+    "AI Studio acquires",
+    "both terminal -> lease free"
+  ],
+  "remote_scope": "No paid remote job is submitted; product-level bypass tests remain the remote-provider authority.",
+  "cancel_ai_after_acquire": true
+}

@@ -12,7 +12,7 @@ artifact tests.performance_hd_matrix {
   path: "backend/tests/test_performance_hd_matrix.py"
   status: implemented
   confidence: 0.99
-  summary: "No-model guards for HD matrix coverage, complete macOS rusage_info_v2 ABI sizing, truthful TeaCache/tiling scope, cross-product ordered ownership plus normalized live/release owner diagnostics and CPU-control-plane responsiveness, flock authority/release, and hard failure when authoritative telemetry is absent."
+  summary: "No-model guards for HD matrix coverage, complete macOS rusage_info_v2 ABI sizing, focused Metal GPU interval reference/PID parsing, truthful TeaCache/tiling scope, cross-product ordered ownership plus normalized live/release owner diagnostics and CPU-control-plane responsiveness, flock authority/release, and hard failure when authoritative telemetry is absent."
 }
 
 artifact tests.mlx_sidecar_isolation {
