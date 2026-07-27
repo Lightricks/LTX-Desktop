@@ -1,0 +1,24 @@
+{
+  "schema": "ltx.hd-benchmark.plan.v1",
+  "product": "ltx_desktop_electron",
+  "production_entrypoint": "POST /api/generate",
+  "production_lease": "/Users/paulericksen/Library/Application Support/LTX Shared/local-metal.lock",
+  "expect_mode": "eager",
+  "runs_per_case": 1,
+  "cases": [
+    {
+      "case_id": "fast_t2v_540p_5s",
+      "resolution": "540p",
+      "duration": 5,
+      "fps": 24,
+      "aspect_ratio": "16:9",
+      "image_conditioned": false
+    }
+  ],
+  "notes": [
+    "Run once with --expect-mode=eager and once with --expect-mode=low_ram; runtime policy, not a request-only toggle, owns the app mode.",
+    "Distilled Fast T2V/I2V cannot use TeaCache and this harness never presents it as a switch.",
+    "Explicit modality-tiling candidates are qualified in the AI Studio MLX HQ matrix; Electron Fast exposes only its production automatic policy.",
+    "The production flock serializes local heavy work; cloud/API/CPU-only work remains outside it."
+  ]
+}

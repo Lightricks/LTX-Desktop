@@ -1,0 +1,254 @@
+{
+  "schema": "ltx.hd-benchmark.result.v1",
+  "product": "ltx_desktop_electron",
+  "case": {
+    "case_id": "fast_t2v_540p_5s",
+    "resolution": "540p",
+    "duration": 5,
+    "fps": 24,
+    "aspect_ratio": "16:9",
+    "image_conditioned": false
+  },
+  "response": {
+    "status": "complete",
+    "video_path": "/Users/paulericksen/Library/Application Support/LTXDesktop/outputs/ltx2_video_20260726_190747_5f235736.mp4",
+    "resolved_width": 896,
+    "resolved_height": 512
+  },
+  "submitted_at": 1785114467.541415,
+  "finished_at": 1785114534.149004,
+  "wall_seconds": 66.60758900642395,
+  "output_path": "/Users/paulericksen/Library/Application Support/LTXDesktop/outputs/ltx2_video_20260726_190747_5f235736.mp4",
+  "runtime_policy": {
+    "force_api_generations": false,
+    "fast_video_engine_preference": "auto",
+    "auto_fast_video_engine": "mlx",
+    "auto_selection_reason": "MLX auto-selected for Fast T2V/I2V with local text encoding and cached BF16 weights.",
+    "execution_mode": "eager",
+    "automatic_tiling": false,
+    "mlx_model_source": "dgrauet/ltx-2.3-mlx",
+    "mlx_model_variant": "bf16",
+    "quality_warning": null,
+    "capability_engines": {
+      "fast_t2v_i2v": "mlx",
+      "prepared_text_embeddings": "torch",
+      "audio_to_video": "torch",
+      "retake": "torch",
+      "extend": "torch",
+      "ic_lora": "torch",
+      "image_generation": "torch"
+    },
+    "provenance": [
+      {
+        "component": "ltx-pipelines",
+        "version": "1.1.7",
+        "revision": "9377758131b1ffde4b7f766804590a6617bf2ab9",
+        "source": "https://github.com/Lightricks/LTX-2"
+      },
+      {
+        "component": "torch",
+        "version": "2.11.0",
+        "revision": null,
+        "source": "https://pytorch.org"
+      },
+      {
+        "component": "ltx-pipelines-mlx sidecar (actual)",
+        "version": "0.14.20.dev1",
+        "revision": "3171bac4ba901c0237faea2678c34034b37abc2a",
+        "source": "LTX_MLX_PYTHON"
+      },
+      {
+        "component": "ltx-pipelines-mlx compatibility target",
+        "version": "0.14.20.dev1",
+        "revision": "3171bac4ba901c0237faea2678c34034b37abc2a",
+        "source": "https://github.com/dgrauet/ltx-2-mlx"
+      },
+      {
+        "component": "ltx-core-mlx sidecar dependency",
+        "version": "0.14.20.dev1",
+        "revision": null,
+        "source": "LTX_MLX_PYTHON"
+      },
+      {
+        "component": "mlx sidecar framework",
+        "version": "0.31.1",
+        "revision": null,
+        "source": "LTX_MLX_PYTHON"
+      }
+    ]
+  },
+  "progress_phases": [
+    "inference"
+  ],
+  "cleanup_evidence": [
+    {
+      "timestamp": 1785114467.5459058,
+      "sampled_at": "2026-07-27T01:07:47.545264+00:00",
+      "active_engine": null,
+      "active_pipeline": null,
+      "process_rss_mib": 498,
+      "system_total_mib": 131072,
+      "system_available_mib": 84901,
+      "mlx_active_mib": null,
+      "mlx_cache_mib": null,
+      "mlx_peak_mib": null,
+      "mlx_profile_status": null,
+      "mlx_profile_phase": null,
+      "mlx_profile_path": null,
+      "mlx_profile_sampled_at": null,
+      "mlx_runtime_identity": null,
+      "mps_allocated_mib": 0,
+      "mps_driver_mib": 8,
+      "mps_recommended_max_mib": 110100,
+      "local_metal_lease_status": "held",
+      "local_metal_lease_reason": "mlx local video generation",
+      "local_metal_lease_waited_seconds": 2.4250010028481483e-05,
+      "local_metal_lease_owner": {
+        "schema": "ltx.local-metal-lock.v1",
+        "product": "LTX Desktop",
+        "pid": 61831,
+        "ppid": 61825,
+        "job_id": "e787a3f3",
+        "workload": "fast_t2v",
+        "reason": "mlx local video generation",
+        "acquired_at_utc": "2026-07-27T01:07:47.543803+00:00",
+        "host": "Pauls-MacBook-Pro.local"
+      }
+    }
+  ],
+  "dimensions": {
+    "requested": {
+      "resolution": "540p",
+      "duration": 5,
+      "fps": 24,
+      "aspect_ratio": "16:9"
+    },
+    "resolved": {
+      "width": 896,
+      "height": 512,
+      "frames": 121,
+      "execution_mode": "eager"
+    },
+    "actual": {
+      "width": 896,
+      "height": 512,
+      "frames": 121,
+      "duration_seconds": 5.041667,
+      "has_audio": true,
+      "video_codec": "h264",
+      "audio_codec": "aac"
+    }
+  },
+  "hashes": {
+    "recipe_sha256": "5e70e257d4ec400a9d633311b2d0bec2661422e24bdb135ec3a6c5b4e2e522a3",
+    "prompt_sha256": "9484ef8602be5a89d2d1e6920d3f8bb155458f4c052e1dbedc3971c6628801ee",
+    "source_sha256": "bc410ed908e0cd7bb2ecf791eb66f9e8d6a83c401bf85e50485e510667fedf77",
+    "output_sha256": "5f1f02369e48d61b2951bc4d5b38321d4e6d22c65dee2e4870d6ee20de15185c",
+    "repo_head": "f539eb6277370c2d1714590b31c76ab1f4b95f6b",
+    "runtime_policy_sha256": "12802c412c09a825e4ff5698e8a3b7bda692790c8c16e512c6c52d90d47782cc"
+  },
+  "lease": {
+    "initial_probe": {
+      "schema": "ltx.benchmark.lock-probe.v1",
+      "lease_path": "/Users/paulericksen/Library/Application Support/LTX Shared/local-metal.lock",
+      "observed": "acquired",
+      "holder_payload": {
+        "acquired_at_utc": "2026-07-27T01:02:26.129668+00:00",
+        "host": "Pauls-MacBook-Pro.local",
+        "job_id": "9a498577",
+        "pid": 60053,
+        "ppid": 60035,
+        "product": "LTX Desktop",
+        "reason": "Torch local image generation",
+        "schema": "ltx.local-metal-lock.v1",
+        "workload": "image_generation"
+      },
+      "holder_payload_schema_valid": true,
+      "timestamp": 1785114467.541412,
+      "monotonic_ns": 346573497311166
+    },
+    "running_probe": {
+      "schema": "ltx.benchmark.lock-probe.v1",
+      "lease_path": "/Users/paulericksen/Library/Application Support/LTX Shared/local-metal.lock",
+      "observed": "contended",
+      "holder_payload": {
+        "acquired_at_utc": "2026-07-27T01:07:47.543803+00:00",
+        "host": "Pauls-MacBook-Pro.local",
+        "job_id": "e787a3f3",
+        "pid": 61831,
+        "ppid": 61825,
+        "product": "LTX Desktop",
+        "reason": "mlx local video generation",
+        "schema": "ltx.local-metal-lock.v1",
+        "workload": "fast_t2v"
+      },
+      "holder_payload_schema_valid": true,
+      "timestamp": 1785114467.5459661,
+      "monotonic_ns": 346573501865250
+    },
+    "terminal_probe": {
+      "schema": "ltx.benchmark.lock-probe.v1",
+      "lease_path": "/Users/paulericksen/Library/Application Support/LTX Shared/local-metal.lock",
+      "observed": "acquired",
+      "holder_payload": {
+        "acquired_at_utc": "2026-07-27T01:07:47.543803+00:00",
+        "host": "Pauls-MacBook-Pro.local",
+        "job_id": "e787a3f3",
+        "pid": 61831,
+        "ppid": 61825,
+        "product": "LTX Desktop",
+        "reason": "mlx local video generation",
+        "schema": "ltx.local-metal-lock.v1",
+        "workload": "fast_t2v"
+      },
+      "holder_payload_schema_valid": true,
+      "timestamp": 1785114533.863661,
+      "monotonic_ns": 346639819525416
+    }
+  },
+  "runtime_summary": {
+    "samples": 64,
+    "peak_rss_gib": 0.4873046875,
+    "peak_mlx_mib": 38585,
+    "peak_mps_allocated_mib": 0,
+    "peak_mps_driver_mib": 8,
+    "peak_process_tree_rss_gib": 34.135528564453125,
+    "peak_physical_footprint_gib": 41.133451238274574,
+    "peak_cpu_percent": 290.7,
+    "peak_gpu_utilization_percent": 100.0,
+    "mlx_profile_status": "success",
+    "mlx_profile_phase": "Decoding video + audio + muxing",
+    "mlx_profile_path": "/Users/paulericksen/Library/Application Support/LTXDesktop/outputs/.mlx-profiles/ltx2_video_20260726_190747_5f235736-cb193fdca4204f75bbc898782b7db313.jsonl",
+    "mlx_profile_sampled_at": "2026-07-27T01:08:53.271645+00:00",
+    "mlx_runtime_identity": {
+      "runtime_commit": "3171bac4ba901c0237faea2678c34034b37abc2a",
+      "runtime_dirty": false,
+      "runtime_version": "0.14.20.dev1",
+      "core_version": "0.14.20.dev1",
+      "mlx_version": "0.31.1",
+      "mlx_metal_version": "0.31.1",
+      "device_name": "Apple M5 Max",
+      "device_architecture": "applegpu_g17s",
+      "device_memory_bytes": 137438953472,
+      "device_recommended_working_set_bytes": 115448725504,
+      "runtime_family": "0.14",
+      "device_family": "applegpu_g17s"
+    }
+  },
+  "machine": {
+    "captured_at_utc": "2026-07-27T01:08:53.901605+00:00",
+    "host": "Pauls-MacBook-Pro.local",
+    "python": "3.13.12 (main, Mar 25 2026, 02:48:22) [Clang 22.1.1 ]",
+    "sw_vers": "ProductName:\t\tmacOS\nProductVersion:\t\t26.5.2\nBuildVersion:\t\t25F84",
+    "hardware": "Hardware:\n\n    Hardware Overview:\n\n      Model Name: MacBook Pro\n      Model Identifier: Mac17,6\n      Model Number: Z1N20001GLL/A\n      Chip: Apple M5 Max\n      Total Number of Cores: 18 (6 Super and 12 Performance)\n      Memory: 128 GB\n      System Firmware Version: 18000.121.3\n      OS Loader Version: 18000.121.3",
+    "memsize": "137438953472",
+    "repo_head": "f539eb6277370c2d1714590b31c76ab1f4b95f6b",
+    "repo_status": "?? backend/performance_runner/artifacts/production_20260726/electron_auto_mlx_540p_dimensions/",
+    "ffmpeg": [
+      "ffmpeg version 8.1.1 Copyright (c) 2000-2026 the FFmpeg developers"
+    ]
+  },
+  "cancel_sent": false,
+  "strict_failures": [],
+  "strict_status": "PASS"
+}
