@@ -92,6 +92,7 @@ def test_generation_uses_fresh_process_group_and_cancellation_kills_it(monkeypat
     assert kwargs["env"]["LTX2_VAE_DECODE_BUDGET_GB"] == "2"
     assert "--auto-tiling" in command
     assert command[command.index("--model-precision") + 1] == "bf16"
+    assert command[command.index("--profile-json") + 1].endswith(".jsonl")
     assert killed == [(process.pid, mlx_sidecar.signal.SIGKILL)]
     assert len(errors) == 1
     assert isinstance(errors[0], RuntimeError)

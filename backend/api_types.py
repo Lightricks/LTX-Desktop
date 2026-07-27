@@ -124,6 +124,11 @@ class RuntimeTelemetryResponse(BaseModel):
     mlx_active_mib: int | None = None
     mlx_cache_mib: int | None = None
     mlx_peak_mib: int | None = None
+    mlx_profile_status: Literal["running", "success", "error", "cancelled"] | None = None
+    mlx_profile_phase: str | None = None
+    mlx_profile_path: str | None = None
+    mlx_profile_sampled_at: str | None = None
+    mlx_runtime_identity: dict[str, object] | None = None
     mps_allocated_mib: int | None = None
     mps_driver_mib: int | None = None
     mps_recommended_max_mib: int | None = None

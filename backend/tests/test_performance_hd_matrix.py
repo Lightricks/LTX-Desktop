@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import ctypes
 import fcntl
 import json
 from pathlib import Path
 
 from performance_runner import hd_matrix as bench
 from performance_runner import lease_interop
+
+
+def test_rusage_info_v2_buffer_matches_darwin_abi() -> None:
+    assert ctypes.sizeof(bench._RusageInfoV2) >= 160
 
 
 def test_matrix_covers_multiple_resolutions_durations_and_i2v() -> None:
@@ -37,6 +42,15 @@ def test_strict_validator_hard_fails_missing_authoritative_fields() -> None:
     assert "missing authoritative worker physical footprint" in failures
     assert "missing explicit cleanup/post-cleanup telemetry" in failures
     assert "shared Metal lease not held during local generation" in failures
+
+
+def test_interop_owner_normalizes_live_and_release_diagnostics() -> None:
+    live = {"holder_payload": {"schema": bench.LOCK_SCHEMA, "product": "ai-studio", "job_id": "one"}}
+    released = {"holder_payload": {"event": "local_metal_lock_released", "owner": live["holder_payload"]}}
+    assert lease_interop.owner_record(live)["job_id"] == "one"
+    assert lease_interop.owner_record(released)["job_id"] == "one"
+    assert lease_interop.canonical_product("ai-studio") == "AI Studio"
+    assert lease_interop.canonical_product("LTX Desktop") == "LTX Desktop"
 
 
 def test_interop_timeline_requires_ordered_owners_cpu_progress_and_release() -> None:

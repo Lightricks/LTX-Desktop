@@ -12,6 +12,11 @@ from typing import Final
 from api_types import ImageConditioningInput
 from runtime_config.mlx_runtime import discover_mlx_runtime
 from runtime_config.runtime_policy import MLX_BF16_MODEL_SOURCE
+from services.fast_video_pipeline.mlx_profile import (
+    allocate_mlx_profile_path,
+    begin_mlx_profile,
+    finish_mlx_profile,
+)
 
 logger = logging.getLogger(__name__)
 _sidecar_lock = threading.Lock()
@@ -132,6 +137,7 @@ class MLXFastVideoPipeline:
         images: list[ImageConditioningInput],
         output_path: str,
     ) -> None:
+        profile_path = allocate_mlx_profile_path(output_path)
         command: list[str] = [
             *self._command_prefix,
             "generate",
@@ -154,6 +160,8 @@ class MLXFastVideoPipeline:
             str(frame_rate),
             "--seed",
             str(seed),
+            "--profile-json",
+            str(profile_path),
         ]
         if self._low_ram:
             command.extend(["--low-ram", "--auto-tiling"])
@@ -175,15 +183,25 @@ class MLXFastVideoPipeline:
         # process exit is the allocator teardown boundary we can prove.
         process = subprocess.Popen(command, env=child_env, start_new_session=True)
         _register_active_sidecar(process)
+        begin_mlx_profile(profile_path)
+        return_code: int | None = None
         was_cancelled = False
         try:
             return_code = process.wait()
         finally:
             was_cancelled = _release_active_sidecar(process)
+            profile_status = (
+                "cancelled"
+                if was_cancelled
+                else "success"
+                if return_code == 0
+                else "error"
+            )
+            finish_mlx_profile(profile_path, profile_status)
         if was_cancelled:
             raise RuntimeError("Generation was cancelled")
         if return_code != 0:
-            raise subprocess.CalledProcessError(return_code, command)
+            raise subprocess.CalledProcessError(return_code or -1, command)
 
     def warmup(self, output_path: str) -> None:
         self.generate(

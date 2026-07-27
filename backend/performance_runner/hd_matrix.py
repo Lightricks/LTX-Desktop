@@ -168,7 +168,10 @@ class _RusageInfoV2(ctypes.Structure):
         (name, ctypes.c_uint64) for name in (
             "ri_user_time", "ri_system_time", "ri_pkg_idle_wkups", "ri_interrupt_wkups",
             "ri_pageins", "ri_wired_size", "ri_resident_size", "ri_phys_footprint",
-            "ri_proc_start_abstime", "ri_proc_exit_abstime",
+            "ri_proc_start_abstime", "ri_proc_exit_abstime", "ri_child_user_time",
+            "ri_child_system_time", "ri_child_pkg_idle_wkups", "ri_child_interrupt_wkups",
+            "ri_child_pageins", "ri_child_elapsed_abstime", "ri_diskio_bytesread",
+            "ri_diskio_byteswritten",
         )
     ]
 
@@ -288,8 +291,13 @@ def strict_failures(result: dict[str, Any]) -> list[str]:
         failures.append("missing worker/process RSS peak")
     if telemetry.get("peak_physical_footprint_gib") is None:
         failures.append("missing authoritative worker physical footprint")
-    if result.get("runtime_policy", {}).get("auto_fast_video_engine") == "mlx" and telemetry.get("peak_mlx_mib") is None:
-        failures.append("missing MLX allocator peak")
+    if result.get("runtime_policy", {}).get("auto_fast_video_engine") == "mlx":
+        if telemetry.get("peak_mlx_mib") is None:
+            failures.append("missing MLX allocator peak")
+        if not telemetry.get("mlx_runtime_identity"):
+            failures.append("missing profiled MLX runtime identity")
+        if telemetry.get("mlx_profile_status") not in {"success", "cancelled"}:
+            failures.append("missing terminal MLX profile status")
     if not phases:
         failures.append("missing generation phase samples")
     if not result.get("cleanup_evidence"):
@@ -349,6 +357,11 @@ def run_case(case: MatrixCase, image_path: str | None, artifact_dir: Path, expec
             time.sleep(poll_seconds)
         response = future.result()
 
+    # The isolated MLX child publishes its terminal allocator peak and identity
+    # after process exit. Capture one post-job API sample so strict evidence does
+    # not depend on the polling interval racing the final flushed JSONL event.
+    terminal_runtime = http_json("GET", "/api/runtime-telemetry")
+    runtime_samples.append({"timestamp": time.time(), **terminal_runtime})
     terminal_probe = probe_metal_lock()
     output_path = str((response or {}).get("video_path") or "")
     actual = ffprobe(output_path) if output_path and Path(output_path).is_file() else {}
@@ -382,6 +395,11 @@ def run_case(case: MatrixCase, image_path: str | None, artifact_dir: Path, expec
             "peak_mps_driver_mib": max((_row.get("mps_driver_mib") for _row in runtime_samples if _row.get("mps_driver_mib") is not None), default=None),
             "peak_process_tree_rss_gib": _peak(process_samples, "rss_gib"), "peak_physical_footprint_gib": _peak(process_samples, "physical_footprint_gib"),
             "peak_cpu_percent": _peak(process_samples, "cpu_percent"), "peak_gpu_utilization_percent": _peak(process_samples, "gpu_utilization_percent"),
+            "mlx_profile_status": terminal_runtime.get("mlx_profile_status"),
+            "mlx_profile_phase": terminal_runtime.get("mlx_profile_phase"),
+            "mlx_profile_path": terminal_runtime.get("mlx_profile_path"),
+            "mlx_profile_sampled_at": terminal_runtime.get("mlx_profile_sampled_at"),
+            "mlx_runtime_identity": terminal_runtime.get("mlx_runtime_identity"),
         },
         "machine": details, "cancel_sent": cancel_sent,
     }

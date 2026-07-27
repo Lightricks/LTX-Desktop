@@ -1207,12 +1207,13 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               </div>
 
               <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-white">Live memory</h3>
+                <h3 className="text-sm font-semibold text-white">Live / last-job memory</h3>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   {[
                     ['Process RSS', runtimeTelemetry?.process_rss_mib],
                     ['System available', runtimeTelemetry?.system_available_mib],
                     ['MLX active', runtimeTelemetry?.mlx_active_mib],
+                    ['MLX cache', runtimeTelemetry?.mlx_cache_mib],
                     ['MLX peak', runtimeTelemetry?.mlx_peak_mib],
                     ['MPS allocated', runtimeTelemetry?.mps_allocated_mib],
                     ['MPS driver', runtimeTelemetry?.mps_driver_mib],
@@ -1225,6 +1226,27 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                     </div>
                   ))}
                 </div>
+                {runtimeTelemetry?.mlx_profile_status && (
+                  <div className="bg-zinc-800/50 rounded p-3 border border-zinc-700/40 text-xs space-y-1">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">MLX profile</span>
+                      <span className="text-zinc-200">{runtimeTelemetry.mlx_profile_status}</span>
+                    </div>
+                    <div className="text-zinc-400">
+                      Phase: {runtimeTelemetry.mlx_profile_phase ?? 'initializing'}
+                    </div>
+                    {runtimeTelemetry.mlx_runtime_identity && (
+                      <div className="text-zinc-400">
+                        Runtime {String(runtimeTelemetry.mlx_runtime_identity.runtime_version ?? 'unknown')}
+                        {' · '}{String(runtimeTelemetry.mlx_runtime_identity.runtime_commit ?? 'unknown').slice(0, 12)}
+                        {' · '}{String(runtimeTelemetry.mlx_runtime_identity.device_name ?? 'unknown device')}
+                      </div>
+                    )}
+                    {runtimeTelemetry.mlx_profile_path && (
+                      <div className="text-zinc-600 break-all">{runtimeTelemetry.mlx_profile_path}</div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="bg-zinc-800/50 rounded-lg p-4 space-y-2 border border-zinc-700/50">

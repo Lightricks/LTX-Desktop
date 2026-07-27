@@ -12,7 +12,7 @@ artifact tests.performance_hd_matrix {
   path: "backend/tests/test_performance_hd_matrix.py"
   status: implemented
   confidence: 0.99
-  summary: "No-model guards for HD matrix coverage, truthful TeaCache/tiling scope, cross-product ordered ownership plus CPU-control-plane responsiveness, flock authority/release, and hard failure when authoritative telemetry is absent."
+  summary: "No-model guards for HD matrix coverage, complete macOS rusage_info_v2 ABI sizing, truthful TeaCache/tiling scope, cross-product ordered ownership plus normalized live/release owner diagnostics and CPU-control-plane responsiveness, flock authority/release, and hard failure when authoritative telemetry is absent."
 }
 
 artifact tests.mlx_sidecar_isolation {
@@ -27,6 +27,13 @@ artifact tests.mlx_runtime_discovery {
   status: implemented
   confidence: 0.99
   summary: "Proves explicit Python precedence, sibling-runtime fallback, exact version and revision admission, and dirty-checkout rejection without loading a model."
+}
+
+artifact tests.mlx_profile_ingestion {
+  path: "backend/tests/test_mlx_profile.py"
+  status: implemented
+  confidence: 0.99
+  summary: "Proves flushed JSONL ingestion, incomplete-tail and non-finite-value tolerance, prompt-safe runtime identity filtering, allocator active/cache/peak retention after child exit, phase retention, and synthetic cancellation state without model work."
 }
 
 obligation tests.no_heavy_side_effects {

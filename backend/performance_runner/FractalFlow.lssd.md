@@ -12,14 +12,14 @@ artifact perf.lease_interop {
   path: "backend/performance_runner/lease_interop.py"
   status: implemented
   confidence: 0.98
-  summary: "Explicit-execute cross-product controller proving ordered Electron then AI Studio flock ownership with a hash-verified local Documents/ComfyUI I2V fixture, responsive CPU-only control-plane work during contention, terminal release, and optional cancellation of only its own AI job. It never submits paid remote work."
+  summary: "Explicit-execute cross-product controller proving ordered Electron then AI Studio flock ownership with a hash-verified local Documents/ComfyUI I2V fixture, normalized product diagnostics (including AI Studio release wrappers), responsive CPU-only control-plane work during contention, terminal release, and optional cancellation of only its own AI job. It never submits paid remote work."
 }
 
 artifact perf.hd_matrix {
   path: "backend/performance_runner/hd_matrix.py"
   status: implemented
   confidence: 0.98
-  summary: "Explicit-execute FastAPI HD matrix with runtime-policy capture, exact production-flock probes, process/physical/CPU/GPU samples, output hashes/probes, optional cross-run quality and blinded-review artifacts, no-model SIGKILL flock-release evidence, and strict missing-evidence failures."
+  summary: "Explicit-execute FastAPI HD matrix with runtime-policy capture, a terminal post-job runtime sample for the isolated MLX JSONL profile, exact production-flock probes, complete macOS rusage_info_v2 process/physical sampling plus CPU/GPU samples, output hashes/probes, optional cross-run quality and blinded-review artifacts, no-model SIGKILL flock-release evidence, and strict missing-evidence failures."
 }
 
 truth perf.production_path {

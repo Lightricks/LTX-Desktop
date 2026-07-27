@@ -3633,6 +3633,68 @@
             ],
             "title": "Mlx Peak Mib"
           },
+          "mlx_profile_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mlx Profile Path"
+          },
+          "mlx_profile_phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mlx Profile Phase"
+          },
+          "mlx_profile_sampled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mlx Profile Sampled At"
+          },
+          "mlx_profile_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "running",
+                  "success",
+                  "error",
+                  "cancelled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mlx Profile Status"
+          },
+          "mlx_runtime_identity": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mlx Runtime Identity"
+          },
           "mps_allocated_mib": {
             "anyOf": [
               {

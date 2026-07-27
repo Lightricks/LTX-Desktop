@@ -2022,6 +2022,18 @@ export interface components {
             mlx_cache_mib?: number | null;
             /** Mlx Peak Mib */
             mlx_peak_mib?: number | null;
+            /** Mlx Profile Path */
+            mlx_profile_path?: string | null;
+            /** Mlx Profile Phase */
+            mlx_profile_phase?: string | null;
+            /** Mlx Profile Sampled At */
+            mlx_profile_sampled_at?: string | null;
+            /** Mlx Profile Status */
+            mlx_profile_status?: ("running" | "success" | "error" | "cancelled") | null;
+            /** Mlx Runtime Identity */
+            mlx_runtime_identity?: {
+                [key: string]: unknown;
+            } | null;
             /** Mps Allocated Mib */
             mps_allocated_mib?: number | null;
             /** Mps Driver Mib */

@@ -59,6 +59,26 @@ def active_ai_local(payload: Any) -> list[dict[str, Any]]:
     return [row for row in queue_rows(payload) if row.get("phase") in {"queued", "running"} and row.get("type") in AI_LOCAL_TYPES]
 
 
+def owner_record(probe: dict[str, Any]) -> dict[str, Any]:
+    """Extract live owner data or the owner nested in release diagnostics."""
+    payload = probe.get("holder_payload")
+    if not isinstance(payload, dict):
+        return {}
+    nested = payload.get("owner")
+    if isinstance(nested, dict) and nested.get("schema") == hd_matrix.LOCK_SCHEMA:
+        return nested
+    return payload
+
+
+def canonical_product(value: Any) -> str | None:
+    normalized = str(value or "").lower().replace(" ", "").replace("-", "").replace("_", "")
+    if normalized == "ltxdesktop":
+        return "LTX Desktop"
+    if normalized == "aistudio":
+        return "AI Studio"
+    return None
+
+
 def validate_timeline(events: list[dict[str, Any]], terminal_probe: dict[str, Any], cpu_probes: list[dict[str, Any]]) -> list[str]:
     failures: list[str] = []
     electron_seen = any(event.get("owner_product") == "LTX Desktop" for event in events)
@@ -116,13 +136,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         while time.time() < deadline:
             telemetry = hd_matrix.http_json("GET", "/api/runtime-telemetry")
             probe = hd_matrix.probe_metal_lock()
-            owner = probe.get("holder_payload") if isinstance(probe.get("holder_payload"), dict) else {}
+            owner = owner_record(probe)
+            owner_product = canonical_product(owner.get("product"))
             events.append({
                 "timestamp": time.time(), "stage": "electron_acquire", "electron_request_active": not electron_future.done(),
                 "electron_lease_status": telemetry.get("local_metal_lease_status"), "lock_observed": probe.get("observed"),
-                "owner_product": owner.get("product"), "owner_job_id": owner.get("job_id"),
+                "owner_product": owner_product, "owner_product_raw": owner.get("product"), "owner_job_id": owner.get("job_id"),
             })
-            if telemetry.get("local_metal_lease_status") == "held" and owner.get("product") == "LTX Desktop":
+            if telemetry.get("local_metal_lease_status") == "held" and owner_product == "LTX Desktop":
                 break
             time.sleep(args.poll_seconds)
         else:
@@ -147,14 +168,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             queue = ai_http(args.ai_base_url, "GET", "/api/queue")
             ai_job = find_job(queue, ai_job_id) or {}
             probe = hd_matrix.probe_metal_lock()
-            owner = probe.get("holder_payload") if isinstance(probe.get("holder_payload"), dict) else {}
+            owner = owner_record(probe)
+            owner_product = canonical_product(owner.get("product"))
             electron_active = not electron_future.done()
             events.append({
                 "timestamp": time.time(), "stage": "contention", "electron_request_active": electron_active,
                 "ai_phase": ai_job.get("phase"), "ai_pid": ai_job.get("pid"), "lock_observed": probe.get("observed"),
-                "owner_product": owner.get("product"), "owner_job_id": owner.get("job_id"),
+                "owner_product": owner_product, "owner_product_raw": owner.get("product"), "owner_job_id": owner.get("job_id"),
             })
-            if args.cancel_ai_after_acquire and owner.get("product") == "AI Studio" and ai_job.get("phase") == "running" and not ai_cancel_sent:
+            if args.cancel_ai_after_acquire and owner_product == "AI Studio" and ai_job.get("phase") == "running" and not ai_cancel_sent:
                 ai_http(args.ai_base_url, "POST", f"/api/queue/{ai_job_id}/kill", {})
                 ai_cancel_sent = True
             if electron_future.done() and ai_job.get("phase") in AI_TERMINAL:

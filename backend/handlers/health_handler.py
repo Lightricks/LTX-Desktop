@@ -19,7 +19,7 @@ from api_types import (
 )
 from handlers.base import StateHandlerBase
 from handlers.models_handler import ModelsHandler
-from services.fast_video_pipeline.mlx_fast_video_pipeline import get_active_mlx_sidecar_pid
+from services.fast_video_pipeline.mlx_profile import get_mlx_profile_snapshot
 from services.interfaces import GpuInfo
 from services.local_metal_lease import get_local_metal_lease_snapshot
 from state.app_state_types import AppState, GpuSlot, VideoPipelineState
@@ -120,17 +120,7 @@ class HealthHandler(StateHandlerBase):
                     active_engine = "torch"
                     active_pipeline = type(active).__name__
 
-        mlx_active_mib = None
-        mlx_cache_mib = None
-        mlx_peak_mib = None
-        mlx_sidecar_pid = get_active_mlx_sidecar_pid()
-        if mlx_sidecar_pid is not None:
-            try:
-                mlx_active_mib = round(
-                    psutil.Process(mlx_sidecar_pid).memory_info().rss / _BYTES_PER_MIB
-                )
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
+        mlx_profile = get_mlx_profile_snapshot()
 
         mps = self.get_mps_memory()
         lease = get_local_metal_lease_snapshot()
@@ -141,9 +131,14 @@ class HealthHandler(StateHandlerBase):
             process_rss_mib=process_rss_mib,
             system_total_mib=round(virtual_memory.total / _BYTES_PER_MIB),
             system_available_mib=round(virtual_memory.available / _BYTES_PER_MIB),
-            mlx_active_mib=mlx_active_mib,
-            mlx_cache_mib=mlx_cache_mib,
-            mlx_peak_mib=mlx_peak_mib,
+            mlx_active_mib=mlx_profile.active_mib if mlx_profile else None,
+            mlx_cache_mib=mlx_profile.cache_mib if mlx_profile else None,
+            mlx_peak_mib=mlx_profile.peak_mib if mlx_profile else None,
+            mlx_profile_status=mlx_profile.status if mlx_profile else None,
+            mlx_profile_phase=mlx_profile.phase if mlx_profile else None,
+            mlx_profile_path=mlx_profile.profile_path if mlx_profile else None,
+            mlx_profile_sampled_at=mlx_profile.sampled_at if mlx_profile else None,
+            mlx_runtime_identity=mlx_profile.runtime_identity if mlx_profile else None,
             mps_allocated_mib=mps.allocated_mib,
             mps_driver_mib=mps.driver_mib,
             mps_recommended_max_mib=mps.recommended_max_mib,

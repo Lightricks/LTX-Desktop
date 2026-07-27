@@ -80,6 +80,16 @@ truth ltx_desktop.runtime_provenance {
   confidence: 0.95
 }
 
+truth ltx_desktop.mlx_job_profile {
+  label: "Prompt-safe crash-resilient per-job MLX JSONL profile"
+  lifetime: archive
+  authority: { mode: derived, ref: @ltx_desktop.mlx_sidecar }
+  visibility: [restricted]
+  status: observed
+  confidence: 0.99
+  summary: "Each isolated child writes flushed phase, allocator, terminal status, and runtime identity evidence beside outputs; the API retains the last parsed snapshot after process exit."
+}
+
 truth ltx_desktop.local_metal_owner {
   label: "Diagnostic owner metadata for the shared Metal lease"
   lifetime: task
@@ -125,6 +135,13 @@ policy ltx_desktop.exact_mlx_runtime_identity on @ltx_desktop.runtime_selection 
   rule: "Discover LTX_MLX_PYTHON first, then ~/video-models/ltx-2-mlx/.venv/bin/python, then a console entrypoint; query ltx_pipelines_mlx.utils.runtime_info without loading a model, and admit MLX only when runtime version and source revision exactly match the compatibility pin and the source checkout is not dirty."
 }
 
+policy ltx_desktop.durable_mlx_evidence on @ltx_desktop.mlx_sidecar {
+  effect: require
+  status: confirmed
+  confidence: 1.0
+  rule: "Every MLX child receives a unique --profile-json path; complete flushed records are ingested without making telemetry fatal to inference while malformed tails, invalid timestamps, and non-finite allocator values are ignored, terminal allocator peak/active/cache, last phase, status, path, timestamp, and prompt-safe runtime identity remain visible after child exit, cancellation records a synthetic terminal snapshot if SIGKILL prevents a final flush, and strict HD qualification samples the terminal API snapshot after child completion."
+}
+
 policy ltx_desktop.shared_metal_authority on @ltx_desktop.local_metal_lease {
   effect: require
   status: confirmed
@@ -142,7 +159,7 @@ policy ltx_desktop.cancellable_lease_wait on @ltx_desktop.local_metal_lease {
 obligation ltx_desktop.visible_runtime_truth on @ltx_desktop.performance_ui {
   status: confirmed
   confidence: 0.95
-  rule: "The performance UI exposes selection preference, selected engine and reason, eager or low-RAM mode, automatic tiling, memory telemetry, lease status, capability routing, model tier warnings, and actual plus target provenance."
+  rule: "The performance UI exposes selection preference, selected engine and reason, eager or low-RAM mode, automatic tiling, live or last-job allocator memory, MLX profile status/phase/path/runtime identity, lease status, capability routing, model tier warnings, and actual plus target provenance."
 }
 
 flow ltx_desktop.fast_generation {
@@ -169,7 +186,7 @@ flow ltx_desktop.fast_generation {
   transition model_ready -> generating on generation_started
   transition generating -> cancelled on cancellation_kills_mlx_group_or_torch_observes_state
   transition generating -> cleaning on output_written
-  transition cleaning -> complete on allocator_cleanup_and_lease_release
+  transition cleaning -> complete on profile_ingested_allocator_cleanup_and_lease_release
   transition model_ready -> failed on model_load_failure
   transition generating -> failed on inference_failure
 }
@@ -191,6 +208,13 @@ artifact ltx_desktop.mlx_runtime_discovery_code {
 artifact ltx_desktop.mlx_sidecar_code {
   kind: "isolated MLX adapter"
   path: "backend/services/fast_video_pipeline/mlx_fast_video_pipeline.py"
+  status: observed
+  confidence: 0.99
+}
+
+artifact ltx_desktop.mlx_profile_code {
+  kind: "durable per-job MLX profile ingestion"
+  path: "backend/services/fast_video_pipeline/mlx_profile.py"
   status: observed
   confidence: 0.99
 }
