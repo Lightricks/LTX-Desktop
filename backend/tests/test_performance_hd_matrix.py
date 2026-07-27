@@ -76,10 +76,17 @@ def test_strict_validator_accepts_complete_torch_evidence() -> None:
         "runtime_policy": {"auto_fast_video_engine": "torch"},
         "progress_phases": ["inference"], "cleanup_evidence": [{"status": "cleanup"}],
         "lease": {"running_probe": {"observed": "contended"}, "terminal_probe": {"observed": "acquired"}},
-        "dimensions": {"requested": {"resolution": "720p"}, "resolved": {"width": 1280}, "actual": {"width": 1280}},
+        "dimensions": {
+            "requested": {"resolution": "720p"},
+            "resolved": {"width": 1280, "height": 704},
+            "actual": {"width": 1280, "height": 704},
+        },
         "hashes": {"recipe_sha256": "a", "prompt_sha256": "b", "source_sha256": "c", "repo_head": "d"},
     }
     assert bench.strict_failures(row) == []
+
+    row["dimensions"]["actual"]["height"] = 512
+    assert "resolved height 704 does not match actual height 512" in bench.strict_failures(row)
 
 
 def test_metal_trace_analyzer_resolves_nested_process_references(tmp_path: Path) -> None:

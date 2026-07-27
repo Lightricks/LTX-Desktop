@@ -178,10 +178,28 @@ class TestGenerate:
         r = client.post("/api/generate", json=_T2V_JSON)
         assert r.status_code == 200
 
+        data = r.json()
+        assert data["resolved_width"] == 896
+        assert data["resolved_height"] == 512
         pipeline = fake_services.fast_video_pipeline
         call = pipeline.generate_calls[0]
-        assert call["width"] == 960
+        assert call["width"] == 896
         assert call["height"] == 512
+
+    def test_resolution_mapping_540p_portrait(self, client, test_state, fake_services, create_fake_model_files):
+        create_fake_model_files()
+        _enable_local_text_encoding(test_state)
+
+        r = client.post(
+            "/api/generate",
+            json={**_T2V_JSON, "aspectRatio": "9:16"},
+        )
+        assert r.status_code == 200
+        assert r.json()["resolved_width"] == 512
+        assert r.json()["resolved_height"] == 896
+        call = fake_services.fast_video_pipeline.generate_calls[0]
+        assert call["width"] == 512
+        assert call["height"] == 896
 
     def test_resolution_mapping_720p(self, client, test_state, fake_services, create_fake_model_files):
         create_fake_model_files()

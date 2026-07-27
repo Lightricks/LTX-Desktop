@@ -100,5 +100,37 @@ def test_generation_uses_fresh_process_group_and_cancellation_kills_it(monkeypat
     assert mlx_sidecar.get_active_mlx_sidecar_pid() is None
 
 
+def test_distilled_sidecar_rejects_non_grid_dimensions_before_launch(monkeypatch) -> None:
+    runtime = MLXRuntimeDiscovery(
+        command_prefix=("/opt/ltx-2-mlx",),
+        source="test",
+        version="test",
+        revision="test",
+        dirty=False,
+        core_version="test",
+        mlx_version="test",
+        compatible=True,
+        reason="test",
+    )
+    monkeypatch.setattr(mlx_sidecar, "discover_mlx_runtime", lambda: runtime)
+    pipeline = mlx_sidecar.MLXFastVideoPipeline(
+        model_source="test/model",
+        low_ram=False,
+        loras=[],
+    )
+
+    with pytest.raises(ValueError, match="divisible by 64"):
+        pipeline.generate(
+            prompt="test",
+            seed=1,
+            height=544,
+            width=960,
+            num_frames=9,
+            frame_rate=8,
+            images=[],
+            output_path="/tmp/must-not-launch.mp4",
+        )
+
+
 def test_cancel_without_active_sidecar_is_noop() -> None:
     assert mlx_sidecar.cancel_active_mlx_sidecar() is False

@@ -892,6 +892,28 @@
       },
       "GenerateVideoCompleteResponse": {
         "properties": {
+          "resolved_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Height"
+          },
+          "resolved_width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Width"
+          },
           "status": {
             "const": "complete",
             "title": "Status",

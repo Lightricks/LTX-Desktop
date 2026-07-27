@@ -19,6 +19,7 @@ from services.fast_video_pipeline.mlx_profile import (
 )
 
 logger = logging.getLogger(__name__)
+_MLX_DISTILLED_SPATIAL_GRID = 64
 _sidecar_lock = threading.Lock()
 _active_sidecar_process: subprocess.Popen[bytes] | None = None
 _cancelled_sidecar_pids: set[int] = set()
@@ -137,6 +138,11 @@ class MLXFastVideoPipeline:
         images: list[ImageConditioningInput],
         output_path: str,
     ) -> None:
+        if height % _MLX_DISTILLED_SPATIAL_GRID or width % _MLX_DISTILLED_SPATIAL_GRID:
+            raise ValueError(
+                "MLX distilled output dimensions must both be divisible by "
+                f"{_MLX_DISTILLED_SPATIAL_GRID}; got {width}x{height}"
+            )
         profile_path = allocate_mlx_profile_path(output_path)
         command: list[str] = [
             *self._command_prefix,

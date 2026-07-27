@@ -19,7 +19,7 @@ artifact perf.hd_matrix {
   path: "backend/performance_runner/hd_matrix.py"
   status: implemented
   confidence: 0.98
-  summary: "Explicit-execute FastAPI HD matrix with runtime-policy capture, a terminal post-job runtime sample for the isolated MLX JSONL profile, exact production-flock probes, complete macOS rusage_info_v2 process/physical sampling plus CPU/GPU samples, output hashes/probes, optional cross-run quality and blinded-review artifacts, no-model SIGKILL flock-release evidence, and strict missing-evidence failures."
+  summary: "Explicit-execute FastAPI HD matrix with runtime-policy capture, API-reported resolved dimensions checked exactly against ffprobe output, a terminal post-job runtime sample for the isolated MLX JSONL profile, exact production-flock probes, complete macOS rusage_info_v2 process/physical sampling plus CPU/GPU samples, output hashes/probes, optional cross-run quality and blinded-review artifacts, no-model SIGKILL flock-release evidence, and strict missing-evidence failures."
 }
 
 artifact perf.metal_trace_analyzer {

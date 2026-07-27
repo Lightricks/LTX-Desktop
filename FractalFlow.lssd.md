@@ -142,6 +142,13 @@ policy ltx_desktop.durable_mlx_evidence on @ltx_desktop.mlx_sidecar {
   rule: "Every MLX child receives a unique --profile-json path; complete flushed records are ingested without making telemetry fatal to inference while malformed tails, invalid timestamps, and non-finite allocator values are ignored, terminal allocator peak/active/cache, last phase, status, path, timestamp, and prompt-safe runtime identity remain visible after child exit, cancellation records a synthetic terminal snapshot if SIGKILL prevents a final flush, and strict HD qualification samples the terminal API snapshot after child completion."
 }
 
+policy ltx_desktop.aspect_aware_fast_dimensions on @ltx_desktop.mlx_sidecar {
+  effect: require
+  status: confirmed
+  confidence: 1.0
+  rule: "Local Fast T2V/I2V resolves one aspect-aware, two-stage 64-pixel-grid size before image preparation or inference; 540p uses budget-bounded 896x512 (or 512x896 portrait) instead of independently rounding 960x544 to distorted 960x512, the completion API and generated client bindings expose the resolved pair, the MLX adapter rejects off-grid dimensions before launch, and strict QA requires reported resolution to equal ffprobe output."
+}
+
 policy ltx_desktop.shared_metal_authority on @ltx_desktop.local_metal_lease {
   effect: require
   status: confirmed
@@ -208,6 +215,13 @@ artifact ltx_desktop.mlx_runtime_discovery_code {
 artifact ltx_desktop.mlx_sidecar_code {
   kind: "isolated MLX adapter"
   path: "backend/services/fast_video_pipeline/mlx_fast_video_pipeline.py"
+  status: observed
+  confidence: 0.99
+}
+
+artifact ltx_desktop.fast_resolution_code {
+  kind: "aspect-aware local Fast output grid"
+  path: "backend/handlers/video_resolution.py"
   status: observed
   confidence: 0.99
 }

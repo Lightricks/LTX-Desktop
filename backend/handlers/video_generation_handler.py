@@ -38,6 +38,7 @@ from server_utils.heartbeat import log_heartbeat
 from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
 from handlers.text_handler import TextHandler
+from handlers.video_resolution import resolve_fast_video_dimensions
 from server_utils.media_validation import (
     normalize_optional_path,
     validate_audio_file,
@@ -110,27 +111,10 @@ class VideoGenerationHandler(StateHandlerBase):
 
             logger.info("Resolution %s - using fast pipeline", resolution)
 
-            RESOLUTION_MAP_16_9: dict[str, tuple[int, int]] = {
-                "540p": (960, 544),
-                "720p": (1280, 704),
-                "1080p": (1920, 1088),
-            }
-
-            def get_16_9_size(res: str) -> tuple[int, int]:
-                size = RESOLUTION_MAP_16_9.get(res)
-                if size is None:
-                    raise HTTPError(400, "INVALID_LOCAL_RESOLUTION")
-                return size
-
-            def get_9_16_size(res: str) -> tuple[int, int]:
-                w, h = get_16_9_size(res)
-                return h, w
-
-            match req.aspectRatio:
-                case "9:16":
-                    width, height = get_9_16_size(resolution)
-                case "16:9":
-                    width, height = get_16_9_size(resolution)
+            try:
+                width, height = resolve_fast_video_dimensions(resolution, req.aspectRatio)
+            except ValueError as exc:
+                raise HTTPError(400, "INVALID_LOCAL_RESOLUTION") from exc
 
             num_frames = self._compute_num_frames(duration, fps)
 
@@ -184,7 +168,12 @@ class VideoGenerationHandler(StateHandlerBase):
                         )
 
                         self._generation.complete_generation(output_path)
-                        return GenerateVideoCompleteResponse(status="complete", video_path=output_path)
+                        return GenerateVideoCompleteResponse(
+                            status="complete",
+                            video_path=output_path,
+                            resolved_width=width,
+                            resolved_height=height,
+                        )
                     except Exception as exc:
                         # Transition out of GenerationRunning before teardown so
                         # unload_gpu_pipeline can release Metal memory while the
@@ -277,8 +266,10 @@ class VideoGenerationHandler(StateHandlerBase):
 
             self._generation.update_progress("inference", 15, 0, total_steps)
 
-            height = round(height / 64) * 64
-            width = round(width / 64) * 64
+            if height % 64 or width % 64:
+                raise RuntimeError(
+                    f"Fast two-stage dimensions must use the 64-pixel grid; got {width}x{height}"
+                )
 
             t_inference_start = time.perf_counter()
             with log_heartbeat(f"{gen_mode} inference"):

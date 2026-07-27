@@ -12,14 +12,21 @@ artifact tests.performance_hd_matrix {
   path: "backend/tests/test_performance_hd_matrix.py"
   status: implemented
   confidence: 0.99
-  summary: "No-model guards for HD matrix coverage, complete macOS rusage_info_v2 ABI sizing, focused Metal GPU interval reference/PID parsing, truthful TeaCache/tiling scope, cross-product ordered ownership plus normalized live/release owner diagnostics and CPU-control-plane responsiveness, flock authority/release, and hard failure when authoritative telemetry is absent."
+  summary: "No-model guards for HD matrix coverage, API-resolved versus ffprobe-actual dimension equality, complete macOS rusage_info_v2 ABI sizing, focused Metal GPU interval reference/PID parsing, truthful TeaCache/tiling scope, cross-product ordered ownership plus normalized live/release owner diagnostics and CPU-control-plane responsiveness, flock authority/release, and hard failure when authoritative telemetry is absent."
 }
 
 artifact tests.mlx_sidecar_isolation {
   path: "backend/tests/test_mlx_fast_video_pipeline.py"
   status: implemented
   confidence: 0.99
-  summary: "Proves every MLX render starts a fresh process group with child-local memory settings, forwards BF16 precision plus low-RAM auto-tiling, and cancellation kills the group without retaining an active child."
+  summary: "Proves every MLX render starts a fresh process group with child-local memory settings, forwards BF16 precision plus low-RAM auto-tiling, rejects non-64-grid distilled dimensions before launch, and cancellation kills the group without retaining an active child."
+}
+
+artifact tests.fast_resolution_contract {
+  path: "backend/tests/test_video_resolution.py"
+  status: implemented
+  confidence: 0.99
+  summary: "Proves the 540p landscape and portrait Fast pairs are 64-grid-valid, stay under the nominal pixel budget, improve the requested 16:9 approximation, and reject unsupported catalog/aspect inputs."
 }
 
 artifact tests.mlx_runtime_discovery {

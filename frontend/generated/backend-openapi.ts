@@ -1034,6 +1034,10 @@ export interface components {
         };
         /** GenerateVideoCompleteResponse */
         GenerateVideoCompleteResponse: {
+            /** Resolved Height */
+            resolved_height?: number | null;
+            /** Resolved Width */
+            resolved_width?: number | null;
             /**
              * Status
              * @constant

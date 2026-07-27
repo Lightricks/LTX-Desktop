@@ -309,6 +309,17 @@ def strict_failures(result: dict[str, Any]) -> list[str]:
     for key in ("requested", "resolved", "actual"):
         if not dimensions.get(key):
             failures.append(f"missing {key} geometry")
+    resolved = dimensions.get("resolved") or {}
+    actual = dimensions.get("actual") or {}
+    for axis in ("width", "height"):
+        if resolved.get(axis) is None:
+            failures.append(f"missing resolved {axis}")
+        elif actual.get(axis) is None:
+            failures.append(f"missing actual {axis}")
+        elif resolved[axis] != actual[axis]:
+            failures.append(
+                f"resolved {axis} {resolved[axis]} does not match actual {axis} {actual[axis]}"
+            )
     for key in ("recipe_sha256", "prompt_sha256", "source_sha256", "repo_head"):
         if not hashes.get(key):
             failures.append(f"missing {key}")
@@ -365,10 +376,8 @@ def run_case(case: MatrixCase, image_path: str | None, artifact_dir: Path, expec
     terminal_probe = probe_metal_lock()
     output_path = str((response or {}).get("video_path") or "")
     actual = ffprobe(output_path) if output_path and Path(output_path).is_file() else {}
-    resolution_map = {"540p": (960, 544), "720p": (1280, 704), "1080p": (1920, 1088)}
-    resolved_width, resolved_height = resolution_map[case.resolution]
-    if case.aspect_ratio == "9:16":
-        resolved_width, resolved_height = resolved_height, resolved_width
+    resolved_width = response.get("resolved_width")
+    resolved_height = response.get("resolved_height")
     resolved_frames = ((case.duration * case.fps) // 8) * 8 + 1
     details = machine_details(Path(__file__).resolve().parents[2])
     phases = sorted({str(row.get("phase")) for row in progress_samples if row.get("phase")})
