@@ -57,6 +57,8 @@ interface AppSettingsContextValue {
   shouldVideoGenerateWithLtxApi: boolean
   shouldImageGenerateWithFalApi: boolean
   cudaAvailable: boolean
+  mpsAvailable: boolean
+  runtimePolicy: RuntimePolicyPayload | null
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
@@ -102,6 +104,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [runtimePolicyLoaded, setRuntimePolicyLoaded] = useState(false)
   const [forceApiGenerations, setForceApiGenerations] = useState(true)
   const [cudaAvailable, setCudaAvailable] = useState(false)
+  const [mpsAvailable, setMpsAvailable] = useState(false)
+  const [runtimePolicy, setRuntimePolicy] = useState<RuntimePolicyPayload | null>(null)
   const [backendProcessStatus, setBackendProcessStatus] = useState<BackendProcessStatus | null>(null)
 
   useEffect(() => {
@@ -122,6 +126,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       }
 
       const payload = result.data as RuntimePolicyPayload
+      setRuntimePolicy(payload)
       if (typeof payload.force_api_generations !== 'boolean') {
         if (!cancelled) {
           setForceApiGenerations(true)
@@ -153,6 +158,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
 
       const payload = result.data as GpuInfoPayload
       setCudaAvailable(Boolean(payload.cuda_available))
+      setMpsAvailable(Boolean(payload.mps_available))
     }
 
     void fetchGpuInfo()
@@ -291,8 +297,10 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       shouldVideoGenerateWithLtxApi,
       shouldImageGenerateWithFalApi,
       cudaAvailable,
+      mpsAvailable,
+      runtimePolicy,
     }),
-    [cudaAvailable, forceApiGenerations, isLoaded, refreshSettings, runtimePolicyLoaded, saveFalApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi, updateSettings],
+    [cudaAvailable, forceApiGenerations, isLoaded, mpsAvailable, refreshSettings, runtimePolicy, runtimePolicyLoaded, saveFalApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi, updateSettings],
   )
 
   return <AppSettingsContext.Provider value={contextValue}>{children}</AppSettingsContext.Provider>

@@ -284,7 +284,13 @@ class IcLoraHandler(StateHandlerBase):
             s = _resolve_settings(req, ic_lora.default_settings)
             generation_id = uuid.uuid4().hex[:8]
             logger.info("[ic-lora] IC-LoRA generation started (ic_lora=%s)", ic_lora.id)
+            lease = None
             try:
+                lease = self._generation.acquire_local_metal_lease(
+                    generation_id=generation_id,
+                    workload=f"ic_lora:{ic_lora.id}",
+                    reason="Torch local IC-LoRA generation",
+                )
                 # IC-LoRA preprocessing builds the control video itself; no depth processor needed.
                 ic_state = self._pipelines.load_ic_lora(str(lora_path), None, s.lora_strength)
                 self._generation.start_generation(generation_id)
@@ -403,6 +409,9 @@ class IcLoraHandler(StateHandlerBase):
                 raise HTTPError(500, f"Generation error: {exc}") from exc
             finally:
                 self._text.clear_api_embeddings()
+                if lease is not None:
+                    self._pipelines.cleanup_runtime_caches()
+                    lease.close()
 
     def generate(self, req: IcLoraGenerateRequest) -> IcLoraGenerateResponse:
         if req.ic_lora_id is not None:
@@ -443,7 +452,13 @@ class IcLoraHandler(StateHandlerBase):
             t_total_start = time.perf_counter()
             logger.info("[ic-lora] Generation started (conditioning=%s)", req.conditioning_type)
 
+            lease = None
             try:
+                lease = self._generation.acquire_local_metal_lease(
+                    generation_id=generation_id,
+                    workload=f"ic_lora:{req.conditioning_type}",
+                    reason="Torch local IC-LoRA generation",
+                )
                 t_load_start = time.perf_counter()
                 with log_heartbeat("ic-lora model load"):
                     ic_state = self._pipelines.load_ic_lora(
@@ -630,3 +645,6 @@ class IcLoraHandler(StateHandlerBase):
                 raise HTTPError(500, f"Generation error: {exc}") from exc
             finally:
                 self._text.clear_api_embeddings()
+                if lease is not None:
+                    self._pipelines.cleanup_runtime_caches()
+                    lease.close()

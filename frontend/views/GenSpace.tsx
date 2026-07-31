@@ -914,10 +914,22 @@ function PromptBar({
                   title="MODEL"
                   value={resolvedVideoOptions.selectedModel ?? settings.model}
                   onChange={(v) => onSettingsChange({ ...settings, model: v })}
-                  options={resolvedVideoOptions.modelOptions.map((item) => ({
-                    value: item.pipeline,
-                    label: item.spec.display_name,
-                  }))}
+                  options={[
+                    ...resolvedVideoOptions.modelOptions.map((item) => ({
+                      value: item.pipeline,
+                      label: item.spec.display_name,
+                    })),
+                    ...(
+                      isLocalMode && !resolvedVideoOptions.modelOptions.some((item) => item.pipeline === 'pro')
+                        ? [{
+                            value: 'pro',
+                            label: 'LTX-2.3 Pro (API)',
+                            disabled: true,
+                            tooltip: 'Enable LTX API models in Settings → General',
+                          }]
+                        : []
+                    ),
+                  ]}
                   trigger={
                     <>
                       <LightricksIcon className="h-3.5 w-3.5" />
@@ -1446,6 +1458,7 @@ export function GenSpace() {
     prompt: string
     input: { videoPath: string; direction: ExtendDirection; duration: number; videoDuration: number }
   } | null>(null)
+  const persistingExtendResultRef = useRef<string | null>(null)
   const [retakeInitial, setRetakeInitial] = useState<{
     videoPath: string | null
     duration?: number
@@ -1850,60 +1863,69 @@ export function GenSpace() {
     })()
   }, [retakeResult, isRetaking, currentProjectId, activeProject?.assets, activeRetakeSource, addAsset, addTakeToAsset, setPendingRetakeUpdate, resetRetake])
 
-  // When extend completes, save the longer video as a new asset.
+  // When extend completes, save the longer video as a new asset. Keep the recovery marker until
+  // the project write succeeds: copying/thumbnails can finish before a later storage error, and
+  // dropping the marker earlier would leave a valid output stranded with no retry path.
   useEffect(() => {
     if (!extendResult || !currentProjectId || isExtending) return
     const submission = extendSubmissionRef.current
     if (!submission) return
-    extendSubmissionRef.current = null
-    localStorage.removeItem(GENERATION_RECOVERY_KEY)
+    const generationKey = extendResult.videoPath
+    if (persistingExtendResultRef.current === generationKey) return
+    persistingExtendResultRef.current = generationKey
 
     ;(async () => {
-      const usedPrompt = submission.prompt
-      const usedInput = submission.input
-      const copied = await addVisualAssetToProject(extendResult.videoPath, currentProjectId, 'video')
-      if (!copied) {
-        logger.error('Could not persist extend result to project storage')
-        setLocalError(createLocalGenerationError('Failed to save extend output to project storage.'))
-        resetExtend()
-        return
-      }
+      try {
+        const usedPrompt = submission.prompt
+        const usedInput = submission.input
+        const copied = await addVisualAssetToProject(extendResult.videoPath, currentProjectId, 'video')
+        if (!copied) throw new Error('Could not persist extend result to project storage')
 
-      addAsset(currentProjectId, {
-        type: 'video',
-        path: copied.path,
-        bigThumbnailPath: copied.bigThumbnailPath,
-        smallThumbnailPath: copied.smallThumbnailPath,
-        width: copied.width,
-        height: copied.height,
-        prompt: usedPrompt,
-        resolution: '',
-        duration: usedInput.videoDuration + usedInput.duration,
-        generationParams: {
-          mode: 'extend',
-          prompt: usedPrompt,
-          model: 'pro',
-          duration: usedInput.videoDuration + usedInput.duration,
-          resolution: '',
-          fps: 24,
-          audio: true,
-          cameraMotion: 'none',
-          extendVideoPath: copied.path,
-          extendDuration: usedInput.duration,
-          extendDirection: usedInput.direction,
-        },
-        takes: [{
+        addAsset(currentProjectId, {
+          type: 'video',
           path: copied.path,
           bigThumbnailPath: copied.bigThumbnailPath,
           smallThumbnailPath: copied.smallThumbnailPath,
           width: copied.width,
           height: copied.height,
-          createdAt: Date.now(),
-        }],
-        activeTakeIndex: 0,
-      })
-      setMode('video')
-      resetExtend()
+          prompt: usedPrompt,
+          resolution: '',
+          duration: usedInput.videoDuration + usedInput.duration,
+          generationParams: {
+            mode: 'extend',
+            prompt: usedPrompt,
+            model: 'pro',
+            duration: usedInput.videoDuration + usedInput.duration,
+            resolution: '',
+            fps: 24,
+            audio: true,
+            cameraMotion: 'none',
+            extendVideoPath: copied.path,
+            extendDuration: usedInput.duration,
+            extendDirection: usedInput.direction,
+          },
+          takes: [{
+            path: copied.path,
+            bigThumbnailPath: copied.bigThumbnailPath,
+            smallThumbnailPath: copied.smallThumbnailPath,
+            width: copied.width,
+            height: copied.height,
+            createdAt: Date.now(),
+          }],
+          activeTakeIndex: 0,
+        })
+
+        extendSubmissionRef.current = null
+        persistingExtendResultRef.current = null
+        localStorage.removeItem(GENERATION_RECOVERY_KEY)
+        setMode('video')
+        resetExtend()
+      } catch (error) {
+        persistingExtendResultRef.current = null
+        logger.error(`Failed to persist extend result: ${error}`)
+        setLocalError(createLocalGenerationError('Failed to save extend output to project storage. The app will retry automatically.'))
+        resetExtend()
+      }
     })()
   }, [extendResult, isExtending, currentProjectId, addAsset, resetExtend])
 

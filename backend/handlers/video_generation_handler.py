@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from threading import RLock
 from typing import TYPE_CHECKING
+from typing import Literal
 
 from PIL import Image
 
@@ -37,6 +38,7 @@ from server_utils.heartbeat import log_heartbeat
 from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
 from handlers.text_handler import TextHandler
+from handlers.video_resolution import resolve_fast_video_dimensions
 from server_utils.media_validation import (
     normalize_optional_path,
     validate_audio_file,
@@ -109,27 +111,10 @@ class VideoGenerationHandler(StateHandlerBase):
 
             logger.info("Resolution %s - using fast pipeline", resolution)
 
-            RESOLUTION_MAP_16_9: dict[str, tuple[int, int]] = {
-                "540p": (960, 544),
-                "720p": (1280, 704),
-                "1080p": (1920, 1088),
-            }
-
-            def get_16_9_size(res: str) -> tuple[int, int]:
-                size = RESOLUTION_MAP_16_9.get(res)
-                if size is None:
-                    raise HTTPError(400, "INVALID_LOCAL_RESOLUTION")
-                return size
-
-            def get_9_16_size(res: str) -> tuple[int, int]:
-                w, h = get_16_9_size(res)
-                return h, w
-
-            match req.aspectRatio:
-                case "9:16":
-                    width, height = get_9_16_size(resolution)
-                case "16:9":
-                    width, height = get_16_9_size(resolution)
+            try:
+                width, height = resolve_fast_video_dimensions(resolution, req.aspectRatio)
+            except ValueError as exc:
+                raise HTTPError(400, "INVALID_LOCAL_RESOLUTION") from exc
 
             num_frames = self._compute_num_frames(duration, fps)
 
@@ -142,26 +127,61 @@ class VideoGenerationHandler(StateHandlerBase):
             generation_id = self._make_generation_id()
             seed = req.seed if req.seed is not None else self._resolve_seed()
             loras = self._resolve_loras(req.loras)
+            use_local_text_encoding = self._text.should_use_local_encoding()
+            engine_decision = self.config.decide_fast_video_engine(
+                use_local_text_encoding=use_local_text_encoding,
+            )
+            runtime_engine = engine_decision.engine
+            logger.info(
+                "[%s] Fast runtime selected: %s (%s)",
+                "i2v" if image is not None else "t2v",
+                runtime_engine,
+                engine_decision.reason,
+            )
 
             try:
-                self._pipelines.load_gpu_pipeline("fast", loras=loras)
-                self._generation.start_generation(generation_id)
+                with self._generation.hold_local_metal_lease(
+                    generation_id=generation_id,
+                    workload=f"fast_{'i2v' if image is not None else 't2v'}",
+                    reason=f"{runtime_engine} local video generation",
+                ):
+                    try:
+                        self._pipelines.load_gpu_pipeline(
+                            "fast",
+                            loras=loras,
+                            runtime_engine=runtime_engine,
+                        )
+                        self._generation.start_generation(generation_id)
 
-                output_path = self.generate_video(
-                    prompt=req.prompt,
-                    image=image,
-                    height=height,
-                    width=width,
-                    num_frames=num_frames,
-                    fps=fps,
-                    seed=seed,
-                    camera_motion=req.cameraMotion,
-                    negative_prompt=req.negativePrompt,
-                    loras=loras,
-                )
+                        output_path = self.generate_video(
+                            prompt=req.prompt,
+                            image=image,
+                            height=height,
+                            width=width,
+                            num_frames=num_frames,
+                            fps=fps,
+                            seed=seed,
+                            camera_motion=req.cameraMotion,
+                            negative_prompt=req.negativePrompt,
+                            loras=loras,
+                            runtime_engine=runtime_engine,
+                        )
 
-                self._generation.complete_generation(output_path)
-                return GenerateVideoCompleteResponse(status="complete", video_path=output_path)
+                        self._generation.complete_generation(output_path)
+                        return GenerateVideoCompleteResponse(
+                            status="complete",
+                            video_path=output_path,
+                            resolved_width=width,
+                            resolved_height=height,
+                        )
+                    except Exception as exc:
+                        # Transition out of GenerationRunning before teardown so
+                        # unload_gpu_pipeline can release Metal memory while the
+                        # shared lease is still held.
+                        self._generation.fail_generation(str(exc))
+                        raise
+                    finally:
+                        self._pipelines.cleanup_runtime_caches()
 
             except HTTPError as e:
                 self._generation.fail_generation(e.detail)
@@ -192,6 +212,7 @@ class VideoGenerationHandler(StateHandlerBase):
         camera_motion: VideoCameraMotion,
         negative_prompt: str,
         loras: list[tuple[str, float]] | None = None,
+        runtime_engine: Literal["torch", "mlx"] = "torch",
     ) -> str:
         t_total_start = time.perf_counter()
         gen_mode = "i2v" if image is not None else "t2v"
@@ -204,7 +225,11 @@ class VideoGenerationHandler(StateHandlerBase):
 
         self._generation.update_progress("loading_model", 5, 0, total_steps)
         t_load_start = time.perf_counter()
-        pipeline_state = self._pipelines.load_gpu_pipeline("fast", loras=loras)
+        pipeline_state = self._pipelines.load_gpu_pipeline(
+            "fast",
+            loras=loras,
+            runtime_engine=runtime_engine,
+        )
         t_load_end = time.perf_counter()
         logger.info("[%s] Pipeline load: %.2fs", gen_mode, t_load_end - t_load_start)
 
@@ -223,22 +248,28 @@ class VideoGenerationHandler(StateHandlerBase):
 
         try:
             settings = self.state.app_settings
-            use_api_encoding = not self._text.should_use_local_encoding()
-            if image is not None:
-                enhance = use_api_encoding and settings.prompt_enhancer_enabled_i2v
-            else:
-                enhance = use_api_encoding and settings.prompt_enhancer_enabled_t2v
-
-            encoding_method = "api" if use_api_encoding else "local"
             t_text_start = time.perf_counter()
-            self._text.prepare_text_encoding(enhanced_prompt, enhance_prompt=enhance)
+            if runtime_engine == "mlx":
+                # MLX owns its 4-bit Gemma encoding lifecycle and cannot consume
+                # the Torch pipeline's prepared/API embedding tensors.
+                encoding_method = "mlx-local"
+            else:
+                use_api_encoding = not self._text.should_use_local_encoding()
+                if image is not None:
+                    enhance = use_api_encoding and settings.prompt_enhancer_enabled_i2v
+                else:
+                    enhance = use_api_encoding and settings.prompt_enhancer_enabled_t2v
+                encoding_method = "api" if use_api_encoding else "local"
+                self._text.prepare_text_encoding(enhanced_prompt, enhance_prompt=enhance)
             t_text_end = time.perf_counter()
             logger.info("[%s] Text encoding (%s): %.2fs", gen_mode, encoding_method, t_text_end - t_text_start)
 
             self._generation.update_progress("inference", 15, 0, total_steps)
 
-            height = round(height / 64) * 64
-            width = round(width / 64) * 64
+            if height % 64 or width % 64:
+                raise RuntimeError(
+                    f"Fast two-stage dimensions must use the 64-pixel grid; got {width}x{height}"
+                )
 
             t_inference_start = time.perf_counter()
             with log_heartbeat(f"{gen_mode} inference"):
@@ -303,7 +334,13 @@ class VideoGenerationHandler(StateHandlerBase):
 
         generation_id = self._make_generation_id()
 
+        lease = None
         try:
+            lease = self._generation.acquire_local_metal_lease(
+                generation_id=generation_id,
+                workload="audio_to_video",
+                reason="Torch local audio-to-video generation",
+            )
             a2v_state = self._pipelines.load_a2v_pipeline(loras=loras)
             self._generation.start_generation(generation_id)
 
@@ -370,6 +407,9 @@ class VideoGenerationHandler(StateHandlerBase):
             self._text.clear_api_embeddings()
             if temp_image_path and os.path.exists(temp_image_path):
                 os.unlink(temp_image_path)
+            if lease is not None:
+                self._pipelines.cleanup_runtime_caches()
+                lease.close()
 
     def _prepare_image(self, image_path: str, width: int, height: int) -> Image.Image:
         validated_path = validate_image_file(image_path)

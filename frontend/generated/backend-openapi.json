@@ -892,6 +892,28 @@
       },
       "GenerateVideoCompleteResponse": {
         "properties": {
+          "resolved_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Height"
+          },
+          "resolved_width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Width"
+          },
           "status": {
             "const": "complete",
             "title": "Status",
@@ -3403,15 +3425,356 @@
       },
       "RuntimePolicyResponse": {
         "properties": {
+          "auto_fast_video_engine": {
+            "enum": [
+              "torch",
+              "mlx",
+              "cloud"
+            ],
+            "title": "Auto Fast Video Engine",
+            "type": "string"
+          },
+          "auto_selection_reason": {
+            "title": "Auto Selection Reason",
+            "type": "string"
+          },
+          "automatic_tiling": {
+            "title": "Automatic Tiling",
+            "type": "boolean"
+          },
+          "capability_engines": {
+            "additionalProperties": {
+              "enum": [
+                "torch",
+                "mlx",
+                "cloud"
+              ],
+              "type": "string"
+            },
+            "title": "Capability Engines",
+            "type": "object"
+          },
+          "execution_mode": {
+            "enum": [
+              "eager",
+              "low_ram",
+              "unsupported"
+            ],
+            "title": "Execution Mode",
+            "type": "string"
+          },
+          "fast_video_engine_preference": {
+            "enum": [
+              "auto",
+              "torch",
+              "mlx"
+            ],
+            "title": "Fast Video Engine Preference",
+            "type": "string"
+          },
           "force_api_generations": {
             "title": "Force Api Generations",
             "type": "boolean"
+          },
+          "mlx_model_source": {
+            "title": "Mlx Model Source",
+            "type": "string"
+          },
+          "mlx_model_variant": {
+            "enum": [
+              "bf16",
+              "q8"
+            ],
+            "title": "Mlx Model Variant",
+            "type": "string"
+          },
+          "provenance": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeProvenanceItem"
+            },
+            "title": "Provenance",
+            "type": "array"
+          },
+          "quality_warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Warning"
           }
         },
         "required": [
-          "force_api_generations"
+          "force_api_generations",
+          "fast_video_engine_preference",
+          "auto_fast_video_engine",
+          "auto_selection_reason",
+          "execution_mode",
+          "automatic_tiling",
+          "mlx_model_source",
+          "mlx_model_variant",
+          "capability_engines",
+          "provenance"
         ],
         "title": "RuntimePolicyResponse",
+        "type": "object"
+      },
+      "RuntimeProvenanceItem": {
+        "properties": {
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component",
+          "version",
+          "source"
+        ],
+        "title": "RuntimeProvenanceItem",
+        "type": "object"
+      },
+      "RuntimeTelemetryResponse": {
+        "properties": {
+          "active_engine": {
+            "anyOf": [
+              {
+                "enum": [
+                  "torch",
+                  "mlx",
+                  "cloud"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Engine"
+          },
+          "active_pipeline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Pipeline"
+          },
+          "local_metal_lease_owner": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Metal Lease Owner"
+          },
+          "local_metal_lease_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Metal Lease Reason"
+          },
+          "local_metal_lease_status": {
+            "enum": [
+              "idle",
+              "waiting",
+              "held"
+            ],
+            "title": "Local Metal Lease Status",
+            "type": "string"
+          },
+          "local_metal_lease_waited_seconds": {
+            "default": 0.0,
+            "title": "Local Metal Lease Waited Seconds",
+            "type": "number"
+          },
+          "mlx_active_mib": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mlx Active Mib"
+          },
+          "mlx_cache_mib": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mlx Cache Mib"
+          },
+          "mlx_peak_mib": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mlx Peak Mib"
+          },
+          "mlx_profile_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mlx Profile Path"
+          },
+          "mlx_profile_phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mlx Profile Phase"
+          },
+          "mlx_profile_sampled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mlx Profile Sampled At"
+          },
+          "mlx_profile_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "running",
+                  "success",
+                  "error",
+                  "cancelled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mlx Profile Status"
+          },
+          "mlx_runtime_identity": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mlx Runtime Identity"
+          },
+          "mps_allocated_mib": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mps Allocated Mib"
+          },
+          "mps_driver_mib": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mps Driver Mib"
+          },
+          "mps_recommended_max_mib": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mps Recommended Max Mib"
+          },
+          "process_rss_mib": {
+            "title": "Process Rss Mib",
+            "type": "integer"
+          },
+          "sampled_at": {
+            "title": "Sampled At",
+            "type": "string"
+          },
+          "system_available_mib": {
+            "title": "System Available Mib",
+            "type": "integer"
+          },
+          "system_total_mib": {
+            "title": "System Total Mib",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sampled_at",
+          "process_rss_mib",
+          "system_total_mib",
+          "system_available_mib",
+          "local_metal_lease_status"
+        ],
+        "title": "RuntimeTelemetryResponse",
         "type": "object"
       },
       "SetActiveLtxModelRequest": {
@@ -3449,7 +3812,7 @@
             "title": "Activeltxmodelid"
           },
           "diffusionStageCacheEnabled": {
-            "default": false,
+            "default": true,
             "title": "Diffusionstagecacheenabled",
             "type": "boolean"
           },
@@ -5493,6 +5856,47 @@
         "summary": "Route Runtime Policy",
         "tags": [
           "runtime-policy"
+        ]
+      }
+    },
+    "/api/runtime-telemetry": {
+      "get": {
+        "operationId": "route_runtime_telemetry_api_runtime_telemetry_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeTelemetryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Runtime Telemetry",
+        "tags": [
+          "health"
         ]
       }
     },

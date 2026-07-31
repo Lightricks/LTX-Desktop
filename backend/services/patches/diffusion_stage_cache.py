@@ -30,18 +30,15 @@ devices, whereas ``SingleGPUModelBuilder.build()`` ignores all extra kwargs
 (``**kwargs: object,  # noqa: ARG002`` in single_gpu_model_builder.py) --
 confirmed inert for the path we cache, not assumed.
 
-GENERATION-SCOPED, not session-scoped (found live on an RTX 5090): letting the
-cache survive PAST the generation that built it collides with every other
-component that builds fresh per call too (text encoder, VAE, upsampler, audio
-decoder/vocoder) -- the next generation's text-encoder build then has to
-coexist in VRAM with the still-resident transformer from the PREVIOUS
-generation, instead of the transformer having already been freed by then.
-Observed: a second generation's peak VRAM was reported at ~41.8 GB on a
-31.82 GB card (Windows CUDA fell back to slow shared memory, backend liveness
-probe failed, total generation time regressed to 143s -- worse than no cache
-at all). Fix: ``handlers.generation_handler.GenerationHandler.start_generation``
-/``start_api_generation`` call :func:`evict` before marking a new generation as
-running, so the cache never survives past the generation it was built for.
+REUSE-SCOPED, not generation- or session-scoped: the cache exists only to bridge
+the first and second identical diffusion stages. A live 720p Apple Silicon run
+showed why the narrower lifetime matters: leaving the reused ~37 GiB transformer
+resident through tiled VAE decode raised MPS driver memory to 46.7 GiB versus
+44.5 GiB with the cache disabled, and left 35.4 GiB torch-allocated after output
+encoding. The cache now evicts immediately when a hit's denoising context exits,
+before decoder construction. The generation-start eviction remains a defensive
+backstop for a pipeline that builds a cacheable first stage but never reaches an
+identical second stage (cancellation, error, or a different stage configuration).
 
 NON-CACHEABLE TRANSITIONS also evict (found live on the same RTX 5090, IC-LoRA
 this time): IC-LoRA's ``use_lora_in_stage_2`` forces stage_2 onto the streaming
@@ -90,7 +87,7 @@ build the same thing correctly share the cache within one generation.
 produces a different key (cache miss, falls back to a normal rebuild), never
 a false hit.
 
-Toggle: ``AppSettings.diffusion_stage_cache_enabled`` (default off, surfaced in
+Toggle: ``AppSettings.diffusion_stage_cache_enabled`` (default on, surfaced in
 Settings next to Torch Compile). ``GenerationHandler.start_generation``/
 ``start_api_generation`` push the live setting into :func:`set_enabled` on
 every generation, so flipping it in Settings takes effect on the next
@@ -218,11 +215,18 @@ def evict() -> None:
         _evict_locked()
 
 
-def _mark_free() -> None:
-    """Mark that a caller is done with a cached transformer it checked out."""
+def _release(*, evict_after_use: bool) -> None:
+    """Release one checkout and optionally retire the now-consumed cache entry.
+
+    A hit means the cache fulfilled its only purpose: carrying one identical
+    transformer from the first diffusion stage into the second. Retire it while
+    leaving that second context so VAE/audio decode cannot overlap its weights.
+    """
     global _in_use
     with _lock:
         _in_use = max(0, _in_use - 1)
+        if evict_after_use:
+            _evict_locked()
 
 
 _orig_transformer_ctx = DiffusionStage._transformer_ctx  # noqa: SLF001
@@ -263,7 +267,7 @@ def _cached_transformer_ctx(self: DiffusionStage, **kwargs: object) -> Iterator[
     try:
         yield model
     finally:
-        _mark_free()
+        _release(evict_after_use=hit)
 
 
 DiffusionStage._transformer_ctx = _cached_transformer_ctx  # type: ignore[method-assign]  # noqa: SLF001

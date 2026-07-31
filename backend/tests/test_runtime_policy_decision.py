@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 from runtime_config.runtime_policy import (
+    decide_fast_video_engine,
+    decide_fast_video_execution_mode,
     decide_local_generation_mode,
     streaming_prefetch_count_for_mode,
 )
@@ -121,3 +123,69 @@ def test_streaming_prefetch_count_for_streaming_mode_is_two() -> None:
 def test_streaming_prefetch_count_for_unsupported_asserts() -> None:
     with pytest.raises(AssertionError):
         streaming_prefetch_count_for_mode("unsupported")
+
+
+def test_fast_auto_uses_mlx_only_for_cached_local_text_path() -> None:
+    decision = decide_fast_video_engine(
+        preference="auto",
+        mlx_runtime_eligible=True,
+        mlx_model_cached=True,
+        use_local_text_encoding=True,
+    )
+    assert decision.engine == "mlx"
+
+
+def test_fast_auto_preserves_prepared_embeddings_on_torch() -> None:
+    decision = decide_fast_video_engine(
+        preference="auto",
+        mlx_runtime_eligible=True,
+        mlx_model_cached=True,
+        use_local_text_encoding=False,
+    )
+    assert decision.engine == "torch"
+    assert "embeddings" in decision.reason
+
+
+def test_fast_auto_does_not_trigger_hidden_model_download() -> None:
+    decision = decide_fast_video_engine(
+        preference="auto",
+        mlx_runtime_eligible=True,
+        mlx_model_cached=False,
+        use_local_text_encoding=True,
+    )
+    assert decision.engine == "torch"
+    assert "not cached" in decision.reason
+
+
+def test_explicit_mlx_can_use_uncached_bf16_model() -> None:
+    decision = decide_fast_video_engine(
+        preference="mlx",
+        mlx_runtime_eligible=True,
+        mlx_model_cached=False,
+        use_local_text_encoding=False,
+    )
+    assert decision.engine == "mlx"
+    assert "download" in decision.reason
+
+
+def test_mlx_bf16_uses_low_ram_below_eager_floor() -> None:
+    assert (
+        decide_fast_video_execution_mode("mlx", "streaming_models_loading", 48)
+        == "low_ram"
+    )
+    assert (
+        decide_fast_video_execution_mode("mlx", "streaming_models_loading", 64)
+        == "eager"
+    )
+
+
+def test_fast_auto_never_selects_unqualified_q8() -> None:
+    decision = decide_fast_video_engine(
+        preference="auto",
+        mlx_runtime_eligible=True,
+        mlx_model_cached=True,
+        use_local_text_encoding=True,
+        mlx_quality_qualified=False,
+    )
+    assert decision.engine == "torch"
+    assert "never auto-selected" in decision.reason

@@ -5,7 +5,30 @@ from __future__ import annotations
 import pytest
 
 from _routes._errors import HTTPError
-from handlers.video_resolution import correct_frame_count, correct_resolution
+from handlers.video_resolution import (
+    correct_frame_count,
+    correct_resolution,
+    resolve_fast_video_dimensions,
+)
+
+
+def test_fast_540p_uses_aspect_aware_two_stage_grid_under_budget():
+    width, height = resolve_fast_video_dimensions("540p", "16:9")
+    assert (width, height) == (896, 512)
+    assert width % 64 == 0 and height % 64 == 0
+    assert width * height <= 960 * 544
+    assert abs(width / height - 16 / 9) < abs(960 / 512 - 16 / 9)
+
+
+def test_fast_540p_portrait_swaps_the_qualified_pair():
+    assert resolve_fast_video_dimensions("540p", "9:16") == (512, 896)
+
+
+def test_fast_resolution_rejects_unknown_catalog_or_aspect():
+    with pytest.raises(ValueError):
+        resolve_fast_video_dimensions("1440p", "16:9")
+    with pytest.raises(ValueError):
+        resolve_fast_video_dimensions("540p", "4:3")
 
 
 def test_correct_resolution_snaps_height_down_to_div32():

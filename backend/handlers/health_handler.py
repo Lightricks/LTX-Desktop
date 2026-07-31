@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+import os
 from threading import RLock
 from typing import TYPE_CHECKING
 
-from api_types import GpuInfoResponse, GpuTelemetry, HealthResponse, ModelStatusItem, MpsMemoryResponse
+import psutil
+
+from api_types import (
+    GpuInfoResponse,
+    GpuTelemetry,
+    HealthResponse,
+    ModelStatusItem,
+    MpsMemoryResponse,
+    RuntimeTelemetryResponse,
+)
 from handlers.base import StateHandlerBase
 from handlers.models_handler import ModelsHandler
+from services.fast_video_pipeline.mlx_profile import get_mlx_profile_snapshot
 from services.interfaces import GpuInfo
+from services.local_metal_lease import get_local_metal_lease_snapshot
 from state.app_state_types import AppState, GpuSlot, VideoPipelineState
 
 if TYPE_CHECKING:
@@ -89,3 +102,48 @@ class HealthHandler(StateHandlerBase):
             )
         except Exception:  # noqa: BLE001
             return MpsMemoryResponse(available=False)
+
+    def get_runtime_telemetry(self) -> RuntimeTelemetryResponse:
+        """Return one cheap process/system/accelerator memory sample."""
+        process_rss_mib = round(psutil.Process(os.getpid()).memory_info().rss / _BYTES_PER_MIB)
+        virtual_memory = psutil.virtual_memory()
+
+        active_engine = None
+        active_pipeline = None
+        with self._lock:
+            if self.state.gpu_slot is not None:
+                active = self.state.gpu_slot.active_pipeline
+                if isinstance(active, VideoPipelineState):
+                    active_engine = active.runtime_engine
+                    active_pipeline = active.pipeline.pipeline_kind
+                else:
+                    active_engine = "torch"
+                    active_pipeline = type(active).__name__
+
+        mlx_profile = get_mlx_profile_snapshot()
+
+        mps = self.get_mps_memory()
+        lease = get_local_metal_lease_snapshot()
+        return RuntimeTelemetryResponse(
+            sampled_at=datetime.now(UTC).isoformat(),
+            active_engine=active_engine,
+            active_pipeline=active_pipeline,
+            process_rss_mib=process_rss_mib,
+            system_total_mib=round(virtual_memory.total / _BYTES_PER_MIB),
+            system_available_mib=round(virtual_memory.available / _BYTES_PER_MIB),
+            mlx_active_mib=mlx_profile.active_mib if mlx_profile else None,
+            mlx_cache_mib=mlx_profile.cache_mib if mlx_profile else None,
+            mlx_peak_mib=mlx_profile.peak_mib if mlx_profile else None,
+            mlx_profile_status=mlx_profile.status if mlx_profile else None,
+            mlx_profile_phase=mlx_profile.phase if mlx_profile else None,
+            mlx_profile_path=mlx_profile.profile_path if mlx_profile else None,
+            mlx_profile_sampled_at=mlx_profile.sampled_at if mlx_profile else None,
+            mlx_runtime_identity=mlx_profile.runtime_identity if mlx_profile else None,
+            mps_allocated_mib=mps.allocated_mib,
+            mps_driver_mib=mps.driver_mib,
+            mps_recommended_max_mib=mps.recommended_max_mib,
+            local_metal_lease_status=lease["status"],
+            local_metal_lease_reason=lease["reason"],
+            local_metal_lease_waited_seconds=lease["waited_seconds"],
+            local_metal_lease_owner=lease["owner"],
+        )

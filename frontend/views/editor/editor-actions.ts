@@ -106,6 +106,7 @@ export interface InsertGeneratedGapAssetParams {
   gap: TimelineGapSelection
   asset: Asset
   createAudio: boolean
+  reversed: boolean
 }
 
 export interface SourceEditParams {
@@ -1579,7 +1580,7 @@ export function insertGeneratedGapAsset(state: EditorState, params: InsertGenera
     trimStart: 0,
     trimEnd: 0,
     speed: 1,
-    reversed: false,
+    reversed: params.reversed,
     muted: false,
     volume: 1,
     trackIndex: params.gap.trackIndex,
@@ -1603,7 +1604,7 @@ export function insertGeneratedGapAsset(state: EditorState, params: InsertGenera
       trimStart: 0,
       trimEnd: 0,
       speed: 1,
-      reversed: false,
+      reversed: params.reversed,
       muted: false,
       volume: 1,
       trackIndex: audioTrackIndex,

@@ -638,6 +638,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runtime-telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Runtime Telemetry */
+        get: operations["route_runtime_telemetry_api_runtime_telemetry_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings": {
         parameters: {
             query?: never;
@@ -1017,6 +1034,10 @@ export interface components {
         };
         /** GenerateVideoCompleteResponse */
         GenerateVideoCompleteResponse: {
+            /** Resolved Height */
+            resolved_height?: number | null;
+            /** Resolved Width */
+            resolved_width?: number | null;
             /**
              * Status
              * @constant
@@ -1929,8 +1950,108 @@ export interface components {
         };
         /** RuntimePolicyResponse */
         RuntimePolicyResponse: {
+            /**
+             * Auto Fast Video Engine
+             * @enum {string}
+             */
+            auto_fast_video_engine: "torch" | "mlx" | "cloud";
+            /** Auto Selection Reason */
+            auto_selection_reason: string;
+            /** Automatic Tiling */
+            automatic_tiling: boolean;
+            /** Capability Engines */
+            capability_engines: {
+                [key: string]: "torch" | "mlx" | "cloud";
+            };
+            /**
+             * Execution Mode
+             * @enum {string}
+             */
+            execution_mode: "eager" | "low_ram" | "unsupported";
+            /**
+             * Fast Video Engine Preference
+             * @enum {string}
+             */
+            fast_video_engine_preference: "auto" | "torch" | "mlx";
             /** Force Api Generations */
             force_api_generations: boolean;
+            /** Mlx Model Source */
+            mlx_model_source: string;
+            /**
+             * Mlx Model Variant
+             * @enum {string}
+             */
+            mlx_model_variant: "bf16" | "q8";
+            /** Provenance */
+            provenance: components["schemas"]["RuntimeProvenanceItem"][];
+            /** Quality Warning */
+            quality_warning?: string | null;
+        };
+        /** RuntimeProvenanceItem */
+        RuntimeProvenanceItem: {
+            /** Component */
+            component: string;
+            /** Revision */
+            revision?: string | null;
+            /** Source */
+            source: string;
+            /** Version */
+            version: string;
+        };
+        /** RuntimeTelemetryResponse */
+        RuntimeTelemetryResponse: {
+            /** Active Engine */
+            active_engine?: ("torch" | "mlx" | "cloud") | null;
+            /** Active Pipeline */
+            active_pipeline?: string | null;
+            /** Local Metal Lease Owner */
+            local_metal_lease_owner?: {
+                [key: string]: unknown;
+            } | null;
+            /** Local Metal Lease Reason */
+            local_metal_lease_reason?: string | null;
+            /**
+             * Local Metal Lease Status
+             * @enum {string}
+             */
+            local_metal_lease_status: "idle" | "waiting" | "held";
+            /**
+             * Local Metal Lease Waited Seconds
+             * @default 0
+             */
+            local_metal_lease_waited_seconds: number;
+            /** Mlx Active Mib */
+            mlx_active_mib?: number | null;
+            /** Mlx Cache Mib */
+            mlx_cache_mib?: number | null;
+            /** Mlx Peak Mib */
+            mlx_peak_mib?: number | null;
+            /** Mlx Profile Path */
+            mlx_profile_path?: string | null;
+            /** Mlx Profile Phase */
+            mlx_profile_phase?: string | null;
+            /** Mlx Profile Sampled At */
+            mlx_profile_sampled_at?: string | null;
+            /** Mlx Profile Status */
+            mlx_profile_status?: ("running" | "success" | "error" | "cancelled") | null;
+            /** Mlx Runtime Identity */
+            mlx_runtime_identity?: {
+                [key: string]: unknown;
+            } | null;
+            /** Mps Allocated Mib */
+            mps_allocated_mib?: number | null;
+            /** Mps Driver Mib */
+            mps_driver_mib?: number | null;
+            /** Mps Recommended Max Mib */
+            mps_recommended_max_mib?: number | null;
+            /** Process Rss Mib */
+            process_rss_mib: number;
+            /** Sampled At */
+            sampled_at: string;
+            /** System Available Mib */
+            system_available_mib: number;
+            /** System Total Mib */
+            system_total_mib: number;
         };
         /** SetActiveLtxModelRequest */
         SetActiveLtxModelRequest: {
@@ -1946,7 +2067,7 @@ export interface components {
             activeLtxModelId?: ("ltx-2.3-22b-distilled-1.1" | "ltx-2.3-22b-distilled") | null;
             /**
              * Diffusionstagecacheenabled
-             * @default false
+             * @default true
              */
             diffusionStageCacheEnabled: boolean;
             /**
@@ -3515,6 +3636,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RuntimePolicyResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_runtime_telemetry_api_runtime_telemetry_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeTelemetryResponse"];
                 };
             };
             /** @description Client Error */

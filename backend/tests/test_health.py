@@ -1,5 +1,12 @@
 """Tests for /health and /api/gpu-info endpoints."""
 
+import json
+
+from services.fast_video_pipeline.mlx_profile import (
+    begin_mlx_profile,
+    finish_mlx_profile,
+    reset_mlx_profile_for_tests,
+)
 from state.app_state_types import GpuSlot, VideoPipelineState
 from tests.fakes.services import FakeFastVideoPipeline
 
@@ -102,3 +109,43 @@ class TestMpsMemory:
         assert isinstance(data["available"], bool)
         for key in ("allocated_mib", "driver_mib", "recommended_max_mib"):
             assert data[key] is None or isinstance(data[key], int)
+
+
+class TestRuntimeTelemetry:
+    def test_returns_process_system_and_lease_snapshot(self, client):
+        r = client.get("/api/runtime-telemetry")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["process_rss_mib"] > 0
+        assert data["system_total_mib"] >= data["system_available_mib"] > 0
+        assert data["local_metal_lease_status"] in {"idle", "waiting", "held"}
+
+    def test_reports_terminal_mlx_profile_after_child_exit(self, client, tmp_path):
+        reset_mlx_profile_for_tests()
+        profile = tmp_path / "job.jsonl"
+        begin_mlx_profile(profile)
+        profile.write_text(
+            json.dumps(
+                {
+                    "event": "run_end",
+                    "timestamp_unix_seconds": 1002.0,
+                    "mlx_active_gb": 0.25,
+                    "mlx_cache_gb": 0.125,
+                    "mlx_peak_gb": 6.0,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        finish_mlx_profile(profile, "success")
+        try:
+            response = client.get("/api/runtime-telemetry")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["mlx_profile_status"] == "success"
+            assert data["mlx_active_mib"] == 256
+            assert data["mlx_cache_mib"] == 128
+            assert data["mlx_peak_mib"] == 6144
+            assert data["mlx_profile_path"] == str(profile)
+        finally:
+            reset_mlx_profile_for_tests()

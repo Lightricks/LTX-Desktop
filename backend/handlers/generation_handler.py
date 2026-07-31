@@ -17,7 +17,9 @@ from api_types import (
     GenerationProgressResponse,
 )
 from handlers.base import StateHandlerBase, with_state_lock
+from services.fast_video_pipeline.mlx_fast_video_pipeline import cancel_active_mlx_sidecar
 from services.patches import diffusion_stage_cache
+from services.local_metal_lease import LocalMetalLeaseHandle, local_metal_lease
 from state.app_state_types import (
     ApiGeneration,
     AppState,
@@ -63,11 +65,29 @@ class GenerationHandler(StateHandlerBase):
             logger.info("Generation start reservation denied: another reservation is still active")
             return False
         self.state.generation_starting_since = time.monotonic()
+        self.state.generation_starting_id = None
+        self.state.generation_starting_phase = "starting"
+        self.state.generation_start_cancelled = False
         return True
 
     @with_state_lock
     def release_generation_start_reservation(self) -> None:
         self.state.generation_starting_since = None
+        self.state.generation_starting_id = None
+        self.state.generation_starting_phase = "starting"
+        self.state.generation_start_cancelled = False
+
+    @with_state_lock
+    def annotate_generation_start(self, generation_id: str, phase: str) -> None:
+        if self.state.generation_starting_since is None:
+            return
+        self.state.generation_starting_id = generation_id
+        self.state.generation_starting_phase = phase
+
+    @with_state_lock
+    def update_generation_start_phase(self, phase: str) -> None:
+        if self.state.generation_starting_since is not None:
+            self.state.generation_starting_phase = phase
 
     @contextmanager
     def reserved_generation_start(self) -> Iterator[None]:
@@ -88,19 +108,82 @@ class GenerationHandler(StateHandlerBase):
         finally:
             self.release_generation_start_reservation()
 
+    @contextmanager
+    def hold_local_metal_lease(
+        self,
+        *,
+        generation_id: str,
+        workload: str,
+        reason: str,
+    ) -> Iterator[None]:
+        """Hold the cross-product Metal lease before any local model load."""
+        self.annotate_generation_start(generation_id, "waiting_for_local_accelerator")
+
+        def _on_wait(waited: float, owner: dict[str, object] | None) -> None:
+            owner_product = owner.get("product") if owner else "another LTX app"
+            owner_pid = owner.get("pid") if owner else "?"
+            self.update_generation_start_phase(
+                f"waiting_for_local_accelerator:{owner_product}:pid={owner_pid}:"
+                f"{waited:.1f}s"
+            )
+
+        with local_metal_lease(
+            job_id=generation_id,
+            workload=workload,
+            reason=reason,
+            is_cancelled=self.is_generation_cancelled,
+            on_wait=_on_wait,
+        ):
+            self.update_generation_start_phase("loading_model")
+            yield
+
+    def acquire_local_metal_lease(
+        self,
+        *,
+        generation_id: str,
+        workload: str,
+        reason: str,
+    ) -> LocalMetalLeaseHandle:
+        """Acquire an explicit lease handle; caller closes it after GPU cleanup."""
+        self.annotate_generation_start(generation_id, "waiting_for_local_accelerator")
+
+        def _on_wait(waited: float, owner: dict[str, object] | None) -> None:
+            owner_product = owner.get("product") if owner else "another LTX app"
+            owner_pid = owner.get("pid") if owner else "?"
+            self.update_generation_start_phase(
+                f"waiting_for_local_accelerator:{owner_product}:pid={owner_pid}:"
+                f"{waited:.1f}s"
+            )
+
+        handle = LocalMetalLeaseHandle(
+            local_metal_lease(
+                job_id=generation_id,
+                workload=workload,
+                reason=reason,
+                is_cancelled=self.is_generation_cancelled,
+                on_wait=_on_wait,
+            )
+        )
+        self.update_generation_start_phase("loading_model")
+        return handle
+
     @with_state_lock
     def start_generation(self, generation_id: str) -> None:
         if self.is_generation_running():
             raise RuntimeError("Generation already in progress")
+        if self.state.generation_start_cancelled:
+            raise RuntimeError("Generation was cancelled before model loading completed")
         if self.state.gpu_slot is None:
             raise RuntimeError("No active GPU pipeline")
         self.state.generation_starting_since = None
+        self.state.generation_starting_id = None
+        self.state.generation_starting_phase = "starting"
+        self.state.generation_start_cancelled = False
 
-        # EXPERIMENTAL: push the live Settings toggle, then drop any transformer
-        # cached from the previous generation before this one starts -- otherwise
-        # it stays resident while this generation's own text encoder/VAE/etc.
-        # build, double-booking VRAM. See that module's GENERATION-SCOPED
-        # docstring section for the RTX 5090 repro (~42GB reported on a 32GB card).
+        # Push the live Settings toggle, then drop any transformer left by a
+        # cancelled/failed generation before this one starts. A normal two-stage
+        # generation retires the cache immediately after the reuse hit, before VAE
+        # decode; this is the defensive backstop. See diffusion_stage_cache.py.
         diffusion_stage_cache.set_enabled(self.state.app_settings.diffusion_stage_cache_enabled)
         diffusion_stage_cache.evict()
 
@@ -210,6 +293,8 @@ class GenerationHandler(StateHandlerBase):
 
     @with_state_lock
     def is_generation_cancelled(self) -> bool:
+        if self.state.generation_start_cancelled:
+            return True
         match self._active_generation_state():
             case (_, GenerationCancelled()):
                 return True
@@ -236,10 +321,18 @@ class GenerationHandler(StateHandlerBase):
 
     @with_state_lock
     def cancel_generation(self) -> CancelResponse:
+        if self.state.generation_starting_since is not None:
+            self.state.generation_start_cancelled = True
+            generation_id = self.state.generation_starting_id or "starting"
+            return CancelCancellingResponse(status="cancelling", id=generation_id)
         running_generation = self._running_generation()
         if running_generation is not None:
             slot, running = running_generation
             self._set_generation_state(slot, GenerationCancelled(id=running.id))
+            # Torch pipelines observe the state cooperatively. MLX is isolated
+            # in a fresh child process, so cancellation tears down its whole
+            # process group and releases unified memory deterministically.
+            cancel_active_mlx_sidecar()
             return CancelCancellingResponse(status="cancelling", id=running.id)
 
         cancelled_generation = self._cancelled_generation()
@@ -265,6 +358,9 @@ class GenerationHandler(StateHandlerBase):
         # happened before start_generation()/start_api_generation() ever ran (e.g. pipeline load
         # itself threw) — that path never touches generation_starting_since otherwise.
         self.state.generation_starting_since = None
+        self.state.generation_starting_id = None
+        self.state.generation_starting_phase = "starting"
+        self.state.generation_start_cancelled = False
         running_generation = self._running_generation()
         if running_generation is not None:
             slot, running = running_generation
@@ -286,6 +382,16 @@ class GenerationHandler(StateHandlerBase):
         # until start_generation() overwrites it. Matching on gen first would report that stale
         # terminal state instead of "starting" for every generation after the first.
         if self.state.generation_starting_since is not None:
+            generation_id = self.state.generation_starting_id
+            if self.state.generation_start_cancelled:
+                return GenerationProgressResponse(
+                    status="cancelled",
+                    phase="cancelled",
+                    progress=0,
+                    currentStep=0,
+                    totalSteps=0,
+                    id=generation_id,
+                )
             # Reserved (try_reserve_generation_start succeeded) but pipeline load hasn't
             # finished, so start_generation() hasn't run and there's no real id yet.
             # Still report "running": a client polling for "is anything busy right now"
@@ -295,10 +401,11 @@ class GenerationHandler(StateHandlerBase):
             # docstring for why this window needed closing on the write side too.
             return GenerationProgressResponse(
                 status="running",
-                phase="starting",
+                phase=self.state.generation_starting_phase,
                 progress=0,
                 currentStep=0,
                 totalSteps=0,
+                id=generation_id,
             )
 
         gen = self._generation_for_polling()

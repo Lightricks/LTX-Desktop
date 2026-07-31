@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, NewType, Protocol
+from typing import TYPE_CHECKING, Literal, NewType, Protocol
 
 from api_types import ModelCheckpointID
 from state.conditioning_cache import ConditioningCache
@@ -122,6 +122,7 @@ class TextEncoderState:
 class VideoPipelineState:
     pipeline: FastVideoPipeline
     is_compiled: bool
+    runtime_engine: Literal["torch", "mlx"] = "torch"
     loras: tuple[tuple[str, float], ...] = field(default_factory=tuple)
     # gemma_root the pipeline's text encoder was built with. Part of the cache key: switching
     # text-encoding mode (API<->local) changes it, and a cached pipeline built for the other
@@ -293,3 +294,6 @@ class AppState:
     # that raises on some validation path before ever reaching start_generation()/
     # fail_generation() (both of which clear it) must not block every future generation forever.
     generation_starting_since: float | None = None
+    generation_starting_id: str | None = None
+    generation_starting_phase: str = "starting"
+    generation_start_cancelled: bool = False
