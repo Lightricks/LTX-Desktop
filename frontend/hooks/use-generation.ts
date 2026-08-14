@@ -15,6 +15,9 @@ export interface GenerationRecoveryContext {
   // Absent for ic-lora/retake: those recover as standalone video assets (Phase 1),
   // so there are no video/image settings to restore.
   settings?: GenerationSettings
+  // Retake/extend write this instead of a full `settings` blob — the recovery importer
+  // prefers it over `settings.model` (which defaults to 'fast' when absent).
+  model?: string
   inputImageUrl?: string
   inputAudioUrl?: string
   genType?: 'image' | 'enhance'
@@ -184,7 +187,7 @@ export function useGeneration(): UseGenerationReturn {
     settings: GenerationSettings,
     audioPath?: string | null,
   ) => {
-    const statusMsg = settings.model === 'pro'
+    const statusMsg = settings.model.startsWith('pro')
       ? 'Loading Pro model & generating...'
       : 'Generating video...'
 
@@ -231,7 +234,7 @@ export function useGeneration(): UseGenerationReturn {
         let lastPhase = ''
         let inferenceStartTime = 0
         // Estimated inference time in seconds based on model
-        const estimatedInferenceTime = settings.model === 'pro' ? 120 : 45
+        const estimatedInferenceTime = settings.model.startsWith('pro') ? 120 : 45
 
         const pollProgress = async () => {
           if (!shouldApplyPollingUpdates) return

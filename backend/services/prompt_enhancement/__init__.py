@@ -1,4 +1,5 @@
 from services.prompt_enhancement.system_prompt import (
+    build_audio_visual_caption_system_prompt,
     build_conditioning_system_prompt,
     build_default_free_rewrite_system_prompt,
     build_ic_lora_enhancement_system_prompt,
@@ -14,6 +15,7 @@ from services.prompt_enhancement.system_prompt import (
 )
 
 __all__ = [
+    "build_audio_visual_caption_system_prompt",
     "build_conditioning_system_prompt",
     "build_default_free_rewrite_system_prompt",
     "build_ic_lora_enhancement_system_prompt",

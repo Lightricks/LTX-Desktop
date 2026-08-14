@@ -33,23 +33,31 @@ export function usePromptEnhancerProvider(enabled: boolean): UsePromptEnhancerPr
     settings: { hasGeminiApiKey, promptEnhancerProviderPreference },
     updateSettings,
     forceApiGenerations,
+    modelsVersion,
   } = useAppSettings()
 
-  const [isTextEncoderDownloaded, setIsTextEncoderDownloaded] = useState(false)
+  const [isLocalEncoderUsable, setIsLocalEncoderUsable] = useState(false)
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
     void ApiClient.getTextEncoderRecommendation().then((result) => {
-      if (!cancelled) setIsTextEncoderDownloaded(result.ok && result.data.cp_to_download === null)
+      // Deliberately not cp_to_download: the encoder that runs generations isn't always the one
+      // that can enhance (LTX 2.5's encodes only, and enhances from a separate checkpoint), so
+      // the backend reports enhancer availability on its own.
+      if (!cancelled) {
+        setIsLocalEncoderUsable(result.ok && result.data.local_enhancement_supported)
+      }
     })
     return () => { cancelled = true }
-  }, [enabled])
+    // modelsVersion: the enhancer is a download the user can make mid-session, and Enhance should
+    // become available without a restart.
+  }, [enabled, modelsVersion])
 
   // Downloaded isn't enough on its own — forceApiGenerations is the pure "insufficient memory
   // for local models this run" signal (deliberately NOT shouldVideoGenerateWithLtxApi, which
   // also folds in the user's own preference to use the LTX API for VIDEO specifically — that's
   // unrelated to whether the much smaller Gemma text encoder can run locally right now).
-  const hasLocalTextEncoder = isTextEncoderDownloaded && !forceApiGenerations
+  const hasLocalTextEncoder = isLocalEncoderUsable && !forceApiGenerations
   const canToggleProvider = hasLocalTextEncoder && hasGeminiApiKey
 
   // Default to local (the first available option) when the user hasn't made an explicit choice,

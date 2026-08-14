@@ -18,6 +18,7 @@ from server_utils.media_validation import validate_image_file
 from services.interfaces import PromptEnhancerPipeline
 from services.lora_catalog import LoraCatalogProvider
 from services.prompt_enhancement import (
+    build_audio_visual_caption_system_prompt,
     build_conditioning_system_prompt,
     build_ic_lora_enhancement_system_prompt,
     build_image_edit_system_prompt,
@@ -80,7 +81,7 @@ class PromptEnhancementHandler(StateHandlerBase):
         with self._generation.reserved_generation_start():
             gemma_root: str | None = None
             if req.provider == "local":
-                gemma_root = self._text_handler.resolve_gemma_root_if_downloaded()
+                gemma_root = self._text_handler.resolve_prompt_enhancer_root_if_downloaded()
                 if gemma_root is None:
                     raise HTTPError(409, "LOCAL_TEXT_ENCODER_NOT_AVAILABLE")
             elif not self.state.app_settings.gemini_api_key:
@@ -129,7 +130,63 @@ class PromptEnhancementHandler(StateHandlerBase):
             system_prompt = build_conditioning_system_prompt(req.conditioningType)
             return self._run_free_rewrite(req, system_prompt, gemma_root)
 
-        return self._run_free_rewrite(req, None, gemma_root)
+        return self._run_free_rewrite(req, self._default_video_system_prompt(req), gemma_root)
+
+    def _default_video_system_prompt(self, req: EnhancePromptRequest) -> str | None:
+        return self._video_system_prompt(t2v=req.imagePath is None)
+
+    def _video_system_prompt(self, *, t2v: bool) -> str | None:
+        """The active model's own caption style, or None to keep each provider's default.
+
+        Only the audio-visual generations (2.5) need this: their captions cover the soundscape,
+        which neither the generic Gemini fallback nor a 2.3-era prompt asks for.
+        """
+        spec = self._text_handler.active_ltx_model_spec()
+        if spec is None or not spec.wants_audio_visual_captions:
+            return None
+        return build_audio_visual_caption_system_prompt(t2v=t2v)
+
+    def enhance_for_generation(self, prompt: str, *, image_path: str | None) -> str:
+        """Rewrite ``prompt`` on the local enhancer for a generation that's already started.
+
+        Only for the local text-encoding path: API encoding enhances server-side inside the
+        same call, so it never gets here. Deliberately not `enhance()` — the caller already
+        holds the generation slot, and there's no provider choice to make, only "is the
+        enhancer on disk".
+
+        Never raises: enhancement is a quality step, so a missing checkpoint or a failed
+        rewrite degrades to the prompt as typed rather than failing the generation.
+        """
+        if not prompt.strip():
+            return prompt
+        gemma_root = self._text_handler.resolve_prompt_enhancer_root_if_downloaded()
+        if gemma_root is None:
+            logger.info("Skipping automatic enhancement: no local prompt enhancer downloaded")
+            return prompt
+
+        try:
+            pipeline = self._load_prompt_enhancer_pipeline(gemma_root)
+            system_prompt = self._video_system_prompt(t2v=image_path is None)
+            seed = self._random_seed()
+            if image_path is not None:
+                enhanced = pipeline.enhance_i2v(
+                    prompt, image_path, system_prompt=system_prompt, seed=seed
+                )
+            else:
+                enhanced = pipeline.enhance_t2v(prompt, system_prompt=system_prompt, seed=seed)
+        except Exception:
+            logger.warning("Automatic local enhancement failed; using the prompt as typed", exc_info=True)
+            return prompt
+
+        if not enhanced.strip():
+            return prompt
+        logger.info(
+            "Enhanced prompt locally for generation (%d -> %d chars): %s",
+            len(prompt),
+            len(enhanced),
+            enhanced,
+        )
+        return enhanced
 
     def _enhance_loras(
         self, loras: list[LoraCatalogItem], req: EnhancePromptRequest, gemma_root: str | None

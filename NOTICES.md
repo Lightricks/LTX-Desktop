@@ -58,6 +58,7 @@ used by LTX Desktop.
 - **transformers** — Copyright (c) Hugging Face — Apache License 2.0
 - **sentencepiece** — Copyright (c) Google LLC — Apache License 2.0
 - **sageattention** — Copyright (c) Jintao Zhang et al. — Apache License 2.0
+- **natten** — Copyright (c) Ali Hassani, Steven Walton, et al. (SHI Labs) — Apache License 2.0
 - **opencv-python-headless** — Copyright (c) OpenCV team — Apache License 2.0
 - **fastapi** — Copyright (c) Sebastian Ramirez — MIT License
 - **uvicorn** — Copyright (c) Encode OSS Ltd. — BSD 3-Clause License

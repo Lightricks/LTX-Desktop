@@ -11,10 +11,18 @@
                 "ltx-2.3-spatial-upscaler-x2-1.0",
                 "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "ltx-2.5-22b-distilled",
+                "ltx-2.5-spatial-upscaler-x2-1.0",
+                "ltx-2.5-video-vae",
+                "ltx-2.5-video-vae-conv",
+                "ltx-2.5-audio-vae",
+                "ltx-2.5-duration-head",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
                 "dw-ll-ucoco-384-bs5",
                 "gemma-3-12b-it-qat-q4_0-unquantized",
+                "gemma4-12b-with-proj-ltx-2.5",
+                "gemma-4-e2b-it",
                 "z-image-turbo"
               ],
               "type": "string"
@@ -48,6 +56,7 @@
             "anyOf": [
               {
                 "enum": [
+                  "ltx-2.5-22b-distilled",
                   "ltx-2.3-22b-distilled-1.1",
                   "ltx-2.3-22b-distilled"
                 ],
@@ -183,6 +192,17 @@
               }
             ],
             "title": "Seedlocked"
+          },
+          "useConvVae": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Useconvvae"
           },
           "useLocalTextEncoder": {
             "anyOf": [
@@ -326,10 +346,18 @@
                 "ltx-2.3-spatial-upscaler-x2-1.0",
                 "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "ltx-2.5-22b-distilled",
+                "ltx-2.5-spatial-upscaler-x2-1.0",
+                "ltx-2.5-video-vae",
+                "ltx-2.5-video-vae-conv",
+                "ltx-2.5-audio-vae",
+                "ltx-2.5-duration-head",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
                 "dw-ll-ucoco-384-bs5",
                 "gemma-3-12b-it-qat-q4_0-unquantized",
+                "gemma4-12b-with-proj-ltx-2.5",
+                "gemma-4-e2b-it",
                 "z-image-turbo"
               ],
               "type": "string"
@@ -371,10 +399,18 @@
               "ltx-2.3-spatial-upscaler-x2-1.0",
               "ltx-2.3-spatial-upscaler-x2-1.1",
               "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+              "ltx-2.5-22b-distilled",
+              "ltx-2.5-spatial-upscaler-x2-1.0",
+              "ltx-2.5-video-vae",
+              "ltx-2.5-video-vae-conv",
+              "ltx-2.5-audio-vae",
+              "ltx-2.5-duration-head",
               "dpt-hybrid-midas",
               "yolox-l-torchscript",
               "dw-ll-ucoco-384-bs5",
               "gemma-3-12b-it-qat-q4_0-unquantized",
+              "gemma4-12b-with-proj-ltx-2.5",
+              "gemma-4-e2b-it",
               "z-image-turbo"
             ],
             "title": "Cp Id",
@@ -393,6 +429,7 @@
               "base",
               "upscaler",
               "text_encoder",
+              "vae",
               "image",
               "support"
             ],
@@ -424,10 +461,18 @@
                 "ltx-2.3-spatial-upscaler-x2-1.0",
                 "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "ltx-2.5-22b-distilled",
+                "ltx-2.5-spatial-upscaler-x2-1.0",
+                "ltx-2.5-video-vae",
+                "ltx-2.5-video-vae-conv",
+                "ltx-2.5-audio-vae",
+                "ltx-2.5-duration-head",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
                 "dw-ll-ucoco-384-bs5",
                 "gemma-3-12b-it-qat-q4_0-unquantized",
+                "gemma4-12b-with-proj-ltx-2.5",
+                "gemma-4-e2b-it",
                 "z-image-turbo"
               ],
               "type": "string"
@@ -501,10 +546,18 @@
                 "ltx-2.3-spatial-upscaler-x2-1.0",
                 "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "ltx-2.5-22b-distilled",
+                "ltx-2.5-spatial-upscaler-x2-1.0",
+                "ltx-2.5-video-vae",
+                "ltx-2.5-video-vae-conv",
+                "ltx-2.5-audio-vae",
+                "ltx-2.5-duration-head",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
                 "dw-ll-ucoco-384-bs5",
                 "gemma-3-12b-it-qat-q4_0-unquantized",
+                "gemma4-12b-with-proj-ltx-2.5",
+                "gemma-4-e2b-it",
                 "z-image-turbo"
               ],
               "type": "string"
@@ -521,10 +574,18 @@
                 "ltx-2.3-spatial-upscaler-x2-1.0",
                 "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "ltx-2.5-22b-distilled",
+                "ltx-2.5-spatial-upscaler-x2-1.0",
+                "ltx-2.5-video-vae",
+                "ltx-2.5-video-vae-conv",
+                "ltx-2.5-audio-vae",
+                "ltx-2.5-duration-head",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
                 "dw-ll-ucoco-384-bs5",
                 "gemma-3-12b-it-qat-q4_0-unquantized",
+                "gemma4-12b-with-proj-ltx-2.5",
+                "gemma-4-e2b-it",
                 "z-image-turbo"
               ],
               "type": "string"
@@ -542,10 +603,18 @@
                   "ltx-2.3-spatial-upscaler-x2-1.0",
                   "ltx-2.3-spatial-upscaler-x2-1.1",
                   "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                  "ltx-2.5-22b-distilled",
+                  "ltx-2.5-spatial-upscaler-x2-1.0",
+                  "ltx-2.5-video-vae",
+                  "ltx-2.5-video-vae-conv",
+                  "ltx-2.5-audio-vae",
+                  "ltx-2.5-duration-head",
                   "dpt-hybrid-midas",
                   "yolox-l-torchscript",
                   "dw-ll-ucoco-384-bs5",
                   "gemma-3-12b-it-qat-q4_0-unquantized",
+                  "gemma4-12b-with-proj-ltx-2.5",
+                  "gemma-4-e2b-it",
                   "z-image-turbo"
                 ],
                 "type": "string"
@@ -755,6 +824,12 @@
               "end"
             ],
             "title": "Mode",
+            "type": "string"
+          },
+          "model": {
+            "const": "pro",
+            "default": "pro",
+            "title": "Model",
             "type": "string"
           },
           "prompt": {
@@ -977,20 +1052,27 @@
             "type": "string"
           },
           "duration": {
-            "default": 5,
-            "enum": [
-              5,
-              6,
-              8,
-              10,
-              12,
-              14,
-              16,
-              18,
-              20
+            "anyOf": [
+              {
+                "enum": [
+                  5,
+                  6,
+                  8,
+                  10,
+                  12,
+                  14,
+                  16,
+                  18,
+                  20
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Duration",
-            "type": "integer"
+            "default": 5,
+            "title": "Duration"
           },
           "fps": {
             "default": 24,
@@ -1025,7 +1107,9 @@
             "default": "fast",
             "enum": [
               "fast",
-              "pro"
+              "pro",
+              "fast-2.5",
+              "pro-2.5"
             ],
             "title": "Model",
             "type": "string"
@@ -1507,6 +1591,17 @@
           "requires_hf_login": {
             "title": "Requires Hf Login",
             "type": "boolean"
+          },
+          "supported_models": {
+            "items": {
+              "enum": [
+                "LTX-2.3",
+                "LTX-2.5"
+              ],
+              "type": "string"
+            },
+            "title": "Supported Models",
+            "type": "array"
           },
           "tags": {
             "items": {
@@ -2165,10 +2260,18 @@
                   "ltx-2.3-spatial-upscaler-x2-1.0",
                   "ltx-2.3-spatial-upscaler-x2-1.1",
                   "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                  "ltx-2.5-22b-distilled",
+                  "ltx-2.5-spatial-upscaler-x2-1.0",
+                  "ltx-2.5-video-vae",
+                  "ltx-2.5-video-vae-conv",
+                  "ltx-2.5-audio-vae",
+                  "ltx-2.5-duration-head",
                   "dpt-hybrid-midas",
                   "yolox-l-torchscript",
                   "dw-ll-ucoco-384-bs5",
                   "gemma-3-12b-it-qat-q4_0-unquantized",
+                  "gemma4-12b-with-proj-ltx-2.5",
+                  "gemma-4-e2b-it",
                   "z-image-turbo"
                 ],
                 "type": "string"
@@ -2309,12 +2412,68 @@
         "type": "object"
       },
       "JsonValue": {},
+      "LTXOfferingCapabilitiesSpec": {
+        "description": "Feature flags for one local model or API pipeline. Pixel maps stay backend-only.",
+        "properties": {
+          "a2v": {
+            "title": "A2V",
+            "type": "boolean"
+          },
+          "auto_duration": {
+            "title": "Auto Duration",
+            "type": "boolean"
+          },
+          "camera_motion": {
+            "title": "Camera Motion",
+            "type": "boolean"
+          },
+          "extend": {
+            "title": "Extend",
+            "type": "boolean"
+          },
+          "i2v": {
+            "title": "I2V",
+            "type": "boolean"
+          },
+          "ic_lora": {
+            "title": "Ic Lora",
+            "type": "boolean"
+          },
+          "retake": {
+            "title": "Retake",
+            "type": "boolean"
+          },
+          "t2v": {
+            "title": "T2V",
+            "type": "boolean"
+          },
+          "user_loras": {
+            "title": "User Loras",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "t2v",
+          "i2v",
+          "a2v",
+          "ic_lora",
+          "retake",
+          "extend",
+          "user_loras",
+          "camera_motion",
+          "auto_duration"
+        ],
+        "title": "LTXOfferingCapabilitiesSpec",
+        "type": "object"
+      },
       "LTXVideoGenerationModelSpecItem": {
         "properties": {
           "pipeline": {
             "enum": [
               "fast",
-              "pro"
+              "pro",
+              "fast-2.5",
+              "pro-2.5"
             ],
             "title": "Pipeline",
             "type": "string"
@@ -2384,6 +2543,16 @@
               }
             ],
             "title": "A2V Supported Resolutions Durations"
+          },
+          "capabilities": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LTXOfferingCapabilitiesSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "display_name": {
             "title": "Display Name",
@@ -2560,6 +2729,17 @@
           "requires_hf_login": {
             "title": "Requires Hf Login",
             "type": "boolean"
+          },
+          "supported_models": {
+            "items": {
+              "enum": [
+                "LTX-2.3",
+                "LTX-2.5"
+              ],
+              "type": "string"
+            },
+            "title": "Supported Models",
+            "type": "array"
           },
           "tags": {
             "items": {
@@ -2764,15 +2944,51 @@
                 "ltx-2.3-spatial-upscaler-x2-1.0",
                 "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "ltx-2.5-22b-distilled",
+                "ltx-2.5-spatial-upscaler-x2-1.0",
+                "ltx-2.5-video-vae",
+                "ltx-2.5-video-vae-conv",
+                "ltx-2.5-audio-vae",
+                "ltx-2.5-duration-head",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
                 "dw-ll-ucoco-384-bs5",
                 "gemma-3-12b-it-qat-q4_0-unquantized",
+                "gemma4-12b-with-proj-ltx-2.5",
+                "gemma-4-e2b-it",
                 "z-image-turbo"
               ],
               "type": "string"
             },
             "title": "Cps To Download",
+            "type": "array"
+          },
+          "optional_cp_ids": {
+            "default": [],
+            "items": {
+              "enum": [
+                "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
+                "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
+                "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "ltx-2.5-22b-distilled",
+                "ltx-2.5-spatial-upscaler-x2-1.0",
+                "ltx-2.5-video-vae",
+                "ltx-2.5-video-vae-conv",
+                "ltx-2.5-audio-vae",
+                "ltx-2.5-duration-head",
+                "dpt-hybrid-midas",
+                "yolox-l-torchscript",
+                "dw-ll-ucoco-384-bs5",
+                "gemma-3-12b-it-qat-q4_0-unquantized",
+                "gemma4-12b-with-proj-ltx-2.5",
+                "gemma-4-e2b-it",
+                "z-image-turbo"
+              ],
+              "type": "string"
+            },
+            "title": "Optional Cp Ids",
             "type": "array"
           },
           "status": {
@@ -2798,16 +3014,29 @@
                 "ltx-2.3-spatial-upscaler-x2-1.0",
                 "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "ltx-2.5-22b-distilled",
+                "ltx-2.5-spatial-upscaler-x2-1.0",
+                "ltx-2.5-video-vae",
+                "ltx-2.5-video-vae-conv",
+                "ltx-2.5-audio-vae",
+                "ltx-2.5-duration-head",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
                 "dw-ll-ucoco-384-bs5",
                 "gemma-3-12b-it-qat-q4_0-unquantized",
+                "gemma4-12b-with-proj-ltx-2.5",
+                "gemma-4-e2b-it",
                 "z-image-turbo"
               ],
               "type": "string"
             },
             "title": "Cps To Download",
             "type": "array"
+          },
+          "supported": {
+            "default": true,
+            "title": "Supported",
+            "type": "boolean"
           }
         },
         "required": [
@@ -2849,10 +3078,18 @@
                 "ltx-2.3-spatial-upscaler-x2-1.0",
                 "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "ltx-2.5-22b-distilled",
+                "ltx-2.5-spatial-upscaler-x2-1.0",
+                "ltx-2.5-video-vae",
+                "ltx-2.5-video-vae-conv",
+                "ltx-2.5-audio-vae",
+                "ltx-2.5-duration-head",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
                 "dw-ll-ucoco-384-bs5",
                 "gemma-3-12b-it-qat-q4_0-unquantized",
+                "gemma4-12b-with-proj-ltx-2.5",
+                "gemma-4-e2b-it",
                 "z-image-turbo"
               ],
               "type": "string"
@@ -2879,10 +3116,18 @@
               "ltx-2.3-spatial-upscaler-x2-1.0",
               "ltx-2.3-spatial-upscaler-x2-1.1",
               "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+              "ltx-2.5-22b-distilled",
+              "ltx-2.5-spatial-upscaler-x2-1.0",
+              "ltx-2.5-video-vae",
+              "ltx-2.5-video-vae-conv",
+              "ltx-2.5-audio-vae",
+              "ltx-2.5-duration-head",
               "dpt-hybrid-midas",
               "yolox-l-torchscript",
               "dw-ll-ucoco-384-bs5",
               "gemma-3-12b-it-qat-q4_0-unquantized",
+              "gemma4-12b-with-proj-ltx-2.5",
+              "gemma-4-e2b-it",
               "z-image-turbo"
             ],
             "title": "Model Cp",
@@ -2890,6 +3135,7 @@
           },
           "model_id": {
             "enum": [
+              "ltx-2.5-22b-distilled",
               "ltx-2.3-22b-distilled-1.1",
               "ltx-2.3-22b-distilled"
             ],
@@ -2954,10 +3200,18 @@
                 "ltx-2.3-spatial-upscaler-x2-1.0",
                 "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "ltx-2.5-22b-distilled",
+                "ltx-2.5-spatial-upscaler-x2-1.0",
+                "ltx-2.5-video-vae",
+                "ltx-2.5-video-vae-conv",
+                "ltx-2.5-audio-vae",
+                "ltx-2.5-duration-head",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
                 "dw-ll-ucoco-384-bs5",
                 "gemma-3-12b-it-qat-q4_0-unquantized",
+                "gemma4-12b-with-proj-ltx-2.5",
+                "gemma-4-e2b-it",
                 "z-image-turbo"
               ],
               "type": "string"
@@ -2973,10 +3227,18 @@
                 "ltx-2.3-spatial-upscaler-x2-1.0",
                 "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "ltx-2.5-22b-distilled",
+                "ltx-2.5-spatial-upscaler-x2-1.0",
+                "ltx-2.5-video-vae",
+                "ltx-2.5-video-vae-conv",
+                "ltx-2.5-audio-vae",
+                "ltx-2.5-duration-head",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
                 "dw-ll-ucoco-384-bs5",
                 "gemma-3-12b-it-qat-q4_0-unquantized",
+                "gemma4-12b-with-proj-ltx-2.5",
+                "gemma-4-e2b-it",
                 "z-image-turbo"
               ],
               "type": "string"
@@ -2984,8 +3246,14 @@
             "title": "Cps To Download",
             "type": "array"
           },
+          "loses_built_in_control": {
+            "default": false,
+            "title": "Loses Built In Control",
+            "type": "boolean"
+          },
           "ltx_model_id": {
             "enum": [
+              "ltx-2.5-22b-distilled",
               "ltx-2.3-22b-distilled-1.1",
               "ltx-2.3-22b-distilled"
             ],
@@ -3056,10 +3324,18 @@
                 "ltx-2.3-spatial-upscaler-x2-1.0",
                 "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "ltx-2.5-22b-distilled",
+                "ltx-2.5-spatial-upscaler-x2-1.0",
+                "ltx-2.5-video-vae",
+                "ltx-2.5-video-vae-conv",
+                "ltx-2.5-audio-vae",
+                "ltx-2.5-duration-head",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
                 "dw-ll-ucoco-384-bs5",
                 "gemma-3-12b-it-qat-q4_0-unquantized",
+                "gemma4-12b-with-proj-ltx-2.5",
+                "gemma-4-e2b-it",
                 "z-image-turbo"
               ],
               "type": "string"
@@ -3082,10 +3358,18 @@
                 "ltx-2.3-spatial-upscaler-x2-1.0",
                 "ltx-2.3-spatial-upscaler-x2-1.1",
                 "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "ltx-2.5-22b-distilled",
+                "ltx-2.5-spatial-upscaler-x2-1.0",
+                "ltx-2.5-video-vae",
+                "ltx-2.5-video-vae-conv",
+                "ltx-2.5-audio-vae",
+                "ltx-2.5-duration-head",
                 "dpt-hybrid-midas",
                 "yolox-l-torchscript",
                 "dw-ll-ucoco-384-bs5",
                 "gemma-3-12b-it-qat-q4_0-unquantized",
+                "gemma4-12b-with-proj-ltx-2.5",
+                "gemma-4-e2b-it",
                 "z-image-turbo"
               ],
               "type": "string"
@@ -3350,6 +3634,12 @@
             "title": "Mode",
             "type": "string"
           },
+          "model": {
+            "const": "pro",
+            "default": "pro",
+            "title": "Model",
+            "type": "string"
+          },
           "prompt": {
             "default": "",
             "title": "Prompt",
@@ -3418,6 +3708,7 @@
         "properties": {
           "model_id": {
             "enum": [
+              "ltx-2.5-22b-distilled",
               "ltx-2.3-22b-distilled-1.1",
               "ltx-2.3-22b-distilled"
             ],
@@ -3437,6 +3728,7 @@
             "anyOf": [
               {
                 "enum": [
+                  "ltx-2.5-22b-distilled",
                   "ltx-2.3-22b-distilled-1.1",
                   "ltx-2.3-22b-distilled"
                 ],
@@ -3511,6 +3803,11 @@
           "seedLocked": {
             "default": false,
             "title": "Seedlocked",
+            "type": "boolean"
+          },
+          "useConvVae": {
+            "default": false,
+            "title": "Useconvvae",
             "type": "boolean"
           },
           "useLocalTextEncoder": {
@@ -3656,6 +3953,41 @@
       },
       "TextEncoderRecommendationResponse": {
         "properties": {
+          "active_local_enhancer_cp": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ltx-2.3-22b-distilled",
+                  "ltx-2.3-22b-distilled-1.1",
+                  "ltx-2.3-spatial-upscaler-x2-1.0",
+                  "ltx-2.3-spatial-upscaler-x2-1.1",
+                  "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                  "ltx-2.5-22b-distilled",
+                  "ltx-2.5-spatial-upscaler-x2-1.0",
+                  "ltx-2.5-video-vae",
+                  "ltx-2.5-video-vae-conv",
+                  "ltx-2.5-audio-vae",
+                  "ltx-2.5-duration-head",
+                  "dpt-hybrid-midas",
+                  "yolox-l-torchscript",
+                  "dw-ll-ucoco-384-bs5",
+                  "gemma-3-12b-it-qat-q4_0-unquantized",
+                  "gemma4-12b-with-proj-ltx-2.5",
+                  "gemma-4-e2b-it",
+                  "z-image-turbo"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Local Enhancer Cp"
+          },
+          "api_encoding_supported": {
+            "title": "Api Encoding Supported",
+            "type": "boolean"
+          },
           "cp_to_download": {
             "anyOf": [
               {
@@ -3665,10 +3997,18 @@
                   "ltx-2.3-spatial-upscaler-x2-1.0",
                   "ltx-2.3-spatial-upscaler-x2-1.1",
                   "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                  "ltx-2.5-22b-distilled",
+                  "ltx-2.5-spatial-upscaler-x2-1.0",
+                  "ltx-2.5-video-vae",
+                  "ltx-2.5-video-vae-conv",
+                  "ltx-2.5-audio-vae",
+                  "ltx-2.5-duration-head",
                   "dpt-hybrid-midas",
                   "yolox-l-torchscript",
                   "dw-ll-ucoco-384-bs5",
                   "gemma-3-12b-it-qat-q4_0-unquantized",
+                  "gemma4-12b-with-proj-ltx-2.5",
+                  "gemma-4-e2b-it",
                   "z-image-turbo"
                 ],
                 "type": "string"
@@ -3686,12 +4026,68 @@
           "expected_size_gb": {
             "title": "Expected Size Gb",
             "type": "number"
+          },
+          "local_enhancement_supported": {
+            "title": "Local Enhancement Supported",
+            "type": "boolean"
+          },
+          "local_enhancer_cp": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ltx-2.3-22b-distilled",
+                  "ltx-2.3-22b-distilled-1.1",
+                  "ltx-2.3-spatial-upscaler-x2-1.0",
+                  "ltx-2.3-spatial-upscaler-x2-1.1",
+                  "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                  "ltx-2.5-22b-distilled",
+                  "ltx-2.5-spatial-upscaler-x2-1.0",
+                  "ltx-2.5-video-vae",
+                  "ltx-2.5-video-vae-conv",
+                  "ltx-2.5-audio-vae",
+                  "ltx-2.5-duration-head",
+                  "dpt-hybrid-midas",
+                  "yolox-l-torchscript",
+                  "dw-ll-ucoco-384-bs5",
+                  "gemma-3-12b-it-qat-q4_0-unquantized",
+                  "gemma4-12b-with-proj-ltx-2.5",
+                  "gemma-4-e2b-it",
+                  "z-image-turbo"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Enhancer Cp"
+          },
+          "local_enhancer_expected_size_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Enhancer Expected Size Gb"
+          },
+          "ltx_version_label": {
+            "title": "Ltx Version Label",
+            "type": "string"
           }
         },
         "required": [
           "cp_to_download",
           "expected_size_bytes",
-          "expected_size_gb"
+          "expected_size_gb",
+          "api_encoding_supported",
+          "ltx_version_label",
+          "local_enhancement_supported",
+          "local_enhancer_cp",
+          "local_enhancer_expected_size_gb",
+          "active_local_enhancer_cp"
         ],
         "title": "TextEncoderRecommendationResponse",
         "type": "object"

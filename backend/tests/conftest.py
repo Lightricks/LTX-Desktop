@@ -121,18 +121,45 @@ def _test_model_path(test_state, cp_id: str) -> Path:
 
 @pytest.fixture
 def create_fake_model_files(test_state):
-    def _create(include_zit: bool = False):
-        ltx_spec = get_ltx_model_spec(get_latest_ltx_model_id())
+    def _create(
+        include_zit: bool = False,
+        model_id: str | None = None,
+        include_prompt_enhancer: bool = False,
+    ):
+        from runtime_config.model_download_specs import get_model_cp_spec
 
-        for cp_id in (ltx_spec.model_cp, ltx_spec.upscale_cp):
+        ltx_spec = get_ltx_model_spec(model_id or get_latest_ltx_model_id())
+
+        for cp_id in (
+            ltx_spec.model_cp,
+            ltx_spec.upscale_cp,
+            ltx_spec.video_vae_cp,
+            ltx_spec.video_vae_conv_cp,
+            ltx_spec.audio_vae_cp,
+            ltx_spec.duration_head_cp,
+        ):
+            if cp_id is None:
+                continue
             path = _test_model_path(test_state, cp_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"\x00" * 1024)
 
-        te_dir = _test_model_path(test_state, ltx_spec.text_encoder_cp)
-        te_dir.mkdir(parents=True, exist_ok=True)
-        (te_dir / "model.safetensors").write_bytes(b"\x00" * 1024)
-        (te_dir / "tokenizer.model").write_bytes(b"\x00" * 1024)
+        def _write_cp(cp_id: str) -> None:
+            path = _test_model_path(test_state, cp_id)
+            if get_model_cp_spec(cp_id).is_folder:
+                path.mkdir(parents=True, exist_ok=True)
+                (path / "model.safetensors").write_bytes(b"\x00" * 1024)
+                (path / "tokenizer.model").write_bytes(b"\x00" * 1024)
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"\x00" * 1024)
+
+        _write_cp(ltx_spec.text_encoder_cp)
+
+        # Left out by default: it's an optional extra download, so tests opt in to the state
+        # where local Enhance is available for models that need it (2.5).
+        if include_prompt_enhancer and ltx_spec.prompt_enhancer_cp is not None:
+            _write_cp(ltx_spec.prompt_enhancer_cp)
 
         if include_zit:
             zit_dir = _test_model_path(test_state, IMG_GEN_MODEL_CP_ID)
@@ -159,10 +186,14 @@ def create_fake_lora(test_state):
     return _create
 
 
+# Built-in depth/canny Union Control IC-LoRA ships with LTX 2.3 only.
+_IC_LORA_MODEL_ID = "ltx-2.3-22b-distilled-1.1"
+
+
 @pytest.fixture
 def create_fake_ic_lora_files(test_state):
     def _create(include_depth: bool = True):
-        ltx_spec = get_ltx_model_spec(get_latest_ltx_model_id())
+        ltx_spec = get_ltx_model_spec(_IC_LORA_MODEL_ID)
         for cp_id in get_ic_loras_cp_ids(ltx_spec.ic_loras_spec):
             path = _test_model_path(test_state, cp_id)
             path.parent.mkdir(parents=True, exist_ok=True)

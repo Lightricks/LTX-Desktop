@@ -9,6 +9,7 @@ def _set_video_pipeline(state):
         active_pipeline=VideoPipelineState(
             pipeline=FakeFastVideoPipeline(),
             is_compiled=False,
+            ltx_model_id="ltx-2.5-22b-distilled",
         ),
     )
 

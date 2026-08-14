@@ -13,6 +13,7 @@ class TestGenerationProgressCamelCaseKeys:
             active_pipeline=VideoPipelineState(
                 pipeline=pipeline,
                 is_compiled=False,
+                ltx_model_id="ltx-2.5-22b-distilled",
             ),
         )
         test_state.generation.start_generation("gen-1")

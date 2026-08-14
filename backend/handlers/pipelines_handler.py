@@ -13,7 +13,6 @@ from handlers.text_handler import TextHandler
 from runtime_config.model_download_specs import (
     IMG_GEN_MODEL_CP_ID,
     get_existing_cp_path,
-    get_ltx_model_spec,
     resolve_active_ltx_model_id,
 )
 from runtime_config.runtime_policy import streaming_prefetch_count_for_mode
@@ -74,6 +73,18 @@ class PipelinesHandler(StateHandlerBase):
         self._a2v_pipeline_class = a2v_pipeline_class
         self._retake_pipeline_class = retake_pipeline_class
         self._runtime_device = get_device_type(self.config.device)
+
+    def _resolve_ltx_paths(self, model_id: LTXLocalModelId, gemma_root: str | None):
+        from runtime_config.ltx_runtime_paths import ResolvedLtxModelPaths, resolve_ltx_runtime_paths
+        from state.app_settings import resolved_use_conv_vae
+
+        paths: ResolvedLtxModelPaths = resolve_ltx_runtime_paths(
+            self.models_dir,
+            model_id,
+            gemma_root=gemma_root,
+            use_conv_vae=resolved_use_conv_vae(self.state.app_settings),
+        )
+        return paths
 
     def _ensure_no_running_generation(self) -> None:
         match self.state.active_generation:
@@ -148,24 +159,27 @@ class PipelinesHandler(StateHandlerBase):
     ) -> VideoPipelineState:
         gemma_root = self._text_handler.resolve_gemma_root()
         model_id = self._require_downloaded_ltx_model_id()
-        spec = get_ltx_model_spec(model_id)
-        checkpoint_path = str(get_existing_cp_path(self.models_dir, spec.model_cp))
-        upsampler_path = str(get_existing_cp_path(self.models_dir, spec.upscale_cp))
+        paths = self._resolve_ltx_paths(model_id, gemma_root)
 
         pipeline = self._fast_video_pipeline_class.create(
-            checkpoint_path,
-            gemma_root,
-            upsampler_path,
+            paths.checkpoint_path,
+            paths.gemma_root,
+            paths.upsampler_path,
             self.config.device,
             streaming_prefetch_count_for_mode(self.config.local_generations_mode),
             loras=loras or [],
+            video_vae_path=paths.video_vae_path,
+            audio_vae_path=paths.audio_vae_path,
+            duration_head_path=paths.duration_head_path,
         )
 
         state = VideoPipelineState(
             pipeline=pipeline,
             is_compiled=False,
+            ltx_model_id=model_id,
             loras=tuple(loras) if loras else (),
             gemma_root=gemma_root,
+            video_vae_path=paths.video_vae_path,
         )
         return self._compile_if_enabled(state)
 
@@ -275,6 +289,10 @@ class PipelinesHandler(StateHandlerBase):
 
         requested_loras = tuple(loras) if loras else ()
         requested_gemma_root = self._text_handler.resolve_gemma_root()
+        requested_model_id = self._require_downloaded_ltx_model_id()
+        requested_video_vae_path = self._resolve_ltx_paths(
+            requested_model_id, requested_gemma_root
+        ).video_vae_path
         state: VideoPipelineState | None = None
         with self._lock:
             if self._pipeline_matches_model_type(model_type):
@@ -282,8 +300,10 @@ class PipelinesHandler(StateHandlerBase):
                     case GpuSlot(
                         active_pipeline=VideoPipelineState() as existing_state
                     ) if (
-                        existing_state.loras == requested_loras
+                        existing_state.ltx_model_id == requested_model_id
+                        and existing_state.loras == requested_loras
                         and existing_state.gemma_root == requested_gemma_root
+                        and existing_state.video_vae_path == requested_video_vae_path
                     ):
                         state = existing_state
                     case _:
@@ -307,6 +327,8 @@ class PipelinesHandler(StateHandlerBase):
         self._install_text_patches_if_needed()
 
         gemma_root = self._text_handler.resolve_gemma_root()
+        model_id = self._require_downloaded_ltx_model_id()
+        paths = self._resolve_ltx_paths(model_id, gemma_root)
         with self._lock:
             match self.state.gpu_slot:
                 case GpuSlot(
@@ -315,29 +337,34 @@ class PipelinesHandler(StateHandlerBase):
                         depth_model_path=current_depth_model_path,
                         lora_strength=current_lora_strength,
                         gemma_root=current_gemma_root,
+                        ltx_model_id=current_model_id,
+                        video_vae_path=current_video_vae_path,
                     ) as state
                 ) if (
                     current_lora_path == lora_path
                     and current_depth_model_path == depth_model_path
                     and current_lora_strength == lora_strength
                     and current_gemma_root == gemma_root
+                    and current_model_id == model_id
+                    and current_video_vae_path == paths.video_vae_path
                 ):
                     return state
                 case _:
                     pass
 
         self._evict_gpu_pipeline_for_swap()
-        model_id = self._require_downloaded_ltx_model_id()
-        model_spec = get_ltx_model_spec(model_id)
 
         pipeline = self._ic_lora_pipeline_class.create(
-            str(get_existing_cp_path(self.models_dir, model_spec.model_cp)),
-            gemma_root,
-            str(get_existing_cp_path(self.models_dir, model_spec.upscale_cp)),
+            paths.checkpoint_path,
+            paths.gemma_root,
+            paths.upsampler_path,
             lora_path,
             self.config.device,
             streaming_prefetch_count_for_mode(self.config.local_generations_mode),
             lora_strength,
+            video_vae_path=paths.video_vae_path,
+            audio_vae_path=paths.audio_vae_path,
+            duration_head_path=paths.duration_head_path,
         )
         depth_pipeline = (
             self._depth_processor_pipeline_class.create(depth_model_path, self.config.device)
@@ -349,8 +376,10 @@ class PipelinesHandler(StateHandlerBase):
             lora_path=lora_path,
             depth_pipeline=depth_pipeline,
             depth_model_path=depth_model_path,
+            ltx_model_id=model_id,
             lora_strength=lora_strength,
             gemma_root=gemma_root,
+            video_vae_path=paths.video_vae_path,
         )
 
         with self._lock:
@@ -363,28 +392,40 @@ class PipelinesHandler(StateHandlerBase):
 
         requested_loras = tuple(loras) if loras else ()
         gemma_root = self._text_handler.resolve_gemma_root()
+        model_id = self._require_downloaded_ltx_model_id()
+        paths = self._resolve_ltx_paths(model_id, gemma_root)
         with self._lock:
             match self.state.gpu_slot:
                 case GpuSlot(active_pipeline=A2VPipelineState() as state) if (
-                    state.loras == requested_loras and state.gemma_root == gemma_root
+                    state.ltx_model_id == model_id
+                    and state.loras == requested_loras
+                    and state.gemma_root == gemma_root
+                    and state.video_vae_path == paths.video_vae_path
                 ):
                     return state
                 case _:
                     pass
 
         self._evict_gpu_pipeline_for_swap()
-        model_id = self._require_downloaded_ltx_model_id()
-        model_spec = get_ltx_model_spec(model_id)
 
         pipeline = self._a2v_pipeline_class.create(
-            str(get_existing_cp_path(self.models_dir, model_spec.model_cp)),
-            gemma_root,
-            str(get_existing_cp_path(self.models_dir, model_spec.upscale_cp)),
+            paths.checkpoint_path,
+            paths.gemma_root,
+            paths.upsampler_path,
             self.config.device,
             streaming_prefetch_count_for_mode(self.config.local_generations_mode),
             loras=loras or [],
+            video_vae_path=paths.video_vae_path,
+            audio_vae_path=paths.audio_vae_path,
+            duration_head_path=paths.duration_head_path,
         )
-        state = A2VPipelineState(pipeline=pipeline, loras=requested_loras, gemma_root=gemma_root)
+        state = A2VPipelineState(
+            pipeline=pipeline,
+            ltx_model_id=model_id,
+            loras=requested_loras,
+            gemma_root=gemma_root,
+            video_vae_path=paths.video_vae_path,
+        )
 
         with self._lock:
             self.state.gpu_slot = GpuSlot(active_pipeline=state)
@@ -396,17 +437,25 @@ class PipelinesHandler(StateHandlerBase):
 
         quantized = device_supports_fp8(self.config.device)
         gemma_root = self._text_handler.resolve_gemma_root()
+        model_id = self._require_downloaded_ltx_model_id()
+        paths = self._resolve_ltx_paths(model_id, gemma_root)
 
         with self._lock:
             match self.state.gpu_slot:
                 case GpuSlot(
                     active_pipeline=RetakePipelineState(
-                        distilled=current_distilled, quantized=current_quantized, gemma_root=current_gemma_root
+                        distilled=current_distilled,
+                        quantized=current_quantized,
+                        gemma_root=current_gemma_root,
+                        ltx_model_id=current_model_id,
+                        video_vae_path=current_video_vae_path,
                     ) as state
                 ) if (
                     current_distilled == distilled
                     and current_quantized == quantized
                     and current_gemma_root == gemma_root
+                    and current_model_id == model_id
+                    and current_video_vae_path == paths.video_vae_path
                 ):
                     return state
                 case _:
@@ -416,20 +465,25 @@ class PipelinesHandler(StateHandlerBase):
 
         from ltx_core.quantization.fp8_cast import build_policy as build_fp8_cast_policy
 
-        model_id = self._require_downloaded_ltx_model_id()
-        model_spec = get_ltx_model_spec(model_id)
-        checkpoint_path = str(get_existing_cp_path(self.models_dir, model_spec.model_cp))
-        quantization = build_fp8_cast_policy(checkpoint_path) if quantized else None
+        quantization = build_fp8_cast_policy(paths.checkpoint_path) if quantized else None
         pipeline = self._retake_pipeline_class.create(
-            checkpoint_path=checkpoint_path,
-            gemma_root=gemma_root,
+            checkpoint_path=paths.checkpoint_path,
+            gemma_root=paths.gemma_root,
             device=self.config.device,
             streaming_prefetch_count=streaming_prefetch_count_for_mode(self.config.local_generations_mode),
             loras=[],
             quantization=quantization,
+            video_vae_path=paths.video_vae_path,
+            audio_vae_path=paths.audio_vae_path,
+            duration_head_path=paths.duration_head_path,
         )
         state = RetakePipelineState(
-            pipeline=pipeline, distilled=distilled, quantized=quantized, gemma_root=gemma_root
+            pipeline=pipeline,
+            distilled=distilled,
+            quantized=quantized,
+            ltx_model_id=model_id,
+            gemma_root=gemma_root,
+            video_vae_path=paths.video_vae_path,
         )
 
         with self._lock:

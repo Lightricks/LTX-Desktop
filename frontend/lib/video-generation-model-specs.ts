@@ -3,15 +3,21 @@ import type { components } from '../generated/backend-openapi'
 export type VideoGenerationModelSpecsResponse = components['schemas']['GenerateVideoModelsSpecsResponse']
 export type VideoGenerationModelSpecItem = components['schemas']['LTXVideoGenerationModelSpecItem']
 export type VideoGenerationResolutionSpec = components['schemas']['LTXVideoGenerationResolutionSpec']
+export type VideoGenerationOfferingCapabilities = NonNullable<
+  VideoGenerationModelSpecItem['spec']['capabilities']
+>
 export type VideoGenerationPipeline = components['schemas']['GenerateVideoRequest']['model']
 export type VideoGenerationResolution = components['schemas']['GenerateVideoRequest']['resolution']
-export type VideoGenerationDuration = components['schemas']['GenerateVideoRequest']['duration']
+export type VideoGenerationDuration = Exclude<
+  components['schemas']['GenerateVideoRequest']['duration'],
+  null
+>
 export type VideoGenerationFps = components['schemas']['GenerateVideoRequest']['fps']
 export type VideoGenerationAspectRatio = components['schemas']['GenerateVideoRequest']['aspectRatio']
 
 export interface VideoGenerationSettingsShape {
   model: string
-  duration: number
+  duration: number | null
   videoResolution: string
   fps: number
   aspectRatio?: string
@@ -27,6 +33,7 @@ export interface ResolvedVideoGenerationOptions {
   selectedResolution: VideoGenerationResolution | null
   selectedFps: VideoGenerationFps | null
   selectedDuration: VideoGenerationDuration | null
+  autoDurationAvailable: boolean
   hasCompatibleOptions: boolean
 }
 
@@ -45,10 +52,12 @@ function getResolutionMap(
   options: { hasAudio: boolean },
 ): Record<string, VideoGenerationResolutionSpec> {
   const { hasAudio } = options
-  if (hasAudio && item.spec.a2v_supported_resolutions_durations) {
-    return item.spec.a2v_supported_resolutions_durations
+  if (!hasAudio) {
+    return item.spec.supported_resolutions_durations
   }
-  return item.spec.supported_resolutions_durations
+  // A model with no a2v spec doesn't support audio-conditioned generation at all —
+  // must not fall back to the plain (non-a2v) matrix, or it looks compatible when it isn't.
+  return item.spec.a2v_supported_resolutions_durations ?? {}
 }
 
 function getResolutionEntries(
@@ -100,13 +109,35 @@ function getCompatibleModelOptions(
   options: { hasAudio: boolean; minimumDuration: number | undefined },
 ): VideoGenerationModelSpecItem[] {
   const { hasAudio, minimumDuration } = options
-  if (minimumDuration === undefined) return modelSpecs
+  // Always filter by resolution compatibility — hasAudio alone (independent of any
+  // minimumDuration constraint) can exclude a model, e.g. a fast-tier pipeline with no
+  // a2v spec. Skipping this whenever minimumDuration is unset used to let incompatible
+  // (audio-unsupported) models stay selectable and get stuck with no valid resolution.
   return modelSpecs.filter((item) => (
     getCompatibleResolutionEntries(item, { hasAudio, minimumDuration }).length > 0
   ))
 }
 
-function chooseOption<T>(current: string | number, options: T[]): T | null {
+function emptyResolvedOptions(
+  modelOptions: VideoGenerationModelSpecItem[],
+  extras: Partial<ResolvedVideoGenerationOptions> = {},
+): ResolvedVideoGenerationOptions {
+  return {
+    modelOptions,
+    resolutionOptions: [],
+    fpsOptions: [],
+    durationOptions: [],
+    selectedModel: null,
+    selectedResolution: null,
+    selectedFps: null,
+    selectedDuration: null,
+    autoDurationAvailable: false,
+    hasCompatibleOptions: false,
+    ...extras,
+  }
+}
+
+function chooseOption<T>(current: string | number | null, options: T[]): T | null {
   return options.find((option) => option === current) ?? options[0] ?? null
 }
 
@@ -119,6 +150,12 @@ export function getVideoGenerationModelSpecs(
   return useApiSpecs ? specs.api_models : specs.local_models
 }
 
+export function getLocalOfferingCapabilities(
+  specs: VideoGenerationModelSpecsResponse | null | undefined,
+): VideoGenerationOfferingCapabilities | null {
+  return specs?.local_models[0]?.spec.capabilities ?? null
+}
+
 export function resolveVideoGenerationOptions<T extends VideoGenerationSettingsShape>({
   settings,
   modelSpecs,
@@ -129,74 +166,46 @@ export function resolveVideoGenerationOptions<T extends VideoGenerationSettingsS
   const modelOptions = getCompatibleModelOptions(modelSpecs, { hasAudio, minimumDuration })
   const selectedModelItem = modelOptions.find((item) => item.pipeline === settings.model) ?? modelOptions[0] ?? null
   if (!selectedModelItem) {
-    return {
-      modelOptions,
-      resolutionOptions: [],
-      fpsOptions: [],
-      durationOptions: [],
-      selectedModel: null,
-      selectedResolution: null,
-      selectedFps: null,
-      selectedDuration: null,
-      hasCompatibleOptions: false,
-    }
+    return emptyResolvedOptions(modelOptions)
   }
 
   const resolutionEntries = getCompatibleResolutionEntries(selectedModelItem, { hasAudio, minimumDuration })
   const resolutionOptions = resolutionEntries.map(([resolution]) => resolution)
   const selectedResolution = chooseOption(settings.videoResolution, resolutionOptions)
   if (!selectedResolution) {
-    return {
-      modelOptions,
-      resolutionOptions,
-      fpsOptions: [],
-      durationOptions: [],
-      selectedModel: selectedModelItem.pipeline,
-      selectedResolution: null,
-      selectedFps: null,
-      selectedDuration: null,
-      hasCompatibleOptions: false,
-    }
+    return emptyResolvedOptions(modelOptions, { selectedModel: selectedModelItem.pipeline, resolutionOptions })
   }
 
   const selectedResolutionSpec = resolutionEntries.find(([resolution]) => resolution === selectedResolution)?.[1] ?? null
   if (!selectedResolutionSpec) {
-    return {
-      modelOptions,
-      resolutionOptions,
-      fpsOptions: [],
-      durationOptions: [],
+    return emptyResolvedOptions(modelOptions, {
       selectedModel: selectedModelItem.pipeline,
+      resolutionOptions,
       selectedResolution,
-      selectedFps: null,
-      selectedDuration: null,
-      hasCompatibleOptions: false,
-    }
+    })
   }
 
   const fpsOptions = getCompatibleFps(selectedResolutionSpec, { minimumDuration })
   const selectedFps = chooseOption(settings.fps, fpsOptions)
   if (!selectedFps) {
-    return {
-      modelOptions,
-      resolutionOptions,
-      fpsOptions,
-      durationOptions: [],
+    return emptyResolvedOptions(modelOptions, {
       selectedModel: selectedModelItem.pipeline,
+      resolutionOptions,
       selectedResolution,
-      selectedFps: null,
-      selectedDuration: null,
-      hasCompatibleOptions: false,
-    }
+      fpsOptions,
+    })
   }
 
   const durationOptions = filterDurationsByMinimum(
     getDurationsForFps(selectedResolutionSpec, selectedFps),
     minimumDuration,
   )
+  const autoDurationAvailable = !hasAudio && Boolean(selectedModelItem.spec.capabilities?.auto_duration)
   const selectedDuration = durationSelection === 'smallest_valid'
     ? durationOptions[0] ?? null
-    : chooseOption(settings.duration, durationOptions)
+    : autoDurationAvailable && settings.duration === null
+      ? null
+      : chooseOption(settings.duration, durationOptions)
 
   return {
     modelOptions,
@@ -207,7 +216,8 @@ export function resolveVideoGenerationOptions<T extends VideoGenerationSettingsS
     selectedResolution,
     selectedFps,
     selectedDuration,
-    hasCompatibleOptions: selectedDuration !== null,
+    autoDurationAvailable,
+    hasCompatibleOptions: selectedDuration !== null || autoDurationAvailable,
   }
 }
 
@@ -232,7 +242,7 @@ export function sanitizeVideoGenerationSettings<T extends VideoGenerationSetting
     || !resolved.selectedModel
     || !resolved.selectedResolution
     || !resolved.selectedFps
-    || !resolved.selectedDuration
+    || (resolved.selectedDuration === null && !resolved.autoDurationAvailable)
   ) {
     return null
   }
@@ -259,4 +269,36 @@ export function areVideoGenerationSettingsEquivalent<T extends VideoGenerationSe
     && (left.aspectRatio ?? '16:9') === (right.aspectRatio ?? '16:9')
     && (left.audio ?? false) === (right.audio ?? false)
   )
+}
+
+/**
+ * Fallback labels for persisted `generationParams.model` / picker pipeline ids.
+ *
+ * Prefer `resolvePipelineDisplayName` (backend spec) at generation time. Local ids like
+ * "fast"/"pro" are shared across LTX versions, so the fallback here stays version-agnostic —
+ * only API ids (`fast-2.5`, …) encode their version in the id itself.
+ */
+const PIPELINE_DISPLAY_NAMES: Record<string, string> = {
+  fast: 'LTX Fast',
+  pro: 'LTX Pro',
+  'fast-2.5': 'LTX-2.5 Fast',
+  'pro-2.5': 'LTX-2.5 Pro',
+}
+
+/** Returns a display label for a known video pipeline, or null if unknown/absent. */
+export function formatPipelineDisplayName(model: string | undefined | null): string | null {
+  if (!model) return null
+  return PIPELINE_DISPLAY_NAMES[model] ?? null
+}
+
+/**
+ * Version-correct label for `pipeline` taken from the backend specs currently in effect.
+ * Returns null when the pipeline isn't in `modelSpecs`, so callers can fall back.
+ */
+export function resolvePipelineDisplayName(
+  modelSpecs: VideoGenerationModelSpecItem[],
+  pipeline: string | undefined | null,
+): string | null {
+  if (!pipeline) return null
+  return modelSpecs.find((item) => item.pipeline === pipeline)?.spec.display_name ?? null
 }

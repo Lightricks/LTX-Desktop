@@ -56,7 +56,11 @@ export const generationParamsSchema = z.object({
   mode: z.enum(generationModeValues),
   prompt: z.string(),
   model: z.string(),
-  duration: z.number(),
+  // Local pipeline ids ("fast") are shared across LTX versions, so `model` alone can't say
+  // which version produced the asset. Captured at generation time from the backend spec's
+  // display name; absent on assets written before this existed.
+  modelLabel: z.string().optional(),
+  duration: z.number().nullable(),
   resolution: z.string(),
   fps: z.number(),
   audio: z.boolean(),

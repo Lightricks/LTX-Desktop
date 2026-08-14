@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { ApiClient, type ApiRequestBodyOf, type ApiSuccessOf } from '../lib/api-client'
 import { formatBytes } from '../lib/format'
 import { logger } from '../lib/logger'
 import { useHfAuth } from '../hooks/use-hf-auth'
+import { useHfModelAccess } from '../hooks/use-hf-model-access'
 import { useAppSettings } from '../contexts/AppSettingsContext'
+import { HfModelAccessGate } from './HfModelAccessGate'
 import './FirstRunSetup.css'
 
 interface LaunchGateProps {
@@ -52,13 +54,24 @@ const CP_INFO_BY_ROLE: Record<CheckpointDescriptor['role'], string> = {
   text_encoder:
     'Reads your text prompt so the model understands it. You can skip this large download by entering an LTX ' +
     'API key, which encodes prompts via the API instead.',
+  vae:
+    'Decodes the model\'s latent frames into video (and audio, when present). Required for LTX versions that ' +
+    'ship the transformer separately from their VAEs.',
   image: 'Generates still images from text prompts (used for image-to-video and image tools).',
   support: 'A supporting model used for guided generation (depth, edges, or pose control).',
 }
 
 // One line in the first-run "What will be downloaded" list: checkpoint name, an
-// info-tooltip icon, and the size (or a "skipped" note when an API key covers it).
-function DownloadItem({ item, skipped }: { item: CheckpointDescriptor; skipped: boolean }) {
+// info-tooltip icon, and the size. Items an API key covers get a checkbox instead of being
+// silently dropped, so the download stays available to anyone who wants to run offline.
+function DownloadItem({
+  item,
+  optIn,
+}: {
+  item: CheckpointDescriptor
+  optIn?: { checked: boolean; onToggle: () => void }
+}) {
+  const skipped = optIn !== undefined && !optIn.checked
   return (
     <div
       style={{
@@ -72,6 +85,14 @@ function DownloadItem({ item, skipped }: { item: CheckpointDescriptor; skipped: 
       }}
     >
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {optIn && (
+          <input
+            type="checkbox"
+            checked={optIn.checked}
+            onChange={optIn.onToggle}
+            style={{ cursor: 'pointer', accentColor: '#6D28D9' }}
+          />
+        )}
         <span style={{ textDecoration: skipped ? 'line-through' : 'none' }}>{item.name}</span>
         <span
           title={CP_INFO_BY_ROLE[item.role]}
@@ -94,8 +115,8 @@ function DownloadItem({ item, skipped }: { item: CheckpointDescriptor; skipped: 
           i
         </span>
       </span>
-      <span style={{ color: skipped ? '#666' : '#a0a0a0', flexShrink: 0, marginLeft: 12 }}>
-        {skipped ? 'Skipped (API key)' : formatBytes(item.size_bytes)}
+      <span style={{ color: skipped ? '#666' : item.downloaded ? '#22c55e' : '#a0a0a0', flexShrink: 0, marginLeft: 12 }}>
+        {item.downloaded ? 'Installed' : skipped ? 'Skipped (API key)' : formatBytes(item.size_bytes)}
       </span>
     </div>
   )
@@ -104,6 +125,7 @@ function DownloadItem({ item, skipped }: { item: CheckpointDescriptor; skipped: 
 function buildDownloadSteps(
   ltxRecommendation: LtxRecommendation,
   imgGenRecommendation: ImgGenRecommendation,
+  extraCpIds: readonly ModelCheckpointID[] = [],
 ): DownloadStepSpec[] {
   const cpIds: ModelCheckpointID[] = []
   if (ltxRecommendation.status === 'download') {
@@ -112,6 +134,7 @@ function buildDownloadSteps(
   if (imgGenRecommendation.cp_to_download) {
     cpIds.push(imgGenRecommendation.cp_to_download)
   }
+  cpIds.push(...extraCpIds)
   const unique = uniqueCpIds(cpIds)
   return unique.length > 0 ? [{ type: 'download', cpIds: unique }] : []
 }
@@ -131,26 +154,56 @@ export function LaunchGate({
   const [installMessage, setInstallMessage] = useState(INSTALL_MESSAGES[0])
   const [availableSpace, setAvailableSpace] = useState('...')
   const [downloadItems, setDownloadItems] = useState<CheckpointDescriptor[]>([])
+  const [optionalItems, setOptionalItems] = useState<CheckpointDescriptor[]>([])
+  const [optedInCpIds, setOptedInCpIds] = useState<ModelCheckpointID[]>([])
   const [videoPath, setVideoPath] = useState('/splash/splash.mp4')
   const [ltxApiKey, setLtxApiKey] = useState('')
+  const [hasSavedLtxApiKey, setHasSavedLtxApiKey] = useState(false)
   const [licenseAccepted, setLicenseAccepted] = useState(false)
   const [licenseText, setLicenseText] = useState<string | null>(null)
   const [licenseError, setLicenseError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [isActionPending, setIsActionPending] = useState(false)
   const { hfAuthStatus, hfAuthPolling, startHuggingFaceLogin } = useHfAuth(currentStep === 'location')
+  // A key typed here isn't saved yet, so the backend still lists the text encoder as required;
+  // move it to the opt-in list so the choice reads the same either way.
+  const keyEnteredNow = ltxApiKey.trim().length > 0
+  const requiredItems = useMemo(
+    () => downloadItems.filter((item) => !(item.role === 'text_encoder' && keyEnteredNow)),
+    [downloadItems, keyEnteredNow],
+  )
+  const allOptionalItems = useMemo(
+    () => [
+      ...(keyEnteredNow ? downloadItems.filter((item) => item.role === 'text_encoder') : []),
+      ...optionalItems,
+    ],
+    [downloadItems, keyEnteredNow, optionalItems],
+  )
+  const isOptedIn = (item: CheckpointDescriptor) => optedInCpIds.includes(item.cp_id as ModelCheckpointID)
+  const toggleOptIn = (item: CheckpointDescriptor) => {
+    const cpId = item.cp_id as ModelCheckpointID
+    setOptedInCpIds((ids) => (ids.includes(cpId) ? ids.filter((id) => id !== cpId) : [...ids, cpId]))
+  }
+  const pendingDownloadItems = useMemo(
+    () =>
+      [...requiredItems, ...allOptionalItems.filter((item) => optedInCpIds.includes(item.cp_id as ModelCheckpointID))]
+        .filter((item) => !item.downloaded),
+    [requiredItems, allOptionalItems, optedInCpIds],
+  )
+  const installCpIds = useMemo(
+    () => uniqueCpIds(pendingDownloadItems.map((item) => item.cp_id as ModelCheckpointID)),
+    [pendingDownloadItems],
+  )
+  const { accessMap, allAuthorized, checking: checkingAccess, checkError, recheckAccess } = useHfModelAccess(
+    currentStep === 'location' ? installCpIds : [],
+    hfAuthStatus,
+  )
   const { saveLtxApiKey } = useAppSettings()
   const downloadQueueRef = useRef<DownloadStepSpec[]>([])
   const runningDownloadProgress = downloadProgress?.status === 'downloading' ? downloadProgress : null
   const totalProgress = runningDownloadProgress?.total_progress ?? (downloadProgress?.status === 'complete' ? 100 : 0)
 
-  // The text encoder download is skipped when an API key is entered (the backend
-  // omits it once a key is saved); reflect that live in the preview + total.
-  const isItemSkipped = (item: CheckpointDescriptor): boolean =>
-    item.role === 'text_encoder' && ltxApiKey.trim().length > 0
-  const totalDownloadBytes = downloadItems
-    .filter((item) => !isItemSkipped(item))
-    .reduce((sum, item) => sum + item.size_bytes, 0)
+  const totalDownloadBytes = pendingDownloadItems.reduce((sum, item) => sum + item.size_bytes, 0)
 
   // Format time remaining
   const formatTimeRemaining = (seconds: number): string => {
@@ -203,21 +256,27 @@ export function LaunchGate({
     }
 
     setInstallPath(settingsResult.data.modelsDir ?? '')
+    setHasSavedLtxApiKey(Boolean(settingsResult.data.hasLtxApiKey))
 
     // Surface exactly what the install will download (base model, upscaler, text
     // encoder, image model) with per-checkpoint sizes and info. Same cp set the
     // installer actually downloads, so the preview can't drift from reality.
     const cpIds = buildDownloadSteps(ltxResult.data, imgGenResult.data).flatMap((step) => step.cpIds)
-    if (cpIds.length === 0) {
+    const optionalCpIds = ltxResult.data.status === 'download' ? ltxResult.data.optional_cp_ids : []
+    if (cpIds.length === 0 && optionalCpIds.length === 0) {
       setDownloadItems([])
+      setOptionalItems([])
       return
     }
-    const describeResult = await ApiClient.describeCheckpoints({ cp_ids: cpIds })
+    const describeResult = await ApiClient.describeCheckpoints({ cp_ids: [...cpIds, ...optionalCpIds] })
     if (!describeResult.ok) {
       logger.error(`Failed to describe checkpoints: ${describeResult.error.message}`)
       return
     }
-    setDownloadItems(describeResult.data.checkpoints)
+    const described = describeResult.data.checkpoints
+    const isOptional = (item: CheckpointDescriptor) => optionalCpIds.includes(item.cp_id)
+    setDownloadItems(described.filter((item) => !isOptional(item)))
+    setOptionalItems(described.filter(isOptional))
   }, [licenseOnly])
 
   const startDownloadStep = useCallback(async (step: DownloadStepSpec) => {
@@ -335,7 +394,13 @@ export function LaunchGate({
       const nextLtxRecommendation = ltxResult.data
       const nextImgGenRecommendation = imgGenResult.data
 
-      const downloadSteps = buildDownloadSteps(nextLtxRecommendation, nextImgGenRecommendation)
+      // Saving the key above drops the encoder from the recommendation, so an explicit opt-in
+      // has to be added back here rather than read off the fresh response.
+      const downloadSteps = buildDownloadSteps(
+        nextLtxRecommendation,
+        nextImgGenRecommendation,
+        optedInCpIds,
+      )
       if (downloadSteps.length === 0) {
         setCurrentStep('complete')
         return
@@ -409,8 +474,9 @@ export function LaunchGate({
   // Check if next button should be disabled
   const isNextDisabled = () => {
     if (currentStep === 'license') return !licenseAccepted || isActionPending
-    // HF sign-in is optional (base models are public) — don't block setup on it.
-    if (currentStep === 'location') return false
+    if (currentStep === 'location') {
+      return installCpIds.length > 0 && (!allAuthorized || checkingAccess)
+    }
     if (currentStep === 'complete') return isActionPending
     return false
   }
@@ -662,7 +728,7 @@ export function LaunchGate({
               </div>
 
               {/* What will be downloaded */}
-              {downloadItems.length > 0 && (
+              {(requiredItems.length > 0 || allOptionalItems.length > 0) && (
                 <div style={{
                   marginTop: 24,
                   background: '#2e3445',
@@ -676,10 +742,30 @@ export function LaunchGate({
                     </span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {downloadItems.map((item) => (
-                      <DownloadItem key={item.cp_id} item={item} skipped={isItemSkipped(item)} />
+                    {requiredItems.map((item) => (
+                      <DownloadItem key={item.cp_id} item={item} />
                     ))}
                   </div>
+
+                  {allOptionalItems.length > 0 && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #3a4157' }}>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>Optional</label>
+                      <p style={{ fontSize: 11, color: '#888', margin: '4px 0 4px' }}>
+                        {allOptionalItems.every((item) => item.role === 'text_encoder')
+                          ? "Your LTX API key covers this, so it isn't needed to generate. Download it to encode prompts on this computer instead — slower, but works offline and without a key."
+                          : "Not required for the current setup. Tick any you want to keep on this computer."}
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {allOptionalItems.map((item) => (
+                          <DownloadItem
+                            key={item.cp_id}
+                            item={item}
+                            optIn={{ checked: isOptedIn(item), onToggle: () => toggleOptIn(item) }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -699,7 +785,7 @@ export function LaunchGate({
                       marginLeft: 8,
                       fontWeight: 400
                     }}>
-                      Optional - Saves ~25 GB download
+                      Optional — makes the text encoder optional
                     </span>
                   </label>
                 </div>
@@ -707,7 +793,7 @@ export function LaunchGate({
                   type="password"
                   value={ltxApiKey}
                   onChange={(e) => setLtxApiKey(e.target.value)}
-                  placeholder="Enter API key to skip text encoder download..."
+                  placeholder="Enter API key to make the text encoder optional..."
                   style={{
                     width: '100%',
                     background: '#1a1a1a',
@@ -720,13 +806,13 @@ export function LaunchGate({
                   }}
                 />
                 <p style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
-                  {ltxApiKey ? (
+                  {ltxApiKey || hasSavedLtxApiKey ? (
                     <span style={{ color: '#6D28D9' }}>
-                      ✓ Text encoder download will be skipped (using API instead)
+                      ✓ Text encoder download is optional (using API instead). Tick it under Optional if you want it offline.
                     </span>
                   ) : (
-                    'If you have an LTX API key, entering it here skips the 25 GB text encoder download. ' +
-                    'The API provides faster text encoding (~1s vs 23s local).'
+                    'If you have an LTX API key, entering it here makes the text encoder optional. ' +
+                    'The API encodes prompts faster than running the local encoder.'
                   )}
                 </p>
               </div>
@@ -743,44 +829,60 @@ export function LaunchGate({
                     HuggingFace Account
                     <span style={{
                       fontSize: 11,
-                      color: hfAuthStatus === 'authenticated' ? '#22c55e' : '#888',
+                      color: hfAuthStatus === 'authenticated' ? '#22c55e' : (allAuthorized ? '#888' : '#f59e0b'),
                       marginLeft: 8,
                       fontWeight: 400
                     }}>
-                      {hfAuthStatus === 'authenticated' ? 'Signed in' : 'Optional'}
+                      {hfAuthStatus === 'authenticated'
+                        ? 'Signed in'
+                        : allAuthorized
+                          ? 'Optional'
+                          : 'Required'}
                     </span>
                   </label>
                 </div>
-                {hfAuthStatus === 'authenticated' ? (
-                  <p style={{ fontSize: 12, color: '#22c55e' }}>
-                    ✓ Authenticated — gated models will download with your account.
-                  </p>
-                ) : (
-                  <>
-                    <p style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
-                      Optional. The base models download without an account — sign in only to
-                      download gated models (some catalog LoRAs / IC-LoRAs require it). You can
-                      also do this later in Settings.
+                {allAuthorized ? (
+                  hfAuthStatus === 'authenticated' ? (
+                    <p style={{ fontSize: 12, color: '#22c55e' }}>
+                      ✓ Authenticated — gated models will download with your account.
                     </p>
-                    <button
-                      onClick={startHuggingFaceLogin}
-                      disabled={hfAuthPolling}
-                      style={{
-                        padding: '10px 28px',
-                        borderRadius: 9999,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        cursor: hfAuthPolling ? 'default' : 'pointer',
-                        background: hfAuthPolling ? '#333' : '#4f46e5',
-                        border: 'none',
-                        color: '#ffffff',
-                        transition: 'all 0.2s ease',
-                        opacity: hfAuthPolling ? 0.7 : 1
-                      }}
-                    >
-                      {hfAuthPolling ? 'Waiting for sign in...' : 'Sign in with HuggingFace'}
-                    </button>
-                  </>
+                  ) : (
+                    <>
+                      <p style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
+                        Optional for this install. Sign in if you later download gated models from Settings.
+                      </p>
+                      <button
+                        onClick={startHuggingFaceLogin}
+                        disabled={hfAuthPolling}
+                        style={{
+                          padding: '10px 28px',
+                          borderRadius: 9999,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          cursor: hfAuthPolling ? 'default' : 'pointer',
+                          background: hfAuthPolling ? '#333' : '#4f46e5',
+                          border: 'none',
+                          color: '#ffffff',
+                          transition: 'all 0.2s ease',
+                          opacity: hfAuthPolling ? 0.7 : 1
+                        }}
+                      >
+                        {hfAuthPolling ? 'Waiting for sign in...' : 'Sign in with HuggingFace'}
+                      </button>
+                    </>
+                  )
+                ) : (
+                  <HfModelAccessGate
+                    accessMap={accessMap}
+                    allAuthorized={allAuthorized}
+                    hfAuthStatus={hfAuthStatus}
+                    hfAuthPolling={hfAuthPolling}
+                    startHuggingFaceLogin={() => {
+                      void startHuggingFaceLogin()
+                    }}
+                    checkError={checkError}
+                    onRetryCheck={recheckAccess}
+                  />
                 )}
               </div>
 

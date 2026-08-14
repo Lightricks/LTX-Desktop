@@ -1,7 +1,7 @@
 // Resolution tier options for local retake/extend. Offers the source resolution plus
-// standard lower tiers (named by short edge: 1080p / 720p / 540p); the backend snaps the
-// chosen size to a valid (÷32, not-upscaled) resolution. Local only — the cloud preserves
-// source resolution.
+// standard lower tiers (named by short edge: 1080p / 720p / 540p). Grid sizes such as
+// 576/704/1088 map to the nearest named tier. The backend snaps the chosen size to a
+// valid (÷32, not-upscaled) resolution. Local only — the cloud preserves source resolution.
 
 export interface ResolutionOption {
   key: string
@@ -12,9 +12,18 @@ export interface ResolutionOption {
 }
 
 const STANDARD_TIERS = [1080, 720, 540]
-// A source whose short edge is within this of a tier is labelled as that tier (so a
-// 1088px source still reads "1080p"), and that tier is dropped from the lower list.
-const MATCH_TOLERANCE = 0.03
+const NAMED_TIERS = [2160, 1440, 1080, 720, 540] as const
+
+/** Map a pixel short-edge (incl. /64 grid sizes like 576, 704, 1088) to the picker tier name. */
+export function namedResolutionTier(shortEdge: number): (typeof NAMED_TIERS)[number] {
+  return NAMED_TIERS.reduce((best, tier) =>
+    Math.abs(tier - shortEdge) < Math.abs(best - shortEdge) ? tier : best,
+  )
+}
+
+export function namedResolutionDisplayName(tier: number): string {
+  return tier >= 2160 ? '4K' : `${tier}p`
+}
 
 export function resolutionOptions(width: number, height: number): ResolutionOption[] {
   if (!width || !height) return []
@@ -22,9 +31,7 @@ export function resolutionOptions(width: number, height: number): ResolutionOpti
   const longEdge = Math.max(width, height)
   const portrait = height > width
 
-  // Name "Original" by the standard tier it matches (within tolerance), else its own height.
-  const matchedTier = STANDARD_TIERS.find((t) => Math.abs(t - shortEdge) <= shortEdge * MATCH_TOLERANCE)
-  const originalTier = matchedTier ?? shortEdge
+  const originalTier = namedResolutionTier(shortEdge)
 
   const options: ResolutionOption[] = [
     { key: 'original', label: `${originalTier}p (Original)`, width: null, height: null },

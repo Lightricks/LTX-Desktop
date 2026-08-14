@@ -5,6 +5,7 @@ import {
   resolveVideoGenerationOptions,
   sanitizeVideoGenerationSettings,
   type VideoGenerationModelSpecItem,
+  type VideoGenerationPipeline,
 } from '../lib/video-generation-model-specs'
 
 export type GenerationMode = 'text-to-video' | 'image-to-video' | 'text-to-image'
@@ -20,8 +21,8 @@ export interface LoraSelection {
 }
 
 export interface GenerationSettings {
-  model: 'fast' | 'pro'
-  duration: number
+  model: VideoGenerationPipeline
+  duration: number | null
   videoResolution: string
   fps: number
   audio: boolean
@@ -84,7 +85,7 @@ export function SettingsPanel({
     }
   }, [hasAudio, hideDuration, isImageMode, minimumDuration, onSettingsChange, settings, videoModelSpecs])
 
-  const handleChange = (key: keyof GenerationSettings, value: string | number | boolean) => {
+  const handleChange = (key: keyof GenerationSettings, value: string | number | boolean | null) => {
     if (isImageMode) {
       onSettingsChange({ ...settings, [key]: value } as GenerationSettings)
       return
@@ -171,10 +172,17 @@ export function SettingsPanel({
         {!hideDuration && (
           <Select
             label="Duration"
-            value={resolvedVideoOptions.selectedDuration ?? settings.duration}
-            onChange={(e) => handleChange('duration', parseInt(e.target.value))}
+            value={
+              resolvedVideoOptions.autoDurationAvailable && resolvedVideoOptions.selectedDuration === null
+                ? 'auto'
+                : String(resolvedVideoOptions.selectedDuration ?? settings.duration)
+            }
+            onChange={(e) => handleChange('duration', e.target.value === 'auto' ? null : parseInt(e.target.value))}
             disabled={disabled}
           >
+            {resolvedVideoOptions.autoDurationAvailable && (
+              <option value="auto">Auto</option>
+            )}
             {resolvedVideoOptions.durationOptions.map((duration) => (
               <option key={duration} value={duration}>
                 {duration} sec

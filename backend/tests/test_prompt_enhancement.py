@@ -10,8 +10,16 @@ from api_types import (
     PromptTemplatePlaceholder,
     PromptTemplateSpec,
 )
+from runtime_config.model_download_specs import resolve_model_path
 from tests.fakes import FakeResponse
 from tests.http_error_assertions import assert_http_error
+
+
+# 2.3's gemma3 encoder doubles as the local enhancer, so its plain bundle is enough to make the
+# local provider usable (2.5 needs an extra opt-in download — see
+# LTXLocalModelSpec.prompt_enhancer_cp). Everything below tests plumbing that's independent of
+# the model generation, so pin it to that.
+_LOCAL_ENHANCER_MODEL_ID = "ltx-2.3-22b-distilled-1.1"
 
 
 def _gemini_ok(text: str = "enhanced via gemini") -> FakeResponse:
@@ -57,7 +65,7 @@ def _add_ic_lora(fake_services, **overrides: object) -> IcLoraCatalogItem:
 
 class TestNoSelection:
     def test_generic_fallback_uses_no_system_prompt(self, client, fake_services, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         r = client.post("/api/enhance-prompt", json={"prompt": "a cat"})
         assert r.status_code == 200
         assert r.json()["enhancedPrompt"] == fake_services.prompt_enhancer_pipeline.enhanced_prompt
@@ -68,7 +76,7 @@ class TestNoSelection:
     def test_image_path_routes_to_enhance_i2v(
         self, client, fake_services, create_fake_model_files, make_test_image, tmp_path
     ):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         image_path = tmp_path / "cat.png"
         image_path.write_bytes(make_test_image().getvalue())
 
@@ -79,7 +87,7 @@ class TestNoSelection:
         assert len(fake_services.prompt_enhancer_pipeline.enhance_t2v_calls) == 0
 
     def test_invalid_image_path_rejected(self, client, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "imagePath": "/tmp/does-not-exist.png"})
         assert r.status_code == 400
 
@@ -87,7 +95,7 @@ class TestNoSelection:
         # Regression: enhance used StateHandlerBase._resolve_seed(), which returns a fixed
         # constant (1000) whenever dev mode is on — every call, including a "redo", would then
         # produce the exact same output. Two consecutive calls must not collapse to that.
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         test_state.config.dev_mode = True
         client.post("/api/enhance-prompt", json={"prompt": "a cat"})
         client.post("/api/enhance-prompt", json={"prompt": "a cat"})
@@ -99,7 +107,7 @@ class TestNoSelection:
 
 class TestLoraSelection:
     def test_single_lora_system_prompt_and_trigger_enforced(self, client, fake_services, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         _add_lora(
             fake_services, id="cozy-felt", name="Cozy Felt", trigger="F3ltCut0u7", trigger_placement="anywhere",
             instructions=[InstructionSection(kind="summary", title="What it does", body="Felt look.")],
@@ -115,7 +123,7 @@ class TestLoraSelection:
         assert "Felt look." in call["system_prompt"]
 
     def test_multi_lora_prompt_includes_both(self, client, fake_services, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         _add_lora(fake_services, id="a", name="Alpha")
         _add_lora(fake_services, id="b", name="Beta")
 
@@ -125,7 +133,7 @@ class TestLoraSelection:
         assert "Alpha" in call["system_prompt"] and "Beta" in call["system_prompt"]
 
     def test_unknown_lora_id_rejected(self, client, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         r = client.post("/api/enhance-prompt", json={"prompt": "x", "loraCatalogIds": ["does-not-exist"]})
         assert_http_error(r, status_code=404, code="LORA_CATALOG_ID_NOT_FOUND")
 
@@ -134,7 +142,7 @@ class TestIcLoraSelection:
     def test_ic_lora_without_template_free_rewrite_and_trigger_enforced(
         self, client, fake_services, create_fake_model_files
     ):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         _add_ic_lora(
             fake_services, id="day-to-night", name="Day to Night",
             instructions=[InstructionSection(kind="summary", title="What it does", body="Relights to night.")],
@@ -145,12 +153,12 @@ class TestIcLoraSelection:
         assert "Day to Night" in call["system_prompt"]
 
     def test_unknown_ic_lora_id_rejected(self, client, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         r = client.post("/api/enhance-prompt", json={"prompt": "x", "icLoraId": "does-not-exist"})
         assert_http_error(r, status_code=404, code="LORA_CATALOG_ID_NOT_FOUND")
 
     def test_free_text_template_fill_stitches_deterministically(self, client, fake_services, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         _add_ic_lora(
             fake_services, id="colorization", name="Colorization",
             prompt_template=PromptTemplateSpec(
@@ -167,7 +175,7 @@ class TestIcLoraSelection:
         assert r.json()["enhancedPrompt"] == "Reference shows a grey rabbit. COLORIZE a brown rabbit."
 
     def test_enum_template_fill_stitches_deterministically(self, client, fake_services, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         _add_ic_lora(
             fake_services, id="crossview-prompt", name="CrossView",
             prompt_template=PromptTemplateSpec(
@@ -188,7 +196,7 @@ class TestIcLoraSelection:
         assert r.json()["enhancedPrompt"] == "crossview. new camera angle: to the right, lower, closer."
 
     def test_template_fill_rejects_invalid_enum_choice(self, client, fake_services, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         _add_ic_lora(
             fake_services, id="crossview-prompt", name="CrossView",
             prompt_template=PromptTemplateSpec(
@@ -202,7 +210,7 @@ class TestIcLoraSelection:
         assert r.status_code == 500
 
     def test_template_fill_rejects_non_json_response(self, client, fake_services, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         _add_ic_lora(
             fake_services, id="upscale", name="Upscale",
             prompt_template=PromptTemplateSpec(template="upscale", placeholders={}),
@@ -216,7 +224,7 @@ class TestIcLoraSelection:
 class TestConditioningType:
     # canny/depth: the built-in "bring your own IC-LoRA" conditioning modes, no catalog entry.
     def test_depth_uses_dedicated_system_prompt(self, client, fake_services, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         r = client.post(
             "/api/enhance-prompt",
             json={"prompt": "a fox riding a skateboard", "conditioningType": "depth"},
@@ -228,7 +236,7 @@ class TestConditioningType:
         assert "faithfully" in call["system_prompt"].lower()
 
     def test_canny_uses_dedicated_system_prompt(self, client, fake_services, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         r = client.post(
             "/api/enhance-prompt",
             json={"prompt": "a fox riding a skateboard", "conditioningType": "canny"},
@@ -241,7 +249,7 @@ class TestConditioningType:
 
 class TestRequestValidation:
     def test_lora_ids_and_ic_lora_id_mutually_exclusive(self, client, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         r = client.post(
             "/api/enhance-prompt",
             json={"prompt": "x", "loraCatalogIds": ["a"], "icLoraId": "b"},
@@ -249,12 +257,113 @@ class TestRequestValidation:
         assert r.status_code == 422
 
     def test_conditioning_type_and_ic_lora_id_mutually_exclusive(self, client, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         r = client.post(
             "/api/enhance-prompt",
             json={"prompt": "x", "conditioningType": "depth", "icLoraId": "b"},
         )
         assert r.status_code == 422
+
+
+class TestAudioVisualModels:
+    def test_generic_fallback_uses_the_audio_visual_caption_prompt(
+        self, client, test_state, create_fake_model_files
+    ):
+        # 2.5 was captioned as audio-visual: without its own caption instructions the enhancer
+        # writes a visual-only prompt, the soundscape is left unspecified, and the model fills it
+        # in — usually by having someone speak the prompt.
+        create_fake_model_files()
+        test_state.state.app_settings.gemini_api_key = "gemini-key"
+        test_state.http.queue("post", _gemini_ok())
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a puffin running", "provider": "api"})
+        assert r.status_code == 200
+        system_instruction = test_state.http.calls[-1].json_payload["systemInstruction"]["parts"][0]["text"]
+        assert "dialogue" in system_instruction.lower()
+        assert "soundscape" in system_instruction.lower()
+
+    def test_2_3_keeps_the_provider_default(self, client, fake_services, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat"})
+        assert r.status_code == 200
+        assert fake_services.prompt_enhancer_pipeline.enhance_t2v_calls[0]["system_prompt"] is None
+
+    def test_local_provider_rejected_without_the_separate_enhancer(self, client, create_fake_model_files):
+        # 2.5's downloaded text encoder is encode-only, so a full generation bundle is not on its
+        # own enough to enhance locally.
+        create_fake_model_files()
+        assert_http_error(
+            client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "local"}),
+            status_code=409,
+            code="LOCAL_TEXT_ENCODER_NOT_AVAILABLE",
+        )
+
+    def test_local_provider_runs_on_the_downloaded_enhancer(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files(include_prompt_enhancer=True)
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "local"})
+        assert r.status_code == 200
+        # The enhancer root, not the encoder that generation uses.
+        assert fake_services.prompt_enhancer_pipeline.created_with[-1]["gemma_root"] == str(
+            resolve_model_path(test_state.config.default_models_dir, "gemma-4-e2b-it")
+        )
+
+    def test_recommendation_tracks_the_enhancer_download(self, client, create_fake_model_files):
+        create_fake_model_files()
+        before = client.get("/api/models/text-encoder-recommendation").json()
+        assert before["local_enhancement_supported"] is False
+        assert before["local_enhancer_cp"] == "gemma-4-e2b-it"
+        assert before["active_local_enhancer_cp"] is None
+        assert before["local_enhancer_expected_size_gb"] == 9.6
+
+        create_fake_model_files(include_prompt_enhancer=True)
+        after = client.get("/api/models/text-encoder-recommendation").json()
+        assert after["local_enhancement_supported"] is True
+        assert after["active_local_enhancer_cp"] == "gemma-4-e2b-it"
+
+    def test_2_3_needs_no_separate_enhancer(self, client, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        payload = client.get("/api/models/text-encoder-recommendation").json()
+        assert payload["local_enhancer_cp"] is None
+        assert payload["local_enhancement_supported"] is True
+        assert payload["active_local_enhancer_cp"] == "gemma-3-12b-it-qat-q4_0-unquantized"
+
+
+    def test_2_5_falls_back_to_gemma3_without_e2b(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.5-22b-distilled"
+
+        rec = client.get("/api/models/text-encoder-recommendation").json()
+        assert rec["local_enhancement_supported"] is True
+        assert rec["local_enhancer_cp"] == "gemma-4-e2b-it"
+        assert rec["active_local_enhancer_cp"] == "gemma-3-12b-it-qat-q4_0-unquantized"
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "local"})
+        assert r.status_code == 200
+        assert fake_services.prompt_enhancer_pipeline.created_with[-1]["gemma_root"] == str(
+            resolve_model_path(test_state.config.default_models_dir, "gemma-3-12b-it-qat-q4_0-unquantized")
+        )
+
+    def test_2_5_prefers_e2b_when_gemma3_is_also_present(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files(include_prompt_enhancer=True)
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.5-22b-distilled"
+
+        rec = client.get("/api/models/text-encoder-recommendation").json()
+        assert rec["active_local_enhancer_cp"] == "gemma-4-e2b-it"
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "local"})
+        assert r.status_code == 200
+        assert fake_services.prompt_enhancer_pipeline.created_with[-1]["gemma_root"] == str(
+            resolve_model_path(test_state.config.default_models_dir, "gemma-4-e2b-it")
+        )
 
 
 class TestGating:
@@ -267,7 +376,9 @@ class TestGating:
         # API key and the checkpoint downloaded (the tiebreaker defaults to API) could previously
         # never use "Local" Enhance, even though the frontend's own checkpoint-presence check
         # offered it.
-        create_fake_model_files()
+        # 2.3, since the tiebreaker only exists for versions the LTX API can encode.
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
         test_state.state.app_settings.ltx_api_key = "ltx-key"
         assert test_state.text.should_use_local_encoding() is False  # tiebreaker picks API
 
@@ -280,7 +391,7 @@ class TestGating:
         assert_http_error(r, status_code=409, code="LOCAL_TEXT_ENCODER_NOT_AVAILABLE")
 
     def test_rejected_while_generation_running(self, client, test_state, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         test_state.pipelines.load_gpu_pipeline("fast")
         test_state.generation.start_generation("gen-1")
 
@@ -288,7 +399,7 @@ class TestGating:
         assert r.status_code == 409
 
     def test_enhance_failure_returns_500(self, client, fake_services, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         fake_services.prompt_enhancer_pipeline.raise_on_enhance = RuntimeError("boom")
         r = client.post("/api/enhance-prompt", json={"prompt": "x"})
         assert r.status_code == 500
@@ -297,14 +408,14 @@ class TestGating:
         # Regression: enhance() must participate in the same generation-mutex bookkeeping every
         # other handler uses, so an orphaned enhance can't race a Generate click — and must
         # release it again on success so a later call isn't blocked forever.
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         assert test_state.generation.is_generation_running() is False
         r = client.post("/api/enhance-prompt", json={"prompt": "x"})
         assert r.status_code == 200
         assert test_state.generation.is_generation_running() is False
 
     def test_enhance_frees_the_slot_after_failure(self, client, fake_services, test_state, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         fake_services.prompt_enhancer_pipeline.raise_on_enhance = RuntimeError("boom")
         client.post("/api/enhance-prompt", json={"prompt": "x"})
         assert test_state.generation.is_generation_running() is False
@@ -315,7 +426,7 @@ class TestGating:
 
 
 class TestApiProvider:
-    # provider="api" never touches the local Gemma pipeline — no create_fake_model_files() call
+    # provider="api" never touches the local Gemma pipeline — no create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID) call
     # anywhere in this class, proving the local-checkpoint requirement is fully bypassed.
     def test_free_rewrite_calls_gemini_without_local_gemma(self, client, test_state):
         test_state.state.app_settings.gemini_api_key = "key"
@@ -452,7 +563,7 @@ class TestImageMediaType:
     def test_generation_uses_image_generation_system_prompt(
         self, client, fake_services, create_fake_model_files
     ):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         r = client.post("/api/enhance-prompt", json={"prompt": "a red car", "mediaType": "image"})
         assert r.status_code == 200
         call = fake_services.prompt_enhancer_pipeline.enhance_t2v_calls[0]
@@ -462,7 +573,7 @@ class TestImageMediaType:
     def test_editing_uses_image_edit_system_prompt_and_routes_to_i2v(
         self, client, fake_services, create_fake_model_files, make_test_image, tmp_path
     ):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         image_path = tmp_path / "src.png"
         image_path.write_bytes(make_test_image().getvalue())
 
@@ -477,7 +588,7 @@ class TestImageMediaType:
         assert "DESIRED RESULT" in call["system_prompt"]
 
     def test_image_media_type_rejects_lora_selection(self, client, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
         r = client.post(
             "/api/enhance-prompt",
             json={"prompt": "x", "mediaType": "image", "loraCatalogIds": ["a"]},

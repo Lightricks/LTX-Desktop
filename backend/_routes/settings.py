@@ -42,4 +42,7 @@ def route_post_settings(
         ", ".join(sorted(changed_roots)) if changed_roots else "none",
     )
 
+    if "use_conv_vae" in changed_roots:
+        handler.pipelines.unload_gpu_pipeline()
+
     return StatusResponse(status="ok")

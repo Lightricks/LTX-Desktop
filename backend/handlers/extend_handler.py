@@ -17,11 +17,13 @@ from api_types import (
     ExtendRequest,
     ExtendResponse,
     RetakeCancelledResponse,
+    RetakeExtendModel,
     RetakePayloadResponse,
     RetakeVideoResponse,
     TargetResolution,
 )
 from _routes._errors import HTTPError
+from api_model_specs import FORCED_API_MODEL_MAP
 from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
@@ -33,6 +35,8 @@ from handlers.video_resolution import (
     resolve_target_resolution,
     validate_source_video_path,
 )
+from runtime_config.ltx_capabilities import local_caps, supports
+from runtime_config.model_download_specs import resolve_active_ltx_model_id
 from runtime_config.runtime_config import RuntimeConfig
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError
 from services.interfaces import LTXAPIClient
@@ -80,7 +84,21 @@ class ExtendHandler(StateHandlerBase):
         ):
             # The cloud preserves source resolution (no resolution param); resolution
             # selection is local-only.
-            return self._run_api_extend(video_file=video_file, duration=duration, prompt=prompt, mode=mode)
+            return self._run_api_extend(
+                video_file=video_file, duration=duration, prompt=prompt, mode=mode, model=req.model,
+            )
+
+        model_id = resolve_active_ltx_model_id(
+            self.models_dir, self.state.app_settings.active_ltx_model_id
+        )
+        if model_id is None:
+            raise HTTPError(409, "NO_DOWNLOADED_LTX_MODEL")
+        if not supports(local_caps(model_id), "extend"):
+            raise HTTPError(
+                409,
+                "Extend is not supported for the active LTX model.",
+                code="UNSUPPORTED_EXTEND",
+            )
 
         return self._run_local_extend(
             video_file=video_file, duration=duration, prompt=prompt, mode=mode, resolution=req.resolution
@@ -93,6 +111,7 @@ class ExtendHandler(StateHandlerBase):
         duration: float,
         prompt: str,
         mode: ExtendMode,
+        model: RetakeExtendModel,
     ) -> ExtendResponse:
         api_key = self.state.app_settings.ltx_api_key
         if not api_key:
@@ -117,6 +136,7 @@ class ExtendHandler(StateHandlerBase):
                     duration=duration,
                     prompt=prompt,
                     mode=mode,
+                    model=FORCED_API_MODEL_MAP[model],
                 )
 
                 if result.video_bytes is not None:

@@ -14,7 +14,7 @@ interface UseHfAuthResult {
 const NOOP = async () => {}
 
 export function useHfAuth(enabled: boolean): UseHfAuthResult {
-  // HF sign-in is useful for gated catalog LoRA/IC-LoRA downloads; catalogs are always on.
+  // Used for gated downloads (LTX 2.5 base models, catalog LoRAs / IC-LoRAs).
   const [hfAuthStatus, setHfAuthStatus] = useState<HfAuthStatus>('not_authenticated')
   const [hfAuthPolling, setHfAuthPolling] = useState(false)
 

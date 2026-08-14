@@ -166,7 +166,7 @@ if [ "$PBS_OS" = "unknown-linux-gnu" ]; then
 fi
 # On macOS, no --extra-index-url needed: standard PyPI torch includes MPS support
 "$PYTHON_EXE" -m pip install -r "$REQUIREMENTS_FILE" \
-    --no-warn-script-location --quiet "${PIP_EXTRA_ARGS[@]+"${PIP_EXTRA_ARGS[@]}"}"
+    --no-warn-script-location --no-cache-dir --quiet "${PIP_EXTRA_ARGS[@]+"${PIP_EXTRA_ARGS[@]}"}"
 
 echo "  All dependencies installed"
 

@@ -6,8 +6,9 @@ import type { RecoveryGenType, RecoveryImporter } from './generation-recovery'
 // Mirrors GenSpace's own live-generation completion effect (see the `videoPath` effect in
 // GenSpace.tsx) but operates on the recovery marker's captured context instead of live component
 // state, so it can run in the background while that project's GenSpace isn't mounted. ic-lora/
-// retake/extend all write a marker with no `settings` (see GenerationRecoveryContext) and recover
-// as a standalone video asset here too, same as GenSpace's own mount-recovery effect does.
+// retake/extend write a marker with no full `settings` (see GenerationRecoveryContext) and
+// recover as a standalone video asset here too; retake/extend additionally set `ctx.model` so
+// the pipeline label isn't forced to 'fast'.
 const importVideo: RecoveryImporter = async (ctx, result, { addAsset, modelsDir }) => {
   const videoPath = typeof result === 'string' ? result : result[0]
   if (!videoPath) return
@@ -29,12 +30,12 @@ const importVideo: RecoveryImporter = async (ctx, result, { addAsset, modelsDir 
     height: copied.height,
     prompt: ctx.prompt,
     resolution: s?.videoResolution ?? '',
-    duration: s?.duration,
+    duration: s?.duration ?? undefined,
     generationParams: {
       mode: genMode,
       prompt: ctx.prompt,
-      model: s?.model ?? 'fast',
-      duration: s?.duration ?? 0,
+      model: ctx.model ?? s?.model ?? 'fast',
+      duration: s?.duration ?? null,
       resolution: s?.videoResolution ?? '',
       fps: s?.fps ?? 24,
       audio: s?.audio ?? false,

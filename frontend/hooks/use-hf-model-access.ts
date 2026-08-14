@@ -11,21 +11,23 @@ interface UseHfModelAccessResult {
   accessMap: ModelAccessMap
   allAuthorized: boolean
   checking: boolean
+  /** Set when the access check itself failed — distinct from "not authorized". */
+  checkError: string | null
   recheckAccess: () => void
 }
 
-const NOOP = () => {}
-
 export function useHfModelAccess(modelTypes: readonly ModelCheckpointID[], hfAuthStatus: HfAuthStatus): UseHfModelAccessResult {
-  // Bundled checkpoints are public — when signed out there's nothing to verify (treated as
-  // authorized below). The per-repo access check only runs when signed in, covering any future
-  // gated checkpoint without forcing sign-in.
   const [accessMap, setAccessMap] = useState<ModelAccessMap>({})
   const [checking, setChecking] = useState(false)
   const [polling, setPolling] = useState(false)
+  const [checkError, setCheckError] = useState<string | null>(null)
 
-  const allAuthorized = modelTypes.length > 0
-    && modelTypes.every((modelType) => accessMap[modelType] === 'authorized')
+  // Nothing to authorize, or every returned repo is authorized. Empty map with pending
+  // checkpoints is NOT authorized — that covers both "still checking" and a failed check
+  // (which leaves the map empty and sets checkError for the gate to show).
+  const allAuthorized = modelTypes.length === 0
+    || (Object.keys(accessMap).length > 0
+      && Object.values(accessMap).every((status) => status === 'authorized'))
 
   const doCheck = useCallback(async () => {
     if (modelTypes.length === 0) return
@@ -33,21 +35,25 @@ export function useHfModelAccess(modelTypes: readonly ModelCheckpointID[], hfAut
     const result = await ApiClient.checkModelAccess({ cp_ids: [...modelTypes] })
     if (!result.ok) {
       logger.error(`Model access check failed: ${result.error.message}`)
+      setAccessMap({})
+      setCheckError(result.error.message)
       setChecking(false)
       return
     }
 
     const { access } = result.data
     setAccessMap(access)
+    setCheckError(null)
     const allOk = Object.values(access).every((s) => s === 'authorized')
     if (allOk) setPolling(false)
     setChecking(false)
   }, [modelTypes])
 
-  // Initial check when authenticated
+  // Signed out still needs a check: gated repos (LTX 2.5) can't be downloaded without a token.
   useEffect(() => {
-    if (hfAuthStatus !== 'authenticated' || modelTypes.length === 0) {
+    if (modelTypes.length === 0) {
       setAccessMap((current) => (Object.keys(current).length === 0 ? current : {}))
+      setCheckError(null)
       setPolling(false)
       return
     }
@@ -66,10 +72,5 @@ export function useHfModelAccess(modelTypes: readonly ModelCheckpointID[], hfAut
     void doCheck()
   }, [doCheck])
 
-  // Signed out: bundled checkpoints are public, so nothing gates the download.
-  if (hfAuthStatus !== 'authenticated') {
-    return { accessMap: {}, allAuthorized: true, checking: false, recheckAccess: NOOP }
-  }
-
-  return { accessMap, allAuthorized, checking, recheckAccess }
+  return { accessMap, allAuthorized, checking, checkError, recheckAccess }
 }

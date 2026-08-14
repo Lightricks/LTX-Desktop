@@ -346,6 +346,7 @@ def test_retake_returns_direct_video_bytes(tmp_path) -> None:
         duration=3.0,
         prompt="make it dramatic",
         mode="replace_audio_and_video",
+        model="ltx-2-3-pro",
     )
 
     assert result.video_bytes == b"retake-bytes"
@@ -388,6 +389,7 @@ def test_retake_json_video_url_downloads_bytes(tmp_path) -> None:
         duration=4.0,
         prompt="test",
         mode="replace_video",
+        model="ltx-2-3-pro",
     )
 
     assert result.video_bytes == b"downloaded-retake"
@@ -424,6 +426,7 @@ def test_retake_json_without_video_url_returns_payload(tmp_path) -> None:
         duration=2.5,
         prompt="test",
         mode="replace_audio_and_video",
+        model="ltx-2-3-pro",
     )
 
     assert result.video_bytes is None
@@ -457,6 +460,7 @@ def test_retake_422_maps_to_safety_filter_error(tmp_path) -> None:
             duration=3.0,
             prompt="test",
             mode="replace_audio_and_video",
+            model="ltx-2-3-pro",
         )
     assert exc.value.status_code == 422
 
@@ -486,6 +490,7 @@ def test_extend_async_submits_polls_and_downloads(tmp_path) -> None:
         duration=12.0,
         prompt="continue the motion",
         mode="end",
+        model="ltx-2-3-pro",
     )
 
     assert result.video_bytes == b"extended-bytes"
@@ -518,7 +523,7 @@ def test_extend_async_retries_transient_poll_blip(tmp_path) -> None:
     http.queue("get", FakeResponse(status_code=200, content=b"extended-bytes"))
 
     client = _async_client(http)
-    result = client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end")
+    result = client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
     assert result.video_bytes == b"extended-bytes"
 
 
@@ -533,7 +538,7 @@ def test_extend_async_unknown_terminal_status_surfaces(tmp_path) -> None:
 
     client = _async_client(http)
     with pytest.raises(LTXAPIClientError, match="rejected") as exc:
-        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end")
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
     assert exc.value.status_code == 500
 
 
@@ -552,7 +557,7 @@ def test_extend_async_job_failed_raises(tmp_path) -> None:
 
     client = _async_client(http)
     with pytest.raises(LTXAPIClientError, match="model exploded"):
-        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end")
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
 
 
 def test_extend_async_422_maps_to_safety_filter(tmp_path) -> None:
@@ -563,7 +568,7 @@ def test_extend_async_422_maps_to_safety_filter(tmp_path) -> None:
 
     client = _async_client(http)
     with pytest.raises(LTXAPIClientError, match="Content rejected by safety filters") as exc:
-        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end")
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
     assert exc.value.status_code == 422
 
 
@@ -576,7 +581,7 @@ def test_extend_async_connection_reset_maps_to_504(tmp_path) -> None:
 
     client = _async_client(http)
     with pytest.raises(LTXAPIClientError, match="please retry") as exc:
-        client.extend(api_key="k", video_path=input_path, duration=12.0, prompt="", mode="end")
+        client.extend(api_key="k", video_path=input_path, duration=12.0, prompt="", mode="end", model="ltx-2-3-pro")
     assert exc.value.status_code == 504
 
 
@@ -589,7 +594,7 @@ def test_extend_async_completed_without_url_raises(tmp_path) -> None:
 
     client = _async_client(http)
     with pytest.raises(LTXAPIClientError, match="without a video_url"):
-        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end")
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
 
 
 def test_retake_upload_init_failure_maps_message() -> None:
@@ -605,5 +610,6 @@ def test_retake_upload_init_failure_maps_message() -> None:
             duration=3.0,
             prompt="test",
             mode="replace_audio_and_video",
+            model="ltx-2-3-pro",
         )
     assert exc.value.status_code == 401

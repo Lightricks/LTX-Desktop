@@ -135,6 +135,7 @@ Write-Host "`nStep 6: Installing dependencies from requirements.txt..." -Foregro
 $UvAvailable = Get-Command uv -ErrorAction SilentlyContinue
 if ($UvAvailable) {
     & uv pip install -r $RequirementsFile `
+        --project $BackendDir `
         --extra-index-url $PyTorchIndex `
         --index-strategy unsafe-best-match `
         --python $PythonExe

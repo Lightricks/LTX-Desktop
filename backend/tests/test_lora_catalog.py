@@ -29,6 +29,31 @@ def test_parse_valid_catalog():
     assert r.default_settings.skip_stage_2 is True
     assert r.controls[0].id == "duration"
     assert r.controls[0].options == [5, 8]
+    assert r.supported_models == ["LTX-2.3", "LTX-2.5"]
+    assert r.supports_family("LTX-2.3") is True
+    assert r.supports_family("LTX-2.5") is True
+
+
+def test_supported_models_rejects_empty_and_duplicates():
+    empty = _VALID.replace(
+        '"requires_hf_login": true,',
+        '"requires_hf_login": true, "supported_models": [],',
+    )
+    with pytest.raises(ValidationError, match="supported_models"):
+        parse_lora_catalog(empty)
+    dup = _VALID.replace(
+        '"requires_hf_login": true,',
+        '"requires_hf_login": true, "supported_models": ["LTX-2.3", "LTX-2.3"],',
+    )
+    with pytest.raises(ValidationError, match="supported_models"):
+        parse_lora_catalog(dup)
+
+
+def test_shipped_catalog_allows_2_3_and_2_5():
+    catalog = Path(__file__).parent.parent / "runtime_config" / "lora_catalog.json"
+    cat = parse_lora_catalog(catalog.read_text(encoding="utf-8"))
+    for item in [*cat.loras, *cat.ic_loras]:
+        assert item.supported_models == ["LTX-2.3", "LTX-2.5"], item.id
 
 def test_controls_default_to_empty():
     no_controls = _VALID.replace(

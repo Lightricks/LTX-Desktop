@@ -171,12 +171,27 @@ class AppHandler:
 
         self.generation = GenerationHandler(state=self.state, lock=self._lock, config=config)
 
+        # Before video generation: local text encoding has no server-side rewrite step, so the
+        # generation path runs this enhancer itself.
+        self.prompt_enhancement = PromptEnhancementHandler(
+            state=self.state,
+            lock=self._lock,
+            generation_handler=self.generation,
+            pipelines_handler=self.pipelines,
+            text_handler=self.text,
+            lora_catalog_provider=lora_catalog_provider,
+            prompt_enhancer_pipeline_class=prompt_enhancer_pipeline_class,
+            gemini_pipeline=GeminiPromptEnhancerPipeline(http),
+            config=config,
+        )
+
         self.video_generation = VideoGenerationHandler(
             state=self.state,
             lock=self._lock,
             generation_handler=self.generation,
             pipelines_handler=self.pipelines,
             text_handler=self.text,
+            prompt_enhancement_handler=self.prompt_enhancement,
             ltx_api_client=ltx_api_client,
             config=config,
         )
@@ -235,18 +250,6 @@ class AppHandler:
             text_handler=self.text,
             video_processor=video_processor,
             lora_catalog=lora_catalog_provider,
-            config=config,
-        )
-
-        self.prompt_enhancement = PromptEnhancementHandler(
-            state=self.state,
-            lock=self._lock,
-            generation_handler=self.generation,
-            pipelines_handler=self.pipelines,
-            text_handler=self.text,
-            lora_catalog_provider=lora_catalog_provider,
-            prompt_enhancer_pipeline_class=prompt_enhancer_pipeline_class,
-            gemini_pipeline=GeminiPromptEnhancerPipeline(http),
             config=config,
         )
 

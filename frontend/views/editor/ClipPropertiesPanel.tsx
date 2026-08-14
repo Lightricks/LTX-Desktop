@@ -10,6 +10,7 @@ import {
 import type { Asset, TimelineClip, LetterboxSettings, TextOverlayStyle, TransitionType } from '../../types/project-model' // EFFECTS HIDDEN: removed EffectMask
 import { DEFAULT_COLOR_CORRECTION, DEFAULT_LETTERBOX } from '../../types/project-model' // EFFECTS HIDDEN: removed EFFECT_DEFINITIONS, DEFAULT_EFFECT_MASK
 import { TEXT_PRESETS } from '../../types/project'
+import { namedResolutionTier } from '../../lib/video-resolution'
 import { formatTime } from './video-editor-utils'
 import { Tooltip } from '../../components/ui/tooltip'
 import {
@@ -139,7 +140,8 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
 
         // Determine if this is an upscaled take (take index > 0 and resolution is higher than original)
         const originalRes = liveAsset?.generationParams?.resolution
-        const isUpscaled = dims && originalRes ? dims.height > parseInt(originalRes, 10) : false
+        const qualityTier = dims ? namedResolutionTier(Math.min(dims.width, dims.height)) : 0
+        const isUpscaled = dims && originalRes ? qualityTier > parseInt(originalRes, 10) : false
 
         return (
           <div className="space-y-3">
@@ -172,7 +174,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-zinc-400">Quality</span>
                       <span className="text-xs text-white">
-                        {dims.height >= 2160 ? 'Ultra HD' : dims.height >= 1080 ? 'Full HD' : dims.height >= 720 ? 'HD' : 'SD'}
+                        {qualityTier >= 2160 ? 'Ultra HD' : qualityTier >= 1080 ? 'Full HD' : qualityTier >= 720 ? 'HD' : 'SD'}
                         {isUpscaled && <span className="ml-1.5 text-green-400">(Upscaled)</span>}
                       </span>
                     </div>

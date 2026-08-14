@@ -164,7 +164,7 @@ class LTXAPIClientImpl:
         prompt: str,
         model: str,
         resolution: str,
-        duration: float,
+        duration: float | None,
         fps: float,
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
@@ -191,7 +191,7 @@ class LTXAPIClientImpl:
         image_uri: str,
         model: str,
         resolution: str,
-        duration: float,
+        duration: float | None,
         fps: float,
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
@@ -241,6 +241,7 @@ class LTXAPIClientImpl:
         duration: float,
         prompt: str,
         mode: RetakeMode,
+        model: str,
     ) -> LTXRetakeResult:
         return self._run_video_edit(
             api_key=api_key,
@@ -251,6 +252,7 @@ class LTXAPIClientImpl:
                 "start_time": float(start_time),
                 "duration": float(duration),
                 "mode": mode,
+                "model": model,
             },
             prompt=prompt,
         )
@@ -263,6 +265,7 @@ class LTXAPIClientImpl:
         duration: float,
         prompt: str,
         mode: ExtendMode,
+        model: str,
     ) -> LTXRetakeResult:
         # Extend uses the async v2 endpoint (submit → poll → download): a 12s Pro extend
         # takes minutes, which the sync v1 endpoint can't hold open without the connection
@@ -275,6 +278,7 @@ class LTXAPIClientImpl:
             edit_payload={
                 "duration": float(duration),
                 "mode": mode,
+                "model": model,
             },
             prompt=prompt,
         )
