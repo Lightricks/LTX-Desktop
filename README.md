@@ -1,6 +1,6 @@
 # LTX Desktop
 
-LTX Desktop is an open-source desktop app for generating videos with LTX models — locally on supported Windows/Linux NVIDIA GPUs or Apple Silicon Macs, with an API mode for unsupported hardware.
+LTX Desktop is an open-source desktop app for generating videos with LTX models — locally on supported Windows/Linux NVIDIA GPUs or Apple Silicon Macs, with an API mode for unsupported hardware. Local generation defaults to **LTX 2.5 Fast**; **LTX 2.3 Fast** remains available. **LTX 2.5 Pro** is API-only.
 
 > **Status: Beta.** Expect breaking changes.
 > Frontend architecture is under active refactor; large UI PRs may be declined for now (see [`CONTRIBUTING.md`](docs/CONTRIBUTING.md)).
@@ -22,9 +22,10 @@ LTX Desktop is an open-source desktop app for generating videos with LTX models 
 - Text-to-video generation
 - Image-to-video generation
 - Audio-to-video generation
-- Video edit generation (Retake)
+- Video edit generation (Retake) — local **LTX 2.3 Fast**, or Pro on the API
 - Text-to-image generation
 - Image editing (image-to-image)
+- Local **LTX 2.5 Fast** generation (default); switch to **LTX 2.3 Fast** in Settings
 - LoRA support for local video generation
 - Catalog-aware prompt enhancement (video, image generation, and image editing) — local or via the Gemini API
 - Video Editor Interface
@@ -41,7 +42,17 @@ LTX Desktop is an open-source desktop app for generating videos with LTX models 
 | macOS, Apple Silicon with **≥15GB free RAM** | Local generation | Downloads model weights locally; runs on MPS |
 | macOS, Apple Silicon with <15GB free RAM, or Intel Mac | API-only | **LTX API key required** |
 
-In API-only mode, available resolutions/durations may be limited to what the API supports.
+In API-only mode, available resolutions/durations may be limited to what the API supports. The API path also offers **LTX 2.5 Fast**, **LTX 2.5 Pro**, and 2.3 Fast/Pro.
+
+### Local models
+
+| Model | Where | Notes |
+| --- | --- | --- |
+| **LTX 2.5 Fast** | Local (default) and API | t2v / i2v / a2v, IC-LoRA, user LoRAs. No local Retake or Extend. |
+| **LTX 2.3 Fast** | Local and API | Full local feature set, including Retake and Extend. |
+| **LTX 2.5 Pro** / **2.3 Pro** | API only | Paid cloud generation. |
+
+Switch the active local checkpoint in **Settings > Models**. Newer weights (including 2.5) are gated on Hugging Face — sign in and accept the license before downloading.
 
 ## System requirements
 
@@ -77,7 +88,9 @@ If you have 32GB+ of total RAM but still see API-only mode: close memory-heavy a
 
 1. Download the latest installer from GitHub Releases: [Releases](../../releases)
 2. Install and launch **LTX Desktop**
-3. Complete first-run setup
+3. Complete first-run setup (Hugging Face sign-in may be required to download gated 2.5 weights)
+
+Packaged installs check GitHub Releases for updates and apply them when you quit the app.
 
 ## First run & data locations
 
@@ -89,12 +102,12 @@ LTX Desktop stores app data (settings, models, logs) in:
 
 Model weights are downloaded into the `models/` subfolder (this can be large and may take time).
 
-On first launch you may be prompted to review/accept model license terms (license text is fetched from Hugging Face; requires internet).
+On first launch you may be prompted to sign in to Hugging Face and accept model license terms (2.5 weights are gated; license text is fetched from Hugging Face). Requires internet.
 
 Text encoding: to generate videos you must configure text encoding:
 
 - **LTX API key** (cloud text encoding) — **text encoding via the API is completely FREE** and highly recommended to speed up inference and save memory. Generate a free API key at the [LTX Console](https://console.ltx.video/). [Read more](https://ltx.io/model/model-blog/ltx-2-better-control-for-real-workflows).
-- **Local Text Encoder** (extra download; enables fully-local operation on supported Windows hardware) — if you don't wish to generate an API key, you can encode text locally via the settings menu.
+- **Local Text Encoder** (extra download; enables fully-local operation on supported hardware) — if you don't wish to generate an API key, you can encode text locally via the settings menu.
 
 ## LoRA/IC-LoRA Library
 
@@ -106,7 +119,7 @@ In local mode, **Browse LoRAs** (styles/subjects for text/image/audio-to-video) 
 
 You can also use your own `.safetensors` LoRA files instead of (or alongside) the library.
 
-**Which LoRAs are supported.** The app generates locally with the **LTX‑2.3 (22B)** model. "LTX‑2" is the model generation and "2.3" is its current release, so LoRAs labeled **LTX‑2** or **LTX‑2.3** both target this model and are supported. This includes LoRAs exported from ComfyUI for LTX‑Video (their key names are remapped automatically). A LoRA whose tensors don't match the model is simply skipped, so it has no effect rather than producing an error. LoRAs built for other base models (e.g. SDXL, Wan, Hunyuan, or older LTXV 0.9.x) target a different architecture and will not take effect.
+**Which LoRAs are supported.** Local generation uses **LTX‑2.5 Fast** or **LTX‑2.3 Fast** (both 22B distilled). Catalog entries list the models they support (typically both). LoRAs labeled **LTX‑2**, **LTX‑2.3**, or **LTX‑2.5** target this family and are supported. This includes LoRAs exported from ComfyUI for LTX‑Video (their key names are remapped automatically). A LoRA whose tensors don't match the active model is simply skipped, so it has no effect rather than producing an error. LoRAs built for other base models (e.g. SDXL, Wan, Hunyuan, or older LTXV 0.9.x) target a different architecture and will not take effect.
 
 **Where to put the files.** Library downloads land in their own subfolder under `loras/` (one per LoRA), so it's safe to drop your own `.safetensors` files straight into the `loras/` (or `lora/`) subfolder of your models folder:
 
@@ -142,10 +155,10 @@ Open the selector to tick one or more LoRAs and adjust each one's strength. If y
 The LTX API is used for:
 
 - **Cloud text encoding and prompt enhancement** — **FREE**; text encoding is highly recommended to speed up inference and save memory
-- API-based video generations (required on macOS and on unsupported Windows hardware) — paid
+- API-based video generations (required on unsupported hardware; optional Fast/Pro cloud generations including **LTX 2.5**) — paid
 - Retake — paid
 
-An LTX API key is required in API-only mode, but optional on Windows/Linux local mode if you enable the Local Text Encoder.
+An LTX API key is required in API-only mode, but optional for local generation if you enable the Local Text Encoder.
 
 Generate a FREE API key at the [LTX Console](https://console.ltx.video/). Text encoding is free; video generation API usage is paid. [Read more](https://ltx.io/model/model-blog/ltx-2-better-control-for-real-workflows).
 
@@ -192,7 +205,7 @@ Prereqs:
 
 - Node.js
 - `uv` (Python package manager)
-- Python 3.12+
+- Python 3.13+
 - Git
 
 Setup:
