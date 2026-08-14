@@ -34,10 +34,22 @@ from ltx_core.loader.sft_loader import SafetensorsModelStateDictLoader
 
 
 def _patched_model_metadata(self: SafetensorsModelStateDictLoader, path: str) -> dict:
+    """Full ``__metadata__`` dict with JSON-encoded values parsed, mirroring upstream.
+
+    Callers index into it themselves (``config``, ``model_version``,
+    ``gemma_source_checkpoint``), so returning only ``config`` silently hides the
+    sibling keys.
+    """
     meta = _read_safetensors_metadata(path)
-    if meta is None or "config" not in meta:
+    if meta is None:
         return {}
-    return json.loads(meta["config"])
+    parsed: dict[str, object] = {}
+    for key, value in meta.items():
+        try:
+            parsed[key] = json.loads(value)
+        except json.JSONDecodeError:
+            parsed[key] = value
+    return parsed
 
 
 assert hasattr(SafetensorsModelStateDictLoader, "metadata") and callable(
@@ -78,15 +90,19 @@ if hasattr(_ic_lora_module, _DOWNSCALE_FN):
     setattr(_ic_lora_module, _DOWNSCALE_FN, _patched_read_lora_reference_downscale_factor)
 
 
-# --- Patch 3: ltx_pipelines.utils.constants.detect_params ---
+# --- Patch 3: ltx_pipelines.utils.constants.detect_model_version ---
+# Only the metadata read is replaced; the version -> params mapping stays upstream's
+# (``detect_params`` calls this by module global), so new generations keep their own defaults.
 
+import ltx_pipelines.distilled as _distilled_module
 import ltx_pipelines.utils.constants as _constants_module
 
+from ltx_core.loader.helpers import parse_model_version
 
-_original_detect_params = _constants_module.detect_params
+_DETECT_VERSION_FN = "detect_model_version"
 
 
-def _patched_detect_params(checkpoint_path: str) -> object:
+def _patched_detect_model_version(checkpoint_path: str) -> tuple[int, ...]:
     import logging
     logger = logging.getLogger(__name__)
 
@@ -94,20 +110,23 @@ def _patched_detect_params(checkpoint_path: str) -> object:
         meta = _read_safetensors_metadata(checkpoint_path) or {}
         version = meta.get("model_version", "")
     except Exception:
-        logger.warning("Could not read checkpoint metadata from %s, using defaults", checkpoint_path)
-        return _constants_module.LTX_2_PARAMS
+        logger.warning("Could not read checkpoint metadata from %s, treating it as unversioned", checkpoint_path)
+        return ()
 
-    if version.startswith(_constants_module._LTX_2_3_MODEL_VERSION_PREFIX):
-        return _constants_module.LTX_2_3_PARAMS
+    # Pre-release tags come both dot- and hyphen-separated ("2.3.rc1", "2.4-rc2").
+    parsed = parse_model_version(version.replace("-", "."))
+    logger.info("Checkpoint declares model_version=%s (parsed as %s)", version or "unknown", parsed)
+    return parsed
 
-    logger.info("Using LTX_2_PARAMS for checkpoint (version=%s)", version or "unknown")
-    return _constants_module.LTX_2_PARAMS
 
-
-assert hasattr(_constants_module, "detect_params"), (
-    "ltx_pipelines.utils.constants.detect_params not found — patch needs updating."
+assert hasattr(_constants_module, _DETECT_VERSION_FN), (
+    f"ltx_pipelines.utils.constants.{_DETECT_VERSION_FN} not found — patch needs updating."
 )
-_constants_module.detect_params = _patched_detect_params
+setattr(_constants_module, _DETECT_VERSION_FN, _patched_detect_model_version)
+# distilled.py binds the name via `from ...constants import ...`, so its module-local
+# reference (the sampler-selection call site) must be patched too.
+if hasattr(_distilled_module, _DETECT_VERSION_FN):
+    setattr(_distilled_module, _DETECT_VERSION_FN, _patched_detect_model_version)
 
 
 # --- Patch 4: services.text_encoder.ltx_text_encoder.TextHandler.get_model_id_from_checkpoint ---

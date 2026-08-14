@@ -9,6 +9,13 @@ from services.ltx_api_client.ltx_api_client import LTXAPIClientError, LTXRetakeR
 from tests.http_error_assertions import assert_http_error
 from tests.fakes import FakeResponse
 
+_LOCAL_2_3 = "ltx-2.3-22b-distilled-1.1"
+
+
+def _install_local_2_3(test_state, create_fake_model_files, **kwargs) -> None:
+    create_fake_model_files(model_id=_LOCAL_2_3, **kwargs)
+    test_state.state.app_settings.active_ltx_model_id = _LOCAL_2_3
+
 
 def _gemini_ok(text: str = "Enhanced prompt text") -> FakeResponse:
     return FakeResponse(
@@ -134,6 +141,29 @@ class TestRetake:
         assert r.status_code == 200
         assert r.json()["status"] == "complete"
 
+    def test_retake_defaults_to_ltx_2_3_pro(self, client, test_state):
+        self._force_api(test_state)
+        test_state.state.app_settings.ltx_api_key = "test-key"
+        video_path = self._make_video(test_state)
+        test_state.ltx_api_client.retake_result = LTXRetakeResult(
+            video_bytes=b"\x00\x00\x00\x1cftypisom" + b"\x00" * 500,
+            result_payload=None,
+        )
+
+        r = client.post("/api/retake", json=self._base_payload(video_path))
+        assert r.status_code == 200
+        assert len(test_state.ltx_api_client.retake_calls) == 1
+        assert test_state.ltx_api_client.retake_calls[0]["model"] == "ltx-2-3-pro"
+
+    def test_retake_rejects_2_5_model(self, client, test_state):
+        # ltxv-api retake only accepts ltx-2-pro / ltx-2-3-pro.
+        self._force_api(test_state)
+        test_state.state.app_settings.ltx_api_key = "test-key"
+        video_path = self._make_video(test_state)
+
+        r = client.post("/api/retake", json={**self._base_payload(video_path), "model": "pro-2.5"})
+        assert r.status_code == 422
+
     def test_api_retake_recoverable_via_progress(self, client, test_state):
         # After an API retake, /generation/progress must report complete + the result
         # path, so a page that unmounted mid-generation can recover the output.
@@ -192,6 +222,15 @@ class TestRetake:
         r = client.post("/api/retake", json=self._base_payload(video_path))
         assert r.status_code == 400
 
+    def test_rejects_fast_tier_model(self, client, test_state):
+        # "fast" is not a RetakeExtendModel member, so pydantic rejects it (422)
+        # before the request handler runs.
+        self._force_api(test_state)
+        test_state.state.app_settings.ltx_api_key = "test-key"
+        video_path = self._make_video(test_state)
+        r = client.post("/api/retake", json={**self._base_payload(video_path), "model": "fast"})
+        assert r.status_code == 422
+
     def test_upload_url_failure(self, client, test_state):
         self._force_api(test_state)
         test_state.state.app_settings.ltx_api_key = "test-key"
@@ -244,7 +283,7 @@ class TestRetake:
         assert retake_call["mode"] == "replace_video"
 
     def test_local_retake_happy_path(self, client, test_state, create_fake_model_files):
-        create_fake_model_files(include_zit=False)
+        _install_local_2_3(test_state, create_fake_model_files, include_zit=False)
         test_state.state.app_settings.use_local_text_encoder = True
         test_state.config.local_generations_mode = "full_models_loading"
 
@@ -255,8 +294,22 @@ class TestRetake:
         assert data["status"] == "complete"
         assert data["video_path"]
 
-    def test_local_retake_mode_mapping(self, client, test_state, create_fake_model_files, fake_services):
+    def test_local_retake_rejected_on_2_5(self, client, test_state, create_fake_model_files):
         create_fake_model_files(include_zit=False)
+        test_state.state.app_settings.use_local_text_encoder = True
+        test_state.config.local_generations_mode = "full_models_loading"
+
+        video_path = self._make_valid_video(test_state)
+        r = client.post("/api/retake", json=self._base_payload(video_path))
+        assert_http_error(
+            r,
+            status_code=409,
+            code="UNSUPPORTED_RETAKE",
+            message="Retake is not supported for the active LTX model.",
+        )
+
+    def test_local_retake_mode_mapping(self, client, test_state, create_fake_model_files, fake_services):
+        _install_local_2_3(test_state, create_fake_model_files, include_zit=False)
         test_state.state.app_settings.use_local_text_encoder = True
         test_state.config.local_generations_mode = "full_models_loading"
 
@@ -276,7 +329,7 @@ class TestRetake:
         assert retake_call["regenerate_audio"] is False
 
     def test_local_retake_forwards_selected_resolution(self, client, test_state, create_fake_model_files, fake_services):
-        create_fake_model_files(include_zit=False)
+        _install_local_2_3(test_state, create_fake_model_files, include_zit=False)
         test_state.state.app_settings.use_local_text_encoder = True
         test_state.config.local_generations_mode = "full_models_loading"
 
@@ -312,7 +365,7 @@ class TestRetake:
         create_fake_model_files,
         fake_services,
     ):
-        create_fake_model_files(include_zit=False)
+        _install_local_2_3(test_state, create_fake_model_files, include_zit=False)
         test_state.config.local_generations_mode = "full_models_loading"
         test_state.state.app_settings.user_prefers_ltx_api_video_generations = True
         test_state.state.app_settings.ltx_api_key = ""
@@ -364,6 +417,29 @@ class TestExtend:
         data = r.json()
         assert data["status"] == "complete"
         assert data["video_path"]
+
+    def test_extend_defaults_to_ltx_2_3_pro(self, client, test_state):
+        self._force_api(test_state)
+        test_state.state.app_settings.ltx_api_key = "test-key"
+        video_path = self._make_video(test_state)
+        test_state.ltx_api_client.extend_result = LTXRetakeResult(
+            video_bytes=b"\x00\x00\x00\x1cftypisom" + b"\x00" * 500,
+            result_payload=None,
+        )
+
+        r = client.post("/api/extend", json=self._base_payload(video_path))
+        assert r.status_code == 200
+        assert len(test_state.ltx_api_client.extend_calls) == 1
+        assert test_state.ltx_api_client.extend_calls[0]["model"] == "ltx-2-3-pro"
+
+    def test_extend_rejects_2_5_model(self, client, test_state):
+        # ltxv-api extend only accepts ltx-2-pro / ltx-2-3-pro.
+        self._force_api(test_state)
+        test_state.state.app_settings.ltx_api_key = "test-key"
+        video_path = self._make_video(test_state)
+
+        r = client.post("/api/extend", json={**self._base_payload(video_path), "model": "pro-2.5"})
+        assert r.status_code == 422
 
     def test_api_extend_recoverable_via_progress(self, client, test_state):
         self._force_api(test_state)
@@ -457,7 +533,7 @@ class TestExtend:
         assert extend_call["duration"] == 6.0
 
     def test_local_extend_happy_path(self, client, test_state, create_fake_model_files):
-        create_fake_model_files(include_zit=False)
+        _install_local_2_3(test_state, create_fake_model_files, include_zit=False)
         test_state.state.app_settings.use_local_text_encoder = True
         test_state.config.local_generations_mode = "full_models_loading"
 
@@ -468,8 +544,22 @@ class TestExtend:
         assert data["status"] == "complete"
         assert data["video_path"]
 
-    def test_local_extend_snaps_frames_and_forwards_mode(self, client, test_state, create_fake_model_files, fake_services):
+    def test_local_extend_rejected_on_2_5(self, client, test_state, create_fake_model_files):
         create_fake_model_files(include_zit=False)
+        test_state.state.app_settings.use_local_text_encoder = True
+        test_state.config.local_generations_mode = "full_models_loading"
+
+        video_path = self._make_valid_video(test_state)
+        r = client.post("/api/extend", json=self._base_payload(video_path))
+        assert_http_error(
+            r,
+            status_code=409,
+            code="UNSUPPORTED_EXTEND",
+            message="Extend is not supported for the active LTX model.",
+        )
+
+    def test_local_extend_snaps_frames_and_forwards_mode(self, client, test_state, create_fake_model_files, fake_services):
+        _install_local_2_3(test_state, create_fake_model_files, include_zit=False)
         test_state.state.app_settings.use_local_text_encoder = True
         test_state.config.local_generations_mode = "full_models_loading"
 
@@ -485,7 +575,7 @@ class TestExtend:
         assert extend_call["extend_frames"] % 8 == 0
 
     def test_local_extend_corrects_source_resolution_to_div32(self, client, test_state, create_fake_model_files, fake_services):
-        create_fake_model_files(include_zit=False)
+        _install_local_2_3(test_state, create_fake_model_files, include_zit=False)
         test_state.state.app_settings.use_local_text_encoder = True
         test_state.config.local_generations_mode = "full_models_loading"
 
@@ -497,7 +587,7 @@ class TestExtend:
         assert call["target_height"] == 64
 
     def test_local_extend_corrects_frame_count(self, client, test_state, create_fake_model_files, fake_services):
-        create_fake_model_files(include_zit=False)
+        _install_local_2_3(test_state, create_fake_model_files, include_zit=False)
         test_state.state.app_settings.use_local_text_encoder = True
         test_state.config.local_generations_mode = "full_models_loading"
 
@@ -509,7 +599,7 @@ class TestExtend:
         assert call["target_frames"] == 9
 
     def test_local_extend_forwards_selected_resolution(self, client, test_state, create_fake_model_files, fake_services):
-        create_fake_model_files(include_zit=False)
+        _install_local_2_3(test_state, create_fake_model_files, include_zit=False)
         test_state.state.app_settings.use_local_text_encoder = True
         test_state.config.local_generations_mode = "full_models_loading"
 
@@ -544,7 +634,7 @@ class TestExtend:
         create_fake_model_files,
         fake_services,
     ):
-        create_fake_model_files(include_zit=False)
+        _install_local_2_3(test_state, create_fake_model_files, include_zit=False)
         test_state.config.local_generations_mode = "full_models_loading"
         test_state.state.app_settings.user_prefers_ltx_api_video_generations = True
         test_state.state.app_settings.ltx_api_key = ""

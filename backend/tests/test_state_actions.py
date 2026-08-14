@@ -11,16 +11,16 @@ from _routes._errors import HTTPError
 from handlers.generation_handler import _RESERVATION_TIMEOUT_S
 from runtime_config.model_download_specs import (
     DEPTH_PROCESSOR_CP_ID,
-    get_latest_ltx_model_id,
     get_ltx_model_spec,
     resolve_model_path,
 )
 from state.app_settings import UpdateSettingsRequest
 from state.app_state_types import CpuSlot, GpuSlot, ICLoraState, RetakePipelineState, VideoPipelineState
+from tests.conftest import _IC_LORA_MODEL_ID
 
 
-def _current_model_spec():
-    return get_ltx_model_spec(get_latest_ltx_model_id())
+def _ic_lora_model_spec():
+    return get_ltx_model_spec(_IC_LORA_MODEL_ID)
 
 
 def test_start_generation_requires_gpu(test_state):
@@ -167,9 +167,10 @@ def test_retake_pipeline_eviction(test_state, create_fake_model_files):
 
 
 def test_ic_lora_load_includes_depth_resources(test_state, fake_services, create_fake_model_files, create_fake_ic_lora_files):
-    create_fake_model_files()
+    create_fake_model_files(model_id=_IC_LORA_MODEL_ID)
     create_fake_ic_lora_files()
-    model_spec = _current_model_spec()
+    model_spec = _ic_lora_model_spec()
+    assert model_spec.ic_loras_spec is not None
     lora_path = str(resolve_model_path(test_state.config.default_models_dir, model_spec.ic_loras_spec.canny_cp))
     depth_path = str(resolve_model_path(test_state.config.default_models_dir, DEPTH_PROCESSOR_CP_ID))
 
@@ -183,9 +184,10 @@ def test_ic_lora_load_includes_depth_resources(test_state, fake_services, create
 
 
 def test_ic_lora_unload_clears_preprocessing_resources(test_state, create_fake_model_files, create_fake_ic_lora_files):
-    create_fake_model_files()
+    create_fake_model_files(model_id=_IC_LORA_MODEL_ID)
     create_fake_ic_lora_files()
-    model_spec = _current_model_spec()
+    model_spec = _ic_lora_model_spec()
+    assert model_spec.ic_loras_spec is not None
     lora_path = str(resolve_model_path(test_state.config.default_models_dir, model_spec.ic_loras_spec.canny_cp))
     depth_path = str(resolve_model_path(test_state.config.default_models_dir, DEPTH_PROCESSOR_CP_ID))
     test_state.pipelines.load_ic_lora(lora_path, depth_path)
@@ -196,3 +198,23 @@ def test_ic_lora_unload_clears_preprocessing_resources(test_state, create_fake_m
     test_state.pipelines.unload_gpu_pipeline()
 
     assert test_state.state.gpu_slot is None
+
+
+def test_pipeline_cache_rebuilds_when_active_model_changes(test_state, create_fake_model_files):
+    # Two API-encodable versions both resolve gemma_root=None, so without an ltx_model_id cache
+    # key the resident pipeline would keep serving the previous weights.
+    create_fake_model_files(model_id="ltx-2.3-22b-distilled")
+    create_fake_model_files(model_id="ltx-2.3-22b-distilled-1.1")
+    test_state.state.app_settings.ltx_api_key = "test-key"
+    test_state.state.app_settings.use_local_text_encoder = False
+    test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
+
+    first = test_state.pipelines.load_gpu_pipeline("fast")
+    assert first.ltx_model_id == "ltx-2.3-22b-distilled-1.1"
+    assert first.gemma_root is None
+
+    test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled"
+    second = test_state.pipelines.load_gpu_pipeline("fast")
+    assert second.ltx_model_id == "ltx-2.3-22b-distilled"
+    assert second.gemma_root is None
+    assert second is not first

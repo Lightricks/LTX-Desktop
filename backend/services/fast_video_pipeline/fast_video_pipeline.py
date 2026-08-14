@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, ClassVar, Literal, Protocol
 
 from api_types import ImageConditioningInput
+from frame_math import AutoDurationSpec
 
 if TYPE_CHECKING:
     import torch
@@ -21,6 +22,10 @@ class FastVideoPipeline(Protocol):
         device: torch.device,
         streaming_prefetch_count: int | None,
         loras: list[tuple[str, float]] | None = None,
+        *,
+        video_vae_path: str | None = None,
+        audio_vae_path: str | None = None,
+        duration_head_path: str | None = None,
     ) -> "FastVideoPipeline":
         ...
 
@@ -30,7 +35,7 @@ class FastVideoPipeline(Protocol):
         seed: int,
         height: int,
         width: int,
-        num_frames: int,
+        num_frames: int | AutoDurationSpec,
         frame_rate: float,
         images: list[ImageConditioningInput],
         output_path: str,

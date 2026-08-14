@@ -25,8 +25,9 @@ def test_http_500_logs_single_traceback(caplog, client, fake_services) -> None:
     assert records[0].exc_info is not None
 
 
-def test_http_400_logs_without_traceback(caplog, client) -> None:
+def test_http_400_logs_without_traceback(caplog, client, create_fake_model_files) -> None:
     caplog.set_level(logging.WARNING)
+    create_fake_model_files()
 
     response = client.post(
         "/api/generate",
@@ -102,7 +103,7 @@ def test_logger_exception_usage_is_restricted_to_boundaries() -> None:
     }
 
     for path in backend_dir.rglob("*.py"):
-        if "tests" in path.parts or ".venv" in path.parts or "tmp" in path.parts:
+        if "tests" in path.parts or ".venv" in path.parts or "tmp" in path.parts or "vendor" in path.parts:
             continue
         content = path.read_text(encoding="utf-8")
         if "logger.exception(" in content:

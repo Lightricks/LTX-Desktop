@@ -8,17 +8,104 @@ from typing import TYPE_CHECKING
 import torch
 
 from api_types import ImageConditioningInput
-from services.services_utils import AudioOrNone, TilingConfigType, device_supports_fp8
+from services.services_utils import AudioOrNone, PipelineTilingType, TilingConfigType, device_supports_fp8
 
 if TYPE_CHECKING:
     from ltx_core.components.guiders import MultiModalGuiderParams
+    from ltx_pipelines.utils.model_paths import ModelPaths
     from ltx_pipelines.utils.types import OffloadMode
 
 
-def default_tiling_config() -> TilingConfigType:
-    from ltx_core.model.video_vae import TilingConfig
+def auto_tiling_config() -> PipelineTilingType:
+    """Let the pipeline derive decode tiling from the VAE it will decode with.
 
-    return TilingConfig.default()
+    A conv VAE (2.3 monolith) and a diffusion VAE (2.5 split) need different tile
+    overlaps, so a fixed layout that one accepts the other rejects.
+    """
+    from ltx_core.model.video_vae import AUTO_TILING
+
+    return AUTO_TILING
+
+
+def host_available_bytes() -> int:
+    """Currently available system RAM in bytes (unified memory on Apple Silicon)."""
+    import psutil
+
+    return int(psutil.virtual_memory().available)
+
+
+def diffvae_activation_budget_bytes(device: torch.device | None = None) -> int:
+    """Bytes DiffVAE decode tiling may treat as free activation memory.
+
+    ltx-pipelines only queries the CUDA allocator. On MPS/CPU that path yields 0,
+    so AUTO_TILING raises ``Cannot fit a DiffVAE decode tile`` before decode.
+    CUDA keeps the upstream allocator budget; everywhere else uses available RAM.
+    """
+    if device is not None and device.type == "cuda" and torch.cuda.is_available():
+        from ltx_core.devices import cuda_activation_budget_bytes
+
+        return int(cuda_activation_budget_bytes(device))
+    return host_available_bytes()
+
+
+def resolve_diffvae_free_bytes(device: torch.device | None, free_bytes: int | None) -> int | None:
+    """Fill a DiffVAE tiling budget when upstream would treat non-CUDA as 0."""
+    if free_bytes is not None and free_bytes > 0:
+        return free_bytes
+    if device is not None and device.type == "cuda":
+        return free_bytes
+    return host_available_bytes()
+
+
+def resolve_tiling_config(
+    vae_checkpoint_path: str,
+    *,
+    height: int,
+    width: int,
+    num_frames: int,
+    device: torch.device | None = None,
+) -> TilingConfigType:
+    """Same recommendation ``AUTO_TILING`` resolves to, for pipelines that decode themselves."""
+    from ltx_pipelines.utils.helpers import get_device, tiling_config_for_vae
+
+    if device is None:
+        device = get_device()
+    return tiling_config_for_vae(
+        vae_checkpoint_path,
+        height=height,
+        width=width,
+        num_frames=num_frames,
+        device=device,
+        free_bytes=diffvae_activation_budget_bytes(device),
+    )
+
+
+def build_model_paths(
+    checkpoint_path: str,
+    gemma_root: str | None,
+    *,
+    video_vae_path: str | None = None,
+    audio_vae_path: str | None = None,
+    duration_head_path: str | None = None,
+) -> ModelPaths:
+    """Build ``ModelPaths`` for monolith (2.3) or split (2.5) checkpoint layouts.
+
+    When both VAE paths are provided, uses ``from_split`` (LTX 2.5). Otherwise uses
+    ``from_monolith`` where the fat checkpoint also supplies the VAEs and DurationHead.
+    Split 2.5 DurationHead is a separate safetensors; omit ``duration_head_path`` and
+    AutoDuration fails closed in the pipeline.
+    """
+    from ltx_pipelines.utils.model_paths import ModelPaths
+
+    if video_vae_path is not None and audio_vae_path is not None:
+        return ModelPaths.from_split(
+            transformer_path=checkpoint_path,
+            text_encoder_path=gemma_root,
+            video_vae_path=video_vae_path,
+            audio_vae_path=audio_vae_path,
+            duration_head_path=duration_head_path,
+        )
+    return ModelPaths.from_monolith(checkpoint_path, gemma_root, video_vae_path=video_vae_path)
 
 
 def default_guiders() -> tuple[MultiModalGuiderParams, MultiModalGuiderParams]:
@@ -101,9 +188,10 @@ class DistilledNativePipeline:
 
         self.device = device
         self.dtype = torch.bfloat16
+        model_paths = build_model_paths(checkpoint_path, gemma_root)
 
         self.prompt_encoder = PromptEncoder(
-            checkpoint_path, gemma_root or "", self.dtype, device,
+            model_paths, self.dtype, device,
         )
         self.image_conditioner = ImageConditioner(
             checkpoint_path, self.dtype, device,

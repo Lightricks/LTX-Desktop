@@ -48,6 +48,7 @@ export interface ClipContextMenuProps {
   onRetakeClip: (clip: TimelineClip) => void
   onICLoraClip: (clip: TimelineClip) => void
   canUseIcLora: boolean
+  canUseRetake: boolean
   onCaptureFrameForVideo: (clip: TimelineClip) => void
   onCreateVideoFromAudio: (clip: TimelineClip) => void
 }
@@ -119,6 +120,7 @@ export function ClipContextMenu({
   onRetakeClip,
   onICLoraClip,
   canUseIcLora,
+  canUseRetake,
   onCaptureFrameForVideo,
   onCreateVideoFromAudio,
 }: ClipContextMenuProps) {
@@ -230,6 +232,7 @@ export function ClipContextMenu({
           onRetakeClip={onRetakeClip}
           onICLoraClip={onICLoraClip}
           canUseIcLora={canUseIcLora}
+          canUseRetake={canUseRetake}
           onCaptureFrameForVideo={onCaptureFrameForVideo}
           onCreateVideoFromAudio={onCreateVideoFromAudio}
           close={close}
@@ -261,7 +264,7 @@ function SingleClipMenu({
   duplicateClip, splitClipAtPlayhead, removeClip, updateClip,
   getLiveAsset, getMaxClipDuration,
   onRevealAsset,
-  onCreateVideoFromImage, onRetakeClip, onICLoraClip, canUseIcLora,
+  onCreateVideoFromImage, onRetakeClip, onICLoraClip, canUseIcLora, canUseRetake,
   onCaptureFrameForVideo,
   onCreateVideoFromAudio,
   close,
@@ -289,6 +292,7 @@ function SingleClipMenu({
   onRetakeClip: (clip: TimelineClip) => void
   onICLoraClip: (clip: TimelineClip) => void
   canUseIcLora: boolean
+  canUseRetake: boolean
   onCaptureFrameForVideo: (clip: TimelineClip) => void
   onCreateVideoFromAudio: (clip: TimelineClip) => void
   close: () => void
@@ -492,8 +496,10 @@ function SingleClipMenu({
           )}
           {isVideo && contextClip.assetId && (
             <>
-              <MenuItem icon={Film} iconClass="text-blue-400" label="Retake Section"
-                onClick={() => { onRetakeClip(contextClip); close() }} />
+              {canUseRetake && (
+                <MenuItem icon={Film} iconClass="text-blue-400" label="Retake Section"
+                  onClick={() => { onRetakeClip(contextClip); close() }} />
+              )}
               {canUseIcLora && (
                 <MenuItem icon={Sparkles} iconClass="text-amber-400" label="IC-LoRA / Style Transfer"
                   onClick={() => { onICLoraClip(contextClip); close() }} />

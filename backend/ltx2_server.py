@@ -52,6 +52,12 @@ import services.patches.ic_lora_stage2_lora as _ic_lora_stage2_lora  # pyright: 
 del _ic_lora_stage2_lora
 import services.patches.diffusion_stage_cache as _diffusion_stage_cache  # pyright: ignore[reportUnusedImport]  # EXPERIMENTAL: remove once DiffusionStage caches/reuses identical builds upstream
 del _diffusion_stage_cache
+import services.patches.diffvae_mps_tiling_budget as _diffvae_mps_tiling_budget  # pyright: ignore[reportUnusedImport]  # Remove once ltx-pipelines queries MPS/unified free memory
+del _diffvae_mps_tiling_budget
+import services.patches.diffvae_decode_vram as _diffvae_decode_vram  # pyright: ignore[reportUnusedImport]  # Remove once ltx-pipelines offloads the transformer before DiffVAE decode
+del _diffvae_decode_vram
+import services.patches.natten_libnatten_gate as _natten_libnatten_gate  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core natten_available checks HAS_LIBNATTEN
+del _natten_libnatten_gate
 
 from state.app_settings import AppSettings
 
@@ -257,7 +263,7 @@ CAMERA_MOTION_PROMPTS = {
 
 DEFAULT_NEGATIVE_PROMPT = """blurry, out of focus, overexposed, underexposed, low contrast, washed out colors, excessive noise, grainy texture, poor lighting, flickering, motion blur, distorted proportions, unnatural skin tones, deformed facial features, asymmetrical face, missing facial features, extra limbs, disfigured hands, wrong hand count, artifacts around text, inconsistent perspective, camera shake, incorrect depth of field"""
 
-HF_OAUTH_CLIENT_ID = "a8189e14-9246-4f19-bd6a-a307bdcb9276"
+HF_OAUTH_CLIENT_ID = "508843e5-65c3-4565-aeed-fb17e94cf394"
 
 runtime_config = RuntimeConfig(
     device=DEVICE,
@@ -315,6 +321,9 @@ def log_hardware_info() -> None:
     if gpu.get_mps_available():
         avail = gpu.get_available_ram_gb()
         gpu_line += f"  |  Available RAM: {avail if avail is not None else '?'} GB"
+        logger.info(
+            "LTX 2.5 decode uses eager SDPA on Mac (no Triton; slower than Linux/Windows)."
+        )
     logger.info(gpu_line)
     logger.info(f"SageAttention: {'enabled' if use_sage_attention else 'disabled'}")
     logger.info(f"Python: {sys.version.split()[0]}  |  Torch: {torch.__version__}")

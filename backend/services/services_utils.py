@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from ltx_core.model.video_vae import TilingConfig
+    from ltx_core.tiling import PipelineTiling
 
 
 JSONScalar: TypeAlias = str | int | float | bool | None
@@ -30,9 +31,11 @@ if TYPE_CHECKING:
 
     FrameArray: TypeAlias = NDArray[np.uint8]
     TilingConfigType: TypeAlias = TilingConfig
+    PipelineTilingType: TypeAlias = PipelineTiling
 else:
     FrameArray: TypeAlias = object
     TilingConfigType: TypeAlias = object
+    PipelineTilingType: TypeAlias = object
     AudioType: TypeAlias = object
 
 TensorOrNone: TypeAlias = TensorType | None

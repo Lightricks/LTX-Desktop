@@ -1,26 +1,36 @@
 import { AlertCircle, Check, Download, Folder, HardDrive, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiClient, type ApiSuccessOf } from '../../lib/api-client'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useAppSettings } from '../../contexts/AppSettingsContext'
+import { useHfAuth } from '../../hooks/use-hf-auth'
+import { useHfModelAccess } from '../../hooks/use-hf-model-access'
+import { ApiClient, type ApiRequestBodyOf, type ApiSuccessOf } from '../../lib/api-client'
 import { formatBytes } from '../../lib/format'
 import { logger } from '../../lib/logger'
+import { HfModelAccessGate } from '../HfModelAccessGate'
 import { Button } from '../ui/button'
 
 type LtxModelVersionItem = ApiSuccessOf<'getLtxVersions'>['versions'][number]
+type ModelCheckpointID = NonNullable<
+  NonNullable<ApiRequestBodyOf<'checkModelAccess'>>['cp_ids']
+>[number]
+type HfAuthStatus = ApiSuccessOf<'getHuggingFaceAuthStatus'>['status']
 
 const DOWNLOAD_POLL_INTERVAL_MS = 1000
 
-// One row in the base-model version list. Owns its own download polling so a
-// download on one version doesn't block interaction with the others.
 function VersionRow({
   version,
   onChanged,
   resumeSessionId,
+  hfAuthStatus,
+  hfAuthPolling,
+  startHuggingFaceLogin,
 }: {
   version: LtxModelVersionItem
   onChanged: () => Promise<void>
-  // Set when a download for this version is already running in the backend (e.g. the modal
-  // was reopened mid-download); the row reattaches to it instead of showing "Download".
   resumeSessionId: string | null
+  hfAuthStatus: HfAuthStatus
+  hfAuthPolling: boolean
+  startHuggingFaceLogin: () => void
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -29,8 +39,16 @@ function VersionRow({
   const mountedRef = useRef(true)
   useEffect(() => () => { mountedRef.current = false }, [])
 
-  // Reattach to an already-running download. The ref guard prevents re-adopting the same
-  // session after it completes (when downloadSessionId is cleared but the prop lingers a tick).
+  const cpsToDownload = useMemo(
+    () => (version.installed ? [] : (version.cps_to_download as ModelCheckpointID[])),
+    [version.installed, version.cps_to_download],
+  )
+  const { accessMap, allAuthorized, checking: checkingAccess, checkError, recheckAccess } = useHfModelAccess(
+    cpsToDownload,
+    hfAuthStatus,
+  )
+  const canDownload = version.installed || (allAuthorized && !checkingAccess)
+
   const adoptedRef = useRef<string | null>(null)
   useEffect(() => {
     if (resumeSessionId && resumeSessionId !== adoptedRef.current && !downloadSessionId) {
@@ -40,7 +58,6 @@ function VersionRow({
     }
   }, [resumeSessionId, downloadSessionId])
 
-  // Poll an in-flight download until it completes or errors, then refetch.
   useEffect(() => {
     if (!downloadSessionId) return
     let cancelled = false
@@ -116,8 +133,6 @@ function VersionRow({
     const result = await ApiClient.deleteModels({ cp_ids: [version.model_cp] })
     if (!result.ok) {
       setBusy(false)
-      // The backend blocks deleting the active version (409 DELETE_PROTECTED_CHECKPOINT);
-      // surface it inline.
       setError(result.error.message || 'Failed to delete model.')
       return
     }
@@ -128,10 +143,9 @@ function VersionRow({
   const isDownloading = downloadSessionId !== null
 
   return (
-    <div className="bg-zinc-800/50 rounded-lg p-3">
+    <div className="bg-zinc-800/50 rounded-lg p-3 space-y-2">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
-          {/* Active state shows a disabled checked radio; others can be selected. */}
           <input
             type="radio"
             name="active-ltx-model"
@@ -159,7 +173,7 @@ function VersionRow({
             <Button
               size="sm"
               onClick={() => void handleDownload()}
-              disabled={busy}
+              disabled={busy || !canDownload}
               className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
             >
               <Download className="h-3.5 w-3.5" />
@@ -181,8 +195,20 @@ function VersionRow({
         </div>
       </div>
 
+      {!version.installed && (
+        <HfModelAccessGate
+          accessMap={accessMap}
+          allAuthorized={allAuthorized}
+          hfAuthStatus={hfAuthStatus}
+          hfAuthPolling={hfAuthPolling}
+          startHuggingFaceLogin={startHuggingFaceLogin}
+          checkError={checkError}
+          onRetryCheck={recheckAccess}
+        />
+      )}
+
       {error && (
-        <div className="mt-2 text-xs text-red-400 inline-flex items-center gap-1.5">
+        <div className="text-xs text-red-400 inline-flex items-center gap-1.5">
           <AlertCircle className="h-3 w-3 flex-shrink-0" />
           {error}
         </div>
@@ -194,9 +220,10 @@ function VersionRow({
 export function BaseModelSection() {
   const [versions, setVersions] = useState<LtxModelVersionItem[]>([])
   const [modelsDir, setModelsDir] = useState('')
-  // A download keeps running in the backend even if this modal is closed. Track the active
-  // session so a row can reattach to its progress on remount instead of resetting to "Download".
   const [activeDownload, setActiveDownload] = useState<{ sessionId: string; cpIds: string[] } | null>(null)
+  const { hfAuthStatus, hfAuthPolling, startHuggingFaceLogin } = useHfAuth(true)
+  const { notifyModelsChanged } = useAppSettings()
+  const knownActiveRef = useRef<string | null>(null)
 
   const refreshVersions = useCallback(async () => {
     const [versionsResult, activeResult] = await Promise.all([
@@ -208,6 +235,13 @@ export function BaseModelSection() {
       return
     }
     setVersions(versionsResult.data.versions)
+    // Signal only on a real change so mounting the panel doesn't refetch generation specs.
+    const nextActive = versionsResult.data.versions.find((item) => item.active)?.model_id ?? null
+    const nextKey = `${nextActive}|${versionsResult.data.versions.filter((item) => item.installed).map((item) => item.model_id).join(',')}`
+    if (knownActiveRef.current !== null && knownActiveRef.current !== nextKey) {
+      notifyModelsChanged()
+    }
+    knownActiveRef.current = nextKey
     if (activeResult.ok) {
       setActiveDownload(
         activeResult.data.session_id
@@ -215,7 +249,7 @@ export function BaseModelSection() {
           : null,
       )
     }
-  }, [])
+  }, [notifyModelsChanged])
 
   useEffect(() => {
     void refreshVersions()
@@ -231,7 +265,6 @@ export function BaseModelSection() {
 
   return (
     <>
-      {/* Models Folder */}
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <Folder className="h-4 w-4 text-blue-400" />
@@ -269,7 +302,6 @@ export function BaseModelSection() {
         </div>
       </div>
 
-      {/* Base Model Versions */}
       <div className="space-y-3 pt-4 border-t border-zinc-800">
         <div className="flex items-center gap-2">
           <HardDrive className="h-4 w-4 text-blue-400" />
@@ -277,7 +309,7 @@ export function BaseModelSection() {
         </div>
         <p className="text-xs text-zinc-500 leading-relaxed">
           The active version is used for new generations. Download a version to make it available,
-          then set it active.
+          then set it active. Newer versions may require a Hugging Face sign-in.
         </p>
         <div className="space-y-2">
           {versions.length === 0 ? (
@@ -293,6 +325,11 @@ export function BaseModelSection() {
                     ? activeDownload.sessionId
                     : null
                 }
+                hfAuthStatus={hfAuthStatus}
+                hfAuthPolling={hfAuthPolling}
+                startHuggingFaceLogin={() => {
+                  void startHuggingFaceLogin()
+                }}
               />
             ))
           )}

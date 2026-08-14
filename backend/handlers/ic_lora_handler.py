@@ -30,12 +30,13 @@ from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
 from handlers.text_handler import TextHandler
 from ic_lora_preprocessing import MediaArtifact, OutpaintParams, PreprocessingContext, run_preprocessing
+from runtime_config.ltx_capabilities import local_caps, supports
 from runtime_config.model_download_specs import (
     DEPTH_PROCESSOR_CP_ID,
     find_installed_ic_lora_path,
-    get_downloaded_ltx_model_id,
     get_existing_cp_path,
     get_ltx_model_spec,
+    resolve_active_ltx_model_id,
     resolve_ic_lora_path,
 )
 from runtime_config.models_scanner import is_ic_lora_file, resolve_lora_ref
@@ -131,10 +132,26 @@ class IcLoraHandler(StateHandlerBase):
                 raise HTTPError(400, f"Unsupported conditioning_type: {conditioning_type}")
 
     def _require_ic_lora_model_paths(self, conditioning_type: ConditioningType) -> tuple[Path, Path | None]:
-        model_id = get_downloaded_ltx_model_id(self.models_dir)
+        model_id = resolve_active_ltx_model_id(
+            self.models_dir, self.state.app_settings.active_ltx_model_id
+        )
         if model_id is None:
             raise HTTPError(409, "NO_DOWNLOADED_LTX_MODEL")
+        if not supports(local_caps(model_id), "ic_lora"):
+            raise HTTPError(
+                409,
+                "Built-in control IC-LoRA is not available for the active LTX model. "
+                "Switch to an LTX 2.3 local model to use depth/canny control.",
+                code="UNSUPPORTED_IC_LORA",
+            )
         ic_loras_spec = get_ltx_model_spec(model_id).ic_loras_spec
+        if ic_loras_spec is None:
+            raise HTTPError(
+                409,
+                "Built-in control IC-LoRA is not available for the active LTX model. "
+                "Switch to an LTX 2.3 local model to use depth/canny control.",
+                code="UNSUPPORTED_IC_LORA",
+            )
         depth_model_path: Path | None = None
         match conditioning_type:
             case "canny":

@@ -6,12 +6,16 @@ from threading import RLock
 from typing import TYPE_CHECKING
 
 from _routes._errors import HTTPError
+from api_types import LTXLocalModelId
 from handlers.base import StateHandlerBase, with_state_lock
 from runtime_config.model_download_specs import (
-    get_downloaded_ltx_model_id,
+    LTXLocalModelSpec,
     get_existing_cp_path,
     get_ltx_model_spec,
+    get_model_cp_spec,
     is_cp_downloaded,
+    resolve_active_ltx_model_id,
+    resolve_downloaded_prompt_enhancer_cp,
 )
 from state.app_state_types import AppState, TextEncodingResult
 
@@ -22,6 +26,15 @@ if TYPE_CHECKING:
 class TextHandler(StateHandlerBase):
     def __init__(self, state: AppState, lock: RLock, config: RuntimeConfig) -> None:
         super().__init__(state, lock, config)
+
+    def _active_ltx_model_id(self) -> LTXLocalModelId | None:
+        return resolve_active_ltx_model_id(
+            self.models_dir, self.state.app_settings.active_ltx_model_id
+        )
+
+    def active_ltx_model_spec(self) -> LTXLocalModelSpec | None:
+        model_id = self._active_ltx_model_id()
+        return None if model_id is None else get_ltx_model_spec(model_id)
 
     @with_state_lock
     def _get_cached_prompt(self, prompt: str, enhance_prompt: bool) -> TextEncodingResult | None:
@@ -65,14 +78,11 @@ class TextHandler(StateHandlerBase):
         """
         settings = self.state.app_settings.model_copy(deep=True)
         api_available = bool(settings.ltx_api_key)
-        model_id = get_downloaded_ltx_model_id(self.models_dir)
-        local_available = (
-            False
-            if model_id is None
-            else is_cp_downloaded(self.models_dir, get_ltx_model_spec(model_id).text_encoder_cp)
-        )
+        spec = self.active_ltx_model_spec()
+        local_available = spec is not None and is_cp_downloaded(self.models_dir, spec.text_encoder_cp)
+        api_usable = api_available and (spec is None or spec.supports_api_text_encoding)
 
-        if api_available and local_available:
+        if api_usable and local_available:
             return settings.use_local_text_encoder  # setting is tiebreaker
         return local_available  # use whichever is available
 
@@ -85,12 +95,15 @@ class TextHandler(StateHandlerBase):
         """
         settings = self.state.app_settings.model_copy(deep=True)
         api_available = bool(settings.ltx_api_key)
-        model_id = get_downloaded_ltx_model_id(self.models_dir)
-        local_available = (
-            False
-            if model_id is None
-            else is_cp_downloaded(self.models_dir, get_ltx_model_spec(model_id).text_encoder_cp)
-        )
+        spec = self.active_ltx_model_spec()
+        local_available = spec is not None and is_cp_downloaded(self.models_dir, spec.text_encoder_cp)
+
+        if spec is not None and not spec.supports_api_text_encoding and not local_available:
+            raise RuntimeError(
+                f"TEXT_ENCODING_NOT_CONFIGURED: LTX {spec.version_label} requires the local text "
+                f"encoder ({get_model_cp_spec(spec.text_encoder_cp).description}); an LTX API key "
+                "cannot encode prompts for this version. Download it in Settings."
+            )
 
         if not api_available and not local_available:
             raise RuntimeError(
@@ -111,24 +124,27 @@ class TextHandler(StateHandlerBase):
     def resolve_gemma_root(self) -> str | None:
         if not self.should_use_local_encoding():
             return None
-        model_id = get_downloaded_ltx_model_id(self.models_dir)
+        model_id = self._active_ltx_model_id()
         if model_id is None:
             return None
         return str(get_existing_cp_path(self.models_dir, get_ltx_model_spec(model_id).text_encoder_cp))
 
-    def resolve_gemma_root_if_downloaded(self) -> str | None:
+    def resolve_prompt_enhancer_root_if_downloaded(self) -> str | None:
         """Like `resolve_gemma_root`, but answers "is the checkpoint present" rather than
         "should generation prefer local text encoding" — `should_use_local_encoding()`'s
         API-key tiebreaker (which defaults to API when both are available) answers a different
         question than local Enhance availability, and gates on a setting the Enhance UI never
         shows. The frontend's own local-availability check (`getTextEncoderRecommendation`)
         already uses checkpoint presence alone; this mirrors that for the backend gate.
+
+        Resolves the enhancer rather than the encoder, which differ on 2.5. Prefers
+        Gemma 4 E2B when downloaded, then Gemma 3 from a 2.3 install.
         """
-        model_id = get_downloaded_ltx_model_id(self.models_dir)
-        if model_id is None:
+        spec = self.active_ltx_model_spec()
+        if spec is None:
             return None
-        cp_id = get_ltx_model_spec(model_id).text_encoder_cp
-        if not is_cp_downloaded(self.models_dir, cp_id):
+        cp_id = resolve_downloaded_prompt_enhancer_cp(self.models_dir, spec)
+        if cp_id is None:
             return None
         return str(get_existing_cp_path(self.models_dir, cp_id))
 
@@ -159,15 +175,17 @@ class TextHandler(StateHandlerBase):
         if te is None:
             return None
 
-        model_id = get_downloaded_ltx_model_id(self.models_dir)
+        model_id = self._active_ltx_model_id()
         if model_id is None:
             raise HTTPError(409, "NO_DOWNLOADED_LTX_MODEL")
+        model_spec = get_ltx_model_spec(model_id)
 
         encoded = te.service.encode_via_api(
             prompt=prompt,
             api_key=settings.ltx_api_key,
-            checkpoint_path=str(get_existing_cp_path(self.models_dir, get_ltx_model_spec(model_id).model_cp)),
+            checkpoint_path=str(get_existing_cp_path(self.models_dir, model_spec.model_cp)),
             enhance_prompt=enhance_prompt,
+            api_model_id=model_spec.api_text_encoder_model_id,
         )
         if encoded is not None:
             self._cache_prompt(prompt, enhance_prompt, encoded)

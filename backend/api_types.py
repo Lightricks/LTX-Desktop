@@ -6,7 +6,7 @@ import re
 from typing import Annotated
 from typing import Literal, NamedTuple, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints, field_validator, model_validator
 
 NonEmptyPrompt = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 ModelCheckpointID = Literal[
@@ -15,13 +15,25 @@ ModelCheckpointID = Literal[
     "ltx-2.3-spatial-upscaler-x2-1.0",
     "ltx-2.3-spatial-upscaler-x2-1.1",
     "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+    "ltx-2.5-22b-distilled",
+    "ltx-2.5-spatial-upscaler-x2-1.0",
+    "ltx-2.5-video-vae",
+    "ltx-2.5-video-vae-conv",
+    "ltx-2.5-audio-vae",
+    "ltx-2.5-duration-head",
     "dpt-hybrid-midas",
     "yolox-l-torchscript",
     "dw-ll-ucoco-384-bs5",
     "gemma-3-12b-it-qat-q4_0-unquantized",
+    "gemma4-12b-with-proj-ltx-2.5",
+    "gemma-4-e2b-it",
     "z-image-turbo",
 ]
-LTXLocalModelId = Literal["ltx-2.3-22b-distilled-1.1", "ltx-2.3-22b-distilled"]
+LTXLocalModelId = Literal[
+    "ltx-2.5-22b-distilled",
+    "ltx-2.3-22b-distilled-1.1",
+    "ltx-2.3-22b-distilled",
+]
 
 
 class ImageConditioningInput(NamedTuple):
@@ -251,6 +263,10 @@ class ActiveDownloadResponse(BaseModel):
 class LtxDownloadRecommendationResponse(BaseModel):
     status: Literal["download"]
     cps_to_download: list[ModelCheckpointID]
+    # Checkpoints left out of cps_to_download only because an LTX API key covers what they do.
+    # Offered as an opt-in so a user who wants to generate offline can take the download now
+    # instead of discovering later that the key is the only thing making generation work.
+    optional_cp_ids: list[ModelCheckpointID] = []
 
 
 class LtxUpgradeRecommendationResponse(BaseModel):
@@ -259,6 +275,10 @@ class LtxUpgradeRecommendationResponse(BaseModel):
     upgrade_message: str | None = None
     cps_to_download: list[ModelCheckpointID]
     cps_to_delete: list[ModelCheckpointID]
+    # True when deleting the old bundle would also remove built-in Union Control IC-LoRA
+    # (2.3 → 2.5). The upgrade UI defaults "delete old" off in that case so users don't
+    # silently lose the easy path back to depth/canny/pose control.
+    loses_built_in_control: bool = False
 
 
 class LtxOkRecommendationResponse(BaseModel):
@@ -276,12 +296,29 @@ class ImageGenRecommendationResponse(BaseModel):
 
 class LtxIcLoraRecommendationResponse(BaseModel):
     cps_to_download: list[ModelCheckpointID]
+    # False when the active model has no built-in Union Control IC-LoRA (LTX 2.5): distinct from
+    # "supported but already downloaded" (both have empty cps_to_download).
+    supported: bool = True
 
 
 class TextEncoderRecommendationResponse(BaseModel):
     cp_to_download: ModelCheckpointID | None
     expected_size_bytes: int
     expected_size_gb: float
+    # False when the active model can't be encoded by the LTX API, making the local encoder
+    # mandatory instead of one of two interchangeable options.
+    api_encoding_supported: bool
+    ltx_version_label: str
+    # False when no generative checkpoint local Enhance can run is downloaded, so Enhance
+    # needs Gemini. True if the preferred enhancer *or* a fallback (Gemma 3 on 2.5) is present.
+    local_enhancement_supported: bool
+    # The separate generative checkpoint local Enhance prefers, when the encoder can only encode
+    # (2.5). None when the encoder enhances too (2.3), so there's no extra download to offer.
+    local_enhancer_cp: ModelCheckpointID | None
+    local_enhancer_expected_size_gb: float | None
+    # The checkpoint Enhance will actually load, after E2B-then-Gemma-3 fallback. None if local
+    # Enhance cannot run. Equal to local_enhancer_cp when the preferred extra model is present.
+    active_local_enhancer_cp: ModelCheckpointID | None
 
 
 class LtxModelVersionItem(BaseModel):
@@ -303,7 +340,7 @@ class SetActiveLtxModelRequest(BaseModel):
     model_id: LTXLocalModelId
 
 
-CheckpointRole = Literal["base", "upscaler", "text_encoder", "image", "support"]
+CheckpointRole = Literal["base", "upscaler", "text_encoder", "vae", "image", "support"]
 
 
 class CheckpointDescriptor(BaseModel):
@@ -342,17 +379,32 @@ class LtxInsufficientFundsErrorResponse(BaseModel):
 LTXVideoGenResolution: TypeAlias = Literal["540p", "720p", "1080p", "1440p", "2160p"]
 LTXVideoGenDuration: TypeAlias = Literal[5, 6, 8, 10, 12, 14, 16, 18, 20]
 LTXVideoGenFps: TypeAlias = Literal[24, 25, 48, 50]
-LTXVideoGenPipeline: TypeAlias = Literal["fast", "pro"]
+LTXVideoGenPipeline: TypeAlias = Literal["fast", "pro", "fast-2.5", "pro-2.5"]
 
 
 class LTXVideoGenerationResolutionSpec(BaseModel):
     fps_to_durations: dict[LTXVideoGenFps, list[LTXVideoGenDuration]]
 
 
+class LTXOfferingCapabilitiesSpec(BaseModel):
+    """Feature flags for one local model or API pipeline. Pixel maps stay backend-only."""
+
+    t2v: bool
+    i2v: bool
+    a2v: bool
+    ic_lora: bool
+    retake: bool
+    extend: bool
+    user_loras: bool
+    camera_motion: bool
+    auto_duration: bool
+
+
 class LTXVideoGenerationSpec(BaseModel):
     display_name: str
     supported_resolutions_durations: dict[LTXVideoGenResolution, LTXVideoGenerationResolutionSpec]
     a2v_supported_resolutions_durations: dict[LTXVideoGenResolution, LTXVideoGenerationResolutionSpec] | None = None
+    capabilities: LTXOfferingCapabilitiesSpec | None = None
 
 
 class LTXVideoGenerationModelSpecItem(BaseModel):
@@ -393,7 +445,8 @@ class GenerateVideoRequest(BaseModel):
     model: LTXVideoGenPipeline = "fast"
     cameraMotion: VideoCameraMotion = "none"
     negativePrompt: str = ""
-    duration: LTXVideoGenDuration = 5
+    # None = automatic duration (API 2.5 t2v/i2v only): the worker picks length from the prompt.
+    duration: LTXVideoGenDuration | None = 5
     fps: LTXVideoGenFps = 24
     audio: bool = False
     imagePath: str | None = None
@@ -466,6 +519,10 @@ class SuggestGapPromptRequest(BaseModel):
 
 RetakeMode: TypeAlias = Literal["replace_audio_and_video", "replace_video", "replace_audio"]
 
+# ltxv-api /v1/retake and /v2/extend accept ltx-2-pro / ltx-2-3-pro. Desktop maps
+# those to pipeline "pro" — narrower than LTXVideoGenPipeline on purpose.
+RetakeExtendModel: TypeAlias = Literal["pro"]
+
 
 class TargetResolution(BaseModel):
     """Desired output resolution for a local generation. The backend corrects it to the
@@ -486,6 +543,8 @@ class RetakeRequest(BaseModel):
     prompt: str = ""
     mode: RetakeMode = "replace_audio_and_video"
     resolution: TargetResolution | None = None
+    # API-mode only; ignored for local generation (there is no local model choice).
+    model: RetakeExtendModel = "pro"
 
 
 ExtendMode: TypeAlias = Literal["start", "end"]
@@ -501,6 +560,8 @@ class ExtendRequest(BaseModel):
     prompt: str = ""
     mode: ExtendMode = "end"
     resolution: TargetResolution | None = None
+    # API-mode only; ignored for local generation (there is no local model choice).
+    model: RetakeExtendModel = "pro"
 
 
 # Extend returns the same shapes as retake (video file, remote payload, or cancelled).
@@ -623,6 +684,10 @@ InstructionTitle: TypeAlias = Literal["What it does", "Input", "Prompt", "Tips",
 # instruction blocks by purpose without string-matching display titles. "tips" also covers
 # the "Notes" title; "summary" covers "What it does".
 InstructionKind: TypeAlias = Literal["summary", "prompting", "tips", "input"]
+# Families a catalog adapter is known to run on. Distinct from `base_model` (what it was
+# trained on). 2.3 adapters often run on 2.5; that is recorded here after validation, not
+# inferred from the training tag.
+LtxCatalogModelFamily: TypeAlias = Literal["LTX-2.3", "LTX-2.5"]
 # Where a trigger word/phrase must appear in the prompt. Not set (and not applicable) when
 # `prompt_template` is present, since the template's placeholder position already encodes it.
 TriggerPlacement: TypeAlias = Literal["first_token", "anywhere"]
@@ -756,6 +821,10 @@ def _empty_tags() -> list[str]:
     return []
 
 
+def _default_supported_models() -> list[LtxCatalogModelFamily]:
+    return ["LTX-2.3", "LTX-2.5"]
+
+
 class LoraCatalogItem(BaseModel):
     """Base catalog entry — used as-is for a plain LoRA."""
     model_config = ConfigDict(strict=True)
@@ -772,7 +841,11 @@ class LoraCatalogItem(BaseModel):
     media: MediaSpec | None = None
     # ISO-8601 date the model was created at the source (e.g. HuggingFace).
     created_at: str | None = None
+    # What the adapter was trained on. Not a compatibility list — see `supported_models`.
     base_model: str | None = None
+    # Families this adapter is known to run on. Currently both, so 2.5 testing can
+    # use the full catalog; trim after validation.
+    supported_models: list[LtxCatalogModelFamily] = Field(default_factory=_default_supported_models)
     tags: list[str] = Field(default_factory=_empty_tags)
     # Trigger phrase to include in the prompt if the LoRA needs one (e.g. "ADD WATER").
     trigger: str | None = None
@@ -793,6 +866,18 @@ class LoraCatalogItem(BaseModel):
     # When true, generation may run with an empty prompt (e.g. outpainting fills from the scene).
     # Enforced for the catalog IC-LoRA path; plain-LoRA t2v enforcement is not wired yet.
     allows_empty_prompt: bool = False
+
+    def supports_family(self, family: LtxCatalogModelFamily) -> bool:
+        return family in self.supported_models
+
+    @field_validator("supported_models")
+    @classmethod
+    def _check_supported_models(cls, value: list[LtxCatalogModelFamily]) -> list[LtxCatalogModelFamily]:
+        if not value:
+            raise ValueError("supported_models must not be empty")
+        if len(value) != len(set(value)):
+            raise ValueError("supported_models must be unique")
+        return value
 
     @model_validator(mode="after")
     def _check_trigger_placement(self) -> "LoraCatalogItem":

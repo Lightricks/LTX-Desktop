@@ -82,6 +82,23 @@ def build_default_free_rewrite_system_prompt() -> str:
     )
 
 
+def build_audio_visual_caption_system_prompt(*, t2v: bool) -> str:
+    """The captioning instructions LTX 2.5 itself ships with, for any enhancer provider.
+
+    Read from ltx-core rather than restated here so it tracks the model: these describe the exact
+    caption style the checkpoint was trained on (single 150-220 word paragraph, shot type + camera
+    motion + viewpoint, and a full soundscape including quoted dialogue). The local Gemma enhancer
+    picks this up on its own from the encoder's model type; providers with no model-side default —
+    Gemini — would otherwise get the visual-only generic fallback and drop the audio half.
+    """
+    from ltx_core.text_encoders.gemma.encoders.base_encoder import (
+        default_gemma4_i2v_system_prompt,
+        default_gemma4_t2v_system_prompt,
+    )
+
+    return default_gemma4_t2v_system_prompt() if t2v else default_gemma4_i2v_system_prompt()
+
+
 def build_image_generation_system_prompt() -> str:
     """System prompt for the image-generation (text-to-image) free-rewrite path, Z-Image-Turbo.
 

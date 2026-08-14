@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { ApiClient } from '../lib/api-client'
 import { withGenerationActive } from '../lib/generation-active'
 import { logger } from '../lib/logger'
+import type { RetakeExtendModel } from './use-retake'
 
 export type ExtendDirection = 'start' | 'end'
 
@@ -15,6 +16,7 @@ export interface ExtendSubmitParams {
   prompt: string
   mode: ExtendDirection
   resolution?: { width: number; height: number }
+  model: RetakeExtendModel
 }
 
 export interface ExtendResult {
@@ -48,6 +50,7 @@ export function useExtend() {
         prompt: params.prompt,
         mode: params.mode,
         resolution: params.resolution,
+        model: params.model,
       })
 
       if (!result.ok) {

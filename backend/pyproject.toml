@@ -11,23 +11,31 @@ dependencies = [
     # torch to 2.11.x keeps torch+torchaudio in lockstep. win/linux use the cu128 index below.
     "torch>=2.3.0; sys_platform != 'darwin'",
     "torch>=2.3.0,<2.12; sys_platform == 'darwin'",
+    # transformers' Gemma 4 processor imports torchvision.transforms.v2 at module scope, so
+    # LTX 2.5's text encoder fails to build without it (ImportError on Gemma4UnifiedProcessor).
+    "torchvision>=0.18.0",
     "huggingface-hub>=0.23.0",
     "tqdm>=4.66.0",
     "pynvml>=11.5.0; sys_platform != 'darwin'",
     "psutil>=5.9.0",
     "pydantic>=2.7.0",
-    # LTX-2 inference dependencies
-    "ltx-core",
-    "ltx-pipelines",
+    # LTX-2 inference dependencies (v1.2.0 is the 2.5-capable release).
+    "ltx-core==1.2.0",
+    "ltx-pipelines==1.2.0",
     "diffusers>=0.36.0",
     "ftfy>=6.0.0",
     "imageio>=2.37.2",
     "imageio-ffmpeg>=0.6.0",
     "peft>=0.13.2",
     "protobuf>=3.20.0",
-    "transformers>=4.52,<5",
+    # ltx-core 1.2 / Gemma 4 need transformers 5.8+; 5.15 breaks Gemma 4 config access.
+    "transformers>=5.8.0,<5.15",
     "sentencepiece>=0.1.99",
     "sageattention>=1.0.0; sys_platform != 'darwin'",
+    # Official NATTEN wheels are Linux-only. GCS-hosted Windows wheel matches
+    # the embed runtime (cp313, torch 2.10.0+cu128). Do not use ltx-core's
+    # natten extra (0.21.7+torch2130cu132). Mac has no CUDA NATTEN.
+    "natten==0.21.6; sys_platform == 'win32'",
     # ninja is required (on PATH) for torch to JIT-build mps-sdpa's zero-copy
     # `mpsgraph_zc` attention backend on Apple Silicon. Without it, mps-sdpa
     # silently falls back to the pyobjc `mpsgraph` backend, which leaks Metal
@@ -50,15 +58,47 @@ explicit = true
 torch = [
     { index = "pytorch-cu128", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
 ]
-torchaudio = { index = "pytorch-cu128" }
+torchaudio = [
+    { index = "pytorch-cu128", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
+]
+torchvision = [
+    { index = "pytorch-cu128", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
+]
 # PyPI's sageattention caps at 1.0.6 (Nov 2024, predates Blackwell/RTX 50xx support) and
 # can't host per-torch/CUDA wheel variants anyway. woct0rdho's Windows fork ships prebuilt
 # 2.2.0 wheels with bundled sm120 kernels for CUDA>=12.8 — matches our torch2.10.0+cu128 pin.
 # Linux keeps resolving sageattention from PyPI (no reported Blackwell crashes there yet).
 sageattention = { url = "https://github.com/woct0rdho/SageAttention/releases/download/v2.2.0-windows.post5/sageattention-2.2.0+cu128torch2.10.0andhigher.post5-cp310-abi3-win_amd64.whl", marker = "sys_platform == 'win32'" }
+natten = { url = "https://storage.googleapis.com/ltx-desktop-artifacts/wheels/natten-0.21.6+torch2100cu128-cp313-cp313-win_amd64.whl", marker = "sys_platform == 'win32'" }
 diffusers = { git = "https://github.com/huggingface/diffusers.git", rev = "01de02e8b4f2cc91df4f3e91cb6535ebcbeb490c" }
-ltx-core = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-core", rev = "9377758131b1ffde4b7f766804590a6617bf2ab9" }
-ltx-pipelines = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-pipelines", rev = "9377758131b1ffde4b7f766804590a6617bf2ab9" }
+# Official LTX-2 v1.2.0 packages (not on PyPI). Same git+subdirectory pattern as
+# 2.3; the tag is the 2.5-capable release. We do not take ltx-core's own
+# tool.uv.sources (cu132) — this app's pytorch-cu128 pin above owns torch.
+ltx-core = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-core", tag = "v1.2.0" }
+ltx-pipelines = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-pipelines", tag = "v1.2.0" }
+
+# v1.2.0's library pyproject pins torch to a cu132 index. Static metadata lets uv
+# resolve without reading that table, so this app's cu128 pin above stays in charge.
+[[tool.uv.dependency-metadata]]
+name = "ltx-core"
+version = "1.2.0"
+requires-dist = [
+    "torch~=2.7",
+    "torchaudio",
+    "einops",
+    "numpy",
+    "av",
+    "transformers>=5.8.0,<5.15",
+    "safetensors",
+    "accelerate",
+    "scipy>=1.14",
+    "mps-sdpa>=0.2.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
+
+[[tool.uv.dependency-metadata]]
+name = "ltx-pipelines"
+version = "1.2.0"
+requires-dist = ["ltx-core", "av", "tqdm", "pillow", "openimageio", "cloudpickle>=3.1"]
 
 [project.optional-dependencies]
 test = ["pytest>=8.0", "requests>=2.31", "httpx>=0.27"]

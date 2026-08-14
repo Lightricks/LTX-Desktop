@@ -15,6 +15,10 @@ import type {
   TimelineClip,
   Track,
 } from '../../types/project-model'
+import {
+  namedResolutionDisplayName,
+  namedResolutionTier,
+} from '../../lib/video-resolution'
 import type {
   AssetListFilters,
   AssetTakeView,
@@ -501,11 +505,15 @@ export function selectClipDimensions(state: EditorState, clip: TimelineClip): Cl
 export function selectClipResolutionFromAssets(assets: Asset[], clip: TimelineClip): ClipResolutionInfo | null {
   const dims = selectClipDimensionsFromAssets(assets, clip)
   if (!dims) return null
-  const dimsSuffix = ` (${dims.width}x${dims.height})`
-  if (dims.height >= 2160) return { label: `4K${dimsSuffix}`, color: '#22c55e', height: dims.height }
-  if (dims.height >= 1080) return { label: `1080p${dimsSuffix}`, color: '#3b82f6', height: dims.height }
-  if (dims.height >= 720) return { label: `720p${dimsSuffix}`, color: '#f59e0b', height: dims.height }
-  return { label: `${dims.height}p${dimsSuffix}`, color: '#ef4444', height: dims.height }
+  const tier = namedResolutionTier(Math.min(dims.width, dims.height))
+  const displayName = namedResolutionDisplayName(tier)
+  const color = tier >= 2160 ? '#22c55e' : tier >= 1080 ? '#3b82f6' : tier >= 720 ? '#f59e0b' : '#ef4444'
+  return {
+    label: `${displayName} (${dims.width}x${dims.height})`,
+    color,
+    height: dims.height,
+    displayName,
+  }
 }
 
 export function selectClipResolution(state: EditorState, clip: TimelineClip): ClipResolutionInfo | null {
@@ -675,7 +683,9 @@ export function selectClipMetadata(state: EditorState, clip: TimelineClip): Clip
     filePath = liveAsset.takes[idx].path
   }
   const originalRes = liveAsset?.generationParams?.resolution
-  const isUpscaled = resolution && originalRes ? resolution.height > parseInt(originalRes, 10) : false
+  const isUpscaled = dimensions && originalRes
+    ? namedResolutionTier(Math.min(dimensions.width, dimensions.height)) > parseInt(originalRes, 10)
+    : false
 
   return {
     liveAsset,

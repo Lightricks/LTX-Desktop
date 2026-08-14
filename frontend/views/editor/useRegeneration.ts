@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react'
 import type { Asset, TimelineClip } from '../../types/project-model'
 import type { GenerationSettings } from '../../components/SettingsPanel'
 import type { GenerationError } from '../../lib/generation-errors'
+import type { VideoGenerationPipeline } from '../../lib/video-generation-model-specs'
 import { addVisualAssetToProject } from '../../lib/asset-copy'
 import { ApiClient } from '../../lib/api-client'
 import { logger } from '../../lib/logger'
@@ -202,7 +203,7 @@ export function useRegeneration(params: UseRegenerationParams) {
 
     if (generationParams.mode === 'text-to-image') {
       void regenGenerateImage(generationParams.prompt, {
-        model: generationParams.model as 'fast' | 'pro',
+        model: generationParams.model as VideoGenerationPipeline,
         duration: generationParams.duration,
         videoResolution: '540p',
         fps: generationParams.fps,
@@ -224,7 +225,7 @@ export function useRegeneration(params: UseRegenerationParams) {
         return
       }
       void regenGenerateImage(generationParams.prompt, {
-        model: generationParams.model as 'fast' | 'pro',
+        model: generationParams.model as VideoGenerationPipeline,
         duration: generationParams.duration,
         videoResolution: '540p',
         fps: generationParams.fps,
@@ -243,7 +244,7 @@ export function useRegeneration(params: UseRegenerationParams) {
       ? generationParams.inputImageUrl
       : null
     const rawVideoSettings: GenerationSettings = {
-      model: generationParams.model as 'fast' | 'pro',
+      model: generationParams.model as VideoGenerationPipeline,
       duration: generationParams.duration,
       videoResolution: normalizeVideoResolution(generationParams.resolution),
       fps: generationParams.fps,

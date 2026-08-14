@@ -21,8 +21,17 @@ from runtime_config.model_download_specs import (
     resolve_active_ltx_model_id,
     resolve_downloading_dir,
     resolve_model_path,
+    selected_video_vae_cp,
+    unused_video_vae_cp,
 )
-from state.app_state_types import DownloadSessionComplete, DownloadSessionError, DownloadingSession, FileDownloadRunning
+from state.app_settings import AppSettings, resolved_use_conv_vae
+from state.app_state_types import (
+    DownloadSessionComplete,
+    DownloadSessionError,
+    DownloadingSession,
+    FileDownloadRunning,
+    HfNotAuthenticated,
+)
 from tests.http_error_assertions import assert_http_error
 
 
@@ -34,32 +43,139 @@ def _cp_path(test_state, cp_id: str) -> Path:
     return resolve_model_path(test_state.config.default_models_dir, cp_id)
 
 
+def _use_conv_vae(test_state=None) -> bool:
+    settings = test_state.state.app_settings if test_state is not None else AppSettings()
+    return resolved_use_conv_vae(settings)
+
+
+def _required_download_cps(*, include_text_encoder: bool, test_state=None) -> list[str]:
+    spec = _current_ltx_spec()
+    cps = [spec.model_cp, spec.upscale_cp]
+    selected = selected_video_vae_cp(spec, use_conv_vae=_use_conv_vae(test_state))
+    if selected is not None:
+        cps.append(selected)
+    if spec.video_vae_conv_cp is not None and spec.video_vae_conv_cp not in cps:
+        cps.append(spec.video_vae_conv_cp)
+    if spec.audio_vae_cp is not None:
+        cps.append(spec.audio_vae_cp)
+    if spec.duration_head_cp is not None:
+        cps.append(spec.duration_head_cp)
+    if include_text_encoder:
+        cps.append(spec.text_encoder_cp)
+    return cps
+
+
+def _optional_download_cps(*, include_text_encoder: bool, test_state=None) -> list[str]:
+    spec = _current_ltx_spec()
+    required = set(_required_download_cps(include_text_encoder=False, test_state=test_state))
+    cps: list[str] = []
+    unused = unused_video_vae_cp(spec, use_conv_vae=_use_conv_vae(test_state))
+    if unused is not None and unused not in required:
+        cps.append(unused)
+    if include_text_encoder:
+        cps.append(spec.text_encoder_cp)
+    return cps
+
+
+def _remove_text_encoder(test_state) -> None:
+    from runtime_config.model_download_specs import get_model_cp_spec
+
+    text_encoder_path = _cp_path(test_state, _current_ltx_spec().text_encoder_cp)
+    te_spec = get_model_cp_spec(_current_ltx_spec().text_encoder_cp)
+    if te_spec.is_folder:
+        for child in text_encoder_path.iterdir():
+            child.unlink()
+        text_encoder_path.rmdir()
+    else:
+        text_encoder_path.unlink(missing_ok=True)
+
+
 class TestRecommendations:
     def test_ltx_recommendation_requires_primary_local_bundle(self, client):
-        spec = _current_ltx_spec()
         response = client.get("/api/models/ltx-recommendation")
         assert response.status_code == 200
         assert response.json() == {
             "status": "download",
-            "cps_to_download": [
-                spec.model_cp,
-                spec.upscale_cp,
-                spec.text_encoder_cp,
-            ],
+            "cps_to_download": _required_download_cps(include_text_encoder=True),
+            "optional_cp_ids": _optional_download_cps(include_text_encoder=False),
         }
 
-    def test_ltx_recommendation_skips_text_encoder_when_api_key_exists(self, client, test_state):
+    def test_ltx_recommendation_skips_text_encoder_for_2_5_when_api_key_exists(self, client, test_state):
         test_state.state.app_settings.ltx_api_key = "test-key"
-        spec = _current_ltx_spec()
         response = client.get("/api/models/ltx-recommendation")
         assert response.status_code == 200
         assert response.json() == {
             "status": "download",
-            "cps_to_download": [
-                spec.model_cp,
-                spec.upscale_cp,
-            ],
+            "cps_to_download": _required_download_cps(include_text_encoder=False),
+            # Excused, not withheld: first-run still offers it so an offline setup stays possible.
+            "optional_cp_ids": _optional_download_cps(include_text_encoder=True),
         }
+
+    def test_required_video_vae_follows_fast_decode_toggle(self, client, test_state):
+        spec = _current_ltx_spec()
+        assert spec.video_vae_cp is not None
+        assert spec.video_vae_conv_cp is not None
+
+        test_state.state.app_settings.use_conv_vae = True
+        payload = client.get("/api/models/ltx-recommendation").json()
+        assert spec.video_vae_conv_cp in payload["cps_to_download"]
+        assert spec.video_vae_cp not in payload["cps_to_download"]
+        assert spec.video_vae_cp in payload["optional_cp_ids"]
+
+        test_state.state.app_settings.use_conv_vae = False
+        payload = client.get("/api/models/ltx-recommendation").json()
+        assert spec.video_vae_cp in payload["cps_to_download"]
+        assert spec.video_vae_conv_cp in payload["cps_to_download"]
+        assert spec.video_vae_conv_cp not in payload["optional_cp_ids"]
+
+    def test_existing_2_5_prompts_missing_conv_vae_when_fast_decode_is_off(
+        self, client, test_state, create_fake_model_files
+    ):
+        # Windows default: Fast decode off, DiffVAE already on disk from the original 2.5
+        # install. Conv must still surface as a required download (same LaunchGate as Mac).
+        create_fake_model_files()
+        test_state.state.app_settings.use_conv_vae = False
+        conv_path = _cp_path(test_state, _current_ltx_spec().video_vae_conv_cp)
+        conv_path.unlink()
+
+        payload = client.get("/api/models/ltx-recommendation").json()
+        assert payload["status"] == "download"
+        assert payload["cps_to_download"] == [_current_ltx_spec().video_vae_conv_cp]
+
+        by_id = {item["model_id"]: item for item in client.get("/api/models/ltx-versions").json()["versions"]}
+        assert by_id["ltx-2.5-22b-distilled"]["installed"] is False
+        assert _current_ltx_spec().video_vae_conv_cp in by_id["ltx-2.5-22b-distilled"]["cps_to_download"]
+
+    def test_downloaded_text_encoder_is_not_offered_again(self, client, test_state, create_fake_model_files):
+        test_state.state.app_settings.ltx_api_key = "test-key"
+        create_fake_model_files()
+        _cp_path(test_state, _current_ltx_spec().upscale_cp).unlink()
+
+        response = client.get("/api/models/ltx-recommendation")
+        assert response.status_code == 200
+        assert response.json()["optional_cp_ids"] == []
+
+    def test_api_key_skips_text_encoder_for_supported_versions(self, client, test_state):
+        test_state.state.app_settings.ltx_api_key = "test-key"
+        response = client.get("/api/models/ltx-versions")
+        assert response.status_code == 200
+        by_id = {item["model_id"]: item for item in response.json()["versions"]}
+
+        assert _current_ltx_spec().text_encoder_cp not in by_id["ltx-2.5-22b-distilled"]["cps_to_download"]
+        spec_2_3 = get_ltx_model_spec("ltx-2.3-22b-distilled-1.1")
+        assert spec_2_3.text_encoder_cp not in by_id["ltx-2.3-22b-distilled-1.1"]["cps_to_download"]
+
+    def test_prompt_enhancer_is_never_required(self, client, create_fake_model_files):
+        # 2.5's separate enhancer is an opt-in extra: missing it costs local Enhance only, so it
+        # must not hold back install/activation or show up as a pending download.
+        create_fake_model_files()
+        spec = _current_ltx_spec()
+        assert spec.prompt_enhancer_cp is not None
+
+        by_id = {item["model_id"]: item for item in client.get("/api/models/ltx-versions").json()["versions"]}
+        assert by_id["ltx-2.5-22b-distilled"]["installed"] is True
+        assert spec.prompt_enhancer_cp not in by_id["ltx-2.5-22b-distilled"]["cps_to_download"]
+        assert client.post("/api/models/active-ltx-model", json={"model_id": "ltx-2.5-22b-distilled"}).status_code == 200
 
     def test_ltx_recommendation_ok_when_required_bundle_is_downloaded(self, client, create_fake_model_files):
         create_fake_model_files()
@@ -83,21 +199,75 @@ class TestRecommendations:
         assert response.json() == {
             "status": "download",
             "cps_to_download": [older_spec.upscale_cp],
+            "optional_cp_ids": [older_spec.text_encoder_cp],
         }
 
     def test_ltx_recommendation_reports_missing_text_encoder_for_current_model(self, client, test_state, create_fake_model_files):
         create_fake_model_files()
-        text_encoder_path = _cp_path(test_state, _current_ltx_spec().text_encoder_cp)
-        for child in text_encoder_path.iterdir():
-            child.unlink()
-        text_encoder_path.rmdir()
+        _remove_text_encoder(test_state)
 
         response = client.get("/api/models/ltx-recommendation")
         assert response.status_code == 200
         assert response.json() == {
             "status": "download",
             "cps_to_download": [_current_ltx_spec().text_encoder_cp],
+            "optional_cp_ids": [],
         }
+
+    def test_upgrade_from_2_3_downloads_split_companions(
+        self, client, test_state, create_fake_model_files, create_fake_ic_lora_files
+    ):
+        # Existing 2.3 install upgrading to 2.5 must pull the new transformer, upscaler,
+        # duration head, audio VAE, and both video VAEs (DiffVAE + conv). Fast decode can
+        # then toggle without another download. API key set so the TE stays optional.
+        create_fake_model_files(model_id="ltx-2.3-22b-distilled-1.1")
+        create_fake_ic_lora_files()
+        test_state.state.app_settings.ltx_api_key = "test-key"
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
+
+        response = client.get("/api/models/ltx-recommendation")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "upgrade"
+        target = get_ltx_model_spec("ltx-2.5-22b-distilled")
+        assert set(payload["cps_to_download"]) == {
+            target.model_cp,
+            target.upscale_cp,
+            target.video_vae_cp,
+            target.video_vae_conv_cp,
+            target.audio_vae_cp,
+            target.duration_head_cp,
+        }
+        assert target.text_encoder_cp not in payload["cps_to_download"]
+        assert payload["loses_built_in_control"] is True
+        assert "ltx-2.3-22b-ic-lora-union-control-ref0.5" in payload["cps_to_delete"]
+
+    def test_upgrade_from_2_3_includes_conv_vae_even_when_fast_decode_is_off(
+        self, client, test_state, create_fake_model_files, create_fake_ic_lora_files
+    ):
+        create_fake_model_files(model_id="ltx-2.3-22b-distilled-1.1")
+        create_fake_ic_lora_files()
+        test_state.state.app_settings.ltx_api_key = "test-key"
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
+        test_state.state.app_settings.use_conv_vae = False
+
+        payload = client.get("/api/models/ltx-recommendation").json()
+        assert payload["status"] == "upgrade"
+        assert "ltx-2.5-video-vae-conv" in payload["cps_to_download"]
+        assert "ltx-2.5-video-vae" in payload["cps_to_download"]
+
+    def test_describe_checkpoints_labels_2_5_vaes(self, client):
+        response = client.post(
+            "/api/models/describe",
+            json={"cp_ids": ["ltx-2.5-video-vae", "ltx-2.5-video-vae-conv", "ltx-2.5-audio-vae", "ltx-2.5-duration-head", "ltx-2.5-22b-distilled"]},
+        )
+        assert response.status_code == 200
+        by_id = {item["cp_id"]: item for item in response.json()["checkpoints"]}
+        assert by_id["ltx-2.5-22b-distilled"]["role"] == "base"
+        assert by_id["ltx-2.5-video-vae"]["role"] == "vae"
+        assert by_id["ltx-2.5-video-vae-conv"]["role"] == "vae"
+        assert by_id["ltx-2.5-audio-vae"]["role"] == "vae"
+        assert by_id["ltx-2.5-duration-head"]["role"] == "support"
 
     def test_img_gen_recommendation(self, client, create_fake_model_files):
         response = client.get("/api/models/img-gen-recommendation")
@@ -111,15 +281,14 @@ class TestRecommendations:
 
     def test_text_encoder_recommendation(self, client, create_fake_model_files, test_state):
         create_fake_model_files()
-        text_encoder_path = _cp_path(test_state, _current_ltx_spec().text_encoder_cp)
-        for child in text_encoder_path.iterdir():
-            child.unlink()
-        text_encoder_path.rmdir()
+        _remove_text_encoder(test_state)
 
         response = client.get("/api/models/text-encoder-recommendation")
         assert response.status_code == 200
         assert response.json()["cp_to_download"] == _current_ltx_spec().text_encoder_cp
         assert response.json()["expected_size_bytes"] > 0
+        assert response.json()["api_encoding_supported"] is True
+        assert response.json()["ltx_version_label"] == "2.5"
 
     def test_describe_checkpoints(self, client, create_fake_model_files):
         spec = _current_ltx_spec()
@@ -157,15 +326,22 @@ class TestRecommendations:
         create_fake_model_files()
         response = client.get("/api/models/ltx-ic-lora-recommendation")
         assert response.status_code == 200
-        assert response.json()["cps_to_download"] == [
-            *get_ic_loras_cp_ids(_current_ltx_spec().ic_loras_spec),
-            DEPTH_PROCESSOR_CP_ID,
-        ]
+        # Latest (2.5) has no built-in Union Control IC-LoRA.
+        payload = response.json()
+        assert payload["cps_to_download"] == []
+        assert payload["supported"] is False
 
+    def test_ic_lora_recommendation_supported_on_active_2_3(
+        self, client, test_state, create_fake_model_files, create_fake_ic_lora_files
+    ):
+        create_fake_model_files(model_id="ltx-2.3-22b-distilled-1.1")
         create_fake_ic_lora_files()
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
         response = client.get("/api/models/ltx-ic-lora-recommendation")
         assert response.status_code == 200
-        assert response.json()["cps_to_download"] == []
+        payload = response.json()
+        assert payload["supported"] is True
+        assert payload["cps_to_download"] == []
 
 
 class TestDownloadProgress:
@@ -345,12 +521,13 @@ class TestCheckpointDeletion:
 
 
 class TestLtxVersions:
-    def test_two_base_versions_registered_newest_first(self):
-        assert ALL_LTX_LOCAL_MODEL_IDS[0] == "ltx-2.3-22b-distilled-1.1"
+    def test_base_versions_registered_newest_first(self):
+        assert ALL_LTX_LOCAL_MODEL_IDS[0] == "ltx-2.5-22b-distilled"
+        assert "ltx-2.3-22b-distilled-1.1" in ALL_LTX_LOCAL_MODEL_IDS
         assert "ltx-2.3-22b-distilled" in ALL_LTX_LOCAL_MODEL_IDS
-        assert get_latest_ltx_model_id() == "ltx-2.3-22b-distilled-1.1"
+        assert get_latest_ltx_model_id() == "ltx-2.5-22b-distilled"
 
-    def test_versions_share_companions(self):
+    def test_2_3_versions_share_companions(self):
         v11 = get_ltx_model_spec("ltx-2.3-22b-distilled-1.1")
         v10 = get_ltx_model_spec("ltx-2.3-22b-distilled")
         assert v11.upscale_cp == v10.upscale_cp
@@ -359,42 +536,44 @@ class TestLtxVersions:
         assert v11.model_cp != v10.model_cp
 
     def test_version_labels(self):
-        assert get_ltx_model_spec("ltx-2.3-22b-distilled-1.1").version_label == "1.1"
-        assert get_ltx_model_spec("ltx-2.3-22b-distilled").version_label == "1.0"
+        assert get_ltx_model_spec("ltx-2.5-22b-distilled").version_label == "2.5"
+        assert get_ltx_model_spec("ltx-2.3-22b-distilled-1.1").version_label == "2.3"
+        assert get_ltx_model_spec("ltx-2.3-22b-distilled").version_label == "2.3 (1.0)"
 
-    def test_1_1_checkpoint_spec(self):
-        spec = get_model_cp_spec("ltx-2.3-22b-distilled-1.1")
-        assert spec.repo_id == "Lightricks/LTX-2.3"
-        assert str(spec.relative_path) == "ltx-2.3-22b-distilled-1.1.safetensors"
-        assert spec.expected_size_bytes == 46_149_345_334
+    def test_2_5_checkpoint_spec(self):
+        spec = get_model_cp_spec("ltx-2.5-22b-distilled")
+        assert spec.repo_id == "Lightricks/LTX-2.5"
+        assert spec.download_filename.startswith("diffusion_models/")
 
-    def test_distilled_1_1_has_upgrade_notes(self):
-        # The 1.1 spec carries authored "what's new" notes for the 1.0 -> 1.1 upgrade prompt.
+    def test_distilled_2_5_has_upgrade_notes(self):
         from runtime_config.model_download_specs import LTXLocalModelRelevant
-        relevance = get_ltx_model_spec("ltx-2.3-22b-distilled-1.1").relevance
+        relevance = get_ltx_model_spec("ltx-2.5-22b-distilled").relevance
         assert isinstance(relevance, LTXLocalModelRelevant)
+        assert relevance.upgrade_messages.get("ltx-2.3-22b-distilled-1.1")
         assert relevance.upgrade_messages.get("ltx-2.3-22b-distilled")
 
 
 class TestActiveModelResolution:
-    def _write_transformer(self, test_state, model_id: str) -> None:
+    def _write_generation_bundle(self, test_state, model_id: str) -> None:
         # resolve_active_ltx_model_id requires the full generation bundle (transformer +
-        # upscaler), so write both — otherwise the version isn't considered runnable.
+        # upscaler + split VAEs for 2.5).
         spec = get_ltx_model_spec(model_id)
-        for cp in (spec.model_cp, spec.upscale_cp):
+        for cp in (spec.model_cp, spec.upscale_cp, spec.video_vae_cp, spec.audio_vae_cp):
+            if cp is None:
+                continue
             path = resolve_model_path(test_state.config.default_models_dir, cp)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"\x00" * 1024)
 
     def test_prefers_explicit_when_installed(self, test_state):
         models_dir = test_state.config.default_models_dir
-        self._write_transformer(test_state, "ltx-2.3-22b-distilled")
-        self._write_transformer(test_state, "ltx-2.3-22b-distilled-1.1")
+        self._write_generation_bundle(test_state, "ltx-2.3-22b-distilled")
+        self._write_generation_bundle(test_state, "ltx-2.3-22b-distilled-1.1")
         assert resolve_active_ltx_model_id(models_dir, "ltx-2.3-22b-distilled") == "ltx-2.3-22b-distilled"
 
     def test_falls_back_to_newest_installed_when_preferred_missing(self, test_state):
         models_dir = test_state.config.default_models_dir
-        self._write_transformer(test_state, "ltx-2.3-22b-distilled")
+        self._write_generation_bundle(test_state, "ltx-2.3-22b-distilled")
         # preferred 1.1 is NOT on disk -> fall back to the only installed (1.0)
         assert resolve_active_ltx_model_id(models_dir, "ltx-2.3-22b-distilled-1.1") == "ltx-2.3-22b-distilled"
 
@@ -403,8 +582,8 @@ class TestActiveModelResolution:
 
     def test_generation_uses_active_setting(self, client, test_state):
         models_dir = test_state.config.default_models_dir
-        self._write_transformer(test_state, "ltx-2.3-22b-distilled")
-        self._write_transformer(test_state, "ltx-2.3-22b-distilled-1.1")
+        self._write_generation_bundle(test_state, "ltx-2.3-22b-distilled")
+        self._write_generation_bundle(test_state, "ltx-2.3-22b-distilled-1.1")
         test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled"
         resolved = resolve_active_ltx_model_id(models_dir, test_state.state.app_settings.active_ltx_model_id)
         assert resolved == "ltx-2.3-22b-distilled"
@@ -418,20 +597,23 @@ class TestLtxVersionEndpoints:
         path.write_bytes(b"\x00" * 1024)
 
     def test_versions_list_newest_first_with_flags(self, client, test_state, create_fake_model_files):
-        # create_fake_model_files installs the latest (1.1) bundle
+        # create_fake_model_files installs the latest (2.5) bundle
         create_fake_model_files()
-        test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.5-22b-distilled"
         response = client.get("/api/models/ltx-versions")
         assert response.status_code == 200
         versions = response.json()["versions"]
         assert [v["model_id"] for v in versions] == [
+            "ltx-2.5-22b-distilled",
             "ltx-2.3-22b-distilled-1.1",
             "ltx-2.3-22b-distilled",
         ]
-        newest, older = versions[0], versions[1]
-        assert newest["label"] == "1.1"
+        newest = versions[0]
+        older = versions[2]
+        assert newest["label"] == "2.5"
         assert newest["installed"] is True
         assert newest["active"] is True
+        assert versions[1]["installed"] is False
         assert older["installed"] is False
         assert older["is_newest"] is False
         assert newest["is_newest"] is True
@@ -478,26 +660,29 @@ class TestLtxVersionEndpoints:
 
 
 class TestDeleteGuard:
-    def _write_transformer(self, test_state, model_id: str) -> None:
-        cp = get_ltx_model_spec(model_id).model_cp
-        path = resolve_model_path(test_state.config.default_models_dir, cp)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b"\x00" * 1024)
+    def _write_generation_bundle(self, test_state, model_id: str) -> None:
+        spec = get_ltx_model_spec(model_id)
+        for cp in (spec.model_cp, spec.upscale_cp, spec.video_vae_cp, spec.audio_vae_cp):
+            if cp is None:
+                continue
+            path = resolve_model_path(test_state.config.default_models_dir, cp)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"\x00" * 1024)
 
     def test_cannot_delete_active_version_transformer(self, client, test_state, create_fake_model_files):
-        create_fake_model_files()  # installs 1.1 bundle
-        self._write_transformer(test_state, "ltx-2.3-22b-distilled")  # 1.0 also present
-        test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
+        create_fake_model_files()  # installs latest (2.5) bundle
+        self._write_generation_bundle(test_state, "ltx-2.3-22b-distilled")  # 1.0 also present
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.5-22b-distilled"
         response = client.request(
-            "DELETE", "/api/models/delete", json={"cp_ids": ["ltx-2.3-22b-distilled-1.1"]}
+            "DELETE", "/api/models/delete", json={"cp_ids": ["ltx-2.5-22b-distilled"]}
         )
         assert response.status_code == 409
         assert response.json()["code"] == "DELETE_PROTECTED_CHECKPOINT"
 
     def test_can_delete_non_active_version_transformer(self, client, test_state, create_fake_model_files):
-        create_fake_model_files()  # 1.1 bundle, active by default resolution
-        self._write_transformer(test_state, "ltx-2.3-22b-distilled")  # 1.0 present, not active
-        test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
+        create_fake_model_files()  # 2.5 bundle, active by default resolution
+        self._write_generation_bundle(test_state, "ltx-2.3-22b-distilled")  # 1.0 present, not active
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.5-22b-distilled"
         response = client.request(
             "DELETE", "/api/models/delete", json={"cp_ids": ["ltx-2.3-22b-distilled"]}
         )
@@ -505,10 +690,9 @@ class TestDeleteGuard:
 
     def test_active_older_version_protected_newer_deletable(self, client, test_state, create_fake_model_files):
         # Both versions installed; active is the OLDER 1.0.
-        # Old impl (protected = newest installed = 1.1) would ALLOW deleting 1.0 and BLOCK deleting 1.1.
-        # New impl (protected = active = 1.0) must BLOCK deleting 1.0 and ALLOW deleting 1.1.
-        create_fake_model_files()  # installs 1.1 bundle
-        self._write_transformer(test_state, "ltx-2.3-22b-distilled")  # 1.0 also present
+        # Protected = active (1.0); newer non-active (2.5) must be deletable.
+        create_fake_model_files()  # installs 2.5 bundle
+        self._write_generation_bundle(test_state, "ltx-2.3-22b-distilled")  # 1.0 full bundle
         test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled"  # active = 1.0
 
         # Active (1.0) must be protected
@@ -518,8 +702,116 @@ class TestDeleteGuard:
         assert response_protected.status_code == 409
         assert response_protected.json()["code"] == "DELETE_PROTECTED_CHECKPOINT"
 
-        # Non-active newer (1.1) must be deletable
+        # Non-active newer (2.5) must be deletable
         response_allowed = client.request(
-            "DELETE", "/api/models/delete", json={"cp_ids": ["ltx-2.3-22b-distilled-1.1"]}
+            "DELETE", "/api/models/delete", json={"cp_ids": ["ltx-2.5-22b-distilled"]}
         )
         assert response_allowed.status_code == 200
+
+
+class TestActiveModelResolution:
+    def test_text_encoder_follows_active_not_newest_on_disk(
+        self, client, test_state, create_fake_model_files
+    ):
+        # Both bundles installed; newest-on-disk would pick 2.5/Gemma4, but active is 2.3/Gemma3.
+        create_fake_model_files()
+        create_fake_model_files(model_id="ltx-2.3-22b-distilled-1.1")
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
+
+        response = client.get("/api/models/text-encoder-recommendation")
+        assert response.status_code == 200
+        assert response.json()["cp_to_download"] is None
+        assert (
+            test_state.text.resolve_prompt_enhancer_root_if_downloaded()
+            == str(
+                resolve_model_path(
+                    test_state.config.default_models_dir,
+                    "gemma-3-12b-it-qat-q4_0-unquantized",
+                )
+            )
+        )
+
+    def test_ic_lora_follows_active_when_both_installed(
+        self, client, test_state, create_fake_model_files, create_fake_ic_lora_files
+    ):
+        create_fake_model_files()
+        create_fake_model_files(model_id="ltx-2.3-22b-distilled-1.1")
+        create_fake_ic_lora_files()
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
+
+        response = client.get("/api/models/ltx-ic-lora-recommendation")
+        assert response.status_code == 200
+        assert response.json()["supported"] is True
+
+    def test_models_specs_display_follows_active(
+        self, client, test_state, create_fake_model_files
+    ):
+        create_fake_model_files()
+        create_fake_model_files(model_id="ltx-2.3-22b-distilled-1.1")
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
+
+        response = client.get("/api/generate/models-specs")
+        assert response.status_code == 200
+        assert response.json()["local_models"][0]["spec"]["display_name"] == "LTX 2.3 Fast"
+
+
+class TestGatedCheckpointAccess:
+    def test_gated_download_rejected_when_signed_out(self, client, test_state):
+        test_state.state.hf_auth_state = HfNotAuthenticated()
+        response = client.post(
+            "/api/models/download",
+            json={"type": "download", "cp_ids": ["ltx-2.5-22b-distilled"]},
+        )
+        assert response.status_code == 403
+        assert test_state.state.downloading_session is None
+
+    def test_gated_download_starts_when_signed_in(self, client, test_state):
+        response = client.post(
+            "/api/models/download",
+            json={"type": "download", "cp_ids": ["ltx-2.5-22b-distilled"]},
+        )
+        assert response.status_code == 200
+        assert _cp_path(test_state, "ltx-2.5-22b-distilled").exists()
+
+    def test_nested_hf_path_flattens_to_local_basename(self, client, test_state):
+        # FakeModelDownloader writes to local_dir/<repo_filename>; the staging step must
+        # flatten that to relative_path's basename before commit, or pipelines look for the
+        # wrong file.
+        spec = get_model_cp_spec("ltx-2.5-22b-distilled")
+        assert "/" in spec.download_filename
+
+        response = client.post(
+            "/api/models/download",
+            json={"type": "download", "cp_ids": ["ltx-2.5-22b-distilled"]},
+        )
+        assert response.status_code == 200
+
+        committed = _cp_path(test_state, "ltx-2.5-22b-distilled")
+        assert committed.exists()
+        assert committed.parent.name == "ltx-2.5"
+        assert committed.name == spec.relative_path.name
+        nested_leftover = resolve_downloading_dir(test_state.config.default_models_dir) / Path(
+            spec.download_filename
+        )
+        assert not nested_leftover.exists()
+        assert not (test_state.config.default_models_dir / Path(spec.download_filename)).exists()
+
+    def test_public_download_still_allowed_when_signed_out(self, client, test_state):
+        test_state.state.hf_auth_state = HfNotAuthenticated()
+        response = client.post(
+            "/api/models/download",
+            json={"type": "download", "cp_ids": ["ltx-2.3-22b-distilled"]},
+        )
+        assert response.status_code == 200
+
+    def test_check_access_flags_gated_repo_when_signed_out(self, client, test_state):
+        test_state.state.hf_auth_state = HfNotAuthenticated()
+        response = client.post(
+            "/api/models/check-access",
+            json={"cp_ids": ["ltx-2.5-22b-distilled", "ltx-2.3-22b-distilled"]},
+        )
+        assert response.status_code == 200
+        assert response.json()["access"] == {
+            "Lightricks/LTX-2.5": "not_authorized",
+            "Lightricks/LTX-2.3": "authorized",
+        }

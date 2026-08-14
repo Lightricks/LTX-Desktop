@@ -30,7 +30,7 @@ type LtxUpgradeRecommendation = Extract<LtxRecommendation, { status: 'upgrade' }
 function AppContent() {
   const { currentView } = useView()
   const { connected, processStatus, isLoading: backendLoading } = useBackend()
-  const { settings, saveLtxApiKey, saveFalApiKey, forceApiGenerations, isLoaded, runtimePolicyLoaded } = useAppSettings()
+  const { settings, saveLtxApiKey, saveFalApiKey, forceApiGenerations, isLoaded, runtimePolicyLoaded, notifyModelsChanged } = useAppSettings()
   // Always mounted here (unlike GenSpace, which unmounts on every view/tab switch) so a
   // generation that finishes while its project isn't open still gets persisted.
   useGenerationRecoveryWatcher()
@@ -145,6 +145,7 @@ function AppContent() {
         throw new Error('Failed to complete setup.')
       }
       setSetupState({ needsSetup: false, needsLicense: false })
+      notifyModelsChanged()
     })()
 
     setupCompletionInFlightRef.current = inFlightPromise
@@ -159,7 +160,7 @@ function AppContent() {
       setupCompletionInFlightRef.current = null
       setIsFinalizingFirstRun(false)
     }
-  }, [])
+  }, [notifyModelsChanged])
 
   const handleAcceptLicense = useCallback(async () => {
     const ok = await window.electronAPI.acceptLicense()
@@ -341,8 +342,9 @@ function AppContent() {
 
   const handleCompleteLtxUpgradePrompt = useCallback(async () => {
     setDismissedUpgradeTargetId(null)
+    notifyModelsChanged()
     await refreshLtxUpgradeRecommendation()
-  }, [refreshLtxUpgradeRecommendation])
+  }, [notifyModelsChanged, refreshLtxUpgradeRecommendation])
 
   const restartingOverlay = isBackendRestarting ? (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">

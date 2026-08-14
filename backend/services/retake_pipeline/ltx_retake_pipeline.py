@@ -19,13 +19,14 @@ import torch
 
 from ltx_core.components.guiders import MultiModalGuiderParams
 from ltx_core.loader import LoraPathStrengthAndSDOps
-from ltx_core.model.video_vae import TilingConfig, get_video_chunks_number
+from ltx_core.model.video_vae import DimensionSizeConfig, TileSizeConfig, get_video_chunks_number
 from ltx_core.quantization import QuantizationPolicy
 from ltx_core.types import Audio
 from ltx_pipelines.utils.media_io import encode_video, get_videostream_metadata
 
 from api_types import ExtendMode
-from services.ltx_pipeline_common import offload_mode_for_prefetch_count
+from services.ltx_pipeline_common import build_model_paths, offload_mode_for_prefetch_count, resolve_tiling_config
+from services.services_utils import TilingConfigType
 from services.retake_pipeline.retake_pipeline import RetakePipeline
 
 
@@ -46,6 +47,9 @@ class LTXRetakePipeline:
         *,
         loras: list[LoraPathStrengthAndSDOps] | None = None,
         quantization: QuantizationPolicy | None = None,
+        video_vae_path: str | None = None,
+        audio_vae_path: str | None = None,
+        duration_head_path: str | None = None,
     ) -> RetakePipeline:
         return LTXRetakePipeline(
             checkpoint_path=checkpoint_path,
@@ -54,6 +58,9 @@ class LTXRetakePipeline:
             streaming_prefetch_count=streaming_prefetch_count,
             loras=loras or [],
             quantization=quantization,
+            video_vae_path=video_vae_path,
+            audio_vae_path=audio_vae_path,
+            duration_head_path=duration_head_path,
         )
 
     def __init__(
@@ -65,6 +72,9 @@ class LTXRetakePipeline:
         *,
         loras: list[LoraPathStrengthAndSDOps],
         quantization: QuantizationPolicy | None,
+        video_vae_path: str | None = None,
+        audio_vae_path: str | None = None,
+        duration_head_path: str | None = None,
     ) -> None:
         from ltx_pipelines.utils.blocks import (
             AudioConditioner,
@@ -78,41 +88,50 @@ class LTXRetakePipeline:
         self.device = device
         self.dtype = torch.bfloat16
         offload_mode = offload_mode_for_prefetch_count(streaming_prefetch_count, device)
+        model_paths = build_model_paths(
+            checkpoint_path,
+            gemma_root,
+            video_vae_path=video_vae_path,
+            audio_vae_path=audio_vae_path,
+            duration_head_path=duration_head_path,
+        )
+        video_vae = model_paths.video_vae()
+        audio_vae = model_paths.audio_vae()
+        transformer = model_paths.transformer()
 
         self.prompt_encoder = PromptEncoder(
-            checkpoint_path=checkpoint_path,
-            gemma_root=gemma_root or "",
-            dtype=self.dtype,
-            device=device,
+            model_paths,
+            self.dtype,
+            device,
             offload_mode=offload_mode,
         )
         self.image_conditioner = ImageConditioner(
-            checkpoint_path=checkpoint_path,
-            dtype=self.dtype,
-            device=device,
+            video_vae,
+            self.dtype,
+            device,
         )
         self.audio_conditioner = AudioConditioner(
-            checkpoint_path=checkpoint_path,
-            dtype=self.dtype,
-            device=device,
+            audio_vae,
+            self.dtype,
+            device,
         )
         self.stage = DiffusionStage.from_checkpoint(  # type: ignore[reportUnknownMemberType]
-            checkpoint_path=checkpoint_path,
-            dtype=self.dtype,
-            device=device,
+            transformer,
+            self.dtype,
+            device,
             loras=tuple(loras),
             quantization=quantization,
             offload_mode=offload_mode,
         )
         self.video_decoder = VideoDecoder(
-            checkpoint_path=checkpoint_path,
-            dtype=self.dtype,
-            device=device,
+            video_vae,
+            self.dtype,
+            device,
         )
         self.audio_decoder = AudioDecoder(
-            checkpoint_path=checkpoint_path,
-            dtype=self.dtype,
-            device=device,
+            audio_vae,
+            self.dtype,
+            device,
         )
 
     @torch.no_grad()
@@ -137,7 +156,7 @@ class LTXRetakePipeline:
         target_width: int | None = None,
         target_height: int | None = None,
         target_frames: int | None = None,
-    ) -> tuple[Iterator[torch.Tensor], Audio]:
+    ) -> tuple[Iterator[torch.Tensor], Audio, TilingConfigType]:
         from ltx_core.components.guiders import MultiModalGuider
         from ltx_core.components.noisers import GaussianNoiser
         from ltx_core.components.schedulers import LTX2Scheduler
@@ -155,15 +174,14 @@ class LTXRetakePipeline:
         effective_seed = int(torch.randint(0, 2**31, (1,)).item()) if seed < 0 else seed
         generator = torch.Generator(device=self.device).manual_seed(effective_seed)
         noiser = GaussianNoiser(generator=generator)
-        from ltx_core.model.video_vae import SpatialTilingConfig, TemporalTilingConfig
 
         dtype = self.dtype
-        tiling = TilingConfig.default()
         # Smaller tiles for source video encoding to reduce peak VRAM allocation
         # during the VAE encoder forward pass.
-        encoding_tiling = TilingConfig(
-            spatial_config=SpatialTilingConfig(tile_size_in_pixels=256, tile_overlap_in_pixels=64),
-            temporal_config=TemporalTilingConfig(tile_size_in_frames=24, tile_overlap_in_frames=16),
+        encoding_tiling = TileSizeConfig(
+            frames=DimensionSizeConfig(tile_size=24, overlap=16),
+            height=DimensionSizeConfig(tile_size=256, overlap=64),
+            width=DimensionSizeConfig(tile_size=256, overlap=64),
         )
 
         # --- Encode source video (tiled) ---
@@ -304,9 +322,16 @@ class LTXRetakePipeline:
 
         # --- Decode video (lazy generator, tiled) ---
         assert video_state is not None
+        tiling = resolve_tiling_config(
+            self.video_decoder.checkpoint_path,
+            height=target_shape.height,
+            width=target_shape.width,
+            num_frames=target_shape.frames,
+            device=self.device,
+        )
         decoded_video = self.video_decoder(video_state.latent, tiling, generator)
 
-        return decoded_video, decoded_audio
+        return decoded_video, decoded_audio, tiling
 
     @torch.no_grad()
     def generate(
@@ -333,7 +358,7 @@ class LTXRetakePipeline:
         meta = get_videostream_metadata(video_path)
         fps = meta.fps
         num_frames = target_frames if target_frames is not None else meta.frames
-        video_iter, audio = self._run(
+        video_iter, audio, tiling_config = self._run(
             video_path=video_path,
             prompt=prompt,
             start_time=start_time,
@@ -352,7 +377,6 @@ class LTXRetakePipeline:
             target_frames=target_frames,
         )
         audio_out: Audio | None = audio
-        tiling_config = TilingConfig.default()
         video_chunks = get_video_chunks_number(num_frames, tiling_config)
         encode_video(
             video=video_iter,
@@ -384,7 +408,7 @@ class LTXRetakePipeline:
         fps = meta.fps
         source_frames = target_frames if target_frames is not None else meta.frames
         total_frames = source_frames + extend_frames
-        video_iter, audio = self._run(
+        video_iter, audio, tiling_config = self._run(
             video_path=video_path,
             prompt=prompt,
             start_time=0.0,
@@ -403,7 +427,6 @@ class LTXRetakePipeline:
             target_height=target_height,
             target_frames=target_frames,
         )
-        tiling_config = TilingConfig.default()
         video_chunks = get_video_chunks_number(total_frames, tiling_config)
         encode_video(
             video=video_iter,

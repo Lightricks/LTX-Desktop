@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any, Literal, TypeGuard, TypeVar, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator
@@ -68,6 +69,8 @@ class AppSettings(SettingsBaseModel):
     locked_seed: int = 42
     models_dir: str = ""
     active_ltx_model_id: LTXLocalModelId | None = None
+    # None = platform default (Mac on, CUDA/Linux off). An explicit bool is a user override.
+    use_conv_vae: bool | None = None
 
     @field_validator("prompt_cache_size", mode="before")
     @classmethod
@@ -141,6 +144,14 @@ class SettingsResponse(SettingsBaseModel):
     locked_seed: int = 42
     models_dir: str = ""
     active_ltx_model_id: LTXLocalModelId | None = None
+    use_conv_vae: bool = False
+
+
+def resolved_use_conv_vae(settings: AppSettings) -> bool:
+    """Effective Fast decode setting: user override, else Mac on / CUDA off."""
+    if settings.use_conv_vae is not None:
+        return settings.use_conv_vae
+    return sys.platform == "darwin"
 
 
 def to_settings_response(settings: AppSettings) -> SettingsResponse:
@@ -151,7 +162,7 @@ def to_settings_response(settings: AppSettings) -> SettingsResponse:
     data["has_ltx_api_key"] = bool(ltx_key)
     data["has_fal_api_key"] = bool(fal_key)
     data["has_gemini_api_key"] = bool(gemini_key)
-    # models_dir passes through as-is (not secret)
+    data["use_conv_vae"] = resolved_use_conv_vae(settings)
     return SettingsResponse.model_validate(data)
 
 

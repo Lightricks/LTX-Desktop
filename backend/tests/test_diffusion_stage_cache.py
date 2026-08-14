@@ -16,17 +16,21 @@ import pytest
 
 from ltx_core.block_streaming import StreamingModelBuilder
 from ltx_core.loader.single_gpu_model_builder import SingleGPUModelBuilder
-from ltx_pipelines.utils.allocator_trim_strategy import AllocatorTrimStrategy
+from ltx_core.allocator_trim_strategy import AllocatorTrimStrategy
 from services.patches import diffusion_stage_cache as dsc
 
 
 class _FakeModel:
     def __init__(self) -> None:
         self.freed_to: str | None = None
+        self.disposed = False
 
     def to(self, device: str) -> "_FakeModel":
         self.freed_to = device
         return self
+
+    def dispose(self) -> None:
+        self.disposed = True
 
 
 class _FakeStage:

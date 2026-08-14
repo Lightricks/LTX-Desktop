@@ -22,6 +22,7 @@ export interface AppSettings {
   seedLocked: boolean
   lockedSeed: number
   modelsDir: string
+  useConvVae: boolean
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -40,6 +41,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   seedLocked: false,
   lockedSeed: 42,
   modelsDir: '',
+  useConvVae: false,
 }
 
 type BackendProcessStatus = 'alive' | 'restarting' | 'dead'
@@ -57,6 +59,11 @@ interface AppSettingsContextValue {
   shouldVideoGenerateWithLtxApi: boolean
   shouldImageGenerateWithFalApi: boolean
   cudaAvailable: boolean
+  // Bumped whenever installed models change (download / delete / activate a version). Generation
+  // model specs are derived from the *active* local model, so anything reading them must refetch;
+  // without this they stay pinned to whatever was installed at app start.
+  modelsVersion: number
+  notifyModelsChanged: () => void
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
@@ -90,6 +97,7 @@ function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
     seedLocked: data.seedLocked ?? DEFAULT_APP_SETTINGS.seedLocked,
     lockedSeed: data.lockedSeed ?? DEFAULT_APP_SETTINGS.lockedSeed,
     modelsDir: data.modelsDir ?? DEFAULT_APP_SETTINGS.modelsDir,
+    useConvVae: data.useConvVae ?? DEFAULT_APP_SETTINGS.useConvVae,
   }
 }
 
@@ -103,6 +111,11 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [forceApiGenerations, setForceApiGenerations] = useState(true)
   const [cudaAvailable, setCudaAvailable] = useState(false)
   const [backendProcessStatus, setBackendProcessStatus] = useState<BackendProcessStatus | null>(null)
+  const [modelsVersion, setModelsVersion] = useState(0)
+
+  const notifyModelsChanged = useCallback(() => {
+    setModelsVersion((current) => current + 1)
+  }, [])
 
   useEffect(() => {
     if (backendProcessStatus !== 'alive') return
@@ -160,7 +173,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [backendProcessStatus])
+  }, [backendProcessStatus, modelsVersion])
 
   useEffect(() => {
     let cancelled = false
@@ -291,8 +304,10 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       shouldVideoGenerateWithLtxApi,
       shouldImageGenerateWithFalApi,
       cudaAvailable,
+      modelsVersion,
+      notifyModelsChanged,
     }),
-    [cudaAvailable, forceApiGenerations, isLoaded, refreshSettings, runtimePolicyLoaded, saveFalApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi, updateSettings],
+    [cudaAvailable, forceApiGenerations, isLoaded, modelsVersion, notifyModelsChanged, refreshSettings, runtimePolicyLoaded, saveFalApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi, updateSettings],
   )
 
   return <AppSettingsContext.Provider value={contextValue}>{children}</AppSettingsContext.Provider>

@@ -8,7 +8,6 @@ import re
 import struct
 from collections.abc import Iterator
 from pathlib import Path
-from typing import cast
 
 import numpy as np
 import torch
@@ -16,12 +15,13 @@ from numpy.typing import NDArray
 
 from api_types import ImageConditioningInput
 from services.ltx_pipeline_common import (
-    default_tiling_config,
+    auto_tiling_config,
+    build_model_paths,
     encode_video_output,
     offload_mode_for_prefetch_count,
     video_chunks_number,
 )
-from services.services_utils import AudioOrNone, TilingConfigType, device_supports_fp8
+from services.services_utils import AudioOrNone, PipelineTilingType, TilingConfigType, device_supports_fp8
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,10 @@ class LTXIcLoraPipeline:
         device: torch.device,
         streaming_prefetch_count: int | None,
         lora_strength: float = 1.0,
+        *,
+        video_vae_path: str | None = None,
+        audio_vae_path: str | None = None,
+        duration_head_path: str | None = None,
     ) -> "LTXIcLoraPipeline":
         return LTXIcLoraPipeline(
             checkpoint_path=checkpoint_path,
@@ -45,6 +49,9 @@ class LTXIcLoraPipeline:
             device=device,
             streaming_prefetch_count=streaming_prefetch_count,
             lora_strength=lora_strength,
+            video_vae_path=video_vae_path,
+            audio_vae_path=audio_vae_path,
+            duration_head_path=duration_head_path,
         )
 
     def __init__(
@@ -56,6 +63,10 @@ class LTXIcLoraPipeline:
         device: torch.device,
         streaming_prefetch_count: int | None,
         lora_strength: float = 1.0,
+        *,
+        video_vae_path: str | None = None,
+        audio_vae_path: str | None = None,
+        duration_head_path: str | None = None,
     ) -> None:
         from ltx_core.loader.primitives import LoraPathStrengthAndSDOps
         from ltx_core.loader.sd_ops import LTXV_LORA_COMFY_RENAMING_MAP
@@ -70,9 +81,14 @@ class LTXIcLoraPipeline:
         self._quantization = build_fp8_cast_policy(checkpoint_path) if device_supports_fp8(device) else None
         offload_mode = offload_mode_for_prefetch_count(streaming_prefetch_count, device)
         self.pipeline = ICLoraPipeline(
-            distilled_checkpoint_path=checkpoint_path,
+            model_paths=build_model_paths(
+                checkpoint_path,
+                gemma_root,
+                video_vae_path=video_vae_path,
+                audio_vae_path=audio_vae_path,
+                duration_head_path=duration_head_path,
+            ),
             spatial_upsampler_path=upsampler_path,
-            gemma_root=cast(str, gemma_root),
             loras=[lora_entry],
             device=device,
             quantization=self._quantization,
@@ -156,13 +172,13 @@ class LTXIcLoraPipeline:
         frame_rate: float,
         images: list[ImageConditioningInput],
         video_conditioning: list[tuple[str, float]],
-        tiling_config: TilingConfigType,
+        tiling_config: PipelineTilingType,
         skip_stage_2: bool,
         conditioning_attention_mask: torch.Tensor | None,
-    ) -> tuple[torch.Tensor | Iterator[torch.Tensor], AudioOrNone]:
+    ) -> tuple[torch.Tensor | Iterator[torch.Tensor], AudioOrNone, TilingConfigType | None]:
         from ltx_pipelines.utils.args import ImageConditioningInput as _LtxImageInput
 
-        return self.pipeline(
+        video, audio, resolved_tiling = self.pipeline(
             prompt=prompt,
             seed=seed,
             height=height,
@@ -175,6 +191,7 @@ class LTXIcLoraPipeline:
             skip_stage_2=skip_stage_2,
             conditioning_attention_mask=conditioning_attention_mask,
         )
+        return video, audio, resolved_tiling
 
     def _load_mask_tensor(self, path: str, num_frames: int) -> torch.Tensor:
         """Load an outpaint mask video as a (1, 1, F, H, W) float tensor in [0, 1].
@@ -278,9 +295,8 @@ class LTXIcLoraPipeline:
                     "reduce frames (shorter clip / lower FPS) or RES FACTOR.",
                     free_gb,
                 )
-        tiling_config = default_tiling_config()
         try:
-            video, audio = self._run_inference(
+            video, audio, resolved_tiling = self._run_inference(
                 prompt=prompt,
                 seed=seed,
                 height=height,
@@ -289,7 +305,7 @@ class LTXIcLoraPipeline:
                 frame_rate=frame_rate,
                 images=images,
                 video_conditioning=video_conditioning,
-                tiling_config=tiling_config,
+                tiling_config=auto_tiling_config(),
                 skip_stage_2=skip_stage_2,
                 conditioning_attention_mask=conditioning_attention_mask,
             )
@@ -315,7 +331,7 @@ class LTXIcLoraPipeline:
                         audio.sampling_rate, audio.waveform.shape[0], a_dur, v_dur,
                         "" if abs(a_dur - v_dur) < 0.1 else "  MISMATCH",
                     )
-            chunks = video_chunks_number(num_frames, tiling_config)
+            chunks = video_chunks_number(num_frames, resolved_tiling)
             # round(), not int(): avoids truncating e.g. 23.976 -> 23 (encode_video int()s again).
             encode_video_output(video=video, audio=audio, fps=round(frame_rate), output_path=output_path, video_chunks_number_value=chunks)
         except torch.cuda.OutOfMemoryError:

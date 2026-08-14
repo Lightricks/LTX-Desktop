@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from state.app_settings import AppSettings, UpdateSettingsRequest
+from state.app_settings import AppSettings, UpdateSettingsRequest, resolved_use_conv_vae
 from state import build_initial_state
 from app_handler import ServiceBundle
 from tests.conftest import TEST_ADMIN_TOKEN
@@ -28,6 +28,7 @@ class TestGetSettings:
         assert data["hasGeminiApiKey"] is False
         assert data["seedLocked"] is False
         assert data["lockedSeed"] == 42
+        assert data["useConvVae"] is resolved_use_conv_vae(AppSettings())
         # When no custom path is set, the response surfaces the runtime default
         # so the first-run UI can show the install location.
         assert data["modelsDir"] == str(test_state.config.default_models_dir)
@@ -123,6 +124,44 @@ class TestPostSettings:
     def test_unknown_field_rejected(self, client):
         r = client.post("/api/settings", json={"unknownSetting": True})
         assert r.status_code == 422
+
+    def test_use_conv_vae_round_trip(self, client, test_state):
+        r = client.post("/api/settings", json={"useConvVae": True})
+        assert r.status_code == 200
+        assert test_state.state.app_settings.use_conv_vae is True
+        assert client.get("/api/settings").json()["useConvVae"] is True
+
+        r = client.post("/api/settings", json={"useConvVae": False})
+        assert r.status_code == 200
+        assert test_state.state.app_settings.use_conv_vae is False
+        assert client.get("/api/settings").json()["useConvVae"] is False
+
+    def test_use_conv_vae_change_unloads_gpu_pipeline(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files()
+        test_state.state.app_settings.use_conv_vae = False
+        test_state.pipelines.load_gpu_pipeline("fast")
+        assert test_state.state.gpu_slot is not None
+        cleanup_before = fake_services.gpu_cleaner.cleanup_calls
+
+        r = client.post("/api/settings", json={"useConvVae": True})
+        assert r.status_code == 200
+        assert test_state.state.gpu_slot is None
+        assert fake_services.gpu_cleaner.cleanup_calls > cleanup_before
+
+    def test_use_conv_vae_unchanged_does_not_unload_gpu_pipeline(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files()
+        test_state.state.app_settings.use_conv_vae = True
+        test_state.pipelines.load_gpu_pipeline("fast")
+        cleanup_before = fake_services.gpu_cleaner.cleanup_calls
+
+        r = client.post("/api/settings", json={"useConvVae": True})
+        assert r.status_code == 200
+        assert test_state.state.gpu_slot is not None
+        assert fake_services.gpu_cleaner.cleanup_calls == cleanup_before
 
 
 class TestModelsDirAdminGuard:
@@ -260,3 +299,25 @@ class TestSettingsPersistence:
 class TestSettingsSchemaDrift:
     def test_update_request_tracks_app_settings_fields(self):
         assert set(AppSettings.model_fields) == set(UpdateSettingsRequest.model_fields)
+
+
+class TestResolvedUseConvVae:
+    def test_none_defaults_on_for_darwin(self, monkeypatch):
+        monkeypatch.setattr("state.app_settings.sys.platform", "darwin")
+        assert resolved_use_conv_vae(AppSettings()) is True
+
+    def test_none_defaults_off_for_linux(self, monkeypatch):
+        monkeypatch.setattr("state.app_settings.sys.platform", "linux")
+        assert resolved_use_conv_vae(AppSettings()) is False
+
+    def test_none_defaults_off_for_windows(self, monkeypatch):
+        monkeypatch.setattr("state.app_settings.sys.platform", "win32")
+        assert resolved_use_conv_vae(AppSettings()) is False
+
+    def test_explicit_true_overrides_linux_default(self, monkeypatch):
+        monkeypatch.setattr("state.app_settings.sys.platform", "linux")
+        assert resolved_use_conv_vae(AppSettings(use_conv_vae=True)) is True
+
+    def test_explicit_false_overrides_darwin_default(self, monkeypatch):
+        monkeypatch.setattr("state.app_settings.sys.platform", "darwin")
+        assert resolved_use_conv_vae(AppSettings(use_conv_vae=False)) is False

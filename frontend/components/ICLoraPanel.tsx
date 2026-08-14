@@ -111,6 +111,7 @@ export function ICLoraPanel({
   const [isExtracting, setIsExtracting] = useState(false)
 
   const [requiredIcLoraCpIds, setRequiredIcLoraCpIds] = useState<ModelCheckpointID[]>([])
+  const [icLoraSupported, setIcLoraSupported] = useState(true)
   const [isCheckingIcLora, setIsCheckingIcLora] = useState(false)
   const [isDownloadingIcLora, setIsDownloadingIcLora] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null)
@@ -118,7 +119,7 @@ export function ICLoraPanel({
   const [downloadSessionId, setDownloadSessionId] = useState<string | null>(null)
   const [extractError, setExtractError] = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
-  const icLoraReady = requiredIcLoraCpIds.length === 0
+  const icLoraReady = icLoraSupported && requiredIcLoraCpIds.length === 0
 
   // Switching to an entry with a different input.kind (image vs video) invalidates the loaded
   // input — clear it so a stale video can't be submitted to an image-input entry (backend 400).
@@ -174,7 +175,8 @@ export function ICLoraPanel({
 
     const recommendationPayload = result.data
     setRequiredIcLoraCpIds(recommendationPayload.cps_to_download)
-    const isReady = recommendationPayload.cps_to_download.length === 0
+    setIcLoraSupported(recommendationPayload.supported)
+    const isReady = recommendationPayload.supported && recommendationPayload.cps_to_download.length === 0
 
     if (isReady) {
       setIsDownloadingIcLora(false)
@@ -388,7 +390,10 @@ export function ICLoraPanel({
 
   // Only the built-in canny/depth flow needs the bundled preprocessing cps. Recipes
   // (any input kind) and custom build their own control video, so never gate them.
-  const showDownloadGate = !isCustom && !isImage && !isCatalogIcLora && (isCheckingIcLora || !icLoraReady)
+  const showBuiltinGate =
+    !isCustom && !isImage && !isCatalogIcLora && (isCheckingIcLora || !icLoraReady)
+  const showUnsupportedGate = showBuiltinGate && !isCheckingIcLora && !icLoraSupported
+  const showDownloadGate = showBuiltinGate && !showUnsupportedGate
   const runningDownloadProgress =
     downloadProgress?.status === 'downloading' ? downloadProgress : null
   const gateItemIds = [...new Set([...(requiredIcLoraCpIds ?? []), ...(runningDownloadProgress?.all_files ?? [])])]
@@ -439,7 +444,24 @@ export function ICLoraPanel({
         </div>
       )}
 
-      {showDownloadGate ? (
+      {showUnsupportedGate ? (
+        <div className="flex-1 flex items-center justify-center p-6 min-h-0 overflow-y-auto">
+          <div className="w-full max-w-xl rounded-xl border border-zinc-700 bg-zinc-800/60 p-6">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-amber-600/20 flex items-center justify-center mt-0.5">
+                <AlertCircle className="h-4 w-4 text-amber-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-semibold text-white">Built-in control needs LTX 2.3</h3>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Depth and canny Union Control are not available on the active LTX 2.5 model.
+                  Switch to an LTX 2.3 local model in Settings, or use a custom / catalog IC-LoRA.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : showDownloadGate ? (
         <div className="flex-1 flex items-center justify-center p-6 min-h-0 overflow-y-auto">
           <div className="w-full max-w-xl rounded-xl border border-zinc-700 bg-zinc-800/60 p-6">
             <div className="flex items-start gap-3">

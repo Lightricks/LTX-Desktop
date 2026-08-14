@@ -3,11 +3,17 @@
 Builds the Gemma text encoder fresh for a single enhance call and frees it — matching every
 other local Gemma usage in this codebase (``ltx_pipelines.utils.blocks.PromptEncoder.__call__``
 loads/frees it per text-encoding call too; none of them keep it resident). The full
-``Gemma3ForConditionalGeneration`` (including ``lm_head``) is what gets built here, which is
-why direct ``generate()``-based enhancement is available at no extra VRAM cost over plain
-encoding.
+generation model (including ``lm_head``) is what gets built here, which is why direct
+``generate()``-based enhancement is available at no extra VRAM cost over plain encoding.
 
-Generation is reimplemented here rather than calling the vendored
+The root passed in is whichever checkpoint can actually generate for the active model, which is
+not always the one that encodes it: 2.3's Gemma 3 does both, while 2.5 encodes with an
+encode-only ``gemma4_unified`` and enhances with Gemma 4 E2B when present, else Gemma 3 if a
+2.3 install already put it on disk. Everything below is model-type agnostic — ``get_gemma_ops``
+and the encoder's own defaults resolve the differences — so both roots load through the same
+path.
+
+Generation is reimplemented here rather than calling upstream
 ``GemmaTextEncoder.enhance_t2v``/``enhance_i2v`` — those go through
 ``_pad_inputs_for_attention_alignment``, which right-pads the prompt to a multiple of 8 for
 Flash Attention *before* calling ``.generate()``. Right-padding a decoder-only model's prompt
@@ -24,19 +30,24 @@ from typing import TYPE_CHECKING, Any, cast
 import torch
 
 if TYPE_CHECKING:
-    from ltx_core.text_encoders.gemma.encoders.base_encoder import GemmaTextEncoder
+    from ltx_core.text_encoders.gemma.encoders.base_encoder import LTXGemmaTextEncoder
+
+
+def _generation_kwargs(text_encoder: "LTXGemmaTextEncoder") -> dict[str, Any]:
+    # Decoding settings differ per enhancer family — Gemma 3 samples at 0.7, Gemma 4 instruct is
+    # greedy with an n-gram block — and only the encoder knows which one it loaded.
+    return cast(dict[str, Any], cast(Any, text_encoder)._default_generation_kwargs())
 
 
 def _generate(
-    text_encoder: "GemmaTextEncoder",
+    text_encoder: "LTXGemmaTextEncoder",
     messages: list[dict[str, object]],
     image: "torch.Tensor | None",
     seed: int,
-    max_new_tokens: int = 512,
 ) -> str:
     # transformers' Gemma3Processor/Gemma3ForConditionalGeneration stubs don't type these
     # dynamically-attached attributes precisely enough for strict mode; loosen locally rather
-    # than suppress line-by-line, matching this codebase's other vendored-internals call sites
+    # than suppress line-by-line, matching this codebase's other upstream-internals call sites
     # (e.g. services/text_encoder/ltx_text_encoder.py's PromptEncoder patches).
     encoder = cast(Any, text_encoder)
     assert encoder.processor is not None
@@ -49,11 +60,17 @@ def _generate(
     fork_devices = [encoder.model.device] if encoder.model.device.type == "cuda" else []
     with torch.inference_mode(), torch.random.fork_rng(devices=fork_devices):  # type: ignore[reportUnknownMemberType]
         torch.manual_seed(seed)  # type: ignore[reportUnknownMemberType]
-        outputs = encoder.model.generate(
-            **model_inputs, max_new_tokens=max_new_tokens, do_sample=True, temperature=0.7
-        )
+        outputs = encoder.model.generate(**model_inputs, **_generation_kwargs(text_encoder))
         generated_ids = outputs[0][len(model_inputs.input_ids[0]) :]
         return cast(str, encoder.processor.tokenizer.decode(generated_ids, skip_special_tokens=True))
+
+
+def _default_system_prompt(text_encoder: "LTXGemmaTextEncoder", *, t2v: bool) -> str:
+    # LTXGemmaTextEncoder no longer exposes this as a public property (renamed from
+    # GemmaTextEncoder); its model-type-aware default lives on the private
+    # ``_default_system_prompt`` method, so reach into it like the other upstream-internals
+    # call sites in this module.
+    return cast(Any, text_encoder)._default_system_prompt(t2v=t2v)
 
 
 class LtxPromptEnhancerPipeline:
@@ -65,27 +82,24 @@ class LtxPromptEnhancerPipeline:
         self._gemma_root = gemma_root
         self._device = device
 
-    def _build_text_encoder(self) -> "GemmaTextEncoder":
+    def _build_text_encoder(self) -> "LTXGemmaTextEncoder":
         # Mirrors ltx_pipelines.utils.blocks.PromptEncoder's non-streaming text-encoder build,
         # minus the embeddings-processor half — enhancement never needs video/audio embeddings.
         from ltx_core.loader.registry import DummyRegistry
         from ltx_core.loader.single_gpu_model_builder import SingleGPUModelBuilder
         from ltx_core.text_encoders.gemma import (
-            GEMMA_LLM_KEY_OPS,
-            GEMMA_MODEL_OPS,
             GemmaTextEncoderConfigurator,
-            module_ops_from_gemma_root,
+            get_gemma_ops,
+            resolve_gemma_weight_paths,
         )
-        from ltx_core.utils import find_matching_file
 
-        module_ops = module_ops_from_gemma_root(self._gemma_root)
-        model_folder = find_matching_file(self._gemma_root, "model*.safetensors").parent
-        weight_paths = [str(p) for p in model_folder.rglob("*.safetensors")]
+        sd_ops, module_ops = get_gemma_ops(self._gemma_root)
+        weight_paths = resolve_gemma_weight_paths(self._gemma_root)
         builder = SingleGPUModelBuilder(
-            model_path=tuple(weight_paths),
-            model_class_configurator=GemmaTextEncoderConfigurator,
-            model_sd_ops=GEMMA_LLM_KEY_OPS,
-            module_ops=(GEMMA_MODEL_OPS, *module_ops),
+            model_path=weight_paths,
+            model_class_configurator=GemmaTextEncoderConfigurator.with_gemma_model_path(self._gemma_root),
+            model_sd_ops=sd_ops,
+            module_ops=module_ops,
             registry=DummyRegistry(),
         )
         return builder.build(device=torch.device(self._device), dtype=torch.bfloat16).eval()
@@ -94,7 +108,7 @@ class LtxPromptEnhancerPipeline:
         from ltx_pipelines.utils.gpu_model import gpu_model
 
         with gpu_model(self._build_text_encoder()) as text_encoder:
-            resolved_system_prompt = system_prompt or text_encoder.default_gemma_t2v_system_prompt
+            resolved_system_prompt = system_prompt or _default_system_prompt(text_encoder, t2v=True)
             messages: list[dict[str, object]] = [
                 {"role": "system", "content": resolved_system_prompt},
                 {"role": "user", "content": f"user prompt: {prompt}"},
@@ -109,7 +123,7 @@ class LtxPromptEnhancerPipeline:
         image_tensor = resize_aspect_ratio_preserving(torch.tensor(image), 896).to(torch.uint8)
 
         with gpu_model(self._build_text_encoder()) as text_encoder:
-            resolved_system_prompt = system_prompt or text_encoder.default_gemma_i2v_system_prompt
+            resolved_system_prompt = system_prompt or _default_system_prompt(text_encoder, t2v=False)
             messages: list[dict[str, object]] = [
                 {"role": "system", "content": resolved_system_prompt},
                 {

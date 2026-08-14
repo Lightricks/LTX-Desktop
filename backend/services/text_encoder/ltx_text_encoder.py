@@ -64,25 +64,25 @@ class LTXTextEncoder:
         self._install_cleanup_memory_patch(state_getter)
 
     def _install_prompt_encoder_init_patch(self) -> None:
-        """Patch PromptEncoder.__init__ to accept None gemma_root (API encoding mode).
+        """Patch PromptEncoder.__init__ to accept a text-encoder-less ModelPaths (API encoding mode).
 
-        In API encoding mode, gemma_root is None since text encoding is done
-        remotely.  The upstream PromptEncoder eagerly resolves file paths from
-        gemma_root in __init__, which crashes.  This patch short-circuits init
-        when gemma_root is falsy, creating a stub that the __call__ patch will
-        intercept before any model loading.
+        In API encoding mode, text encoding is done remotely, so there is no local gemma root
+        -- ``model_paths.text_encoder_path`` is None. The upstream PromptEncoder eagerly resolves
+        file paths from it in __init__, which crashes. This patch short-circuits init when that
+        path is falsy, creating a stub that the __call__ patch will intercept before any model
+        loading.
         """
         if self._prompt_encoder_init_patched:
             return
         try:
             from ltx_pipelines.utils.blocks import PromptEncoder
+            from ltx_pipelines.utils.model_paths import ModelPaths
 
             original_init = PromptEncoder.__init__  # type: ignore[reportUnknownVariableType, reportUnknownMemberType]
 
             def patched_init(
                 self_encoder: PromptEncoder,
-                checkpoint_path: str,
-                gemma_root: str,
+                model_paths: ModelPaths,
                 dtype: Any,
                 device: Any,
                 *args: Any,
@@ -91,17 +91,17 @@ class LTXTextEncoder:
                 # Forward *args/**kwargs verbatim so this patch tracks the real
                 # PromptEncoder.__init__ signature (registry, offload_mode,
                 # text_encoder_builder, ...) instead of pinning a fixed arg list.
-                if not gemma_root:
+                if not model_paths.text_encoder_path:
                     self_encoder._dtype = dtype  # type: ignore[attr-defined]
                     self_encoder._device = device  # type: ignore[attr-defined]
                     self_encoder._text_encoder_builder = None  # type: ignore[attr-defined]
                     self_encoder._embeddings_processor_builder = None  # type: ignore[attr-defined]
                     return
-                original_init(self_encoder, checkpoint_path, gemma_root, dtype, device, *args, **kwargs)
+                original_init(self_encoder, model_paths, dtype, device, *args, **kwargs)
 
             PromptEncoder.__init__ = patched_init  # type: ignore[assignment]
             self._prompt_encoder_init_patched = True
-            logger.info("Installed PromptEncoder.__init__ patch for None gemma_root")
+            logger.info("Installed PromptEncoder.__init__ patch for text-encoder-less ModelPaths")
         except Exception as exc:
             logger.warning("Failed to patch PromptEncoder.__init__: %s", exc, exc_info=True)
 
@@ -212,9 +212,19 @@ class LTXTextEncoder:
             logger.warning("Could not extract model_id from checkpoint: %s", exc, exc_info=True)
         return None
 
-    def encode_via_api(self, prompt: str, api_key: str, checkpoint_path: str, enhance_prompt: bool) -> TextEncodingResult | None:
-        model_id = self.get_model_id_from_checkpoint(checkpoint_path)
+    def encode_via_api(
+        self,
+        prompt: str,
+        api_key: str,
+        checkpoint_path: str,
+        enhance_prompt: bool,
+        api_model_id: str | None = None,
+    ) -> TextEncodingResult | None:
+        model_id = api_model_id or self.get_model_id_from_checkpoint(checkpoint_path)
         if not model_id:
+            logger.warning(
+                "Checkpoint %s carries no API model id; skipping LTX API text encoding", checkpoint_path
+            )
             return None
 
         try:

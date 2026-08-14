@@ -27,6 +27,7 @@
         "url": "https://huggingface.co/chsengni/ltx2.3-fpv-motion"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "created_at": "2026-06-08",
       "tags": [
         "motion"
@@ -82,6 +83,7 @@
         "url": "https://huggingface.co/lovis93/crt-animation-terminal-ltx-2.3-lora"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "tags": [
         "style"
       ],
@@ -143,6 +145,7 @@
         "url": "https://huggingface.co/mxturbo/Openwheel-motorsports-Cockpit-T-Cam-LTX2.3"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "created_at": "2026-05-28",
       "tags": [
         "style"
@@ -194,6 +197,7 @@
         "affiliation": "community"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "tags": [
         "style"
       ],
@@ -250,6 +254,7 @@
         "affiliation": "community"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "tags": [
         "style"
       ],
@@ -306,6 +311,7 @@
         "affiliation": "community"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "tags": [
         "style"
       ],
@@ -362,6 +368,7 @@
         "affiliation": "community"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "tags": [
         "style"
       ],
@@ -418,6 +425,7 @@
         "affiliation": "community"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "tags": [
         "style"
       ],
@@ -474,6 +482,7 @@
         "affiliation": "community"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "tags": [
         "style"
       ],
@@ -530,6 +539,7 @@
         "affiliation": "community"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "tags": [
         "style"
       ],
@@ -586,6 +596,7 @@
         "affiliation": "community"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "tags": [
         "enhance"
       ],
@@ -640,6 +651,7 @@
         "affiliation": "community"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "tags": [
         "style"
       ],
@@ -700,6 +712,7 @@
         "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "created_at": "2026-07-06",
       "tags": [
         "style"
@@ -765,6 +778,7 @@
         "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "created_at": "2026-07-06",
       "tags": [
         "motion"
@@ -818,6 +832,7 @@
   "ic_loras": [
     {
       "id": "clean-plate",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "name": "Clean Plate",
       "description": "Remove people and vehicles from a video and reconstruct the static background.",
       "tags": [
@@ -884,6 +899,7 @@
     },
     {
       "id": "3d-render-to-real",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "name": "3D Render to Photoreal",
       "description": "Turn a rough 3D viewport render (Blender blockout, game-engine viewport) into a photorealistic, cinematic video.",
       "tags": [
@@ -959,6 +975,7 @@
     },
     {
       "id": "day-to-night",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "name": "Day to Night",
       "description": "Relight a daytime shot to look like it was filmed at night.",
       "tags": [
@@ -1029,6 +1046,7 @@
     },
     {
       "id": "colorization",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "name": "Colorization",
       "description": "Add realistic color to a grayscale video.",
       "tags": [
@@ -1107,6 +1125,7 @@
     },
     {
       "id": "decompression",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "name": "Decompression",
       "description": "Remove compression artifacts and restore a degraded video.",
       "tags": [
@@ -1185,6 +1204,7 @@
     },
     {
       "id": "deblur",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "name": "Deblur",
       "description": "Sharpen and remove blur from a video.",
       "tags": [
@@ -1263,6 +1283,7 @@
     },
     {
       "id": "cross-eyed",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "name": "Cross-Eyed",
       "description": "Turn a close-up portrait's eyes permanently crossed (inward), keeping expression and framing.",
       "tags": [
@@ -1324,6 +1345,7 @@
     },
     {
       "id": "water-simulation",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "name": "Water Simulation",
       "description": "Add simulated water / fluid VFX to a scene.",
       "tags": [
@@ -1401,6 +1423,7 @@
     },
     {
       "id": "ingredients",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "name": "Ingredients",
       "description": "Keep a subject consistent across a video from a reference sheet.",
       "tags": [
@@ -1501,6 +1524,7 @@
     },
     {
       "id": "instant-shave",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "name": "Instant Shave",
       "description": "Remove a beard / facial hair from a person in a video.",
       "tags": [
@@ -1573,6 +1597,7 @@
     },
     {
       "id": "outpainting",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "name": "Outpainting",
       "description": "Extend a video beyond its frame \u2014 widen it, change the aspect ratio, or fill new canvas around the shot.",
       "tags": [
@@ -1679,6 +1704,7 @@
         "url": "https://huggingface.co/OmerHagage/ltx2-greenscreen-avatar-ic-lora-vertical-v1"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "created_at": "2026-05-13",
       "input": {
         "kind": "video"
@@ -1719,6 +1745,7 @@
     },
     {
       "id": "upscale",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "name": "Upscale (Refine)",
       "description": "Generative second-pass refinement \u2014 turn a soft / low-res clip into a cleaner, more detailed one.",
       "tags": [
@@ -1817,6 +1844,7 @@
         "url": "https://huggingface.co/Cseti/LTX2.3-22B_IC-LoRA-CrossView-Prompt"
       },
       "base_model": "LTX-2.3",
+      "supported_models": ["LTX-2.3", "LTX-2.5"],
       "created_at": "2026-07-11",
       "input": {
         "kind": "video"

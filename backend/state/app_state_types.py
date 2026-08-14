@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NewType, Protocol
 
-from api_types import ModelCheckpointID
+from api_types import LTXLocalModelId, ModelCheckpointID
 from state.conditioning_cache import ConditioningCache
 
 if TYPE_CHECKING:
@@ -122,11 +122,17 @@ class TextEncoderState:
 class VideoPipelineState:
     pipeline: FastVideoPipeline
     is_compiled: bool
+    # Cache key: API text-encode mode leaves gemma_root=None across versions, so without this a
+    # switch (2.5 <-> 2.3) wouldn't rebuild.
+    ltx_model_id: LTXLocalModelId
     loras: tuple[tuple[str, float], ...] = field(default_factory=tuple)
     # gemma_root the pipeline's text encoder was built with. Part of the cache key: switching
     # text-encoding mode (API<->local) changes it, and a cached pipeline built for the other
     # mode must be rebuilt (an API-mode pipeline has a stub encoder that can't encode locally).
     gemma_root: str | None = None
+    # Video VAE file the pipeline was built with. Fast decode swaps this path; a cached
+    # pipeline loaded for the other decoder must be rebuilt.
+    video_vae_path: str | None = None
 
 
 @dataclass
@@ -142,17 +148,21 @@ class ICLoraState:
     lora_path: str
     depth_pipeline: DepthProcessorPipeline | None
     depth_model_path: str | None
+    ltx_model_id: LTXLocalModelId  # cache key — see VideoPipelineState.ltx_model_id
     lora_strength: float = 1.0
     pose_resources: PoseResources | None = None
     conditioning_cache: ConditioningCache = field(default_factory=ConditioningCache)
     gemma_root: str | None = None  # cache key — see VideoPipelineState.gemma_root
+    video_vae_path: str | None = None  # cache key — see VideoPipelineState.video_vae_path
 
 
 @dataclass
 class A2VPipelineState:
     pipeline: A2VPipeline
+    ltx_model_id: LTXLocalModelId  # cache key — see VideoPipelineState.ltx_model_id
     loras: tuple[tuple[str, float], ...] = field(default_factory=tuple)
     gemma_root: str | None = None  # cache key — see VideoPipelineState.gemma_root
+    video_vae_path: str | None = None  # cache key — see VideoPipelineState.video_vae_path
 
 
 @dataclass
@@ -160,7 +170,9 @@ class RetakePipelineState:
     pipeline: RetakePipeline
     distilled: bool
     quantized: bool
+    ltx_model_id: LTXLocalModelId  # cache key — see VideoPipelineState.ltx_model_id
     gemma_root: str | None = None  # cache key — see VideoPipelineState.gemma_root
+    video_vae_path: str | None = None  # cache key — see VideoPipelineState.video_vae_path
 
 
 # ============================================================

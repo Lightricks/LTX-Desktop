@@ -1,11 +1,17 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertCircle, Download, Loader2, Sparkles, X } from 'lucide-react'
-import { ApiClient, type ApiSuccessOf } from '../lib/api-client'
+import { useHfAuth } from '../hooks/use-hf-auth'
+import { useHfModelAccess } from '../hooks/use-hf-model-access'
+import { ApiClient, type ApiRequestBodyOf, type ApiSuccessOf } from '../lib/api-client'
 import { logger } from '../lib/logger'
+import { HfModelAccessGate } from './HfModelAccessGate'
 import { Button } from './ui/button'
 import './LtxUpgradePrompt.css'
 
 type UpgradeRecommendation = Extract<ApiSuccessOf<'getLtxRecommendation'>, { status: 'upgrade' }>
+type ModelCheckpointID = NonNullable<
+  NonNullable<ApiRequestBodyOf<'checkModelAccess'>>['cp_ids']
+>[number]
 
 interface LtxUpgradePromptProps {
   recommendation: UpgradeRecommendation
@@ -34,15 +40,23 @@ export function LtxUpgradePrompt({
     null,
   )
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  // Default to reclaiming disk (base models are tens of GB); unchecking keeps the old
-  // version installed so it stays selectable in the Settings version manager.
-  const [deleteOld, setDeleteOld] = useState(true)
+  // Default off when deleting the old bundle would also wipe built-in Union Control IC-LoRA
+  // (2.3 → 2.5). Otherwise default on to reclaim the tens of GB the old transformer uses.
+  const [deleteOld, setDeleteOld] = useState(!recommendation.loses_built_in_control)
+
+  const cpsToDownload = useMemo(
+    () => recommendation.cps_to_download as ModelCheckpointID[],
+    [recommendation.cps_to_download],
+  )
+  const { hfAuthStatus, hfAuthPolling, startHuggingFaceLogin } = useHfAuth(true)
+  const { accessMap, allAuthorized, checking: checkingAccess, checkError, recheckAccess } = useHfModelAccess(
+    cpsToDownload,
+    hfAuthStatus,
+  )
 
   const hasOldToDelete = recommendation.cps_to_delete.length > 0
   const canClose = phase === 'idle'
-  // LTX base-model checkpoints are public on Hugging Face, so the upgrade download needs no
-  // sign-in or model-access acceptance — once the user opts in, it can start immediately.
-  const canStartUpgrade = wantsUpgrade && phase === 'idle'
+  const canStartUpgrade = wantsUpgrade && phase === 'idle' && allAuthorized && !checkingAccess
 
   const runningProgress = downloadProgress?.status === 'downloading' ? downloadProgress : null
   const totalProgress = runningProgress?.total_progress ?? (phase === 'finishing' ? 100 : 0)
@@ -222,7 +236,9 @@ export function LtxUpgradePrompt({
             {hasOldToDelete && (
               <p className="mt-3 max-w-[44ch] text-sm leading-relaxed text-blue-100/72">
                 {deleteOld
-                  ? 'Your previous checkpoint will be removed from disk once the download completes.'
+                  ? recommendation.loses_built_in_control
+                    ? 'Your previous checkpoint and its built-in depth/canny/pose control models will be removed from disk.'
+                    : 'Your previous checkpoint will be removed from disk once the download completes.'
                   : 'Your previous checkpoint will be kept — switch between versions anytime in Settings → Models.'}
               </p>
             )}
@@ -247,13 +263,32 @@ export function LtxUpgradePrompt({
                   disabled={!canClose}
                   className="h-4 w-4 rounded border-blue-300/40 bg-slate-950 text-blue-500 focus:ring-blue-400"
                 />
-                <span className="font-medium">Delete the previous checkpoint to free up disk space</span>
+                <span className="font-medium">
+                  {recommendation.loses_built_in_control
+                    ? 'Delete the previous checkpoint (also removes built-in control models)'
+                    : 'Delete the previous checkpoint to free up disk space'}
+                </span>
               </label>
             )}
           </div>
 
           {wantsUpgrade && (
             <div className="mt-5 space-y-4">
+              {!allAuthorized && (
+                <div className="ltx-upgrade-reveal rounded-2xl border border-amber-400/16 bg-[#060b14] p-5">
+                  <HfModelAccessGate
+                    accessMap={accessMap}
+                    allAuthorized={allAuthorized}
+                    hfAuthStatus={hfAuthStatus}
+                    hfAuthPolling={hfAuthPolling}
+                    startHuggingFaceLogin={() => {
+                      void startHuggingFaceLogin()
+                    }}
+                    checkError={checkError}
+                    onRetryCheck={recheckAccess}
+                  />
+                </div>
+              )}
               {canStartUpgrade && (
                 <div className="ltx-upgrade-reveal rounded-2xl border border-blue-400/12 bg-[#060b14] p-5">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

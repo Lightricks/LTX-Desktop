@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from PIL import Image
+from frame_math import AutoDurationSpec
 from api_types import (
     ExtendMode,
     ImageConditioningInput,
@@ -180,7 +181,7 @@ class FakeLTXAPIClient:
         prompt: str,
         model: str,
         resolution: str,
-        duration: float,
+        duration: float | None,
         fps: float,
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
@@ -209,7 +210,7 @@ class FakeLTXAPIClient:
         image_uri: str,
         model: str,
         resolution: str,
-        duration: float,
+        duration: float | None,
         fps: float,
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
@@ -264,6 +265,7 @@ class FakeLTXAPIClient:
         duration: float,
         prompt: str,
         mode: RetakeMode,
+        model: str,
     ) -> LTXRetakeResult:
         self.retake_calls.append(
             {
@@ -273,6 +275,7 @@ class FakeLTXAPIClient:
                 "duration": duration,
                 "prompt": prompt,
                 "mode": mode,
+                "model": model,
             }
         )
         if self.raise_on_retake is not None:
@@ -287,6 +290,7 @@ class FakeLTXAPIClient:
         duration: float,
         prompt: str,
         mode: ExtendMode,
+        model: str,
     ) -> LTXRetakeResult:
         self.extend_calls.append(
             {
@@ -295,6 +299,7 @@ class FakeLTXAPIClient:
                 "duration": duration,
                 "prompt": prompt,
                 "mode": mode,
+                "model": model,
             }
         )
         if self.raise_on_extend is not None:
@@ -676,8 +681,21 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
         device: str | object,
         streaming_prefetch_count: int | None,
         loras: list[tuple[str, float]] | None = None,
+        *,
+        video_vae_path: str | None = None,
+        audio_vae_path: str | None = None,
+        duration_head_path: str | None = None,
     ) -> "FakeFastVideoPipeline":
-        del checkpoint_path, gemma_root, upsampler_path, device, streaming_prefetch_count
+        del (
+            checkpoint_path,
+            gemma_root,
+            upsampler_path,
+            device,
+            streaming_prefetch_count,
+            video_vae_path,
+            audio_vae_path,
+            duration_head_path,
+        )
         pipeline = FakeFastVideoPipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeFastVideoPipeline singleton is not bound")
@@ -690,7 +708,7 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
         seed: int,
         height: int,
         width: int,
-        num_frames: int,
+        num_frames: int | AutoDurationSpec,
         frame_rate: float,
         images: list[ImageConditioningInput],
         output_path: str,
@@ -770,13 +788,14 @@ class FakePromptEnhancerPipeline:
 
     @staticmethod
     def create(gemma_root: str, device: str) -> "FakePromptEnhancerPipeline":
-        del gemma_root, device
         pipeline = FakePromptEnhancerPipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakePromptEnhancerPipeline singleton is not bound")
+        pipeline.created_with.append({"gemma_root": gemma_root, "device": device})
         return pipeline
 
     def __init__(self) -> None:
+        self.created_with: list[dict[str, Any]] = []
         self.enhance_t2v_calls: list[dict[str, Any]] = []
         self.enhance_i2v_calls: list[dict[str, Any]] = []
         self.raise_on_enhance: Exception | None = None
@@ -813,8 +832,23 @@ class FakeIcLoraPipeline:
         device: str | object,
         streaming_prefetch_count: int | None,
         lora_strength: float = 1.0,
+        *,
+        video_vae_path: str | None = None,
+        audio_vae_path: str | None = None,
+        duration_head_path: str | None = None,
     ) -> "FakeIcLoraPipeline":
-        del checkpoint_path, gemma_root, upsampler_path, lora_path, device, streaming_prefetch_count, lora_strength
+        del (
+            checkpoint_path,
+            gemma_root,
+            upsampler_path,
+            lora_path,
+            device,
+            streaming_prefetch_count,
+            lora_strength,
+            video_vae_path,
+            audio_vae_path,
+            duration_head_path,
+        )
         pipeline = FakeIcLoraPipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeIcLoraPipeline singleton is not bound")
@@ -902,8 +936,21 @@ class FakeA2VPipeline:
         device: str | object,
         streaming_prefetch_count: int | None,
         loras: list[tuple[str, float]] | None = None,
+        *,
+        video_vae_path: str | None = None,
+        audio_vae_path: str | None = None,
+        duration_head_path: str | None = None,
     ) -> "FakeA2VPipeline":
-        del checkpoint_path, gemma_root, upsampler_path, device, streaming_prefetch_count
+        del (
+            checkpoint_path,
+            gemma_root,
+            upsampler_path,
+            device,
+            streaming_prefetch_count,
+            video_vae_path,
+            audio_vae_path,
+            duration_head_path,
+        )
         pipeline = FakeA2VPipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeA2VPipeline singleton is not bound")
@@ -941,8 +988,21 @@ class FakeRetakePipeline:
         *,
         loras: list[object] | None = None,
         quantization: object | None = None,
+        video_vae_path: str | None = None,
+        audio_vae_path: str | None = None,
+        duration_head_path: str | None = None,
     ) -> "FakeRetakePipeline":
-        del checkpoint_path, gemma_root, device, streaming_prefetch_count, loras, quantization
+        del (
+            checkpoint_path,
+            gemma_root,
+            device,
+            streaming_prefetch_count,
+            loras,
+            quantization,
+            video_vae_path,
+            audio_vae_path,
+            duration_head_path,
+        )
         pipeline = FakeRetakePipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeRetakePipeline singleton is not bound")
@@ -982,13 +1042,21 @@ class FakeTextEncoder:
     def install_patches(self, state_getter) -> None:  # noqa: ARG002
         self.install_calls += 1
 
-    def encode_via_api(self, prompt: str, api_key: str, checkpoint_path: str, enhance_prompt: bool) -> Any | None:
+    def encode_via_api(
+        self,
+        prompt: str,
+        api_key: str,
+        checkpoint_path: str,
+        enhance_prompt: bool,
+        api_model_id: str | None = None,
+    ) -> Any | None:
         self.encode_calls.append(
             {
                 "prompt": prompt,
                 "api_key": api_key,
                 "checkpoint_path": checkpoint_path,
                 "enhance_prompt": enhance_prompt,
+                "api_model_id": api_model_id,
             }
         )
         if self.encode_responses:

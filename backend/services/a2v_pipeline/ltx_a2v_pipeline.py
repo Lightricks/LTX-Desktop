@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import cast
 
 import torch
 
 from api_types import ImageConditioningInput
-from services.ltx_pipeline_common import default_tiling_config, encode_video_output, video_chunks_number
+from services.ltx_pipeline_common import (
+    build_model_paths,
+    encode_video_output,
+    resolve_tiling_config,
+    video_chunks_number,
+)
 from services.services_utils import AudioOrNone, TilingConfigType, device_supports_fp8
 
 
@@ -21,6 +25,10 @@ class LTXa2vPipeline:
         device: torch.device,
         streaming_prefetch_count: int | None,
         loras: list[tuple[str, float]] | None = None,
+        *,
+        video_vae_path: str | None = None,
+        audio_vae_path: str | None = None,
+        duration_head_path: str | None = None,
     ) -> "LTXa2vPipeline":
         return LTXa2vPipeline(
             checkpoint_path=checkpoint_path,
@@ -29,6 +37,9 @@ class LTXa2vPipeline:
             device=device,
             streaming_prefetch_count=streaming_prefetch_count,
             loras=loras or [],
+            video_vae_path=video_vae_path,
+            audio_vae_path=audio_vae_path,
+            duration_head_path=duration_head_path,
         )
 
     def __init__(
@@ -39,6 +50,10 @@ class LTXa2vPipeline:
         device: torch.device,
         streaming_prefetch_count: int | None,
         loras: list[tuple[str, float]] | None = None,
+        *,
+        video_vae_path: str | None = None,
+        audio_vae_path: str | None = None,
+        duration_head_path: str | None = None,
     ) -> None:
         from ltx_core.loader.primitives import LoraPathStrengthAndSDOps
         from ltx_core.loader.sd_ops import LTXV_LORA_COMFY_RENAMING_MAP
@@ -52,8 +67,13 @@ class LTXa2vPipeline:
         ]
 
         self.pipeline = DistilledA2VPipeline(
-            distilled_checkpoint_path=checkpoint_path,
-            gemma_root=cast(str, gemma_root),
+            model_paths=build_model_paths(
+                checkpoint_path,
+                gemma_root,
+                video_vae_path=video_vae_path,
+                audio_vae_path=audio_vae_path,
+                duration_head_path=duration_head_path,
+            ),
             spatial_upsampler_path=upsampler_path,
             loras=lora_entries,
             device=device,
@@ -108,7 +128,13 @@ class LTXa2vPipeline:
         audio_max_duration: float | None,
         output_path: str,
     ) -> None:
-        tiling_config = default_tiling_config()
+        tiling_config = resolve_tiling_config(
+            self.pipeline.video_decoder.checkpoint_path,
+            height=height,
+            width=width,
+            num_frames=num_frames,
+            device=self.pipeline.device,
+        )
         video, audio = self._run_inference(
             prompt=prompt,
             negative_prompt=negative_prompt,

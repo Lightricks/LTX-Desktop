@@ -8,6 +8,7 @@ from pathlib import Path
 
 from tests.http_error_assertions import assert_http_error
 from tests.fakes import FakeCapture
+from tests.conftest import _IC_LORA_MODEL_ID
 
 
 def _write_ic_lora_file(path: Path) -> None:
@@ -17,6 +18,12 @@ def _write_ic_lora_file(path: Path) -> None:
     with open(path, "wb") as f:
         f.write(struct.pack("<Q", len(blob)))
         f.write(blob)
+
+
+def _install_ic_lora_capable_model(create_fake_model_files, create_fake_ic_lora_files, *, include_depth: bool = True) -> None:
+    # Built-in control IC-LoRA is 2.3-only; 2.5 (latest) returns 409 for canny/depth.
+    create_fake_model_files(model_id=_IC_LORA_MODEL_ID)
+    create_fake_ic_lora_files(include_depth=include_depth)
 
 
 class TestIcLoraExtractConditioning:
@@ -35,8 +42,7 @@ class TestIcLoraExtractConditioning:
         assert payload["conditioning"].startswith("data:image/jpeg;base64,")
 
     def test_depth_extraction(self, client, test_state, fake_services, create_fake_model_files, create_fake_ic_lora_files):
-        create_fake_model_files()
-        create_fake_ic_lora_files()
+        _install_ic_lora_capable_model(create_fake_model_files, create_fake_ic_lora_files)
         video_path = test_state.config.outputs_dir / "test_video.mp4"
         video_path.write_bytes(b"\x00" * 100)
         test_state.video_processor.register_video(str(video_path), FakeCapture(frames=["frame-a"]))
@@ -63,8 +69,7 @@ class TestIcLoraExtractConditioning:
 
 class TestIcLoraGenerate:
     def test_happy_path(self, client, test_state, create_fake_model_files, create_fake_ic_lora_files):
-        create_fake_model_files()
-        create_fake_ic_lora_files()
+        _install_ic_lora_capable_model(create_fake_model_files, create_fake_ic_lora_files)
         test_state.state.app_settings.use_local_text_encoder = True
 
         video_path = test_state.config.outputs_dir / "test_video.mp4"
@@ -84,11 +89,37 @@ class TestIcLoraGenerate:
         assert response.json()["status"] == "complete"
         assert Path(response.json()["video_path"]).exists()
 
+    def test_builtin_control_rejected_on_2_5(self, client, test_state, create_fake_model_files):
+        create_fake_model_files()
+        test_state.state.app_settings.use_local_text_encoder = True
+
+        video_path = test_state.config.outputs_dir / "test_video.mp4"
+        video_path.write_bytes(b"\x00" * 100)
+        test_state.video_processor.register_video(str(video_path), FakeCapture(frames=["frame-a", "frame-b"]))
+
+        response = client.post(
+            "/api/ic-lora/generate",
+            json={
+                "video_path": str(video_path),
+                "conditioning_type": "canny",
+                "prompt": "test prompt",
+                "images": [],
+            },
+        )
+        assert_http_error(
+            response,
+            status_code=409,
+            code="UNSUPPORTED_IC_LORA",
+            message=(
+                "Built-in control IC-LoRA is not available for the active LTX model. "
+                "Switch to an LTX 2.3 local model to use depth/canny control."
+            ),
+        )
+
     def test_canny_does_not_require_depth_cp(self, client, test_state, create_fake_model_files, create_fake_ic_lora_files):
         # canny preprocessing uses apply_canny, not the depth processor, so generation
         # must succeed even when the depth cp isn't installed (previously 500'd).
-        create_fake_model_files()
-        create_fake_ic_lora_files(include_depth=False)
+        _install_ic_lora_capable_model(create_fake_model_files, create_fake_ic_lora_files, include_depth=False)
         test_state.state.app_settings.use_local_text_encoder = True
 
         video_path = test_state.config.outputs_dir / "test_video.mp4"
@@ -110,8 +141,7 @@ class TestIcLoraGenerate:
     def test_local_ic_lora_recoverable_via_progress(self, client, test_state, create_fake_model_files, create_fake_ic_lora_files):
         # IC-LoRA is local-only and drives the generation state machine, so a page that
         # unmounted mid-generation can recover the output via /generation/progress.
-        create_fake_model_files()
-        create_fake_ic_lora_files()
+        _install_ic_lora_capable_model(create_fake_model_files, create_fake_ic_lora_files)
         test_state.state.app_settings.use_local_text_encoder = True
 
         video_path = test_state.config.outputs_dir / "test_video_recover.mp4"

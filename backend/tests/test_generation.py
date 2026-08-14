@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from frame_math import AutoDurationSpec
+from runtime_config.model_download_specs import delete_cp_path, get_ltx_model_spec, resolve_model_path
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError
 from state.app_state_types import GpuSlot, VideoPipelineState
 from tests.http_error_assertions import assert_http_error
@@ -18,6 +20,9 @@ class _FakeEncodingResult:
     video_context: object = "fake_tensor"
     audio_context: object = None
 
+_API_ENCODING_MODEL_ID = "ltx-2.3-22b-distilled-1.1"
+_LOCAL_2_3 = "ltx-2.3-22b-distilled-1.1"
+
 _T2V_JSON = {
     "prompt": "test",
     "resolution": "540p",
@@ -25,6 +30,11 @@ _T2V_JSON = {
     "duration": 5,
     "fps": 24,
 }
+
+
+def _install_local_2_3(test_state, create_fake_model_files, **kwargs) -> None:
+    create_fake_model_files(model_id=_LOCAL_2_3, **kwargs)
+    test_state.state.app_settings.active_ltx_model_id = _LOCAL_2_3
 
 
 def _write_test_wav(path: Path, *, duration_seconds: float = 0.1, sample_rate: int = 8000) -> None:
@@ -48,6 +58,7 @@ def _fake_running_generation_state(test_state) -> None:
         active_pipeline=VideoPipelineState(
             pipeline=pipeline,
             is_compiled=False,
+            ltx_model_id="ltx-2.5-22b-distilled",
         ),
     )
     test_state.generation.start_generation("running")
@@ -57,6 +68,22 @@ class TestGenerate:
     def test_t2v_requires_downloaded_ltx_model(self, client):
         r = client.post("/api/generate", json=_T2V_JSON)
         assert_http_error(r, status_code=409, code="NO_DOWNLOADED_LTX_MODEL")
+
+    def test_t2v_on_2_5_uses_api_model_id_without_local_text_encoder(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files()
+        test_state.state.app_settings.ltx_api_key = "api-key"
+        test_state.state.app_settings.use_local_text_encoder = False
+        spec = get_ltx_model_spec("ltx-2.5-22b-distilled")
+        resolve_model_path(test_state.config.default_models_dir, spec.text_encoder_cp).unlink()
+        fake_services.text_encoder.encode_responses.append(_FakeEncodingResult())
+
+        r = client.post("/api/generate", json=_T2V_JSON)
+
+        assert r.status_code == 200
+        assert fake_services.text_encoder.encode_calls[0]["api_model_id"] == spec.api_text_encoder_model_id
+        assert fake_services.text_encoder.encode_calls[0]["enhance_prompt"] is True
 
     def test_t2v_happy_path(self, client, test_state, fake_services, create_fake_model_files):
         create_fake_model_files()
@@ -83,8 +110,78 @@ class TestGenerate:
         pipeline = fake_services.fast_video_pipeline
         assert len(pipeline.generate_calls) == 1
 
-    def test_t2v_loras_forwarded_to_pipeline(self, client, test_state, fake_services, create_fake_model_files, create_fake_lora):
+    def test_t2v_auto_duration_on_2_5_forwards_envelope_range(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
         create_fake_model_files()
+        _enable_local_text_encoding(test_state)
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A lighthouse keeper climbs the stairs",
+                "resolution": "540p",
+                "model": "fast",
+                "duration": None,
+                "fps": 24,
+            },
+        )
+
+        assert r.status_code == 200
+        call = fake_services.fast_video_pipeline.generate_calls[0]
+        assert call["num_frames"] == AutoDurationSpec(min_seconds=5, max_seconds=20)
+
+    def test_t2v_auto_duration_rejected_on_2_3(
+        self, client, test_state, create_fake_model_files
+    ):
+        _install_local_2_3(test_state, create_fake_model_files)
+        _enable_local_text_encoding(test_state)
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A lighthouse keeper climbs the stairs",
+                "resolution": "540p",
+                "model": "fast",
+                "duration": None,
+                "fps": 24,
+            },
+        )
+
+        assert_http_error(
+            r,
+            status_code=422,
+            code="INVALID_VIDEO_GENERATION_SPEC",
+            message="Automatic duration is not supported for local pipeline 'fast'",
+        )
+
+    def test_t2v_auto_duration_rejected_without_duration_head(
+        self, client, test_state, create_fake_model_files
+    ):
+        create_fake_model_files()
+        _enable_local_text_encoding(test_state)
+        delete_cp_path(test_state.config.default_models_dir, "ltx-2.5-duration-head")
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A lighthouse keeper climbs the stairs",
+                "resolution": "540p",
+                "model": "fast",
+                "duration": None,
+                "fps": 24,
+            },
+        )
+
+        assert_http_error(
+            r,
+            status_code=422,
+            code="INVALID_VIDEO_GENERATION_SPEC",
+            message="Automatic duration is not supported for local pipeline 'fast'",
+        )
+
+    def test_t2v_loras_forwarded_to_pipeline(self, client, test_state, fake_services, create_fake_model_files, create_fake_lora):
+        _install_local_2_3(test_state, create_fake_model_files)
         _enable_local_text_encoding(test_state)
         lora_ref = create_fake_lora("style.safetensors")
 
@@ -98,8 +195,9 @@ class TestGenerate:
         assert pipeline.create_loras[-1] == [(lora_ref, 0.8)]
 
     def test_same_loras_reuse_loaded_pipeline(self, client, test_state, fake_services, create_fake_model_files, create_fake_lora):
-        create_fake_model_files()
+        _install_local_2_3(test_state, create_fake_model_files)
         _enable_local_text_encoding(test_state)
+        test_state.state.app_settings.prompt_enhancer_enabled_t2v = False
         lora_ref = create_fake_lora("a.safetensors")
         body = {**_T2V_JSON, "loras": [{"ref": lora_ref, "scale": 1.0}]}
 
@@ -110,7 +208,7 @@ class TestGenerate:
         assert fake_services.fast_video_pipeline.create_loras == [[(lora_ref, 1.0)]]
 
     def test_changed_loras_reload_pipeline(self, client, test_state, fake_services, create_fake_model_files, create_fake_lora):
-        create_fake_model_files()
+        _install_local_2_3(test_state, create_fake_model_files)
         _enable_local_text_encoding(test_state)
         lora_ref = create_fake_lora("b.safetensors")
 
@@ -126,8 +224,24 @@ class TestGenerate:
             [(lora_ref, 0.5)],
         ]
 
-    def test_t2v_loras_unknown_ref_rejected(self, client, test_state, create_fake_model_files):
+    def test_video_vae_path_change_reloads_pipeline(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
         create_fake_model_files()
+        _enable_local_text_encoding(test_state)
+        test_state.state.app_settings.prompt_enhancer_enabled_t2v = False
+        test_state.state.app_settings.use_conv_vae = False
+
+        assert client.post("/api/generate", json=_T2V_JSON).status_code == 200
+        assert client.post("/api/generate", json=_T2V_JSON).status_code == 200
+        assert fake_services.fast_video_pipeline.create_loras == [[]]
+
+        test_state.state.app_settings.use_conv_vae = True
+        assert client.post("/api/generate", json=_T2V_JSON).status_code == 200
+        assert fake_services.fast_video_pipeline.create_loras == [[], []]
+
+    def test_t2v_loras_unknown_ref_rejected(self, client, test_state, create_fake_model_files):
+        _install_local_2_3(test_state, create_fake_model_files)
         _enable_local_text_encoding(test_state)
 
         r = client.post(
@@ -136,6 +250,19 @@ class TestGenerate:
         )
 
         assert r.status_code == 400
+
+    def test_t2v_loras_forwarded_on_2_5(self, client, test_state, fake_services, create_fake_model_files, create_fake_lora):
+        create_fake_model_files()
+        _enable_local_text_encoding(test_state)
+        lora_ref = create_fake_lora("style.safetensors")
+
+        r = client.post(
+            "/api/generate",
+            json={**_T2V_JSON, "loras": [{"ref": lora_ref, "scale": 0.8}]},
+        )
+
+        assert r.status_code == 200
+        assert fake_services.fast_video_pipeline.create_loras[-1] == [(lora_ref, 0.8)]
 
     def test_already_running(self, client, test_state):
         _fake_running_generation_state(test_state)
@@ -171,7 +298,8 @@ class TestGenerate:
         )
         assert "Invalid image file" in data["message"]
 
-    def test_resolution_mapping_540p(self, client, test_state, fake_services, create_fake_model_files):
+    def test_resolution_mapping_540p_on_2_5(self, client, test_state, fake_services, create_fake_model_files):
+        # 2.5 540p is legal 16:9 on the /64 two-stage grid (1024×576).
         create_fake_model_files()
         _enable_local_text_encoding(test_state)
 
@@ -180,8 +308,43 @@ class TestGenerate:
 
         pipeline = fake_services.fast_video_pipeline
         call = pipeline.generate_calls[0]
+        assert call["width"] == 1024
+        assert call["height"] == 576
+
+    def test_resolution_mapping_540p_on_2_3(self, client, test_state, fake_services, create_fake_model_files):
+        # 2.3 540p is 960×544; snap_up_to_multiple(..., 64) maps height to 576
+        # on the two-stage grid.
+        create_fake_model_files(model_id="ltx-2.3-22b-distilled-1.1")
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
+        _enable_local_text_encoding(test_state)
+
+        r = client.post("/api/generate", json=_T2V_JSON)
+        assert r.status_code == 200
+
+        pipeline = fake_services.fast_video_pipeline
+        call = pipeline.generate_calls[0]
         assert call["width"] == 960
-        assert call["height"] == 512
+        assert call["height"] == 576
+
+    def test_local_resolutions_are_all_on_the_two_stage_grid(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        # 2.5 Fast sizes are already /64. Two-stage halves each dimension onto a /32 latent grid,
+        # so anything not divisible by 64 gets silently snapped.
+        create_fake_model_files()
+        _enable_local_text_encoding(test_state)
+
+        for resolution in ("540p", "720p", "1080p"):
+            for aspect_ratio in ("16:9", "9:16"):
+                fake_services.fast_video_pipeline.generate_calls.clear()
+                r = client.post(
+                    "/api/generate",
+                    json={**_T2V_JSON, "resolution": resolution, "aspectRatio": aspect_ratio, "duration": 5},
+                )
+                assert r.status_code == 200
+                call = fake_services.fast_video_pipeline.generate_calls[0]
+                assert call["width"] % 64 == 0, f"{resolution} {aspect_ratio}: width {call['width']}"
+                assert call["height"] % 64 == 0, f"{resolution} {aspect_ratio}: height {call['height']}"
 
     def test_resolution_mapping_720p(self, client, test_state, fake_services, create_fake_model_files):
         create_fake_model_files()
@@ -261,6 +424,29 @@ class TestA2VGenerate:
         assert call["audio_max_duration"] is None
 
     def test_a2v_loras_forwarded_to_pipeline(self, client, test_state, fake_services, create_fake_model_files, create_fake_lora, tmp_path):
+        _install_local_2_3(test_state, create_fake_model_files)
+        _enable_local_text_encoding(test_state)
+        audio_file = tmp_path / "test_audio.wav"
+        _write_test_wav(audio_file)
+        lora_ref = create_fake_lora("groove.safetensors")
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A music video",
+                "resolution": "540p",
+                "model": "fast",
+                "duration": 5,
+                "fps": 24,
+                "audioPath": str(audio_file),
+                "loras": [{"ref": lora_ref, "scale": 0.7}],
+            },
+        )
+
+        assert r.status_code == 200
+        assert fake_services.a2v_pipeline.create_loras[-1] == [(lora_ref, 0.7)]
+
+    def test_a2v_loras_forwarded_on_2_5(self, client, test_state, fake_services, create_fake_model_files, create_fake_lora, tmp_path):
         create_fake_model_files()
         _enable_local_text_encoding(test_state)
         audio_file = tmp_path / "test_audio.wav"
@@ -351,6 +537,53 @@ class TestA2VGenerate:
         assert call["model"] == "ltx-2-3-pro"
         assert call["resolution"] == "1920x1080"
 
+    def test_a2v_forced_api_routes_to_ltx_api_for_ltx_2_5_pro(self, client, test_state, fake_services, tmp_path):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+        audio_file = tmp_path / "test_audio.wav"
+        _write_test_wav(audio_file)
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A music video",
+                "resolution": "1080p",
+                "model": "pro-2.5",
+                "duration": 6,
+                "fps": 50,
+                "audioPath": str(audio_file),
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["status"] == "complete"
+        assert len(fake_services.ltx_api_client.audio_to_video_calls) == 1
+        call = fake_services.ltx_api_client.audio_to_video_calls[0]
+        assert call["model"] == "ltx-2-5-pro"
+
+    def test_a2v_forced_api_routes_to_ltx_api_for_ltx_2_5_fast(self, client, test_state, fake_services, tmp_path):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+        audio_file = tmp_path / "test_audio.wav"
+        _write_test_wav(audio_file)
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A music video",
+                "resolution": "1080p",
+                "model": "fast-2.5",
+                "duration": 6,
+                "fps": 50,
+                "audioPath": str(audio_file),
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["status"] == "complete"
+        assert len(fake_services.ltx_api_client.audio_to_video_calls) == 1
+        call = fake_services.ltx_api_client.audio_to_video_calls[0]
+        assert call["model"] == "ltx-2-5-fast"
+        assert call["resolution"] == "1920x1080"
+
     def test_a2v_prefers_api_routes_to_ltx_api(self, client, test_state, fake_services, tmp_path):
         test_state.config.local_generations_mode = "full_models_loading"
         test_state.state.app_settings.user_prefers_ltx_api_video_generations = True
@@ -438,14 +671,14 @@ class TestA2VGenerate:
         assert call["model"] == "ltx-2-3-pro"
         assert call["resolution"] == "1920x1080"
 
-    def test_a2v_uses_resolution_map(self, client, test_state, fake_services, create_fake_model_files, tmp_path):
+    def test_a2v_uses_resolution_map_on_2_5(self, client, test_state, fake_services, create_fake_model_files, tmp_path):
         create_fake_model_files()
         _enable_local_text_encoding(test_state)
         audio_file = tmp_path / "test_audio.wav"
         _write_test_wav(audio_file)
 
         for resolution, expected_w, expected_h in [
-            ("540p", 960, 576),
+            ("540p", 1024, 576),
             ("720p", 1280, 704),
             ("1080p", 1920, 1088),
         ]:
@@ -466,6 +699,30 @@ class TestA2VGenerate:
             call = fake_services.a2v_pipeline.generate_calls[0]
             assert call["width"] == expected_w, f"{resolution}: expected width {expected_w}, got {call['width']}"
             assert call["height"] == expected_h, f"{resolution}: expected height {expected_h}, got {call['height']}"
+
+    def test_a2v_540p_on_2_3_uses_historical_pixels(self, client, test_state, fake_services, create_fake_model_files, tmp_path):
+        create_fake_model_files(model_id="ltx-2.3-22b-distilled-1.1")
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
+        _enable_local_text_encoding(test_state)
+        audio_file = tmp_path / "test_audio.wav"
+        _write_test_wav(audio_file)
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A music video",
+                "resolution": "540p",
+                "model": "fast",
+                "duration": 5,
+                "fps": 24,
+                "audioPath": str(audio_file),
+            },
+        )
+
+        assert r.status_code == 200
+        call = fake_services.a2v_pipeline.generate_calls[0]
+        assert call["width"] == 960
+        assert call["height"] == 544
 
     def test_a2v_forced_api_rejects_missing_audio_file(self, client, test_state):
         test_state.config.local_generations_mode = "unsupported"
@@ -599,6 +856,159 @@ class TestForcedApiGenerate:
         assert call["fps"] == 50.0
         assert call["generate_audio"] is True
         assert call["camera_motion"] == "dolly_in"
+
+    def test_t2v_routes_to_ltx_api_for_ltx_2_5_fast(self, client, test_state, fake_services):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A mountain lake",
+                "resolution": "1080p",
+                "model": "fast-2.5",
+                "duration": 6,
+                "fps": 50,
+                "audio": True,
+                "cameraMotion": "dolly_in",
+            },
+        )
+
+        assert r.status_code == 200
+        assert r.json()["status"] == "complete"
+        assert len(fake_services.ltx_api_client.text_to_video_calls) == 1
+        call = fake_services.ltx_api_client.text_to_video_calls[0]
+        assert call["model"] == "ltx-2-5-fast"
+        assert call["resolution"] == "1920x1080"
+        assert call["duration"] == 6.0
+        assert call["fps"] == 50.0
+        assert call["generate_audio"] is True
+        assert call["camera_motion"] == "dolly_in"
+
+    def test_t2v_auto_duration_sends_null_for_ltx_2_5_fast(self, client, test_state, fake_services):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A lighthouse keeper climbs the stairs",
+                "resolution": "1080p",
+                "model": "fast-2.5",
+                "duration": None,
+                "fps": 24,
+                "audio": True,
+            },
+        )
+
+        assert r.status_code == 200
+        call = fake_services.ltx_api_client.text_to_video_calls[0]
+        assert call["model"] == "ltx-2-5-fast"
+        assert call["duration"] is None
+
+    def test_api_auto_duration_does_not_require_local_duration_head(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files()
+        delete_cp_path(test_state.config.default_models_dir, "ltx-2.5-duration-head")
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A lighthouse keeper climbs the stairs",
+                "resolution": "1080p",
+                "model": "fast-2.5",
+                "duration": None,
+                "fps": 24,
+            },
+        )
+
+        assert r.status_code == 200
+        call = fake_services.ltx_api_client.text_to_video_calls[0]
+        assert call["model"] == "ltx-2-5-fast"
+        assert call["duration"] is None
+
+    def test_t2v_auto_duration_rejected_for_ltx_2_3_fast(self, client, test_state):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A lighthouse keeper climbs the stairs",
+                "resolution": "1080p",
+                "model": "fast",
+                "duration": None,
+                "fps": 24,
+            },
+        )
+
+        assert_http_error(
+            r,
+            status_code=422,
+            code="INVALID_VIDEO_GENERATION_SPEC",
+            message="Automatic duration is not supported for api pipeline 'fast'",
+        )
+
+    def test_a2v_rejects_auto_duration(self, client, test_state, tmp_path):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+        audio_file = tmp_path / "test_audio.wav"
+        _write_test_wav(audio_file)
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A music video",
+                "resolution": "1080p",
+                "model": "fast-2.5",
+                "duration": None,
+                "fps": 24,
+                "audioPath": str(audio_file),
+            },
+        )
+
+        assert_http_error(
+            r,
+            status_code=422,
+            code="INVALID_VIDEO_GENERATION_SPEC",
+            message="Automatic duration cannot be combined with audio-to-video",
+        )
+
+    def test_i2v_routes_to_ltx_api_for_ltx_2_5_pro(self, client, test_state, fake_services, make_test_image, tmp_path):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+        image_path = tmp_path / "input.png"
+        image_path.write_bytes(make_test_image().getvalue())
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "Animate this frame",
+                "resolution": "2160p",
+                "model": "pro-2.5",
+                "duration": 8,
+                "fps": 25,
+                "audio": False,
+                "cameraMotion": "jib_up",
+                "imagePath": str(image_path),
+            },
+        )
+
+        assert r.status_code == 200
+        assert r.json()["status"] == "complete"
+        assert len(fake_services.ltx_api_client.upload_file_calls) == 1
+        assert fake_services.ltx_api_client.upload_file_calls[0]["file_path"] == str(image_path)
+        assert len(fake_services.ltx_api_client.image_to_video_calls) == 1
+        call = fake_services.ltx_api_client.image_to_video_calls[0]
+        assert call["image_uri"] == "storage://uploaded/input.png"
+        assert call["model"] == "ltx-2-5-pro"
+        assert call["resolution"] == "3840x2160"
+        assert call["duration"] == 8.0
+        assert call["fps"] == 25.0
+        assert call["camera_motion"] == "jib_up"
 
     def test_i2v_routes_to_ltx_api(self, client, test_state, fake_services, make_test_image, tmp_path):
         test_state.config.local_generations_mode = "unsupported"
@@ -794,6 +1204,33 @@ class TestForcedApiGenerate:
             status_code=422,
             code="INVALID_VIDEO_GENERATION_SPEC",
             message="Unsupported api text-to-video duration '5' for pipeline 'pro' at resolution '1080p' and fps '25'",
+        )
+
+    def test_forced_api_a2v_rejects_fast_tier_pipeline(self, client, test_state, tmp_path):
+        # ltxv-api audio-to-video does not accept ltx-2-3-fast. Reject pipeline "fast"
+        # here rather than a downstream 400. (ltx-2-5-fast does accept A2V.)
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+        audio_file = tmp_path / "test_audio.wav"
+        _write_test_wav(audio_file)
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A music video",
+                "resolution": "1080p",
+                "model": "fast",
+                "duration": 6,
+                "fps": 24,
+                "audioPath": str(audio_file),
+            },
+        )
+
+        assert_http_error(
+            r,
+            status_code=422,
+            code="INVALID_VIDEO_GENERATION_SPEC",
+            message="Unsupported api audio-to-video resolution '1080p' for pipeline 'fast'",
         )
 
     def test_invalid_forced_fps_rejected(self, client, test_state):
@@ -1146,7 +1583,7 @@ class TestForcedApiGenerate:
             json={
                 "prompt": "A portrait music video",
                 "resolution": "1080p",
-                "model": "fast",
+                "model": "pro",
                 "duration": 6,
                 "fps": 25,
                 "audioPath": str(audio_file),
@@ -1158,7 +1595,7 @@ class TestForcedApiGenerate:
         assert r.json()["status"] == "complete"
         call = fake_services.ltx_api_client.audio_to_video_calls[0]
         assert call["resolution"] == "1080x1920"
-        assert call["model"] == "ltx-2-3-fast"
+        assert call["model"] == "ltx-2-3-pro"
 
 
 class TestGenerateCancel:
@@ -1183,13 +1620,55 @@ class TestGenerateModelSpecs:
         assert r.status_code == 200
         data = r.json()
         assert [item["pipeline"] for item in data["local_models"]] == ["fast"]
-        assert data["local_models"][0]["spec"]["display_name"] == "LTX 2.3 Fast"
+        assert data["local_models"][0]["spec"]["display_name"] == "LTX 2.5 Fast"
         assert list(data["local_models"][0]["spec"]["supported_resolutions_durations"]["540p"]["fps_to_durations"].keys()) == ["24"]
-        assert [item["pipeline"] for item in data["api_models"]] == ["fast", "pro"]
-        assert list(data["api_models"][0]["spec"]["a2v_supported_resolutions_durations"].keys()) == ["1080p"]
+        assert [item["pipeline"] for item in data["api_models"]] == ["fast", "pro", "fast-2.5", "pro-2.5"]
         assert data["api_models"][0]["spec"]["supported_resolutions_durations"]["1080p"]["fps_to_durations"]["24"] == [
             6, 8, 10, 12, 14, 16, 18, 20,
         ]
+
+        api_models_by_pipeline = {item["pipeline"]: item for item in data["api_models"]}
+        # A2V envelope: none on fast; 1080p on pro, fast-2.5, and pro-2.5.
+        assert api_models_by_pipeline["fast"]["spec"]["a2v_supported_resolutions_durations"] is None
+        assert list(api_models_by_pipeline["pro"]["spec"]["a2v_supported_resolutions_durations"].keys()) == ["1080p"]
+        assert api_models_by_pipeline["fast-2.5"]["spec"]["display_name"] == "LTX-2.5 Fast (API)"
+        assert list(api_models_by_pipeline["fast-2.5"]["spec"]["a2v_supported_resolutions_durations"].keys()) == ["1080p"]
+        assert list(api_models_by_pipeline["pro-2.5"]["spec"]["a2v_supported_resolutions_durations"].keys()) == ["1080p"]
+
+        local_caps = data["local_models"][0]["spec"]["capabilities"]
+        assert local_caps["a2v"] is True
+        assert local_caps["ic_lora"] is True
+        assert local_caps["user_loras"] is True
+        assert local_caps["retake"] is False
+        assert local_caps["extend"] is False
+        # No DurationHead on disk in this fixture — Auto stays off until that file is present.
+        assert local_caps["auto_duration"] is False
+        assert api_models_by_pipeline["fast"]["spec"]["capabilities"]["a2v"] is False
+        assert api_models_by_pipeline["fast"]["spec"]["capabilities"]["auto_duration"] is False
+        assert api_models_by_pipeline["fast-2.5"]["spec"]["capabilities"]["a2v"] is True
+        assert api_models_by_pipeline["fast-2.5"]["spec"]["capabilities"]["auto_duration"] is True
+        assert api_models_by_pipeline["pro"]["spec"]["capabilities"]["retake"] is True
+        assert api_models_by_pipeline["pro-2.5"]["spec"]["capabilities"]["retake"] is False
+        assert api_models_by_pipeline["pro-2.5"]["spec"]["capabilities"]["auto_duration"] is True
+
+    def test_local_auto_duration_requires_duration_head_on_disk(self, client, create_fake_model_files):
+        create_fake_model_files()
+        r = client.get("/api/generate/models-specs")
+        assert r.status_code == 200
+        assert r.json()["local_models"][0]["spec"]["capabilities"]["auto_duration"] is True
+
+    def test_local_auto_duration_hidden_when_duration_head_missing(
+        self, client, test_state, create_fake_model_files
+    ):
+        create_fake_model_files()
+        delete_cp_path(test_state.config.default_models_dir, "ltx-2.5-duration-head")
+        r = client.get("/api/generate/models-specs")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["local_models"][0]["spec"]["capabilities"]["auto_duration"] is False
+        api_by_pipeline = {item["pipeline"]: item for item in data["api_models"]}
+        assert api_by_pipeline["fast-2.5"]["spec"]["capabilities"]["auto_duration"] is True
+        assert api_by_pipeline["pro-2.5"]["spec"]["capabilities"]["auto_duration"] is True
 
 
 class TestGenerationProgress:
@@ -1363,7 +1842,8 @@ class TestEnhancePromptFlag:
     """Verify enhance_prompt is passed correctly to the text encoder API."""
 
     def _setup_api_encoding(self, test_state, fake_services, create_fake_model_files):
-        create_fake_model_files()
+        create_fake_model_files(model_id=_API_ENCODING_MODEL_ID)
+        test_state.state.app_settings.active_ltx_model_id = _API_ENCODING_MODEL_ID
         test_state.state.app_settings.ltx_api_key = "test-key"
         test_state.state.app_settings.use_local_text_encoder = False
         fake_services.text_encoder.encode_responses.append(_FakeEncodingResult())
@@ -1467,3 +1947,134 @@ class TestEnhancePromptFlag:
         assert r.status_code == 200
 
         assert len(fake_services.text_encoder.encode_calls) == 0
+
+
+class TestLocalEncodingEnhancement:
+    """The rewrite that API encoding gets server-side has to happen here for local encoding.
+
+    Without it the enhancer setting silently does nothing whenever the local encoder is
+    selected, and the model sees the prompt exactly as typed.
+    """
+
+    def _setup_local(self, test_state, create_fake_model_files, *, with_enhancer: bool):
+        create_fake_model_files(include_prompt_enhancer=with_enhancer)
+        test_state.state.app_settings.use_local_text_encoder = True
+        test_state.state.app_settings.prompt_enhancer_enabled_t2v = True
+        test_state.state.app_settings.prompt_enhancer_enabled_i2v = True
+
+    def test_t2v_prompt_is_enhanced_before_it_reaches_the_pipeline(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        self._setup_local(test_state, create_fake_model_files, with_enhancer=True)
+        fake_services.prompt_enhancer_pipeline.enhanced_prompt = "a long descriptive caption"
+
+        r = client.post("/api/generate", json=_T2V_JSON)
+        assert r.status_code == 200
+
+        assert fake_services.prompt_enhancer_pipeline.enhance_t2v_calls[0]["prompt"] == "test"
+        assert fake_services.fast_video_pipeline.generate_calls[0]["prompt"] == "a long descriptive caption"
+
+    def test_enhancer_runs_before_the_generation_is_marked_running(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        # The enhancer evicts whatever pipeline is resident to claim its VRAM, and eviction is
+        # refused once a generation is running — so getting a pipeline built at all is the
+        # assertion that the ordering held.
+        self._setup_local(test_state, create_fake_model_files, with_enhancer=True)
+
+        r = client.post("/api/generate", json=_T2V_JSON)
+        assert r.status_code == 200
+        assert len(fake_services.prompt_enhancer_pipeline.created_with) == 1
+
+    def test_disabled_setting_leaves_the_prompt_alone(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        self._setup_local(test_state, create_fake_model_files, with_enhancer=True)
+        test_state.state.app_settings.prompt_enhancer_enabled_t2v = False
+
+        r = client.post("/api/generate", json=_T2V_JSON)
+        assert r.status_code == 200
+
+        assert fake_services.prompt_enhancer_pipeline.enhance_t2v_calls == []
+        assert fake_services.fast_video_pipeline.generate_calls[0]["prompt"] == "test"
+
+    def test_missing_enhancer_generates_with_the_prompt_as_typed(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        self._setup_local(test_state, create_fake_model_files, with_enhancer=False)
+
+        r = client.post("/api/generate", json=_T2V_JSON)
+        assert r.status_code == 200
+
+        assert fake_services.prompt_enhancer_pipeline.enhance_t2v_calls == []
+        assert fake_services.fast_video_pipeline.generate_calls[0]["prompt"] == "test"
+
+    def test_2_5_uses_gemma3_fallback_to_enhance_before_generate(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files(include_prompt_enhancer=False)
+        create_fake_model_files(model_id="ltx-2.3-22b-distilled-1.1")
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.5-22b-distilled"
+        test_state.state.app_settings.use_local_text_encoder = True
+        test_state.state.app_settings.prompt_enhancer_enabled_t2v = True
+        fake_services.prompt_enhancer_pipeline.enhanced_prompt = "a long descriptive caption"
+
+        r = client.post("/api/generate", json=_T2V_JSON)
+        assert r.status_code == 200
+        assert fake_services.prompt_enhancer_pipeline.enhance_t2v_calls[0]["prompt"] == "test"
+        assert fake_services.fast_video_pipeline.generate_calls[0]["prompt"] == "a long descriptive caption"
+
+    def test_enhancer_failure_does_not_fail_the_generation(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        self._setup_local(test_state, create_fake_model_files, with_enhancer=True)
+        fake_services.prompt_enhancer_pipeline.raise_on_enhance = RuntimeError("boom")
+
+        r = client.post("/api/generate", json=_T2V_JSON)
+        assert r.status_code == 200
+        assert fake_services.fast_video_pipeline.generate_calls[0]["prompt"] == "test"
+
+    def test_camera_motion_is_appended_after_the_rewrite(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        self._setup_local(test_state, create_fake_model_files, with_enhancer=True)
+        fake_services.prompt_enhancer_pipeline.enhanced_prompt = "a long descriptive caption"
+        suffix = test_state.config.camera_motion_prompts["dolly_in"]
+
+        r = client.post("/api/generate", json={**_T2V_JSON, "cameraMotion": "dolly_in"})
+        assert r.status_code == 200
+
+        assert fake_services.prompt_enhancer_pipeline.enhance_t2v_calls[0]["prompt"] == "test"
+        assert (
+            fake_services.fast_video_pipeline.generate_calls[0]["prompt"]
+            == "a long descriptive caption" + suffix
+        )
+
+    def test_i2v_routes_the_conditioning_image_to_the_enhancer(
+        self, client, test_state, fake_services, create_fake_model_files, make_test_image, tmp_path
+    ):
+        self._setup_local(test_state, create_fake_model_files, with_enhancer=True)
+        image_path = tmp_path / "input.png"
+        image_path.write_bytes(make_test_image().getvalue())
+
+        r = client.post("/api/generate", json={**_T2V_JSON, "imagePath": str(image_path)})
+        assert r.status_code == 200
+
+        assert len(fake_services.prompt_enhancer_pipeline.enhance_i2v_calls) == 1
+        assert fake_services.prompt_enhancer_pipeline.enhance_t2v_calls == []
+
+    def test_api_encoding_still_enhances_server_side(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files(model_id=_API_ENCODING_MODEL_ID, include_prompt_enhancer=True)
+        test_state.state.app_settings.active_ltx_model_id = _API_ENCODING_MODEL_ID
+        test_state.state.app_settings.ltx_api_key = "test-key"
+        test_state.state.app_settings.use_local_text_encoder = False
+        test_state.state.app_settings.prompt_enhancer_enabled_t2v = True
+        fake_services.text_encoder.encode_responses.append(_FakeEncodingResult())
+
+        r = client.post("/api/generate", json=_T2V_JSON)
+        assert r.status_code == 200
+
+        assert fake_services.prompt_enhancer_pipeline.enhance_t2v_calls == []
+        assert fake_services.text_encoder.encode_calls[0]["enhance_prompt"] is True

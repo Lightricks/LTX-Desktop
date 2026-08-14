@@ -20,6 +20,10 @@ class IcLoraPipeline(Protocol):
         device: torch.device,
         streaming_prefetch_count: int | None,
         lora_strength: float = 1.0,
+        *,
+        video_vae_path: str | None = None,
+        audio_vae_path: str | None = None,
+        duration_head_path: str | None = None,
     ) -> "IcLoraPipeline":
         ...
 

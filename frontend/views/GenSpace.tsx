@@ -3,7 +3,7 @@ import {
   Trash2, Download, Image, Video, X,
   Heart, Film, Volume2, VolumeX, Sparkles, Sparkle,
   Clock, Monitor, ChevronUp, Scissors, Music, Undo2, Redo2, Loader2,
-  ChevronLeft, ChevronRight, Copy, Check, MoveHorizontal, Wand2
+  MoveHorizontal, Wand2
 } from 'lucide-react'
 import { useProjects } from '../contexts/ProjectContext'
 import type { GenSpaceRetakeSource } from '../contexts/ProjectContext'
@@ -13,7 +13,12 @@ import { setActiveGenerationOwner, hasValidBaselineId } from '../lib/generation-
 import { withGenerationActive } from '../lib/generation-active'
 import { useVideoGenerationModelSpecs } from '../hooks/use-video-generation-model-specs'
 import { createLocalGenerationError, type GenerationError } from '../lib/generation-errors'
-import { useRetake } from '../hooks/use-retake'
+import {
+  useRetake,
+  RETAKE_EXTEND_MODELS,
+  retakeExtendModelFromPipeline,
+  type RetakeExtendModel,
+} from '../hooks/use-retake'
 import { useExtend, type ExtendDirection, EXTEND_SECONDS, DEFAULT_EXTEND_SECONDS } from '../hooks/use-extend'
 import { resolutionOptions, type ResolutionOption } from '../lib/video-resolution'
 import { useIcLora, type IcLoraAudioMode } from '../hooks/use-ic-lora'
@@ -26,15 +31,20 @@ import { usePromptEnhancerProvider } from '../hooks/use-prompt-enhancer-provider
 import { useGlobalGenerationLock } from '../hooks/use-global-generation-lock'
 import type { ICLoraConditioningType } from '../components/ICLoraPanel'
 import type { Asset } from '../types/project-model'
+import { AssetPreviewModal } from '../components/AssetPreviewModal'
 import { GenerationErrorDialog } from '../components/GenerationErrorDialog'
 import { addVisualAssetToProject } from '../lib/asset-copy'
 import { pathToFileUrl } from '../lib/file-url'
 import {
   areVideoGenerationSettingsEquivalent,
+  formatPipelineDisplayName,
   getVideoGenerationModelSpecs,
+  getLocalOfferingCapabilities,
+  resolvePipelineDisplayName,
   resolveVideoGenerationOptions,
   sanitizeVideoGenerationSettings,
   type VideoGenerationModelSpecItem,
+  type VideoGenerationPipeline,
 } from '../lib/video-generation-model-specs'
 import { logger } from '../lib/logger'
 import { ApiClient, type ApiSuccessOf } from '../lib/api-client'
@@ -202,13 +212,15 @@ function AssetCard({
             )}
             {asset.type === 'video' && (
               <>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onRetake?.(asset) }}
-                  className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
-                >
-                  <Scissors className="h-3 w-3" />
-                  Retake
-                </button>
+                {onRetake && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onRetake(asset) }}
+                    className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
+                  >
+                    <Scissors className="h-3 w-3" />
+                    Retake
+                  </button>
+                )}
                 {onExtend && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onExtend(asset) }}
@@ -323,12 +335,6 @@ function AspectIcon({ className }: { className?: string }) {
       <rect x="3" y="5" width="18" height="14" rx="2" />
     </svg>
   )
-}
-
-// Duration can be a raw float (e.g. extend output: 12.041667s). Show a clean value:
-// integers as-is, otherwise at most 2 decimals with trailing zeros trimmed.
-function formatSeconds(seconds: number): string {
-  return Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(2).replace(/\.?0+$/, '')
 }
 
 const DEFAULT_LORA_SCALE = 1.0
@@ -454,6 +460,9 @@ function PromptBar({
   mode,
   onModeChange,
   canUseIcLora,
+  canUseRetake,
+  canUseExtend,
+  canUseUserLoras,
   prompt,
   onPromptChange,
   onGenerate,
@@ -476,6 +485,8 @@ function PromptBar({
   resolutionOptions: resolutionOpts,
   selectedResolution,
   onResolutionChange,
+  retakeExtendModel,
+  onRetakeExtendModelChange,
   icLoraControls,
   promptOptional,
   isLocalMode,
@@ -501,6 +512,9 @@ function PromptBar({
   mode: GenSpaceMode
   onModeChange: (mode: GenSpaceMode) => void
   canUseIcLora: boolean
+  canUseRetake: boolean
+  canUseExtend: boolean
+  canUseUserLoras: boolean
   prompt: string
   onPromptChange: (prompt: string) => void
   onGenerate: () => void
@@ -515,13 +529,17 @@ function PromptBar({
   resolutionOptions?: ResolutionOption[]
   selectedResolution?: string
   onResolutionChange?: (key: string) => void
+  // Retake/extend, API mode: ltxv-api /v1/retake and /v2/extend accept
+  // ltx-2-pro / ltx-2-3-pro (Desktop pipeline "pro").
+  retakeExtendModel?: RetakeExtendModel
+  onRetakeExtendModelChange?: (model: RetakeExtendModel) => void
   inputImage: string | null
   onInputImageChange: (path: string | null) => void
   inputAudio: string | null
   onInputAudioChange: (path: string | null) => void
   settings: {
     model: string
-    duration: number
+    duration: number | null
     videoResolution: string
     fps: number
     aspectRatio: string
@@ -582,6 +600,29 @@ function PromptBar({
         <>
           <Monitor className="h-3.5 w-3.5" />
           <span>{(resolutionOpts!.find((o) => o.key === selectedResolution)?.label ?? 'Original').split(' ')[0]}</span>
+          <ChevronUp className="h-3 w-3 text-zinc-500" />
+        </>
+      }
+    />
+  ) : null
+
+  // Unused while RETAKE_EXTEND_MODELS is only "pro".
+  const showRetakeExtendModel = !isLocalMode && (isRetake || isExtend) && RETAKE_EXTEND_MODELS.length > 1
+  const retakeExtendModelLabel = (value: RetakeExtendModel) =>
+    formatPipelineDisplayName(value) ?? value
+  const modelControl = showRetakeExtendModel ? (
+    <SettingsDropdown
+      title="MODEL"
+      value={retakeExtendModel ?? 'pro'}
+      onChange={(v) => onRetakeExtendModelChange?.(v as RetakeExtendModel)}
+      options={RETAKE_EXTEND_MODELS.map((value) => ({
+        value,
+        label: retakeExtendModelLabel(value),
+      }))}
+      trigger={
+        <>
+          <Sparkles className="h-3.5 w-3.5" />
+          <span>{retakeExtendModelLabel(retakeExtendModel ?? 'pro')}</span>
           <ChevronUp className="h-3 w-3 text-zinc-500" />
         </>
       }
@@ -785,8 +826,8 @@ function PromptBar({
           options={[
             { value: 'image', label: 'Generate Images', icon: <Image className="h-4 w-4" /> },
             { value: 'video', label: 'Generate Videos', icon: <Video className="h-4 w-4" /> },
-            { value: 'retake', label: 'Retake', icon: <Scissors className="h-4 w-4" /> },
-            { value: 'extend', label: 'Extend', icon: <MoveHorizontal className="h-4 w-4" /> },
+            ...(canUseRetake ? [{ value: 'retake', label: 'Retake', icon: <Scissors className="h-4 w-4" /> }] : []),
+            ...(canUseExtend ? [{ value: 'extend', label: 'Extend', icon: <MoveHorizontal className="h-4 w-4" /> }] : []),
             ...(canUseIcLora ? [{ value: 'ic-lora', label: 'IC-LoRA', icon: <Sparkles className="h-4 w-4" /> }] : []),
           ]}
           trigger={
@@ -801,7 +842,16 @@ function PromptBar({
         <div className="flex-1" />
         
         {isRetake ? (
-          resolutionControl ?? <div className="text-[10px] text-zinc-500 pr-2">Trim in the panel above, then retake</div>
+          <>
+            {modelControl}
+            {modelControl && resolutionControl && (
+              <div className="w-px h-4 bg-zinc-700 mx-0.5" />
+            )}
+            {resolutionControl}
+            {/* Always available: in API mode modelControl used to replace this hint, so a
+                <2s selection disabled submit with no explanation. */}
+            <div className="text-[10px] text-zinc-500 pr-2">Trim in the panel above, then retake</div>
+          </>
         ) : isExtend ? (
           <>
             <SettingsDropdown
@@ -834,6 +884,12 @@ function PromptBar({
                 </>
               }
             />
+            {modelControl && (
+              <>
+                <div className="w-px h-4 bg-zinc-700 mx-0.5" />
+                {modelControl}
+              </>
+            )}
             {resolutionControl && (
               <>
                 <div className="w-px h-4 bg-zinc-700 mx-0.5" />
@@ -933,13 +989,32 @@ function PromptBar({
 
                 <SettingsDropdown
                   title="DURATION"
-                  value={String(resolvedVideoOptions.selectedDuration ?? settings.duration)}
-                  onChange={(v) => onSettingsChange({ ...settings, duration: parseInt(v) })}
-                  options={resolvedVideoOptions.durationOptions.map((value) => ({ value: String(value), label: `${value} Sec` }))}
+                  value={
+                    resolvedVideoOptions.autoDurationAvailable && resolvedVideoOptions.selectedDuration === null
+                      ? 'auto'
+                      : String(resolvedVideoOptions.selectedDuration ?? settings.duration)
+                  }
+                  onChange={(v) => onSettingsChange({
+                    ...settings,
+                    duration: v === 'auto' ? null : parseInt(v),
+                  })}
+                  options={[
+                    ...(resolvedVideoOptions.autoDurationAvailable
+                      ? [{ value: 'auto', label: 'Auto' }]
+                      : []),
+                    ...resolvedVideoOptions.durationOptions.map((value) => ({
+                      value: String(value),
+                      label: `${value} Sec`,
+                    })),
+                  ]}
                   trigger={
                     <>
                       <Clock className="h-3.5 w-3.5" />
-                      <span>{resolvedVideoOptions.selectedDuration ?? settings.duration}s</span>
+                      <span>
+                        {resolvedVideoOptions.autoDurationAvailable && resolvedVideoOptions.selectedDuration === null
+                          ? 'Auto'
+                          : `${resolvedVideoOptions.selectedDuration ?? settings.duration}s`}
+                      </span>
                     </>
                   }
                 />
@@ -988,7 +1063,7 @@ function PromptBar({
                   }
                 />
 
-                {isLocalMode && availableLoras && availableLoras.length > 0 && (
+                {isLocalMode && canUseUserLoras && availableLoras && availableLoras.length > 0 && (
                   <LoRAPicker
                     available={availableLoras}
                     selected={selectedLoras ?? []}
@@ -1148,7 +1223,7 @@ const gallerySizeClasses: Record<GallerySize, string> = {
 
 const DEFAULT_VIDEO_SETTINGS = {
   model: 'fast',
-  duration: 5,
+  duration: 5 as number | null,
   videoResolution: '540p',
   fps: 24,
   aspectRatio: '16:9',
@@ -1163,6 +1238,7 @@ export function GenSpace() {
     activeProject,
     addAsset,
     addTakeToAsset,
+    updateAsset,
     deleteAsset,
     toggleFavorite,
     genSpaceEditImagePath,
@@ -1197,7 +1273,6 @@ export function GenSpace() {
   const [inputAudio, setInputAudio] = useState<string | null>(null)
   const [localError, setLocalError] = useState<GenerationError | null>(null)
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
-  const [copiedPrompt, setCopiedPrompt] = useState(false)
   const [showFavorites, setShowFavorites] = useState(false)
   const [gallerySize, setGallerySize] = useState<GallerySize>('medium')
   const [showSizeMenu, setShowSizeMenu] = useState(false)
@@ -1205,6 +1280,7 @@ export function GenSpace() {
   const persistedVideoKeyRef = useRef<string | null>(null)
   const retakeSubmissionRef = useRef<{
     prompt: string
+    model: RetakeExtendModel
     input: {
       videoPath: string | null
       startTime: number
@@ -1258,6 +1334,11 @@ export function GenSpace() {
 
   // Locally installed LoRAs are only usable in local generation mode.
   const isLocalMode = !shouldVideoGenerateWithLtxApi
+  const localCaps = getLocalOfferingCapabilities(videoGenerationModelSpecsResponse)
+  const canUseUserLoras = isLocalMode && Boolean(localCaps?.user_loras)
+  const canUseIcLora = !forceApiGenerations && Boolean(localCaps?.ic_lora)
+  const canUseRetake = !isLocalMode || Boolean(localCaps?.retake)
+  const canUseExtend = !isLocalMode || Boolean(localCaps?.extend)
   // Enhance itself is independent of the video-generation backend — the backend enhance
   // endpoint only cares about the enhancer provider (local Gemma vs. Gemini), not whether video
   // generation runs locally or via the LTX API. If no catalog LoRA is selected (e.g. because the
@@ -1407,6 +1488,7 @@ export function GenSpace() {
     ready: false,
   })
   const [retakeResolutionKey, setRetakeResolutionKey] = useState('original')
+  const [retakeModel, setRetakeModel] = useState<RetakeExtendModel>('pro')
   const [retakePanelKey, setRetakePanelKey] = useState(0)
 
   const {
@@ -1428,6 +1510,7 @@ export function GenSpace() {
   const [extendDirection, setExtendDirection] = useState<ExtendDirection>('end')
   const [extendSeconds, setExtendSeconds] = useState<number>(DEFAULT_EXTEND_SECONDS)
   const [extendResolutionKey, setExtendResolutionKey] = useState('original')
+  const [extendModel, setExtendModel] = useState<RetakeExtendModel>('pro')
 
   const retakeResolutionOpts = useMemo(
     () => resolutionOptions(retakeInput.width, retakeInput.height),
@@ -1444,6 +1527,7 @@ export function GenSpace() {
   }>({ videoPath: null, duration: undefined })
   const extendSubmissionRef = useRef<{
     prompt: string
+    model: RetakeExtendModel
     input: { videoPath: string; direction: ExtendDirection; duration: number; videoDuration: number }
   } | null>(null)
   const [retakeInitial, setRetakeInitial] = useState<{
@@ -1545,20 +1629,28 @@ export function GenSpace() {
 
   useEffect(() => {
     if (!genSpaceRetakeSource) return
+    if (!canUseRetake) {
+      setGenSpaceRetakeSource(null)
+      return
+    }
     setMode('retake')
     setPrompt('')
     setActiveRetakeSource(genSpaceRetakeSource)
+    const sourceAsset = genSpaceRetakeSource.assetId
+      ? activeProject?.assets?.find((a) => a.id === genSpaceRetakeSource.assetId)
+      : undefined
+    setRetakeModel(retakeExtendModelFromPipeline(sourceAsset?.generationParams?.model))
     setRetakeInitial({
       videoPath: genSpaceRetakeSource.videoPath,
       duration: genSpaceRetakeSource.duration,
     })
     setRetakePanelKey((prev) => prev + 1)
     setGenSpaceRetakeSource(null)
-  }, [genSpaceRetakeSource, setGenSpaceRetakeSource])
+  }, [genSpaceRetakeSource, setGenSpaceRetakeSource, activeProject?.assets, canUseRetake])
 
   useEffect(() => {
     if (!genSpaceIcLoraSource) return
-    if (forceApiGenerations) {
+    if (!canUseIcLora) {
       setGenSpaceIcLoraSource(null)
       return
     }
@@ -1574,13 +1666,17 @@ export function GenSpace() {
     setIcLoraCustomRef(null)
     setIcLoraPanelKey((prev) => prev + 1)
     setGenSpaceIcLoraSource(null)
-  }, [genSpaceIcLoraSource, forceApiGenerations, setGenSpaceIcLoraSource])
+  }, [genSpaceIcLoraSource, canUseIcLora, setGenSpaceIcLoraSource])
 
   useEffect(() => {
-    if (forceApiGenerations && mode === 'ic-lora') {
-      setMode('video')
-    }
-  }, [forceApiGenerations, mode])
+    if (mode === 'ic-lora' && !canUseIcLora) setMode('video')
+    if (mode === 'retake' && !canUseRetake) setMode('video')
+    if (mode === 'extend' && !canUseExtend) setMode('video')
+  }, [canUseIcLora, canUseRetake, canUseExtend, mode])
+
+  useEffect(() => {
+    if (!canUseUserLoras && selectedLoras.length > 0) setSelectedLoras([])
+  }, [canUseUserLoras, selectedLoras.length])
 
   useEffect(() => {
     if (mode !== 'video' || videoModelSpecs.length === 0) return
@@ -1729,11 +1825,12 @@ export function GenSpace() {
           height: copied.height,
           prompt: lastPrompt,
           resolution: savedVideoSettings.videoResolution,
-          duration: savedVideoSettings.duration,
+          duration: savedVideoSettings.duration ?? undefined,
           generationParams: {
             mode: genMode as 'text-to-video' | 'image-to-video' | 'audio-to-video',
             prompt: lastPrompt,
             model: savedVideoSettings.model,
+            modelLabel: resolvePipelineDisplayName(videoModelSpecs, savedVideoSettings.model) ?? undefined,
             duration: savedVideoSettings.duration,
             resolution: savedVideoSettings.videoResolution,
             fps: savedVideoSettings.fps,
@@ -1743,7 +1840,7 @@ export function GenSpace() {
             imageSteps: 4,
             inputImageUrl: inputImage || undefined,
             inputAudioUrl: inputAudio || undefined,
-            loras: isLocalMode && selectedLoras.length > 0
+            loras: canUseUserLoras && selectedLoras.length > 0
               ? selectedLoras.map(l => ({ ...l, ref: toModelsDirRelativeRef(l.ref, appSettings.modelsDir) }))
               : undefined,
           },
@@ -1763,7 +1860,7 @@ export function GenSpace() {
         logger.error(`Failed to persist generated video asset: ${err}`)
       }
     })()
-  }, [videoPath, currentProjectId, isGenerating, sanitizeVideoSettings, settings, inputImage, inputAudio, lastPrompt, addAsset, reset, selectedLoras, isLocalMode, appSettings.modelsDir])
+  }, [videoPath, currentProjectId, isGenerating, sanitizeVideoSettings, settings, inputImage, inputAudio, lastPrompt, addAsset, reset, selectedLoras, canUseUserLoras, appSettings.modelsDir])
 
   // When retake completes, add as take or new asset
   useEffect(() => {
@@ -1799,6 +1896,18 @@ export function GenSpace() {
             height: copied.height,
             createdAt: Date.now(),
           })
+          // Takes don't carry their own model; bump the parent asset's pipeline label so a
+          // 2.5 retake of a 2.3 clip doesn't keep showing the source pipeline in preview.
+          // Only in API mode — local retakes don't select a MODEL and shouldn't overwrite.
+          if (!isLocalMode && sourceAsset.generationParams) {
+            updateAsset(currentProjectId, sourceAsset.id, {
+              generationParams: {
+                ...sourceAsset.generationParams,
+                model: submission.model,
+                modelLabel: resolvePipelineDisplayName(videoModelSpecs, submission.model) ?? undefined,
+              },
+            })
+          }
           if (activeRetakeSource.linkedClipIds?.length) {
             setPendingRetakeUpdate({
               assetId: sourceAsset.id,
@@ -1821,7 +1930,9 @@ export function GenSpace() {
           generationParams: {
             mode: 'retake',
             prompt: usedPrompt,
-            model: 'pro',
+            // Local mode hides the MODEL dropdown; don't persist the leftover API-mode
+            // selection (e.g. 'pro' / 'pro-2.5') as a confident pipeline label.
+            model: isLocalMode ? '' : submission.model,
             duration: usedInput.duration,
             resolution: '',
             fps: 24,
@@ -1848,7 +1959,7 @@ export function GenSpace() {
       setActiveRetakeSource(null)
       resetRetake()
     })()
-  }, [retakeResult, isRetaking, currentProjectId, activeProject?.assets, activeRetakeSource, addAsset, addTakeToAsset, setPendingRetakeUpdate, resetRetake])
+  }, [retakeResult, isRetaking, currentProjectId, activeProject?.assets, activeRetakeSource, addAsset, addTakeToAsset, updateAsset, setPendingRetakeUpdate, resetRetake, isLocalMode])
 
   // When extend completes, save the longer video as a new asset.
   useEffect(() => {
@@ -1882,7 +1993,8 @@ export function GenSpace() {
         generationParams: {
           mode: 'extend',
           prompt: usedPrompt,
-          model: 'pro',
+          // Local mode hides the MODEL dropdown; don't persist a leftover API selection.
+          model: isLocalMode ? '' : submission.model,
           duration: usedInput.videoDuration + usedInput.duration,
           resolution: '',
           fps: 24,
@@ -1905,7 +2017,7 @@ export function GenSpace() {
       setMode('video')
       resetExtend()
     })()
-  }, [extendResult, isExtending, currentProjectId, addAsset, resetExtend])
+  }, [extendResult, isExtending, currentProjectId, addAsset, resetExtend, isLocalMode])
 
   useEffect(() => {
     if (!icLoraResult || !currentProjectId || isIcLoraGenerating) return
@@ -2352,6 +2464,7 @@ export function GenSpace() {
       if (!retakeInput.videoPath || retakeInput.duration < 2) return
       retakeSubmissionRef.current = {
         prompt,
+        model: retakeModel,
         input: {
           videoPath: retakeInput.videoPath,
           startTime: retakeInput.startTime,
@@ -2359,7 +2472,7 @@ export function GenSpace() {
           videoDuration: retakeInput.videoDuration,
         },
       }
-      await writeRecoveryContext({ prompt })
+      await writeRecoveryContext({ prompt, model: retakeModel })
       await submitRetake({
         videoPath: retakeInput.videoPath,
         startTime: retakeInput.startTime,
@@ -2367,6 +2480,7 @@ export function GenSpace() {
         prompt,
         mode: 'replace_audio_and_video',
         resolution: resolveResolution(retakeResolutionOpts, retakeResolutionKey),
+        model: retakeModel,
       })
       return
     }
@@ -2375,6 +2489,7 @@ export function GenSpace() {
       if (!extendInput.videoPath || !extendInput.ready) return
       extendSubmissionRef.current = {
         prompt,
+        model: extendModel,
         input: {
           videoPath: extendInput.videoPath,
           direction: extendDirection,
@@ -2382,13 +2497,14 @@ export function GenSpace() {
           videoDuration: extendInput.videoDuration,
         },
       }
-      await writeRecoveryContext({ prompt })
+      await writeRecoveryContext({ prompt, model: extendModel })
       await submitExtend({
         videoPath: extendInput.videoPath,
         duration: extendSeconds,
         prompt,
         mode: extendDirection,
         resolution: resolveResolution(extendResolutionOpts, extendResolutionKey),
+        model: extendModel,
       })
       return
     }
@@ -2404,7 +2520,7 @@ export function GenSpace() {
         ? { source: editSource, strength: settings.imageEditStrength ?? 0.6 }
         : null
       const imageSettings = {
-        model: 'fast' as 'fast' | 'pro',
+        model: 'fast' as VideoGenerationPipeline,
         duration: 5,
         videoResolution: settings.videoResolution,
         fps: 24,
@@ -2424,7 +2540,7 @@ export function GenSpace() {
       const audioPath = inputAudio || null
       const videoSettings = sanitizeVideoSettings(settings)
       const genSettings = {
-          model: videoSettings.model as 'fast' | 'pro',
+          model: videoSettings.model as VideoGenerationPipeline,
           duration: videoSettings.duration,
           videoResolution: videoSettings.videoResolution,
           fps: videoSettings.fps,
@@ -2435,7 +2551,7 @@ export function GenSpace() {
           imageAspectRatio: videoSettings.aspectRatio,
           imageSteps: 4,
           // Local LoRA refs are filesystem paths the cloud API can't resolve.
-          loras: isLocalMode && selectedLoras.length > 0 ? selectedLoras : undefined,
+          loras: canUseUserLoras && selectedLoras.length > 0 ? selectedLoras : undefined,
       }
       await writeRecoveryContext({
         prompt,
@@ -2472,10 +2588,12 @@ export function GenSpace() {
   }
 
   const handleRetake = (videoAsset: Asset) => {
+    if (!canUseRetake) return
     setMode('retake')
     setPrompt('')
     setActiveRetakeSource(null)
     setRetakeResolutionKey('original')
+    setRetakeModel(retakeExtendModelFromPipeline(videoAsset.generationParams?.model))
     setRetakeInitial({
       videoPath: videoAsset.path,
       duration: videoAsset.duration,
@@ -2484,11 +2602,13 @@ export function GenSpace() {
   }
 
   const handleExtend = (videoAsset: Asset) => {
+    if (!canUseExtend) return
     setMode('extend')
     setPrompt('')
     setExtendDirection('end')
     setExtendSeconds(DEFAULT_EXTEND_SECONDS)
     setExtendResolutionKey('original')
+    setExtendModel(retakeExtendModelFromPipeline(videoAsset.generationParams?.model))
     setExtendInitial({
       videoPath: videoAsset.path,
       duration: videoAsset.duration,
@@ -2497,7 +2617,7 @@ export function GenSpace() {
   }
 
   const handleIcLora = (videoAsset: Asset) => {
-    if (forceApiGenerations) return
+    if (!canUseIcLora) return
     setMode('ic-lora')
     setPrompt('')
     setActiveIcLoraSource(null)
@@ -2564,18 +2684,6 @@ export function GenSpace() {
   const goToNext = useCallback(() => {
     if (canGoNext) setSelectedAsset(filteredAssets[selectedIndex + 1])
   }, [canGoNext, filteredAssets, selectedIndex])
-
-  // Keyboard navigation for the preview modal
-  useEffect(() => {
-    if (!selectedAsset) return
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') { e.preventDefault(); goToPrev() }
-      else if (e.key === 'ArrowRight') { e.preventDefault(); goToNext() }
-      else if (e.key === 'Escape') setSelectedAsset(null)
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [selectedAsset, goToPrev, goToNext])
 
   // Shared IC-LoRA control props — consumed by the bottom-row settings (PromptBar) and the
   // advanced side panel beside the prompt.
@@ -2646,7 +2754,7 @@ export function GenSpace() {
           {/* Top bar */}
           <div className="flex items-center justify-between pb-2 gap-2">
             <div className="flex items-center gap-2">
-              {mode === 'video' && isLocalMode && (
+              {mode === 'video' && canUseUserLoras && (
                 <button
                   onClick={() => loraLibrary.setModalOpen(true)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
@@ -2749,9 +2857,9 @@ export function GenSpace() {
                   onDragStart={handleDragStart}
                   onCreateVideo={handleCreateVideo}
                   onEditImage={handleEditImage}
-                  onRetake={handleRetake}
-                  onExtend={handleExtend}
-                  onIcLora={!forceApiGenerations ? handleIcLora : undefined}
+                  onRetake={canUseRetake ? handleRetake : undefined}
+                  onExtend={canUseExtend ? handleExtend : undefined}
+                  onIcLora={canUseIcLora ? handleIcLora : undefined}
                   onToggleFavorite={() => currentProjectId && toggleFavorite(currentProjectId, asset.id)}
                 />
               ))}
@@ -2876,7 +2984,10 @@ export function GenSpace() {
         <PromptBar
           mode={mode}
           onModeChange={setMode}
-          canUseIcLora={!forceApiGenerations}
+          canUseIcLora={canUseIcLora}
+          canUseRetake={canUseRetake}
+          canUseExtend={canUseExtend}
+          canUseUserLoras={canUseUserLoras}
           prompt={prompt}
           onPromptChange={setPrompt}
           onGenerate={handleGenerate}
@@ -2891,6 +3002,8 @@ export function GenSpace() {
           resolutionOptions={mode === 'extend' ? extendResolutionOpts : mode === 'retake' ? retakeResolutionOpts : []}
           selectedResolution={mode === 'extend' ? extendResolutionKey : retakeResolutionKey}
           onResolutionChange={mode === 'extend' ? setExtendResolutionKey : setRetakeResolutionKey}
+          retakeExtendModel={mode === 'extend' ? extendModel : retakeModel}
+          onRetakeExtendModelChange={mode === 'extend' ? setExtendModel : setRetakeModel}
           inputImage={inputImage}
           onInputImageChange={setInputImage}
           inputAudio={inputAudio}
@@ -2923,7 +3036,7 @@ export function GenSpace() {
         />
 
         {/* Advanced IC-LoRA controls — bottom-aligned to the right of the prompt panel. */}
-        {mode === 'ic-lora' && !forceApiGenerations && advancedIcLoraControls && (
+        {mode === 'ic-lora' && canUseIcLora && advancedIcLoraControls && (
           <div className="absolute left-full bottom-0 ml-3">
             <IcLoraAdvancedPanel {...icLoraControlsProps} />
           </div>
@@ -2944,95 +3057,17 @@ export function GenSpace() {
         onSelect={loraLibrary.useEntry}
       />
 
-      {/* Asset preview modal */}
       {selectedAsset && (
-        <div 
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
-          onClick={() => setSelectedAsset(null)}
-        >
-          {/* Previous button */}
-          <button
-            onClick={(e) => { e.stopPropagation(); goToPrev() }}
-            disabled={!canGoPrev}
-            className={`absolute left-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full backdrop-blur-md transition-all ${
-              canGoPrev
-                ? 'bg-white/10 text-white hover:bg-white/20 cursor-pointer'
-                : 'bg-white/5 text-zinc-600 cursor-default'
-            }`}
-          >
-            <ChevronLeft className="h-6 w-6" />
-          </button>
-
-          {/* Next button */}
-          <button
-            onClick={(e) => { e.stopPropagation(); goToNext() }}
-            disabled={!canGoNext}
-            className={`absolute right-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full backdrop-blur-md transition-all ${
-              canGoNext
-                ? 'bg-white/10 text-white hover:bg-white/20 cursor-pointer'
-                : 'bg-white/5 text-zinc-600 cursor-default'
-            }`}
-          >
-            <ChevronRight className="h-6 w-6" />
-          </button>
-
-          {/* Content area */}
-          <div className="relative max-w-5xl w-full max-h-full px-20 py-8" onClick={e => e.stopPropagation()}>
-            {/* Top bar: counter + close */}
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm text-zinc-500 font-medium">
-                {selectedIndex + 1} / {filteredAssets.length}
-              </span>
-              <button
-                onClick={() => setSelectedAsset(null)}
-                className="p-2 rounded-md text-zinc-400 hover:text-white transition-colors"
-              >
-                <X className="h-6 w-6" />
-              </button>
-            </div>
-
-            {selectedAsset.type === 'video' ? (
-              <video
-                key={selectedAsset.id}
-                src={pathToFileUrl(selectedAsset.path)}
-                controls
-                autoPlay
-                className="w-full rounded-xl object-contain max-h-[75vh]"
-              />
-            ) : (
-              <img
-                key={selectedAsset.id}
-                src={pathToFileUrl(selectedAsset.path)}
-                alt=""
-                className="w-full rounded-xl object-contain max-h-[75vh]"
-              />
-            )}
-            <div className="mt-4 text-center">
-              <div className="inline-flex items-start gap-2 max-w-full">
-                <p className="text-zinc-300 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-left">{selectedAsset.prompt}</p>
-                {selectedAsset.prompt && (
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(selectedAsset.prompt)
-                      setCopiedPrompt(true)
-                      setTimeout(() => setCopiedPrompt(false), 2000)
-                    }}
-                    className="shrink-0 p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors"
-                    title="Copy prompt"
-                  >
-                    {copiedPrompt ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                )}
-              </div>
-              <p className="text-zinc-500 text-sm mt-1">
-                {[
-                  selectedAsset.resolution,
-                  selectedAsset.duration ? `${formatSeconds(selectedAsset.duration)}s` : 'Image',
-                ].filter(Boolean).join(' • ')}
-              </p>
-            </div>
-          </div>
-        </div>
+        <AssetPreviewModal
+          asset={selectedAsset}
+          index={selectedIndex}
+          total={filteredAssets.length}
+          canGoPrev={canGoPrev}
+          canGoNext={canGoNext}
+          onPrev={goToPrev}
+          onNext={goToNext}
+          onClose={() => setSelectedAsset(null)}
+        />
       )}
 
       {(error || localError) && (

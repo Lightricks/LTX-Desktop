@@ -134,6 +134,7 @@ export interface ClipResolutionInfo {
   label: string
   color: string
   height: number
+  displayName: string
 }
 
 export interface OrderedTrackEntry {

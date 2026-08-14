@@ -17,6 +17,7 @@ from services.services_utils import AudioOrNone, TilingConfigType
 
 if TYPE_CHECKING:
     from ltx_core.loader.primitives import LoraPathStrengthAndSDOps
+    from ltx_pipelines.utils.model_paths import ModelPaths
 
 
 class DistilledA2VPipeline:
@@ -29,8 +30,7 @@ class DistilledA2VPipeline:
 
     def __init__(
         self,
-        distilled_checkpoint_path: str,
-        gemma_root: str,
+        model_paths: ModelPaths,
         spatial_upsampler_path: str,
         loras: Sequence[LoraPathStrengthAndSDOps] | None = None,
         device: torch.device | None = None,
@@ -55,16 +55,16 @@ class DistilledA2VPipeline:
         offload_mode = offload_mode_for_prefetch_count(streaming_prefetch_count, device)
 
         self.prompt_encoder = PromptEncoder(
-            distilled_checkpoint_path, gemma_root, self.dtype, device, offload_mode=offload_mode,
+            model_paths, self.dtype, device, offload_mode=offload_mode,
         )
         self.image_conditioner = ImageConditioner(
-            distilled_checkpoint_path, self.dtype, device,
+            model_paths.video_vae(), self.dtype, device,
         )
         self.audio_conditioner = AudioConditioner(
-            distilled_checkpoint_path, self.dtype, device,
+            model_paths.audio_vae(), self.dtype, device,
         )
         self.stage = DiffusionStage.from_checkpoint(  # type: ignore[reportUnknownMemberType]
-            distilled_checkpoint_path,
+            model_paths.transformer(),
             self.dtype,
             device,
             loras=tuple(loras) if loras else (),
@@ -72,10 +72,10 @@ class DistilledA2VPipeline:
             offload_mode=offload_mode,
         )
         self.upsampler = VideoUpsampler(
-            distilled_checkpoint_path, spatial_upsampler_path, self.dtype, device,
+            model_paths.video_vae(), spatial_upsampler_path, self.dtype, device,
         )
         self.video_decoder = VideoDecoder(
-            distilled_checkpoint_path, self.dtype, device,
+            model_paths.video_vae(), self.dtype, device,
         )
 
     @torch.inference_mode()

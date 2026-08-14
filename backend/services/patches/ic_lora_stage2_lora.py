@@ -60,14 +60,15 @@ from contextlib import contextmanager
 import torch
 
 from ltx_core.components.noisers import GaussianNoiser
-from ltx_core.model.video_vae import TilingConfig
+from ltx_core.model.video_vae import AUTO_TILING, AutoTiling, TileSizeConfig, TilingConfig
 from ltx_core.model.video_vae.video_vae import VideoEncoder
 from ltx_core.types import Audio, VideoPixelShape
 from ltx_pipelines.ic_lora import ICLoraPipeline
 from ltx_pipelines.utils.args import ImageConditioningInput
 from ltx_pipelines.utils.constants import DISTILLED_SIGMAS, STAGE_2_DISTILLED_SIGMAS
 from ltx_pipelines.utils.denoisers import SimpleDenoiser
-from ltx_pipelines.utils.helpers import assert_resolution, combined_image_conditionings
+from ltx_pipelines.utils.helpers import assert_resolution, combined_image_conditionings, ensure_tiling_config, tiling_scale_factors_for_vae
+from ltx_pipelines.utils.media_io import HDRColorSpace
 from ltx_pipelines.utils.types import ModalitySpec
 from services.patches import diffusion_stage_cache
 
@@ -79,7 +80,7 @@ _orig_encoder_forward = VideoEncoder.forward
 _encode_state = threading.local()
 
 
-def _should_tile(shape: torch.Size, cfg: TilingConfig) -> bool:
+def _should_tile(shape: torch.Size, cfg: TileSizeConfig) -> bool:
     """True when ``tiled_encode`` would split this input into more than one tile.
 
     Below the tile size in every dimension a single tile == the un-tiled forward, so we
@@ -87,11 +88,11 @@ def _should_tile(shape: torch.Size, cfg: TilingConfig) -> bool:
     (B, C, F, H, W).
     """
     f, h, w = shape[-3], shape[-2], shape[-1]
-    sc = getattr(cfg, "spatial_config", None)
-    tc = getattr(cfg, "temporal_config", None)
-    if sc is not None and (h > sc.tile_size_in_pixels or w > sc.tile_size_in_pixels):
+    if cfg.height.is_tiled() and h > cfg.height.tile_size:
         return True
-    if tc is not None and f > tc.tile_size_in_frames:
+    if cfg.width.is_tiled() and w > cfg.width.tile_size:
+        return True
+    if cfg.frames.is_tiled() and f > cfg.frames.tile_size:
         return True
     return False
 
@@ -101,12 +102,12 @@ def _scoped_tiling_forward(self: VideoEncoder, sample: torch.Tensor) -> torch.Te
     # self.forward) and small inputs pass straight through to the original forward.
     if not getattr(_encode_state, "tile", False) or getattr(_encode_state, "in_tiled", False):
         return _orig_encoder_forward(self, sample)
-    cfg = TilingConfig.default()
+    cfg = TileSizeConfig.default()
     if not _should_tile(sample.shape, cfg):
         return _orig_encoder_forward(self, sample)
     logger.info(
         "[ic-lora] tiling conditioning VAE encode %s (tile %dpx) to avoid VRAM blow-up",
-        tuple(sample.shape), cfg.spatial_config.tile_size_in_pixels,
+        tuple(sample.shape), cfg.height.tile_size,
     )
     _encode_state.in_tiled = True
     try:
@@ -168,13 +169,16 @@ def _patched_call(  # noqa: PLR0913
     images: list[ImageConditioningInput],
     video_conditioning: list[tuple[str, float]],
     enhance_prompt: bool = False,
-    tiling_config: TilingConfig | None = None,
+    enhance_static_cache: bool = False,
+    vae_dtype: torch.dtype | None = None,
+    tiling_config: TilingConfig | AutoTiling | None = AUTO_TILING,
     conditioning_attention_strength: float = 1.0,
     skip_stage_2: bool = False,
     conditioning_attention_mask: torch.Tensor | None = None,
     stage_1_sigmas: torch.Tensor = DISTILLED_SIGMAS,
     stage_2_sigmas: torch.Tensor = STAGE_2_DISTILLED_SIGMAS,
-) -> tuple[Iterator[torch.Tensor], Audio]:
+    color_space: HDRColorSpace | None = None,
+) -> tuple[Iterator[torch.Tensor], Audio, TilingConfig | None]:
     """Copy of ICLoraPipeline.__call__ (pinned upstream rev) + IC-LoRA-in-stage-2 (PATCH)."""
     use_lora_in_stage_2 = getattr(self, "use_lora_in_stage_2", False)
 
@@ -186,6 +190,7 @@ def _patched_call(  # noqa: PLR0913
     # bumped per call here. If VRAM pressure resurfaces on use_lora_in_stage_2, the fix is a
     # construction-time offload_mode override for this pipeline, not a per-call one.
 
+    images = self.image_conditioner.resolve_crf(images)
     assert_resolution(height=height, width=width, is_two_stage=True)
     if not (0.0 <= conditioning_attention_strength <= 1.0):
         raise ValueError(
@@ -194,14 +199,27 @@ def _patched_call(  # noqa: PLR0913
 
     generator = torch.Generator(device=self.device).manual_seed(seed)
     noiser = GaussianNoiser(generator=generator)
+    if vae_dtype is None:
+        vae_dtype = self.dtype
 
     (ctx_p,) = self.prompt_encoder(
         [prompt],
         enhance_first_prompt=enhance_prompt,
+        enhance_static_cache=enhance_static_cache,
         enhance_prompt_image=images[0][0] if len(images) > 0 else None,
         enhance_prompt_seed=seed,
     )
     video_context, audio_context = ctx_p.video_encoding, ctx_p.audio_encoding
+
+    scale_factors = tiling_scale_factors_for_vae(self.video_decoder.checkpoint_path)
+    tiling_config = ensure_tiling_config(
+        tiling_config,
+        scale_factors=scale_factors,
+        vae_checkpoint_path=self.video_decoder.checkpoint_path,
+        video_shape=VideoPixelShape(batch=1, frames=num_frames, height=height, width=width, fps=frame_rate),
+        diffvae_optimization=self.video_decoder.diffvae_optimization,
+        device=self.device,
+    )
 
     # Stage 1: Initial low resolution video generation.
     stage_1_output_shape = VideoPixelShape(
@@ -225,6 +243,7 @@ def _patched_call(  # noqa: PLR0913
                 num_frames=num_frames,
                 conditioning_attention_strength=conditioning_attention_strength,
                 conditioning_attention_mask=conditioning_attention_mask,
+                color_space=color_space,
             )
         )
 
@@ -259,9 +278,9 @@ def _patched_call(  # noqa: PLR0913
     if skip_stage_2:
         # Skip Stage 2: Decode directly from Stage 1 output at half resolution
         logging.info("[IC-LoRA] Skipping Stage 2 (--skip-stage-2 enabled)")
-        decoded_video = self.video_decoder(video_state.latent, tiling_config, generator)
+        decoded_video = self.video_decoder(video_state.latent, tiling_config, generator, dtype=vae_dtype)
         decoded_audio = self.audio_decoder(audio_state.latent)
-        return decoded_video, decoded_audio
+        return decoded_video, decoded_audio, tiling_config
 
     # Stage 2: Upsample and refine the video at higher resolution.
     upscaled_video_latent = self.upsampler(video_state.latent[:1])
@@ -297,6 +316,7 @@ def _patched_call(  # noqa: PLR0913
                     num_frames=num_frames,
                     conditioning_attention_strength=conditioning_attention_strength,
                     conditioning_attention_mask=conditioning_attention_mask,
+                    color_space=color_space,
                 )
             )
     else:
@@ -308,6 +328,7 @@ def _patched_call(  # noqa: PLR0913
                 video_encoder=enc,
                 dtype=self.dtype,
                 device=self.device,
+                color_space=color_space,
             )
         )
 
@@ -332,18 +353,18 @@ def _patched_call(  # noqa: PLR0913
         ),
     )
 
-    decoded_video = self.video_decoder(video_state.latent, tiling_config, generator)
+    decoded_video = self.video_decoder(video_state.latent, tiling_config, generator, dtype=vae_dtype)
     decoded_audio = self.audio_decoder(audio_state.latent)
-    return decoded_video, decoded_audio
+    return decoded_video, decoded_audio, tiling_config
 
 
 ICLoraPipeline.__call__ = _patched_call  # type: ignore[method-assign]
 
 
 if __name__ == "__main__":
-    cfg = TilingConfig.default()
-    sp = cfg.spatial_config.tile_size_in_pixels
-    fr = cfg.temporal_config.tile_size_in_frames
+    cfg = TileSizeConfig.default()
+    sp = cfg.height.tile_size
+    fr = cfg.frames.tile_size
     assert not _should_tile(torch.Size([1, 3, fr, sp, sp]), cfg), "exactly one tile -> no tiling"
     assert _should_tile(torch.Size([1, 3, fr, sp, sp + 1]), cfg), "wider than a tile -> tile"
     assert _should_tile(torch.Size([1, 3, fr + 1, sp, sp]), cfg), "more frames than a tile -> tile"

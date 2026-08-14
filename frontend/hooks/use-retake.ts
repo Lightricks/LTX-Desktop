@@ -1,9 +1,25 @@
 import { useCallback, useState } from 'react'
+import type { components } from '../generated/backend-openapi'
 import { ApiClient } from '../lib/api-client'
 import { withGenerationActive } from '../lib/generation-active'
 import { logger } from '../lib/logger'
 
 export type RetakeMode = 'replace_audio_and_video' | 'replace_video' | 'replace_audio'
+
+// ltxv-api /v1/retake and /v2/extend accept ltx-2-pro / ltx-2-3-pro.
+// Desktop maps those to pipeline "pro".
+export type RetakeExtendModel = components['schemas']['RetakeRequest']['model']
+
+// Runtime options for the retake/extend MODEL dropdown. Checked against the OpenAPI union
+// so a schema change that adds/removes a value fails typecheck until this list is updated.
+export const RETAKE_EXTEND_MODELS = ['pro'] as const satisfies ReadonlyArray<RetakeExtendModel>
+
+/** Map a persisted video pipeline id onto the nearest retake/extend model. */
+export function retakeExtendModelFromPipeline(
+  _model: string | undefined | null,
+): RetakeExtendModel {
+  return 'pro'
+}
 
 export interface RetakeSubmitParams {
   videoPath: string
@@ -12,6 +28,7 @@ export interface RetakeSubmitParams {
   prompt: string
   mode: RetakeMode
   resolution?: { width: number; height: number }
+  model: RetakeExtendModel
 }
 
 export interface RetakeResult {
@@ -51,6 +68,7 @@ export function useRetake() {
         prompt: params.prompt,
         mode: params.mode,
         resolution: params.resolution,
+        model: params.model,
       })
 
       if (!result.ok) {
