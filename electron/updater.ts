@@ -3,6 +3,7 @@ import { app } from 'electron'
 import { logger } from './logger'
 import { preDownloadPythonForUpdate } from './python-setup'
 import { getMainWindow } from './window'
+import { releaseNotesFromFeed } from './release-notes'
 import {
   getSkippedUpdateVersion, setSkippedUpdateVersion,
   getAutoCheckUpdates, setAutoCheckUpdates,
@@ -11,9 +12,6 @@ import { isGenerationActive } from './python-backend'
 import type { UpdateStatePayload } from '../shared/electron-api-schema'
 
 export type UpdateChannel = 'latest' | 'beta' | 'alpha'
-
-// Cap untrusted feed notes so a huge GitHub body cannot bloat IPC / the modal.
-const MAX_RELEASE_NOTES_CHARS = 16_384
 
 // The single in-memory value of update state. Broadcast on every change.
 let state: UpdateStatePayload = { status: 'idle', currentVersion: app.getVersion() }
@@ -25,12 +23,6 @@ let macInFlight = false
 function setState(patch: Partial<UpdateStatePayload>): void {
   state = { ...state, ...patch }
   getMainWindow()?.webContents.send('update-event', state)
-}
-
-function releaseNotesFromFeed(info: UpdateInfo): string | undefined {
-  if (typeof info.releaseNotes !== 'string' || info.releaseNotes.length === 0) return undefined
-  if (info.releaseNotes.length <= MAX_RELEASE_NOTES_CHARS) return info.releaseNotes
-  return `${info.releaseNotes.slice(0, MAX_RELEASE_NOTES_CHARS)}\n…`
 }
 
 export function getUpdateState(): UpdateStatePayload {
