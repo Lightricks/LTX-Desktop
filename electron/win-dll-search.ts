@@ -9,15 +9,21 @@ export function removeCwdFromDllSearchPath(): void {
     return
   }
 
-  const require = createRequire(import.meta.url)
-  const koffi = require('koffi') as {
-    load: (name: string) => { func: (sig: string) => (...args: unknown[]) => unknown }
-  }
-  const kernel32 = koffi.load('kernel32.dll')
-  const setDllDirectoryW = kernel32.func('int SetDllDirectoryW(str16)')
-  const ok = setDllDirectoryW('')
-  if (!ok) {
-    console.error('[LTX Desktop] SetDllDirectoryW("") failed')
+  try {
+    const require = createRequire(import.meta.url)
+    const koffi = require('koffi') as {
+      load: (name: string) => { func: (sig: string) => (...args: unknown[]) => unknown }
+    }
+    const kernel32 = koffi.load('kernel32.dll')
+    const setDllDirectoryW = kernel32.func('int SetDllDirectoryW(str16)')
+    const ok = setDllDirectoryW('')
+    if (!ok) {
+      console.error('[LTX Desktop] SetDllDirectoryW("") failed')
+    }
+  } catch (err) {
+    // Missing/blocked koffi.node must not take down the app. Python still
+    // clears CWD from its own DLL search via PY_REMOVE_CWD_FROM_DLL_SEARCH.
+    console.error('[LTX Desktop] Failed to clear the Windows DLL search path', err)
   }
 }
 
