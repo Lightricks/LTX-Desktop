@@ -149,7 +149,29 @@ function aboutUpdateAction(
   state: UpdateStatePayload,
   onOpenUpdate: () => void,
   onCheckForUpdates: () => void,
+  isMac: boolean,
+  autoCheckOn: boolean,
 ): { label: string; onClick?: () => void; disabled?: boolean } {
+  if (isMac) {
+    // No modal: Check only forces a lookup. Download/install still follow the toggle.
+    switch (state.status) {
+      case 'checking':
+        return { label: 'Checking…', disabled: true }
+      case 'downloading':
+        return { label: `Downloading… ${state.percent ?? 0}%`, disabled: true }
+      case 'downloaded':
+        return {
+          label: autoCheckOn ? 'Will install when you quit' : 'Will still install when you quit',
+          disabled: true,
+        }
+      default:
+        return {
+          label: 'Check for updates',
+          onClick: autoCheckOn ? onCheckForUpdates : undefined,
+          disabled: !autoCheckOn,
+        }
+    }
+  }
   switch (state.status) {
     case 'available':
       return { label: `Update available — v${state.version}`, onClick: onOpenUpdate }
@@ -217,7 +239,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, update, onOpenUpdat
   const [analyticsEnabled, setAnalyticsEnabled] = useState(false)
   const [autoCheckUpdates, setAutoCheckUpdatesState] = useState(true)
   const [projectAssetsPath, setProjectAssetsPath] = useState('')
-  const updateAction = aboutUpdateAction(update.state, onOpenUpdate, onCheckForUpdates)
+  const isMac = window.electronAPI.platform === 'darwin'
+  const updateAction = aboutUpdateAction(update.state, onOpenUpdate, onCheckForUpdates, isMac, autoCheckUpdates)
 
   // Sync active tab with initialTab prop when modal opens
   useEffect(() => {
@@ -1443,12 +1466,32 @@ export function SettingsModal({ isOpen, onClose, initialTab, update, onOpenUpdat
                       <span className="text-sm font-medium text-white">Updates</span>
                     </div>
                     <p className="text-xs text-zinc-400">
-                      {update.state.status === 'available' && `Version ${update.state.version} is available.`}
-                      {update.state.status === 'downloading' && `Downloading… ${update.state.percent ?? 0}%`}
-                      {update.state.status === 'downloaded' && 'Download complete. Restart to apply the update.'}
-                      {update.state.status === 'checking' && 'Checking for updates…'}
-                      {update.state.status === 'not-available' && "You're up to date."}
-                      {update.state.status === 'idle' && 'Check for a newer version, or let the app check automatically.'}
+                      {isMac ? (
+                        <>
+                          {update.state.status === 'downloading' && `Downloading… ${update.state.percent ?? 0}%`}
+                          {update.state.status === 'downloaded' && (
+                            autoCheckUpdates
+                              ? 'An update will install when you quit.'
+                              : 'This update is already queued and will still install when you quit.'
+                          )}
+                          {update.state.status === 'checking' && 'Checking for updates…'}
+                          {update.state.status === 'not-available' && "You're up to date."}
+                          {(update.state.status === 'idle' || update.state.status === 'available') && (
+                            autoCheckUpdates
+                              ? 'New versions download in the background and install when you quit.'
+                              : 'Automatic updates are off. Turn this on to install new versions when you quit.'
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {update.state.status === 'available' && `Version ${update.state.version} is available.`}
+                          {update.state.status === 'downloading' && `Downloading… ${update.state.percent ?? 0}%`}
+                          {update.state.status === 'downloaded' && 'Download complete. Restart to apply the update.'}
+                          {update.state.status === 'checking' && 'Checking for updates…'}
+                          {update.state.status === 'not-available' && "You're up to date."}
+                          {update.state.status === 'idle' && 'Check for a newer version, or let the app check automatically.'}
+                        </>
+                      )}
                     </p>
                     {update.state.message && (
                       <p className="text-xs text-red-400">{update.state.message}</p>
@@ -1463,9 +1506,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, update, onOpenUpdat
                     </Button>
                     <div className="flex items-start justify-between gap-4 border-t border-zinc-700/50 pt-3">
                       <div className="flex-1">
-                        <label className="text-sm font-medium text-white">Automatically check for updates</label>
+                        <label className="text-sm font-medium text-white">
+                          {isMac ? 'Automatic updates' : 'Automatically check for updates'}
+                        </label>
                         <p className="text-xs text-zinc-500 leading-relaxed">
-                          Periodically check for new versions. You can always check manually above.
+                          {isMac
+                            ? 'When on, new versions download in the background and install when you quit. Check above to look now.'
+                            : 'Periodically check for new versions. You can always check manually above.'}
                         </p>
                       </div>
                       <button

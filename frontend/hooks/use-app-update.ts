@@ -61,6 +61,8 @@ export function useAppUpdateModal() {
   const [laterVersion, setLaterVersion] = useState<string | null>(null)
 
   useEffect(() => {
+    // Mac has no modal: silent download + install-on-quit, gated only by the About toggle.
+    if (window.electronAPI.platform === 'darwin') return
     const s = update.state
     if (s.status === 'available') {
       if (manualCheckPending || s.version !== laterVersion) {
@@ -103,7 +105,10 @@ export function useAppUpdateModal() {
     // Keep the modal mounted across a periodic re-check (`checking`) so it does not
     // unmount/remount. Do not treat `available` as busy in main — that would hide a
     // newer version after the user clicked Later.
-    isModalOpen: modalOpen && (MODAL_STATUSES.has(status) || status === 'checking'),
+    isModalOpen:
+      window.electronAPI.platform !== 'darwin'
+      && modalOpen
+      && (MODAL_STATUSES.has(status) || status === 'checking'),
     openModal,
     closeModal,
     checkForUpdates,
