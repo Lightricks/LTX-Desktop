@@ -16,7 +16,13 @@ files:
 
 asarUnpack:
   - dist/splash/**
-  - node_modules/koffi/**
+  # koffi 3.x loads ../../@koromix/koffi-${platform}-${arch} from its JS.
+  # Unpack that package so require() can load the .node from disk, not asar.
+  - node_modules/@koromix/**/*
+
+# Also copy the .node to resources/koffi/${platform}_${arch}/ (Koffi's Electron
+# lookup). Pack fails if the optional native package is missing on the builder.
+afterPack: scripts/copy-koffi-native.cjs
 
 extraResources:
   - from: backend

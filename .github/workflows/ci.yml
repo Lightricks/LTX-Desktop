@@ -51,6 +51,9 @@ jobs:
       - name: TypeScript type check
         run: pnpm run typecheck:ts
 
+      - name: Pack helper tests
+        run: pnpm run scripts:test
+
   test-python:
     name: Python Tests (${{ matrix.os }})
     runs-on: ${{ matrix.runner }}
