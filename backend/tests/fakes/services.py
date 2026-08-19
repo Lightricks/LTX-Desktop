@@ -6,6 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar
+import threading
+import time
 
 from PIL import Image
 from frame_math import AutoDurationSpec
@@ -644,6 +646,10 @@ class _FakeVideoPipelineBase:
         self.compile_calls = 0
         self.create_loras: list[list[tuple[str, float]]] = []
         self.raise_on_generate: Exception | None = None
+        self.inference_steps = 0
+        self.step_delay_s = 0.0
+        self.steps_completed = 0
+        self.entered_inference = threading.Event()
 
     def _record_generate(self, payload: dict[str, Any]) -> None:
         self.generate_calls.append(payload)
@@ -713,18 +719,26 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
         images: list[ImageConditioningInput],
         output_path: str,
     ) -> None:
-        self._record_generate(
-            {
-                "prompt": prompt,
-                "seed": seed,
-                "height": height,
-                "width": width,
-                "num_frames": num_frames,
-                "frame_rate": frame_rate,
-                "images": images,
-                "output_path": output_path,
-            }
-        )
+        payload = {
+            "prompt": prompt,
+            "seed": seed,
+            "height": height,
+            "width": width,
+            "num_frames": num_frames,
+            "frame_rate": frame_rate,
+            "images": images,
+            "output_path": output_path,
+        }
+        if self.inference_steps:
+            from services.generation_interrupt import raise_if_requested
+
+            self.entered_inference.set()
+            for _ in range(self.inference_steps):
+                raise_if_requested()
+                self.steps_completed += 1
+                if self.step_delay_s:
+                    time.sleep(self.step_delay_s)
+        self._record_generate(payload)
 
 
 class FakeZitOutput:
@@ -760,9 +774,26 @@ class FakeImageGenerationPipeline:
         self.edit_calls: list[dict[str, Any]] = []
         self.raise_on_edit: Exception | None = None
         self.fail_edit_after: int | None = None  # raise once len(edit_calls) exceeds this
+        self.inference_steps = 0
+        self.step_delay_s = 0.0
+        self.steps_completed = 0
+        self.entered_inference = threading.Event()
 
     def generate(self, **kwargs: Any) -> FakeZitOutput:
         self.generate_calls.append(kwargs)
+        callback = kwargs.get("callback_on_step_end")
+        if self.inference_steps:
+            from services.generation_interrupt import raise_if_requested
+
+            self.entered_inference.set()
+            for step_idx in range(self.inference_steps):
+                if callback is not None:
+                    callback(self, step_idx, None, {})
+                else:
+                    raise_if_requested()
+                self.steps_completed += 1
+                if self.step_delay_s:
+                    time.sleep(self.step_delay_s)
         if self.raise_on_generate is not None:
             if self.fail_generate_after is None or len(self.generate_calls) > self.fail_generate_after:
                 raise self.raise_on_generate

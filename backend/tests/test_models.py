@@ -94,11 +94,13 @@ class TestRecommendations:
     def test_ltx_recommendation_requires_primary_local_bundle(self, client):
         response = client.get("/api/models/ltx-recommendation")
         assert response.status_code == 200
-        assert response.json() == {
+        payload = response.json()
+        assert payload == {
             "status": "download",
             "cps_to_download": _required_download_cps(include_text_encoder=True),
             "optional_cp_ids": _optional_download_cps(include_text_encoder=False),
         }
+        assert "ltx-2.3-spatial-upscaler-x2-1.0" not in payload["cps_to_download"]
 
     def test_ltx_recommendation_skips_text_encoder_for_2_5_when_api_key_exists(self, client, test_state):
         test_state.state.app_settings.ltx_api_key = "test-key"
@@ -196,11 +198,14 @@ class TestRecommendations:
 
         response = client.get("/api/models/ltx-recommendation")
         assert response.status_code == 200
-        assert response.json() == {
+        payload = response.json()
+        assert payload == {
             "status": "download",
             "cps_to_download": [older_spec.upscale_cp],
             "optional_cp_ids": [older_spec.text_encoder_cp],
         }
+        assert payload["cps_to_download"] == ["ltx-2.3-spatial-upscaler-x2-1.1"]
+        assert "ltx-2.3-spatial-upscaler-x2-1.0" not in payload["cps_to_download"]
 
     def test_ltx_recommendation_reports_missing_text_encoder_for_current_model(self, client, test_state, create_fake_model_files):
         create_fake_model_files()
@@ -409,6 +414,18 @@ class TestModelDownloads:
         assert response.status_code == 200
         assert response.json()["status"] == "started"
         assert _cp_path(test_state, IMG_GEN_MODEL_CP_ID).exists()
+
+    def test_legacy_2_3_upscaler_1_0_download_lands_on_1_1(self, client, test_state):
+        response = client.post(
+            "/api/models/download",
+            json={"type": "download", "cp_ids": ["ltx-2.3-spatial-upscaler-x2-1.0"]},
+        )
+        assert response.status_code == 200
+        assert _cp_path(test_state, "ltx-2.3-spatial-upscaler-x2-1.1").exists()
+        assert not _cp_path(test_state, "ltx-2.3-spatial-upscaler-x2-1.0").exists()
+        assert [call["filename"] for call in test_state.model_downloader.calls] == [
+            "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+        ]
 
     def test_download_conflicts_when_another_session_is_running(self, client, test_state):
         test_state.downloads.start_download({"ltx-2.3-22b-distilled"})
@@ -619,6 +636,8 @@ class TestLtxVersionEndpoints:
         assert newest["is_newest"] is True
         # an uninstalled version reports the cp(s) it still needs
         assert "ltx-2.3-22b-distilled" in older["cps_to_download"]
+        for item in versions:
+            assert "ltx-2.3-spatial-upscaler-x2-1.0" not in item["cps_to_download"]
 
     def test_set_active_requires_installed(self, client, test_state):
         # 1.0 is not on disk -> cannot activate

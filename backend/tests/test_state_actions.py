@@ -9,6 +9,7 @@ import pytest
 
 from _routes._errors import HTTPError
 from handlers.generation_handler import _RESERVATION_TIMEOUT_S
+from services import generation_interrupt
 from runtime_config.model_download_specs import (
     DEPTH_PROCESSOR_CP_ID,
     get_ltx_model_spec,
@@ -67,6 +68,76 @@ def test_try_reserve_generation_start_stale_reservation_expires(test_state):
     test_state.state.generation_starting_since = time.monotonic() - _RESERVATION_TIMEOUT_S - 1
 
     assert test_state.generation.try_reserve_generation_start() is True
+
+
+def test_cancel_during_reservation_blocks_second_start(test_state):
+    with test_state.generation.reserved_generation_start():
+        cancel = test_state.generation.cancel_generation()
+        assert cancel.status == "cancelling"
+        assert generation_interrupt.is_requested()
+        with pytest.raises(HTTPError) as exc_info:
+            with test_state.generation.reserved_generation_start():
+                pass
+        assert exc_info.value.status_code == 409
+
+    assert test_state.generation.try_reserve_generation_start() is True
+    test_state.generation.release_generation_start_reservation()
+
+
+def test_cancel_after_start_keeps_slot_until_handler_exits(test_state, create_fake_model_files):
+    create_fake_model_files()
+    test_state.pipelines.load_gpu_pipeline("fast")
+    with test_state.generation.reserved_generation_start():
+        test_state.generation.start_generation("gen-1")
+        cancel = test_state.generation.cancel_generation()
+        assert cancel.status == "cancelling"
+        assert test_state.generation.try_reserve_generation_start() is False
+        progress = test_state.generation.get_generation_progress()
+        assert progress.status == "running"
+        assert progress.phase == "cancelled"
+        assert progress.cancellable is True
+
+    progress = test_state.generation.get_generation_progress()
+    assert progress.status == "cancelled"
+    assert progress.cancellable is False
+    idle_cancel = test_state.generation.cancel_generation()
+    assert idle_cancel.status == "no_active_generation"
+    assert test_state.generation.try_reserve_generation_start() is True
+    test_state.generation.release_generation_start_reservation()
+
+
+def test_raise_if_cancelled_ignores_sticky_cancelled_from_previous_job(
+    test_state, create_fake_model_files
+):
+    # After Stop, AppState stays GenerationCancelled until the next start_generation().
+    # A new reservation must not treat that sticky terminal state as "this job was cancelled".
+    create_fake_model_files()
+    test_state.pipelines.load_gpu_pipeline("fast")
+    with test_state.generation.reserved_generation_start():
+        test_state.generation.start_generation("gen-1")
+        test_state.generation.cancel_generation()
+    assert test_state.generation.get_generation_progress().status == "cancelled"
+
+    with test_state.generation.reserved_generation_start():
+        test_state.generation.raise_if_cancelled()
+        test_state.generation.start_generation("gen-2")
+
+    assert test_state.generation.get_generation_progress().id == "gen-2"
+    assert test_state.generation.get_generation_progress().status == "running"
+
+
+def test_start_generation_honors_cancel_during_reservation(test_state, create_fake_model_files):
+    from services.generation_interrupt import GenerationCancelledError
+
+    create_fake_model_files()
+    test_state.pipelines.load_gpu_pipeline("fast")
+    with test_state.generation.reserved_generation_start():
+        test_state.generation.cancel_generation()
+        with pytest.raises(GenerationCancelledError):
+            test_state.generation.start_generation("gen-1")
+        assert test_state.generation.try_reserve_generation_start() is False
+
+    assert test_state.generation.get_generation_progress().status == "cancelled"
 
 
 def test_reserved_generation_start_raises_409_while_reserved(test_state):

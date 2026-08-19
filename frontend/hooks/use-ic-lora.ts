@@ -55,6 +55,7 @@ export interface IcLoraResult {
 
 interface UseIcLoraState {
   isGenerating: boolean
+  canCancel: boolean
   status: string
   error: string | null
   result: IcLoraResult | null
@@ -65,6 +66,7 @@ type GenerateIcLoraBody = ApiRequestBodyOf<'generateIcLora'>
 export function useIcLora() {
   const [state, setState] = useState<UseIcLoraState>({
     isGenerating: false,
+    canCancel: false,
     status: '',
     error: null,
     result: null,
@@ -78,6 +80,9 @@ export function useIcLora() {
 
     setState({
       isGenerating: true,
+      // IC-LoRA is always local GPU (the tab is hidden when forceApiGenerations).
+      // Do not gate on shouldVideoGenerateWithLtxApi — that flag is for t2v/i2v.
+      canCancel: true,
       status: 'Generating',
       error: null,
       result: null,
@@ -111,6 +116,7 @@ export function useIcLora() {
         logger.error(`IC-LoRA error: ${result.error.message}`)
         setState({
           isGenerating: false,
+          canCancel: false,
           status: '',
           error: result.error.message,
           result: null,
@@ -122,6 +128,7 @@ export function useIcLora() {
       if (payload.status === 'cancelled') {
         setState({
           isGenerating: false,
+          canCancel: false,
           status: 'Cancelled',
           error: null,
           result: null,
@@ -132,6 +139,7 @@ export function useIcLora() {
       if (payload.status === 'complete') {
         setState({
           isGenerating: false,
+          canCancel: false,
           status: 'Generation complete!',
           error: null,
           result: {
@@ -146,6 +154,7 @@ export function useIcLora() {
   const reset = useCallback(() => {
     setState({
       isGenerating: false,
+      canCancel: false,
       status: '',
       error: null,
       result: null,
@@ -156,6 +165,7 @@ export function useIcLora() {
     submitIcLora,
     resetIcLora: reset,
     isIcLoraGenerating: state.isGenerating,
+    canCancel: state.canCancel,
     icLoraStatus: state.status,
     icLoraError: state.error,
     icLoraResult: state.result,

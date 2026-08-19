@@ -8,6 +8,7 @@ import { logger, writeLog } from './logger'
 import { getCurrentLogFilename } from './logging-management'
 import { getPythonDir } from './python-setup'
 import { getMainWindow } from './window'
+import { PY_REMOVE_CWD_FROM_DLL_SEARCH } from './win-dll-search'
 
 let pythonProcess: ChildProcess | null = null
 let isIntentionalShutdown = false
@@ -51,6 +52,10 @@ export function setGenerationActive(active: boolean): void {
   }
   activeGenerationCount = Math.max(0, activeGenerationCount - 1)
   if (activeGenerationCount === 0) generationActiveSince = null
+}
+
+export function isGenerationActive(): boolean {
+  return activeGenerationCount > 0
 }
 
 function isLivenessSuppressed(): boolean {
@@ -308,7 +313,7 @@ export async function startPythonBackend(): Promise<void> {
     // can't be found. Use a -c wrapper to fix sys.path before running the server.
     let pythonArgs: string[]
     if (!isDev && process.platform === 'win32') {
-      const preamble = `import sys; sys.path.insert(0, r"${backendPath}"); import runpy; runpy.run_path(r"${mainPy}", run_name="__main__")`
+      const preamble = `${PY_REMOVE_CWD_FROM_DLL_SEARCH}import sys; sys.path.insert(0, r"${backendPath}"); import runpy; runpy.run_path(r"${mainPy}", run_name="__main__")`
       pythonArgs = ['-u', '-c', preamble]
     } else {
       pythonArgs = isDev ? ['-Xfrozen_modules=off', '-u', mainPy] : ['-u', mainPy]

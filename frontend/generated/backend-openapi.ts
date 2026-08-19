@@ -656,6 +656,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/gemini-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route List Gemini Models */
+        get: operations["route_list_gemini_models_api_settings_gemini_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/suggest-gap-prompt": {
         parameters: {
             query?: never;
@@ -728,6 +745,8 @@ export interface components {
             falApiKey?: string | null;
             /** Geminiapikey */
             geminiApiKey?: string | null;
+            /** Geminimodel */
+            geminiModel?: string | null;
             /** Lockedseed */
             lockedSeed?: number | null;
             /** Ltxapikey */
@@ -965,6 +984,25 @@ export interface components {
             /** Video Path */
             video_path: string;
         };
+        /** GeminiModelOptionPayload */
+        GeminiModelOptionPayload: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Displayname */
+            displayName: string;
+            /** Id */
+            id: string;
+        };
+        /** GeminiModelsResponsePayload */
+        GeminiModelsResponsePayload: {
+            /** Models */
+            models: components["schemas"]["GeminiModelOptionPayload"][];
+            /** Resolvedmodel */
+            resolvedModel: string;
+        };
         /** GenerateImageCancelledResponse */
         GenerateImageCancelledResponse: {
             /**
@@ -1100,6 +1138,8 @@ export interface components {
         };
         /** GenerationProgressResponse */
         GenerationProgressResponse: {
+            /** Cancellable */
+            cancellable: boolean;
             /** Currentstep */
             currentStep: number | null;
             /** Id */
@@ -2006,6 +2046,11 @@ export interface components {
              * @default false
              */
             diffusionStageCacheEnabled: boolean;
+            /**
+             * Geminimodel
+             * @default
+             */
+            geminiModel: string;
             /**
              * Hasfalapikey
              * @default false
@@ -3669,6 +3714,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_list_gemini_models_api_settings_gemini_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiModelsResponsePayload"];
                 };
             };
             /** @description Client Error */

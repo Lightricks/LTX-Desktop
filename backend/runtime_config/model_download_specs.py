@@ -191,6 +191,9 @@ def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
             # Superseded by 1.1, but kept as a known checkpoint so persisted settings /
             # in-flight sessions referencing it still validate, and an orphaned on-disk
             # copy can be listed/deleted rather than failing enum validation.
+            # Hugging Face removed 1.0 from LTX-2.3. DownloadHandler remaps this id to
+            # 1.1 so downloads land on the live path; this spec only describes the
+            # orphaned local file.
             return ModelCheckpointSpec(
                 relative_path=Path("ltx-2.3-spatial-upscaler-x2-1.0.safetensors"),
                 expected_size_bytes=995_743_504,

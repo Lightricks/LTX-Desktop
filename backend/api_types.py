@@ -118,6 +118,10 @@ class GenerationProgressResponse(BaseModel):
     # than a different, unrelated one that reused the single global progress slot in the
     # meantime.
     id: str | None = None
+    # Same poll that disables Generate (`status == "running"`). Stop is allowed only for a
+    # local GPU slot — reservation, denoise, or cancelled-in-flight unwind. LTX/FAL API jobs
+    # occupy the slot (Generate stays locked) but have no public cancel.
+    cancellable: bool
 
 
 class DownloadProgressRunningResponse(BaseModel):
@@ -1127,3 +1131,16 @@ class LoraDownloadProgressResponse(BaseModel):
     progress: float = 0.0
     speed_bytes_per_sec: float = 0.0
     error: str | None = None
+
+
+class GeminiModelOptionPayload(BaseModel):
+    model_config = ConfigDict(strict=True)
+    id: str
+    displayName: str
+    description: str = ""
+
+
+class GeminiModelsResponsePayload(BaseModel):
+    model_config = ConfigDict(strict=True)
+    models: list[GeminiModelOptionPayload]
+    resolvedModel: str

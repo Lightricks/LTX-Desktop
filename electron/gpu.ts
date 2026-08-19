@@ -1,6 +1,7 @@
 import { execSync } from 'child_process'
 import { logger } from './logger'
 import { getAuthToken, getBackendUrl, getPythonPath } from './python-backend'
+import { PY_REMOVE_CWD_FROM_DLL_SEARCH } from './win-dll-search'
 
 // Check if NVIDIA GPU is available
 export async function checkGPU(): Promise<{ available: boolean; name?: string; vram?: number }> {
@@ -31,7 +32,7 @@ export async function checkGPU(): Promise<{ available: boolean; name?: string; v
   // Fallback: try direct Python check
   try {
     const pythonPath = getPythonPath()
-    const result = execSync(`"${pythonPath}" -c "import torch; cuda=torch.cuda.is_available(); mps=hasattr(torch.backends,'mps') and torch.backends.mps.is_available(); print(cuda or mps); print(torch.cuda.get_device_name(0) if cuda else ('Apple Silicon (MPS)' if mps else '')); print(torch.cuda.get_device_properties(0).total_memory // (1024**3) if cuda else 0)"`, {
+    const result = execSync(`"${pythonPath}" -c "${PY_REMOVE_CWD_FROM_DLL_SEARCH}import torch; cuda=torch.cuda.is_available(); mps=hasattr(torch.backends,'mps') and torch.backends.mps.is_available(); print(cuda or mps); print(torch.cuda.get_device_name(0) if cuda else ('Apple Silicon (MPS)' if mps else '')); print(torch.cuda.get_device_properties(0).total_memory // (1024**3) if cuda else 0)"`, {
       encoding: 'utf-8',
       timeout: 30000,
       windowsHide: true

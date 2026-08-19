@@ -3,6 +3,11 @@ import faulthandler
 import os
 import sys
 
+from server_utils.win_dll_search import remove_cwd_from_dll_search_path
+
+# Before torch / native extensions: do not search CWD for DLLs (Windows hijack).
+remove_cwd_from_dll_search_path()
+
 faulthandler.enable(file=sys.stderr, all_threads=True)
 from typing import Any, cast
 
@@ -58,6 +63,8 @@ import services.patches.diffvae_decode_vram as _diffvae_decode_vram  # pyright: 
 del _diffvae_decode_vram
 import services.patches.natten_libnatten_gate as _natten_libnatten_gate  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core natten_available checks HAS_LIBNATTEN
 del _natten_libnatten_gate
+import services.patches.diffusion_interrupt as _diffusion_interrupt  # pyright: ignore[reportUnusedImport]  # Remove once ltx-pipelines denoiser/loop accepts an interrupt callback
+del _diffusion_interrupt
 
 from state.app_settings import AppSettings
 

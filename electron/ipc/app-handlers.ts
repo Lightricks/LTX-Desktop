@@ -6,6 +6,11 @@ import { isPythonReady, downloadPythonEmbed } from '../python-setup'
 import { getBackendHealthStatus, getBackendUrl, getAuthToken, getAdminToken, startPythonBackend, setGenerationActive } from '../python-backend'
 import { getMainWindow } from '../window'
 import { getAnalyticsState, setAnalyticsEnabled, sendAnalyticsEvent } from '../analytics'
+import {
+  getUpdateState, checkForUpdatesNow, startUpdateDownload, installUpdateAndRestart,
+  skipUpdateVersion, setAutoCheckUpdatesEnabled,
+} from '../updater'
+import { getAutoCheckUpdates } from '../app-state'
 import { handle } from './typed-handle'
 
 function getModelsPath(): string {
@@ -221,6 +226,54 @@ export function registerAppHandlers(): void {
     const error = await shell.openPath(settings.modelsDir)
     if (error) return { success: false, error }
     return { success: true }
+  })
+
+  handle('getUpdateState', () => getUpdateState())
+
+  handle('checkForUpdatesNow', async () => {
+    try {
+      await checkForUpdatesNow()
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  })
+
+  handle('startUpdateDownload', async () => {
+    try {
+      await startUpdateDownload()
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  })
+
+  handle('installUpdateAndRestart', () => {
+    try {
+      return installUpdateAndRestart()
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  })
+
+  handle('skipUpdateVersion', ({ version }) => {
+    try {
+      skipUpdateVersion(version)
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  })
+
+  handle('getAutoCheckUpdates', () => ({ enabled: getAutoCheckUpdates() }))
+
+  handle('setAutoCheckUpdates', ({ enabled }) => {
+    try {
+      setAutoCheckUpdatesEnabled(enabled)
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
   })
 
 }

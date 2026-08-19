@@ -46,6 +46,7 @@ from services.interfaces import VideoProcessor
 from services.lora_catalog import LoraCatalogProvider
 from services.services_utils import FrameArray
 from server_utils.heartbeat import log_heartbeat
+from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
 from state.app_state_types import AppState, ICLoraState
 
 if TYPE_CHECKING:
@@ -256,6 +257,15 @@ class IcLoraHandler(StateHandlerBase):
             return None
         return OutpaintParams(left=p.left, right=p.right, top=p.top, bottom=p.bottom)
 
+    def _complete_or_drop_cancelled(self, output_path: Path) -> None:
+        # Denoiser interrupt cannot abort VAE decode / ffmpeg; a Stop after the last
+        # denoise step still finishes encode, then this check drops the file.
+        if self._generation.is_generation_cancelled():
+            output_path.unlink(missing_ok=True)
+            raise GenerationCancelledError()
+        self._generation.update_progress("complete", 100, 1, 1)
+        self._generation.complete_generation(str(output_path))
+
     def _generate_ic_lora(self, req: IcLoraGenerateRequest) -> IcLoraGenerateResponse:
         assert req.ic_lora_id is not None  # branch guard in generate()
         with self._generation.reserved_generation_start():
@@ -311,6 +321,7 @@ class IcLoraHandler(StateHandlerBase):
                 # Never enhance an empty prompt — there's nothing to expand and the enhancer would hallucinate.
                 enhance_prompt = use_api and self.state.app_settings.prompt_enhancer_enabled_t2v and has_prompt
                 self._text.prepare_text_encoding(req.prompt, enhance_prompt=enhance_prompt)
+                self._generation.raise_if_cancelled()
 
                 input_artifact = MediaArtifact(path=req.input_path, kind=ic_lora.input.kind)
                 ctx = PreprocessingContext(
@@ -402,8 +413,7 @@ class IcLoraHandler(StateHandlerBase):
                         mute_audio=s.audio_mode == "off",
                         conditioning_mask_path=control.mask_path,
                     )
-                self._generation.update_progress("complete", 100, 1, 1)
-                self._generation.complete_generation(str(output_path))
+                self._complete_or_drop_cancelled(output_path)
                 return IcLoraGenerateCompleteResponse(status="complete", video_path=str(output_path))
             except HTTPError:
                 self._generation.fail_generation("IC-LoRA generation failed")
@@ -415,7 +425,8 @@ class IcLoraHandler(StateHandlerBase):
                 raise HTTPError(400, str(exc)) from exc
             except Exception as exc:
                 self._generation.fail_generation(str(exc))
-                if "cancelled" in str(exc).lower():
+                if is_cancel_exception(exc):
+                    logger.info("Generation cancelled by user")
                     return IcLoraGenerateCancelledResponse(status="cancelled")
                 raise HTTPError(500, f"Generation error: {exc}") from exc
             finally:
@@ -483,6 +494,7 @@ class IcLoraHandler(StateHandlerBase):
                 self._text.prepare_text_encoding(req.prompt, enhance_prompt=enhance_prompt)
                 t_text_end = time.perf_counter()
                 logger.info("[ic-lora] Text encoding (%s): %.2fs", encoding_method, t_text_end - t_text_start)
+                self._generation.raise_if_cancelled()
 
                 preprocess_time = 0.0
 
@@ -537,6 +549,7 @@ class IcLoraHandler(StateHandlerBase):
 
                         frame_idx = 0
                         while frame_idx < frame_count:
+                            self._generation.raise_if_cancelled()
                             frame = self._video_processor.read_frame(cap)
                             if frame is None:
                                 break
@@ -633,8 +646,7 @@ class IcLoraHandler(StateHandlerBase):
                     t_inference_end - t_inference_start,
                 )
 
-                self._generation.update_progress("complete", 100, 1, 1)
-                self._generation.complete_generation(str(output_path))
+                self._complete_or_drop_cancelled(output_path)
                 return IcLoraGenerateCompleteResponse(status="complete", video_path=str(output_path))
 
             except HTTPError:
@@ -642,7 +654,8 @@ class IcLoraHandler(StateHandlerBase):
                 raise
             except Exception as exc:
                 self._generation.fail_generation(str(exc))
-                if "cancelled" in str(exc).lower():
+                if is_cancel_exception(exc):
+                    logger.info("Generation cancelled by user")
                     return IcLoraGenerateCancelledResponse(status="cancelled")
                 raise HTTPError(500, f"Generation error: {exc}") from exc
             finally:

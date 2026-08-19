@@ -10,6 +10,7 @@ import torch
 from diffusers.pipelines.auto_pipeline import ZImagePipeline  # type: ignore[reportUnknownVariableType]
 from PIL.Image import Image as PILImage
 
+from services.generation_interrupt import diffusers_step_callback
 from services.services_utils import (
     ImagePipelineOutputLike,
     PILImageType,
@@ -94,6 +95,7 @@ class ZitImageGenerationPipeline:
             generator=generator,
             output_type="pil",
             return_dict=True,
+            callback_on_step_end=diffusers_step_callback,
         )
         return self._normalize_output(output)
 
@@ -130,6 +132,7 @@ class ZitImageGenerationPipeline:
             generator=generator,
             output_type="pil",
             return_dict=True,
+            callback_on_step_end=diffusers_step_callback,
         )
         return self._normalize_output(output)
 

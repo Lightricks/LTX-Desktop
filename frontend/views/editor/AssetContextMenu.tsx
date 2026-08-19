@@ -16,6 +16,7 @@ export interface AssetContextMenuProps {
   addClipToTimeline: (asset: Asset, trackIndex?: number, startTime?: number) => void
   handleRegenerate: (assetId: string) => void
   handleCancelRegeneration: () => void
+  canCancelInFlight: boolean
   setTakesViewAssetId: (assetId: string | null) => void
   setSelectedAssetIds: React.Dispatch<React.SetStateAction<Set<string>>>
   setAssetContextMenu: React.Dispatch<React.SetStateAction<{ assetId: string; x: number; y: number } | null>>
@@ -31,6 +32,7 @@ export function AssetContextMenu({
   addClipToTimeline,
   handleRegenerate,
   handleCancelRegeneration,
+  canCancelInFlight,
   setTakesViewAssetId,
   setSelectedAssetIds,
   setAssetContextMenu,
@@ -112,7 +114,7 @@ export function AssetContextMenu({
 
       {!isMulti && asset.generationParams && (
         <>
-          {isRegenerating && regeneratingAssetId === asset.id ? (
+          {isRegenerating && regeneratingAssetId === asset.id && canCancelInFlight ? (
             <button
               onClick={() => {
                 handleCancelRegeneration()

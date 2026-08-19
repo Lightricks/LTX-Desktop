@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request
 
 from _routes._admin_guard import guard_admin_permission
 from state.app_settings import SettingsResponse, UpdateSettingsRequest, to_settings_response
-from api_types import StatusResponse
+from api_types import GeminiModelsResponsePayload, StatusResponse
 from state import get_state_service
 from app_handler import AppHandler
 
@@ -46,3 +46,10 @@ def route_post_settings(
         handler.pipelines.unload_gpu_pipeline()
 
     return StatusResponse(status="ok")
+
+
+@router.get("/settings/gemini-models", response_model=GeminiModelsResponsePayload)
+def route_list_gemini_models(
+    handler: AppHandler = Depends(get_state_service),
+) -> GeminiModelsResponsePayload:
+    return handler.settings.list_gemini_models()

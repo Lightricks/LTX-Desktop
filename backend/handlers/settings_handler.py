@@ -7,7 +7,8 @@ import logging
 from threading import RLock
 from typing import TYPE_CHECKING
 
-from api_types import LTXLocalModelId
+from api_types import GeminiModelsResponsePayload, LTXLocalModelId
+from _routes._errors import HTTPError
 from state.app_settings import AppSettings, UpdateSettingsRequest
 from handlers._settings_utils import (
     collect_changed_paths,
@@ -17,6 +18,13 @@ from handlers._settings_utils import (
     strip_none_values,
 )
 from handlers.base import StateHandlerBase, with_state_lock
+from services.gemini_text_client import (
+    is_text_to_text_gemini_model,
+    list_gemini_generate_content_models,
+    normalize_gemini_model_id,
+    resolve_gemini_model,
+)
+from services.interfaces import HTTPClient
 from state.app_state_types import AppState
 
 if TYPE_CHECKING:
@@ -26,8 +34,9 @@ logger = logging.getLogger(__name__)
 
 
 class SettingsHandler(StateHandlerBase):
-    def __init__(self, state: AppState, lock: RLock, config: RuntimeConfig) -> None:
+    def __init__(self, state: AppState, lock: RLock, config: RuntimeConfig, http: HTTPClient) -> None:
         super().__init__(state, lock, config)
+        self._http = http
 
     @with_state_lock
     def load_settings(self, default_settings: AppSettings) -> AppSettings:
@@ -75,6 +84,13 @@ class SettingsHandler(StateHandlerBase):
         for key_field in ("ltx_api_key", "gemini_api_key", "fal_api_key"):
             if key_field in patch_payload and patch_payload[key_field] == "":
                 del patch_payload[key_field]
+        # Empty gemini_model is kept: it means "use DEFAULT_GEMINI_MODEL", not "leave unchanged".
+        # Image/audio/video generators cannot enhance a prompt — persist them as "use default"
+        # so a leftover Nano Banana setting cannot round-trip back into the picker.
+        if "gemini_model" in patch_payload:
+            model_id = normalize_gemini_model_id(str(patch_payload["gemini_model"]))
+            if model_id and not is_text_to_text_gemini_model(model_id):
+                patch_payload["gemini_model"] = ""
 
         # active_ltx_model_id is patchable here only because the patch model is auto-derived
         # from every AppSettings field — but it must go through set_active_ltx_model, which
@@ -98,6 +114,18 @@ class SettingsHandler(StateHandlerBase):
         changed_paths = collect_changed_paths(before_payload, after_payload)
         self.save_settings()
         return before, after, changed_paths
+
+    def list_gemini_models(self) -> GeminiModelsResponsePayload:
+        settings = self.get_settings_snapshot()
+        if not settings.gemini_api_key:
+            raise HTTPError(400, "GEMINI_API_KEY_MISSING")
+        resolved_model = resolve_gemini_model(settings.gemini_model)
+        models = list_gemini_generate_content_models(
+            self._http,
+            api_key=settings.gemini_api_key,
+            include_id=resolved_model,
+        )
+        return GeminiModelsResponsePayload(models=models, resolvedModel=resolved_model)
 
     def _trim_prompt_cache(self) -> None:
         te = self.state.text_encoder

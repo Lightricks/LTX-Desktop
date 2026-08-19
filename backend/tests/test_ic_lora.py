@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import struct
 from pathlib import Path
 
@@ -88,6 +89,43 @@ class TestIcLoraGenerate:
         assert response.status_code == 200
         assert response.json()["status"] == "complete"
         assert Path(response.json()["video_path"]).exists()
+
+    def test_stop_after_generate_unlinks_and_returns_cancelled(
+        self, client, test_state, fake_services, create_fake_model_files, create_fake_ic_lora_files, caplog
+    ):
+        # Denoiser Stop after the last step still runs VAE/ffmpeg; video/retake/extend then
+        # drop the file. IC-LoRA must do the same instead of importing it as complete.
+        _install_ic_lora_capable_model(create_fake_model_files, create_fake_ic_lora_files)
+        test_state.state.app_settings.use_local_text_encoder = True
+
+        video_path = test_state.config.outputs_dir / "test_video.mp4"
+        video_path.write_bytes(b"\x00" * 100)
+        test_state.video_processor.register_video(str(video_path), FakeCapture(frames=["frame-a", "frame-b"]))
+
+        pipeline = fake_services.ic_lora_pipeline
+        real_generate = pipeline.generate
+
+        def generate_then_cancel(**kwargs):
+            real_generate(**kwargs)
+            test_state.generation.cancel_generation()
+
+        pipeline.generate = generate_then_cancel  # type: ignore[method-assign]
+
+        caplog.set_level(logging.INFO, logger="handlers.ic_lora_handler")
+        response = client.post(
+            "/api/ic-lora/generate",
+            json={
+                "video_path": str(video_path),
+                "conditioning_type": "canny",
+                "prompt": "test prompt",
+                "images": [],
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "cancelled"
+        written = Path(pipeline.generate_calls[-1]["output_path"])
+        assert not written.exists()
+        assert any(record.getMessage() == "Generation cancelled by user" for record in caplog.records)
 
     def test_builtin_control_rejected_on_2_5(self, client, test_state, create_fake_model_files):
         create_fake_model_files()

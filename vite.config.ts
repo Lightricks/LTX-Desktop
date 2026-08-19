@@ -23,7 +23,7 @@ export default defineConfig({
             outDir: 'dist-electron',
             sourcemap: true,
             rollupOptions: {
-              external: ['electron']
+              external: ['electron', 'koffi']
             }
           }
         }

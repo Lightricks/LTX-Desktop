@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from _routes._errors import HTTPError
-from services.gemini_text_client import call_gemini_generate_content
+from services.gemini_text_client import apply_gemini_thinking_config, call_gemini_generate_content
 from services.interfaces import HTTPClient, JSONValue
 from services.prompt_enhancement import build_default_free_rewrite_system_prompt
 
@@ -29,12 +29,12 @@ class GeminiPromptEnhancerPipeline:
     def __init__(self, http: HTTPClient) -> None:
         self._http = http
 
-    def enhance_t2v(self, prompt: str, system_prompt: str | None, seed: int, *, api_key: str) -> str:
+    def enhance_t2v(self, prompt: str, system_prompt: str | None, seed: int, *, api_key: str, model: str) -> str:
         contents: list[JSONValue] = [{"role": "user", "parts": [{"text": prompt}]}]
-        return self._call(contents, system_prompt, seed, api_key)
+        return self._call(contents, system_prompt, seed, api_key, model)
 
     def enhance_i2v(
-        self, prompt: str, image_path: str, system_prompt: str | None, seed: int, *, api_key: str
+        self, prompt: str, image_path: str, system_prompt: str | None, seed: int, *, api_key: str, model: str
     ) -> str:
         # Our own validate_image_file() allows more (GIF/BMP/TIFF, up to 50MB) than Gemini's
         # inlineData accepts — without this, those pass our gate and only fail once they bounce
@@ -63,10 +63,10 @@ class GeminiPromptEnhancerPipeline:
             {"inlineData": {"mimeType": f"image/{fmt.lower()}", "data": image_data}},
         ]
         contents: list[JSONValue] = [{"role": "user", "parts": parts}]
-        return self._call(contents, system_prompt, seed, api_key)
+        return self._call(contents, system_prompt, seed, api_key, model)
 
     def _call(
-        self, contents: list[JSONValue], system_prompt: str | None, seed: int, api_key: str
+        self, contents: list[JSONValue], system_prompt: str | None, seed: int, api_key: str, model: str
     ) -> str:
         # Unlike the local Gemma pipeline, Gemini has no implicit default system prompt of its
         # own — omitting systemInstruction entirely gets a chatty, markdown-formatted essay
@@ -75,18 +75,14 @@ class GeminiPromptEnhancerPipeline:
         return call_gemini_generate_content(
             self._http,
             api_key=api_key,
+            model=model,
             contents=contents,
             system_instruction=resolved_system_prompt,
-            # thinkingBudget=0: same fix as suggest_gap_prompt_handler.py's own generateContent
-            # call — without it, 2.5-flash's default "thinking" pass can eat the whole
-            # maxOutputTokens budget, finishing with no content parts at all (surfaced as an
-            # opaque parse error) instead of the rewritten prompt. maxOutputTokens matches the
-            # local Gemma pipeline's own default (`_generate`'s `max_new_tokens=512`) — already
-            # the proven ceiling for this exact feature's output.
-            generation_config={
-                "seed": seed,
-                "maxOutputTokens": 512,
-                "thinkingConfig": {"thinkingBudget": 0},
-            },
+            # maxOutputTokens 512 matches local Gemma when thinking is off. Thinking models
+            # get a higher cap in apply_gemini_thinking_config so the rewrite is not truncated.
+            generation_config=apply_gemini_thinking_config(
+                model,
+                {"seed": seed, "maxOutputTokens": 512},
+            ),
             timeout=30,
         )

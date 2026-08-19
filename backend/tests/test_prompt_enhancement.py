@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from api_types import (
     IcLoraCatalogItem,
     InputSpec,
@@ -435,6 +437,80 @@ class TestApiProvider:
         r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
         assert r.status_code == 200
         assert r.json()["enhancedPrompt"] == "a cat, enhanced"
+        assert "models/gemini-2.5-flash-lite:generateContent" in test_state.http.calls[-1].url
+
+    def test_posts_to_configured_gemini_model(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.state.app_settings.gemini_model = "gemini-2.0-flash"
+        test_state.http.queue("post", _gemini_ok("a cat, enhanced"))
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        assert r.status_code == 200
+        url = test_state.http.calls[-1].url
+        assert "models/gemini-2.0-flash:generateContent" in url
+        assert "gemini-2.5-flash:" not in url
+
+    def test_empty_gemini_model_uses_default_at_generate_time(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.state.app_settings.gemini_model = ""
+        test_state.http.queue("post", _gemini_ok("a cat, enhanced"))
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        assert r.status_code == 200
+        assert "models/gemini-2.5-flash-lite:generateContent" in test_state.http.calls[-1].url
+
+    def test_stored_non_text_gemini_model_uses_default_at_generate_time(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        for stored in ("nano-banana-pro", "gemma-4-31b-it"):
+            test_state.state.app_settings.gemini_model = stored
+            test_state.http.queue("post", _gemini_ok("a cat, enhanced"))
+
+            r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+            assert r.status_code == 200
+            assert "models/gemini-2.5-flash-lite:generateContent" in test_state.http.calls[-1].url
+            assert stored not in test_state.http.calls[-1].url
+
+    def test_thinking_budget_zero_is_sent_only_for_2_5_flash(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue(
+            "post",
+            _gemini_ok("a cat, enhanced"),
+            _gemini_ok("a cat, enhanced"),
+            _gemini_ok("a cat, enhanced"),
+        )
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        assert r.status_code == 200
+        default_config = test_state.http.calls[-1].json_payload["generationConfig"]
+        assert default_config["thinkingConfig"] == {"thinkingBudget": 0}
+        assert default_config["maxOutputTokens"] == 512
+
+        test_state.state.app_settings.gemini_model = "gemini-2.0-flash"
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        assert r.status_code == 200
+        assert "thinkingConfig" not in test_state.http.calls[-1].json_payload["generationConfig"]
+        assert "models/gemini-2.0-flash:generateContent" in test_state.http.calls[-1].url
+
+        test_state.state.app_settings.gemini_model = "gemini-3.1-pro-preview"
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        assert r.status_code == 200
+        pro_config = test_state.http.calls[-1].json_payload["generationConfig"]
+        assert pro_config["thinkingConfig"] == {"thinkingLevel": "LOW"}
+        assert pro_config["maxOutputTokens"] == 2048
+        assert "models/gemini-3.1-pro-preview:generateContent" in test_state.http.calls[-1].url
+
+    def test_logs_resolved_gemini_model(self, client, test_state, caplog):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.state.app_settings.gemini_model = ""
+        test_state.http.queue("post", _gemini_ok("a cat, enhanced"))
+        caplog.set_level(logging.INFO, logger="handlers.prompt_enhancement_handler")
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        assert r.status_code == 200
+        assert any(
+            record.getMessage() == "Enhancing prompt via Gemini API (gemini-2.5-flash-lite)"
+            for record in caplog.records
+        )
 
     def test_no_selection_still_gets_a_system_instruction(self, client, test_state):
         # Regression: Gemini (unlike local Gemma) has no implicit default system prompt of its

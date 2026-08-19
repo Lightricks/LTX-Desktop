@@ -3,14 +3,14 @@ import {
   Trash2, Download, Image, Video, X,
   Heart, Film, Volume2, VolumeX, Sparkles, Sparkle,
   Clock, Monitor, ChevronUp, Scissors, Music, Undo2, Redo2, Loader2,
-  MoveHorizontal, Wand2
+  MoveHorizontal, Wand2, Square
 } from 'lucide-react'
 import { useProjects } from '../contexts/ProjectContext'
 import type { GenSpaceRetakeSource } from '../contexts/ProjectContext'
 import { useAppSettings } from '../contexts/AppSettingsContext'
 import { useGeneration, GENERATION_RECOVERY_KEY, type GenerationRecoveryContext } from '../hooks/use-generation'
 import { setActiveGenerationOwner, hasValidBaselineId } from '../lib/generation-recovery'
-import { withGenerationActive } from '../lib/generation-active'
+import { withGenerationActive, canCancelLocalJob } from '../lib/generation-active'
 import { useVideoGenerationModelSpecs } from '../hooks/use-video-generation-model-specs'
 import { createLocalGenerationError, type GenerationError } from '../lib/generation-errors'
 import {
@@ -60,6 +60,11 @@ import { SettingsDropdown } from '../components/SettingsDropdown'
 import { IcLoraSettingsControls, type IcLoraControlsProps } from '../components/IcLoraSettingsControls'
 import { IcLoraAdvancedPanel } from '../components/IcLoraAdvancedPanel'
 import { FreeApiKeyBubble } from '../components/FreeApiKeyBubble'
+import { shouldShowGeneratingTile } from '../lib/genspace-gallery'
+import { GenSpaceFilterEmptyState } from './genspace/GenSpaceFilterEmptyState'
+import { GenSpaceGalleryToolbar } from './genspace/GenSpaceGalleryToolbar'
+import { gallerySizeClasses, type GallerySize } from './genspace/GenSpaceGallerySizeMenu'
+import { useGenSpaceGallery } from './genspace/useGenSpaceGallery'
 
 // Asset card with hover overlays
 function AssetCard({
@@ -466,7 +471,9 @@ function PromptBar({
   prompt,
   onPromptChange,
   onGenerate,
+  onStop,
   isGenerating,
+  isCancelling,
   inputImage,
   onInputImageChange,
   inputAudio,
@@ -518,7 +525,9 @@ function PromptBar({
   prompt: string
   onPromptChange: (prompt: string) => void
   onGenerate: () => void
+  onStop?: () => void
   isGenerating: boolean
+  isCancelling?: boolean
   canGenerate: boolean
   buttonLabel: string
   buttonIcon: React.ReactNode
@@ -716,6 +725,10 @@ function PromptBar({
       onGenerate()
     }
   }
+
+  const showStop = Boolean(isGenerating && onStop)
+  const stopDisabled = Boolean(isCancelling)
+  const generateDisabled = isGenerating || !canGenerate || isEnhancingPrompt
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-visible">
@@ -1148,77 +1161,35 @@ function PromptBar({
           </>
         )}
 
-        {/* Generate button */}
+        {/* Generate / Stop button */}
         <button
-          onClick={onGenerate}
-          disabled={isGenerating || !canGenerate || isEnhancingPrompt}
+          onClick={showStop ? onStop : onGenerate}
+          disabled={showStop ? stopDisabled : generateDisabled}
           className={`flex items-center gap-1.5 ml-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all flex-shrink-0 ${
-            isGenerating || !canGenerate || isEnhancingPrompt
-              ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
-              : 'bg-white text-black hover:bg-zinc-200'
+            showStop
+              ? stopDisabled
+                ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                : 'bg-red-600 text-white hover:bg-red-500'
+              : generateDisabled
+                ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                : 'bg-white text-black hover:bg-zinc-200'
           }`}
         >
-          <span className={isGenerating ? 'animate-pulse' : ''}>{buttonIcon}</span>
-          {buttonLabel}
+          {showStop ? (
+            <>
+              <Square className="h-3.5 w-3.5 fill-current" />
+              {isCancelling ? 'Stopping...' : 'Stop'}
+            </>
+          ) : (
+            <>
+              <span className={isGenerating ? 'animate-pulse' : ''}>{buttonIcon}</span>
+              {buttonLabel}
+            </>
+          )}
         </button>
       </div>
     </div>
   )
-}
-
-// Gallery size icon components
-function GridSmallIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <rect x="2" y="2" width="4" height="4" rx="0.5" />
-      <rect x="8" y="2" width="4" height="4" rx="0.5" />
-      <rect x="14" y="2" width="4" height="4" rx="0.5" />
-      <rect x="20" y="2" width="2" height="4" rx="0.5" />
-      <rect x="2" y="8" width="4" height="4" rx="0.5" />
-      <rect x="8" y="8" width="4" height="4" rx="0.5" />
-      <rect x="14" y="8" width="4" height="4" rx="0.5" />
-      <rect x="20" y="8" width="2" height="4" rx="0.5" />
-      <rect x="2" y="14" width="4" height="4" rx="0.5" />
-      <rect x="8" y="14" width="4" height="4" rx="0.5" />
-      <rect x="14" y="14" width="4" height="4" rx="0.5" />
-      <rect x="20" y="14" width="2" height="4" rx="0.5" />
-    </svg>
-  )
-}
-
-function GridMediumIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <rect x="2" y="2" width="6" height="6" rx="1" />
-      <rect x="10" y="2" width="6" height="6" rx="1" />
-      <rect x="18" y="2" width="4" height="6" rx="1" />
-      <rect x="2" y="10" width="6" height="6" rx="1" />
-      <rect x="10" y="10" width="6" height="6" rx="1" />
-      <rect x="18" y="10" width="4" height="6" rx="1" />
-      <rect x="2" y="18" width="6" height="4" rx="1" />
-      <rect x="10" y="18" width="6" height="4" rx="1" />
-      <rect x="18" y="18" width="4" height="4" rx="1" />
-    </svg>
-  )
-}
-
-function GridLargeIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <rect x="2" y="2" width="9" height="9" rx="1.5" />
-      <rect x="13" y="2" width="9" height="9" rx="1.5" />
-      <rect x="2" y="13" width="9" height="9" rx="1.5" />
-      <rect x="13" y="13" width="9" height="9" rx="1.5" />
-    </svg>
-  )
-}
-
-type GallerySize = 'small' | 'medium' | 'large'
-
-const gallerySizeClasses: Record<GallerySize, string> = {
-  small: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7',
-  medium: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5',
-  large: 'grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3',
 }
 
 const DEFAULT_VIDEO_SETTINGS = {
@@ -1273,10 +1244,7 @@ export function GenSpace() {
   const [inputAudio, setInputAudio] = useState<string | null>(null)
   const [localError, setLocalError] = useState<GenerationError | null>(null)
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
-  const [showFavorites, setShowFavorites] = useState(false)
   const [gallerySize, setGallerySize] = useState<GallerySize>('medium')
-  const [showSizeMenu, setShowSizeMenu] = useState(false)
-  const sizeMenuRef = useRef<HTMLDivElement>(null)
   const persistedVideoKeyRef = useRef<string | null>(null)
   const retakeSubmissionRef = useRef<{
     prompt: string
@@ -1330,6 +1298,8 @@ export function GenSpace() {
     error,
     reset,
     resumeIfRunning,
+    cancel,
+    canCancel: generationCanCancel,
   } = useGeneration()
 
   // Locally installed LoRAs are only usable in local generation mode.
@@ -1473,6 +1443,7 @@ export function GenSpace() {
     submitRetake,
     resetRetake,
     isRetaking,
+    canCancel: retakeCanCancel,
     retakeStatus,
     retakeError,
     retakeResult,
@@ -1495,6 +1466,7 @@ export function GenSpace() {
     submitExtend,
     resetExtend,
     isExtending,
+    canCancel: extendCanCancel,
     extendStatus,
     extendError,
     extendResult,
@@ -1601,6 +1573,7 @@ export function GenSpace() {
     submitIcLora,
     resetIcLora,
     isIcLoraGenerating,
+    canCancel: icLoraCanCancel,
     icLoraStatus,
     icLoraError,
     icLoraResult,
@@ -1706,6 +1679,19 @@ export function GenSpace() {
 
   // Only show assets that were generated (have generationParams), not imported files
   const assets = (activeProject?.assets || []).filter(a => a.generationParams)
+  const {
+    typeFilter,
+    setTypeFilter,
+    sortKey,
+    sortDir,
+    onSortKeyChange,
+    onToggleSortDir,
+    showFavorites,
+    onToggleFavorites,
+    filteredAssets,
+    favoriteCount,
+    hasTypeMatches,
+  } = useGenSpaceGallery(assets)
   const [lastPrompt, setLastPrompt] = useState('')
 
   // On mount: recover any generation that was still running when the frontend reloaded.
@@ -2173,7 +2159,9 @@ export function GenSpace() {
   // pipeline (can take many seconds) before it ever reports a new id, so without a baseline
   // captured up front, a poll can't tell "my generation hasn't started reporting yet" apart from
   // "a stale, unrelated result predates this marker entirely".
-  const writeRecoveryContext = async (ctx: Omit<GenerationRecoveryContext, 'projectId' | 'baselineId'>) => {
+  const writeRecoveryContext = async (
+    ctx: Omit<GenerationRecoveryContext, 'projectId' | 'baselineId' | 'canCancel'>,
+  ) => {
     if (!currentProjectId) return
     const before = await ApiClient.getGenerationProgress()
     if (!before.ok) {
@@ -2186,10 +2174,24 @@ export function GenSpace() {
       return
     }
     const baselineId = before.data.id ?? null
-    logger.info(`Writing recovery marker for ${currentProjectId} (genType=${ctx.genType ?? 'video'}, baselineId=${baselineId})`)
+    const canCancel = ctx.genType === 'enhance'
+      ? false
+      : mode === 'ic-lora'
+        ? true
+        : canCancelLocalJob(
+          ctx.genType === 'image' ? 'image' : 'video',
+          shouldVideoGenerateWithLtxApi,
+          shouldImageGenerateWithFalApi,
+        )
+    logger.info(`Writing recovery marker for ${currentProjectId} (genType=${ctx.genType ?? 'video'}, baselineId=${baselineId}, canCancel=${canCancel})`)
     localStorage.setItem(
       GENERATION_RECOVERY_KEY,
-      JSON.stringify({ projectId: currentProjectId, baselineId, ...ctx } satisfies GenerationRecoveryContext),
+      JSON.stringify({
+        projectId: currentProjectId,
+        baselineId,
+        ...ctx,
+        canCancel,
+      } satisfies GenerationRecoveryContext),
     )
   }
 
@@ -2201,7 +2203,11 @@ export function GenSpace() {
   // Only one generation can run at a time across the whole app — this catches the case where
   // it's a DIFFERENT project's, which this instance's own isGenerating/isRetaking/etc (all local
   // state) can't see. Without it, Enhance/Generate stayed clickable and the request just 409'd.
-  const isOtherGenerationRunning = useGlobalGenerationLock()
+  const {
+    isRunning: isOtherGenerationRunning,
+    canCancel: globalCanCancel,
+    isCancelling: globalIsCancelling,
+  } = useGlobalGenerationLock()
   const isGenerationInProgressForEnhance = mode === 'ic-lora' ? isIcLoraGenerating : isGenerating
   const canEnhancePrompt = enhanceAvailableForMode && isEnhancerProviderAvailable
     && prompt.trim().length > 0 && !isGenerationInProgressForEnhance && !isOtherGenerationRunning
@@ -2637,12 +2643,18 @@ export function GenSpace() {
       hasAudio: Boolean(inputAudio),
     }).hasCompatibleOptions
   )
-  const canSubmit = !isOtherGenerationRunning && (isRetakeMode
-    ? retakeInput.ready && !!retakeInput.videoPath && !isRetaking
+  // One global backend slot: Stop / Generate-disable must follow the in-flight job, not the
+  // GenSpace mode tab. Retake/extend/IC-LoRA live in different hooks than video/image.
+  // After a UI refresh those hooks remount at false; the same progress poll that disables
+  // Generate (isOtherGenerationRunning) is the SSOT for "slot busy" / Stop.
+  const slotBusyLocally = isGenerating || isRetaking || isExtending || isIcLoraGenerating
+  const slotBusy = slotBusyLocally || isOtherGenerationRunning
+  const canSubmit = !isOtherGenerationRunning && !slotBusyLocally && (isRetakeMode
+    ? retakeInput.ready && !!retakeInput.videoPath
     : isExtendMode
-      ? extendInput.ready && !!extendInput.videoPath && !isExtending
+      ? extendInput.ready && !!extendInput.videoPath
       : isIcLoraMode
-        ? (!!prompt.trim() || promptOptional) && icLoraInput.ready && !!icLoraInput.videoPath && !isIcLoraGenerating
+        ? (!!prompt.trim() || promptOptional) && icLoraInput.ready && !!icLoraInput.videoPath
           && (isCatalogIcLora || icLoraCondType !== 'custom' || !!icLoraCustomRef)
         : !!prompt.trim() && hasCompatibleVideoSettings)
   const promptButtonLabel = isRetakeMode ? 'Retake' : isExtendMode ? 'Extend' : isIcLoraMode ? 'Generate' : 'Generate'
@@ -2652,25 +2664,22 @@ export function GenSpace() {
       ? <MoveHorizontal className="h-3.5 w-3.5" />
       : isIcLoraMode
         ? <Sparkles className="h-3.5 w-3.5" />
-    : <Sparkles className={`h-3.5 w-3.5 ${isGenerating ? 'animate-pulse' : ''}`} />
-  const promptGenerating = isRetakeMode ? isRetaking : isExtendMode ? isExtending : isIcLoraMode ? isIcLoraGenerating : isGenerating
-  
-  // Close size menu on click outside
+    : <Sparkles className={`h-3.5 w-3.5 ${slotBusy ? 'animate-pulse' : ''}`} />
+  const promptGenerating = slotBusy
+  const [isStopping, setIsStopping] = useState(false)
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (sizeMenuRef.current && !sizeMenuRef.current.contains(e.target as Node)) {
-        setShowSizeMenu(false)
-      }
-    }
-    if (showSizeMenu) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showSizeMenu])
-
-  const filteredAssets = showFavorites ? assets.filter(a => a.favorite) : assets
-  const favoriteCount = assets.filter(a => a.favorite).length
+    if (!promptGenerating) setIsStopping(false)
+  }, [promptGenerating])
+  const handleStop = useCallback(() => {
+    setIsStopping(true)
+    cancel()
+  }, [cancel])
+  const inFlightCanStop = globalCanCancel
+    || generationCanCancel || retakeCanCancel || extendCanCancel || icLoraCanCancel
   const isLibraryMode = mode === 'video' || mode === 'image'
+  const showGeneratingTile = isGenerating
+    && (mode === 'image' || mode === 'video')
+    && shouldShowGeneratingTile(typeFilter, mode)
 
   // Navigation for the asset preview modal
   const selectedIndex = selectedAsset ? filteredAssets.findIndex(a => a.id === selectedAsset.id) : -1
@@ -2684,6 +2693,13 @@ export function GenSpace() {
   const goToNext = useCallback(() => {
     if (canGoNext) setSelectedAsset(filteredAssets[selectedIndex + 1])
   }, [canGoNext, filteredAssets, selectedIndex])
+
+  useEffect(() => {
+    if (!selectedAsset) return
+    if (!filteredAssets.some(asset => asset.id === selectedAsset.id)) {
+      setSelectedAsset(null)
+    }
+  }, [filteredAssets, selectedAsset])
 
   // Shared IC-LoRA control props — consumed by the bottom-row settings (PromptBar) and the
   // advanced side panel beside the prompt.
@@ -2736,100 +2752,39 @@ export function GenSpace() {
         </div>
       )}
 
-      {/* No favorites empty state */}
-      {isLibraryMode && showFavorites && filteredAssets.length === 0 && assets.length > 0 && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-          <Heart className="h-12 w-12 text-zinc-700 mb-4" />
-          <h3 className="text-lg font-semibold text-white mb-2">No favorites yet</h3>
-          <p className="text-zinc-500 text-sm">
-            Click the heart icon on any asset to add it to your favorites.
-          </p>
-        </div>
+      {/* Filter / favorites empty state */}
+      {isLibraryMode && filteredAssets.length === 0 && assets.length > 0 && (
+        <GenSpaceFilterEmptyState
+          typeFilter={typeFilter}
+          showFavorites={showFavorites}
+          hasTypeMatches={hasTypeMatches}
+        />
       )}
 
       {/* Assets area — full width, no background, above the prompt bar */}
       {/* Kept mounted even with no assets so the Browse LoRAs / Favorites / size toolbar survives the empty state. */}
       {isLibraryMode && (
         <div className="absolute inset-x-0 top-0 bottom-[160px] flex flex-col px-4 pt-4">
-          {/* Top bar */}
-          <div className="flex items-center justify-between pb-2 gap-2">
-            <div className="flex items-center gap-2">
-              {mode === 'video' && canUseUserLoras && (
-                <button
-                  onClick={() => loraLibrary.setModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-                >
-                  <Sparkles className="h-4 w-4" /> Browse LoRAs
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowFavorites(!showFavorites)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                showFavorites
-                  ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-              }`}
-            >
-              <Heart className={`h-4 w-4 ${showFavorites ? 'fill-current' : ''}`} />
-              Favorites
-              {favoriteCount > 0 && (
-                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                  showFavorites ? 'bg-red-500/30 text-red-300' : 'bg-zinc-800 text-zinc-500'
-                }`}>
-                  {favoriteCount}
-                </span>
-              )}
-            </button>
-
-            <div ref={sizeMenuRef} className="relative">
-              <button
-                onClick={() => setShowSizeMenu(!showSizeMenu)}
-                className={`p-2 rounded-md transition-colors ${
-                  showSizeMenu ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                }`}
-              >
-                {gallerySize === 'small' ? <GridSmallIcon className="h-4 w-4" /> :
-                 gallerySize === 'medium' ? <GridMediumIcon className="h-4 w-4" /> :
-                 <GridLargeIcon className="h-4 w-4" />}
-              </button>
-
-              {showSizeMenu && (
-                <div className="absolute top-full mt-2 right-0 bg-zinc-800 border border-zinc-700 rounded-md p-2 min-w-[160px] shadow-xl z-50">
-                  {([
-                    { value: 'small' as GallerySize, label: 'Small', icon: GridSmallIcon },
-                    { value: 'medium' as GallerySize, label: 'Medium', icon: GridMediumIcon },
-                    { value: 'large' as GallerySize, label: 'Large', icon: GridLargeIcon },
-                  ]).map(option => (
-                    <button
-                      key={option.value}
-                      onClick={() => { setGallerySize(option.value); setShowSizeMenu(false) }}
-                      className={`w-full flex items-center justify-between px-2 py-2.5 rounded-md transition-colors text-left ${gallerySize === option.value ? 'bg-white/20 hover:bg-white/25' : 'hover:bg-zinc-700'}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <option.icon className={`h-4 w-4 ${gallerySize === option.value ? 'text-white' : 'text-zinc-500'}`} />
-                        <span className={`text-sm ${gallerySize === option.value ? 'text-white font-medium' : 'text-zinc-400'}`}>
-                          {option.label}
-                        </span>
-                      </div>
-                      {gallerySize === option.value && (
-                        <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            </div>
-          </div>
+          <GenSpaceGalleryToolbar
+            showBrowseLoras={mode === 'video' && canUseUserLoras}
+            onBrowseLoras={() => loraLibrary.setModalOpen(true)}
+            typeFilter={typeFilter}
+            onTypeFilterChange={setTypeFilter}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSortKeyChange={onSortKeyChange}
+            onToggleSortDir={onToggleSortDir}
+            showFavorites={showFavorites}
+            favoriteCount={favoriteCount}
+            onToggleFavorites={onToggleFavorites}
+            gallerySize={gallerySize}
+            onGallerySizeChange={setGallerySize}
+          />
 
           {/* Assets grid — fills remaining space, scrollable */}
           <div className="overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable] flex-1">
             <div className={`grid ${gallerySizeClasses[gallerySize]} gap-4`}>
-              {isGenerating && (
+              {showGeneratingTile && (
                 <div className="relative rounded-xl overflow-hidden bg-zinc-800 aspect-video">
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
                     <div className="relative w-16 h-16 mb-3">
@@ -2991,7 +2946,9 @@ export function GenSpace() {
           prompt={prompt}
           onPromptChange={setPrompt}
           onGenerate={handleGenerate}
+          onStop={inFlightCanStop ? handleStop : undefined}
           isGenerating={promptGenerating}
+          isCancelling={isStopping || globalIsCancelling}
           canGenerate={canSubmit}
           buttonLabel={promptButtonLabel}
           buttonIcon={promptButtonIcon}

@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import type { GenerationSettings } from '../components/SettingsPanel'
 import { ApiClient, type ApiRequestBodyOf, type ApiSuccessOf } from '../lib/api-client'
 import { createLocalGenerationError, type GenerationError } from '../lib/generation-errors'
-import { withGenerationActive } from '../lib/generation-active'
+import { canCancelLocalJob, withGenerationActive } from '../lib/generation-active'
 import { useAppSettings } from '../contexts/AppSettingsContext'
 
 const POLLING_INTERVAL_MS = 2000
@@ -21,6 +21,10 @@ export interface GenerationRecoveryContext {
   inputImageUrl?: string
   inputAudioUrl?: string
   genType?: 'image' | 'enhance'
+  // Frozen at marker write (job start) — same rule as hook canCancel. Lets Stop survive a
+  // UI refresh before the first progress poll returns (local GPU can starve that poll).
+  // Absent on older markers: treat as not cancellable until the poll reports it.
+  canCancel?: boolean
   // Whatever generation id the backend reported at the moment this marker was written — i.e.
   // immediately BEFORE this generation started. The handler that starts a generation loads its
   // pipeline (can take many seconds — worse for image models loading checkpoint shards) before
@@ -36,8 +40,21 @@ export interface GenerationRecoveryContext {
   generationId?: string
 }
 
+export function readRecoveryMarkerCanCancel(): boolean {
+  const saved = localStorage.getItem(GENERATION_RECOVERY_KEY)
+  if (!saved) return false
+  try {
+    return (JSON.parse(saved) as GenerationRecoveryContext).canCancel === true
+  } catch {
+    return false
+  }
+}
+
 interface GenerationState {
   isGenerating: boolean
+  isCancelling: boolean
+  /** Frozen at job start — Stop stays hidden if this POST was an LTX/FAL cloud job. */
+  canCancel: boolean
   progress: number
   statusMessage: string
   videoPath: string | null
@@ -110,15 +127,19 @@ function getPhaseMessage(phase: string): string {
       return 'Decoding video...'
     case 'complete':
       return 'Complete!'
+    case 'cancelled':
+      return 'Cancelling…'
     default:
       return 'Generating...'
   }
 }
 
 export function useGeneration(): UseGenerationReturn {
-  const { settings: appSettings, shouldImageGenerateWithFalApi, refreshSettings } = useAppSettings()
+  const { settings: appSettings, shouldImageGenerateWithFalApi, shouldVideoGenerateWithLtxApi, refreshSettings } = useAppSettings()
   const [state, setState] = useState<GenerationState>({
     isGenerating: false,
+    isCancelling: false,
+    canCancel: false,
     progress: 0,
     statusMessage: '',
     videoPath: null,
@@ -127,7 +148,6 @@ export function useGeneration(): UseGenerationReturn {
     error: null,
   })
 
-  const abortControllerRef = useRef<AbortController | null>(null)
   const recoveryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const clearRecoveryPolling = () => {
@@ -150,19 +170,23 @@ export function useGeneration(): UseGenerationReturn {
         const vp = typeof data.result === 'string' ? data.result : null
         const ips = Array.isArray(data.result) ? data.result : []
         setState({
-          isGenerating: false, progress: 100, statusMessage: 'Complete!',
+          isGenerating: false, isCancelling: false, canCancel: false, progress: 100, statusMessage: 'Complete!',
           videoPath: vp, imagePath: ips[0] ?? null, imagePaths: ips, error: null,
         })
         return 'complete'
       }
       if (data.status === 'running') {
         setState(prev => ({
-          ...prev, isGenerating: true, progress: data.progress,
+          ...prev,
+          isGenerating: true,
+          isCancelling: data.phase === 'cancelled',
+          canCancel: data.cancellable,
+          progress: data.progress,
           statusMessage: getPhaseMessage(data.phase),
         }))
         return 'running'
       }
-      setState(prev => ({ ...prev, isGenerating: false, statusMessage: '' }))
+      setState(prev => ({ ...prev, isGenerating: false, isCancelling: false, canCancel: false, statusMessage: '' }))
       return 'other'
     }
 
@@ -193,6 +217,8 @@ export function useGeneration(): UseGenerationReturn {
 
     setState({
       isGenerating: true,
+      isCancelling: false,
+      canCancel: canCancelLocalJob('video', shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi),
       progress: 0,
       statusMessage: statusMsg,
       videoPath: null,
@@ -201,8 +227,6 @@ export function useGeneration(): UseGenerationReturn {
       error: null,
     })
 
-    const abortController = new AbortController()
-    abortControllerRef.current = abortController
     let progressInterval: ReturnType<typeof setInterval> | null = null
     let shouldApplyPollingUpdates = true
 
@@ -265,24 +289,31 @@ export function useGeneration(): UseGenerationReturn {
 
           lastPhase = data.phase
 
-          setState(prev => ({
-            ...prev,
-            progress: displayProgress,
-            statusMessage,
-          }))
+          setState(prev => {
+            if (prev.isCancelling) {
+              return { ...prev, statusMessage: 'Cancelling…' }
+            }
+            return {
+              ...prev,
+              progress: displayProgress,
+              statusMessage,
+            }
+          })
         }
 
         progressInterval = setInterval(pollProgress, 500)
 
         // Start generation (HTTP POST - synchronous, returns when done)
-        const result = await ApiClient.generateVideo(body as unknown as GenerateVideoRequest, {
-          signal: abortController.signal,
-        })
+        // Do not abort this POST: liveness suppression stays up until the
+        // backend returns {status: "cancelled"} and the GPU job unwinds.
+        const result = await ApiClient.generateVideo(body as unknown as GenerateVideoRequest)
         shouldApplyPollingUpdates = false
         if (!result.ok) {
           setState(prev => ({
             ...prev,
             isGenerating: false,
+            isCancelling: false,
+            canCancel: false,
             error: result,
           }))
           return
@@ -292,6 +323,8 @@ export function useGeneration(): UseGenerationReturn {
         if (payload.status === 'complete') {
           setState({
             isGenerating: false,
+            isCancelling: false,
+            canCancel: false,
             progress: 100,
             statusMessage: 'Complete!',
             videoPath: payload.video_path,
@@ -303,6 +336,8 @@ export function useGeneration(): UseGenerationReturn {
           setState(prev => ({
             ...prev,
             isGenerating: false,
+            isCancelling: false,
+            canCancel: false,
             statusMessage: 'Cancelled',
           }))
         } else {
@@ -310,19 +345,13 @@ export function useGeneration(): UseGenerationReturn {
         }
 
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          setState(prev => ({
-            ...prev,
-            isGenerating: false,
-            statusMessage: 'Cancelled',
-          }))
-        } else {
-          setState(prev => ({
-            ...prev,
-            isGenerating: false,
-            error: createLocalGenerationError(error instanceof Error ? error.message : 'Unknown error'),
-          }))
-        }
+        setState(prev => ({
+          ...prev,
+          isGenerating: false,
+          isCancelling: false,
+          canCancel: false,
+          error: createLocalGenerationError(error instanceof Error ? error.message : 'Unknown error'),
+        }))
       } finally {
         shouldApplyPollingUpdates = false
         if (progressInterval) {
@@ -330,20 +359,29 @@ export function useGeneration(): UseGenerationReturn {
         }
       }
     })
-  }, [])
+  }, [shouldImageGenerateWithFalApi, shouldVideoGenerateWithLtxApi])
 
-  const cancel = useCallback(async () => {
-    // Abort the fetch request
-    abortControllerRef.current?.abort()
-    
-    // Also tell the backend to cancel
-    void ApiClient.cancelGeneration()
-    
-    setState(prev => ({
-      ...prev,
-      isGenerating: false,
-      statusMessage: 'Cancelled',
-    }))
+  const cancel = useCallback(() => {
+    let claimedCancelling = false
+    setState(prev => {
+      if (!prev.isGenerating || prev.isCancelling) return prev
+      claimedCancelling = true
+      return {
+        ...prev,
+        isCancelling: true,
+        statusMessage: 'Cancelling…',
+      }
+    })
+    // Always POST — retake/extend/IC-LoRA Stop reuse this while this hook is idle.
+    void (async () => {
+      const result = await ApiClient.cancelGeneration()
+      const accepted = result.ok && result.data.status === 'cancelling'
+      if (accepted || !claimedCancelling) return
+      setState(prev => {
+        if (!prev.isCancelling) return prev
+        return { ...prev, isCancelling: false }
+      })
+    })()
   }, [])
 
   const generateImage = useCallback(async (
@@ -378,6 +416,8 @@ export function useGeneration(): UseGenerationReturn {
 
     setState({
       isGenerating: true,
+      isCancelling: false,
+      canCancel: canCancelLocalJob('image', shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi),
       progress: 0,
       statusMessage: isEditing
         ? 'Editing image...'
@@ -387,9 +427,6 @@ export function useGeneration(): UseGenerationReturn {
       imagePaths: [],
       error: null,
     })
-
-    const abortController = new AbortController()
-    abortControllerRef.current = abortController
 
     await withGenerationActive(async () => {
       let progressInterval: ReturnType<typeof setInterval> | null = null
@@ -409,21 +446,26 @@ export function useGeneration(): UseGenerationReturn {
           const data = result.data
           const currentImage = data.currentStep || 0
           const totalImages = data.totalSteps || numImages
-          setState(prev => ({
-            ...prev,
-            progress: data.progress,
-            statusMessage: data.phase === 'loading_model'
-              ? 'Loading Z-Image Turbo model...'
-              : data.phase === 'inference'
-                ? isEditing
-                  ? 'Editing image...'
-                  : numImages > 1
-                    ? `Generating image ${currentImage + 1}/${totalImages}...`
-                    : 'Generating image...'
-                : data.phase === 'complete'
-                  ? 'Complete!'
-                  : 'Generating...',
-          }))
+          setState(prev => {
+            if (prev.isCancelling) {
+              return { ...prev, statusMessage: 'Cancelling…' }
+            }
+            return {
+              ...prev,
+              progress: data.progress,
+              statusMessage: data.phase === 'loading_model'
+                ? 'Loading Z-Image Turbo model...'
+                : data.phase === 'inference'
+                  ? isEditing
+                    ? 'Editing image...'
+                    : numImages > 1
+                      ? `Generating image ${currentImage + 1}/${totalImages}...`
+                      : 'Generating image...'
+                  : data.phase === 'complete'
+                    ? 'Complete!'
+                    : 'Generating...',
+            }
+          })
         }
 
         progressInterval = setInterval(pollProgress, 500)
@@ -439,14 +481,14 @@ export function useGeneration(): UseGenerationReturn {
           strength: isEditing ? (settings.imageEditStrength ?? 0.6) : 0.6,
           ...(isEditing ? { imagePath: editSource } : {}),
         }
-        const result = await ApiClient.generateImage(imageRequest, {
-          signal: abortController.signal,
-        })
+        const result = await ApiClient.generateImage(imageRequest)
 
         if (!result.ok) {
           setState(prev => ({
             ...prev,
             isGenerating: false,
+            isCancelling: false,
+            canCancel: false,
             error: result,
           }))
           return
@@ -461,6 +503,8 @@ export function useGeneration(): UseGenerationReturn {
 
           setState({
             isGenerating: false,
+            isCancelling: false,
+            canCancel: false,
             progress: 100,
             statusMessage: 'Complete!',
             videoPath: null,
@@ -472,6 +516,8 @@ export function useGeneration(): UseGenerationReturn {
           setState(prev => ({
             ...prev,
             isGenerating: false,
+            isCancelling: false,
+            canCancel: false,
             statusMessage: 'Cancelled',
           }))
         } else {
@@ -479,32 +525,28 @@ export function useGeneration(): UseGenerationReturn {
         }
 
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          setState(prev => ({
-            ...prev,
-            isGenerating: false,
-            statusMessage: 'Cancelled',
-          }))
-        } else {
-          setState(prev => ({
-            ...prev,
-            isGenerating: false,
-            error: createLocalGenerationError(error instanceof Error ? error.message : 'Unknown error'),
-          }))
-        }
+        setState(prev => ({
+          ...prev,
+          isGenerating: false,
+          isCancelling: false,
+          canCancel: false,
+          error: createLocalGenerationError(error instanceof Error ? error.message : 'Unknown error'),
+        }))
       } finally {
         if (progressInterval) {
           clearInterval(progressInterval)
         }
       }
     })
-  }, [appSettings.hasFalApiKey, shouldImageGenerateWithFalApi, refreshSettings])
+  }, [appSettings.hasFalApiKey, shouldImageGenerateWithFalApi, shouldVideoGenerateWithLtxApi, refreshSettings])
 
   const reset = useCallback(() => {
     clearRecoveryPolling()
     localStorage.removeItem(GENERATION_RECOVERY_KEY)
     setState({
       isGenerating: false,
+      isCancelling: false,
+      canCancel: false,
       progress: 0,
       statusMessage: '',
       videoPath: null,

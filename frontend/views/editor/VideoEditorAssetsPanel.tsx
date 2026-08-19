@@ -28,6 +28,7 @@ export interface VideoEditorAssetsPanelProps {
   handleImportFile: (e: React.ChangeEvent<HTMLInputElement>) => void
   handleRegenerate: (assetId: string) => void
   handleCancelRegeneration: () => void
+  canCancelInFlight: boolean
   isRegenerating: boolean
   regeneratingAssetId: string | null
   regenProgress: number
@@ -40,6 +41,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
     handleImportFile,
     handleRegenerate,
     handleCancelRegeneration,
+    canCancelInFlight,
     isRegenerating,
     regeneratingAssetId,
     regenProgress,
@@ -591,7 +593,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                   </p>
                 </div>
                 {takesAsset.generationParams && (
-                  isRegenerating && regeneratingAssetId === takesAsset.id ? (
+                  isRegenerating && regeneratingAssetId === takesAsset.id && canCancelInFlight ? (
                     <button
                       onClick={() => handleCancelRegeneration()}
                       className="px-2 py-1 rounded-lg bg-red-900/20 text-red-400 hover:bg-red-900/40 transition-colors text-[10px] font-medium flex items-center gap-1 border border-red-500/30"
@@ -695,12 +697,14 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                           <Loader2 className="h-5 w-5 text-blue-300 animate-spin mb-1" />
                           <span className="text-[9px] text-blue-200 font-medium">{regenProgress}%</span>
                           <span className="text-[8px] text-blue-300/70 mb-1.5">{regenStatusMessage}</span>
+                          {canCancelInFlight && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleCancelRegeneration() }}
                             className="px-2 py-0.5 rounded bg-zinc-800/80 border border-zinc-600/60 text-[9px] text-zinc-300 hover:text-red-400 hover:border-red-500/50 hover:bg-red-900/30 transition-colors"
                           >
                             Cancel
                           </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -897,12 +901,14 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                         <Loader2 className="h-5 w-5 text-blue-300 animate-spin mb-1" />
                         <span className="text-[9px] text-blue-200 font-medium">{regenProgress}%</span>
                         <span className="text-[8px] text-blue-300/70 mb-1.5">{regenStatusMessage}</span>
+                        {canCancelInFlight && (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleCancelRegeneration() }}
                           className="px-2 py-0.5 rounded bg-zinc-800/80 border border-zinc-600/60 text-[9px] text-zinc-300 hover:text-red-400 hover:border-red-500/50 hover:bg-red-900/30 transition-colors"
                         >
                           Cancel
                         </button>
+                        )}
                       </div>
                     )}
                     {asset.takes && asset.takes.length > 1 && (
@@ -1135,6 +1141,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
             addClipToTimeline={addClipToTimeline}
             handleRegenerate={handleRegenerate}
             handleCancelRegeneration={handleCancelRegeneration}
+            canCancelInFlight={canCancelInFlight}
             setTakesViewAssetId={setTakesViewAssetId}
             setSelectedAssetIds={setSelectedAssetIds}
             setAssetContextMenu={setAssetContextMenu}
