@@ -57,6 +57,16 @@ const backendHealthStatus = z.object({
 
 export type BackendHealthStatus = z.infer<typeof backendHealthStatus>
 
+const updateStatePayload = z.object({
+  status: z.enum(['idle', 'checking', 'available', 'downloading', 'downloaded', 'not-available']),
+  currentVersion: z.string(),
+  version: z.string().optional(),
+  releaseNotes: z.string().optional(),
+  percent: z.number().optional(),
+  message: z.string().optional(),
+})
+export type UpdateStatePayload = z.infer<typeof updateStatePayload>
+
 export const electronAPISchemas = {
   // App info
   getBackend: {
@@ -325,6 +335,36 @@ export const electronAPISchemas = {
     input: z.object({ eventName: z.string(), extraDetails: z.record(z.string(), z.unknown()).nullable().optional() }),
     output: z.void(),
   },
+
+  // --- App updates ---
+  getUpdateState: {
+    input: z.object({}),
+    output: updateStatePayload,
+  },
+  checkForUpdatesNow: {
+    input: z.object({}),
+    output: emptyResult,
+  },
+  startUpdateDownload: {
+    input: z.object({}),
+    output: emptyResult,
+  },
+  installUpdateAndRestart: {
+    input: z.object({}),
+    output: emptyResult,
+  },
+  skipUpdateVersion: {
+    input: z.object({ version: z.string() }),
+    output: emptyResult,
+  },
+  getAutoCheckUpdates: {
+    input: z.object({}),
+    output: z.object({ enabled: z.boolean() }),
+  },
+  setAutoCheckUpdates: {
+    input: z.object({ enabled: z.boolean() }),
+    output: emptyResult,
+  },
 } as const
 
 type Schemas = typeof electronAPISchemas
@@ -339,6 +379,7 @@ export type ElectronAPI = InvokeAPI & {
   onPythonSetupProgress: (cb: (data: unknown) => void) => void
   removePythonSetupProgress: () => void
   onBackendHealthStatus: (cb: (data: BackendHealthStatus) => void) => (() => void)
+  onUpdateEvent: (cb: (data: UpdateStatePayload) => void) => (() => void)
   getPathForFile: (file: File) => string
   platform: string
 }

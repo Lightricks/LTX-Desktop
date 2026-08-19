@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react'
 import type { components } from '../generated/backend-openapi'
 import { ApiClient } from '../lib/api-client'
-import { withGenerationActive } from '../lib/generation-active'
+import { canCancelLocalJob, withGenerationActive } from '../lib/generation-active'
 import { logger } from '../lib/logger'
+import { useAppSettings } from '../contexts/AppSettingsContext'
 
 export type RetakeMode = 'replace_audio_and_video' | 'replace_video' | 'replace_audio'
 
@@ -37,14 +38,17 @@ export interface RetakeResult {
 
 interface UseRetakeState {
   isRetaking: boolean
+  canCancel: boolean
   retakeStatus: string
   retakeError: string | null
   result: RetakeResult | null
 }
 
 export function useRetake() {
+  const { shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi } = useAppSettings()
   const [state, setState] = useState<UseRetakeState>({
     isRetaking: false,
+    canCancel: false,
     retakeStatus: '',
     retakeError: null,
     result: null,
@@ -55,6 +59,7 @@ export function useRetake() {
 
     setState({
       isRetaking: true,
+      canCancel: canCancelLocalJob('video', shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi),
       retakeStatus: 'Generating',
       retakeError: null,
       result: null,
@@ -75,6 +80,7 @@ export function useRetake() {
         logger.error(`Retake error: ${result.error.message}`)
         setState({
           isRetaking: false,
+          canCancel: false,
           retakeStatus: '',
           retakeError: result.error.message,
           result: null,
@@ -87,6 +93,7 @@ export function useRetake() {
       if (payload.status === 'cancelled') {
         setState({
           isRetaking: false,
+          canCancel: false,
           retakeStatus: 'Cancelled',
           retakeError: null,
           result: null,
@@ -97,6 +104,7 @@ export function useRetake() {
       if ('video_path' in payload) {
         setState({
           isRetaking: false,
+          canCancel: false,
           retakeStatus: 'Retake complete!',
           retakeError: null,
           result: {
@@ -110,16 +118,18 @@ export function useRetake() {
       const errorMsg = 'Retake completed but no local video file was returned'
       setState({
         isRetaking: false,
+        canCancel: false,
         retakeStatus: '',
         retakeError: errorMsg,
         result: null,
       })
     })
-  }, [])
+  }, [shouldImageGenerateWithFalApi, shouldVideoGenerateWithLtxApi])
 
   const resetRetake = useCallback(() => {
     setState({
       isRetaking: false,
+      canCancel: false,
       retakeStatus: '',
       retakeError: null,
       result: null,
@@ -130,6 +140,7 @@ export function useRetake() {
     submitRetake,
     resetRetake,
     isRetaking: state.isRetaking,
+    canCancel: state.canCancel,
     retakeStatus: state.retakeStatus,
     retakeError: state.retakeError,
     retakeResult: state.result,

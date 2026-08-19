@@ -6,6 +6,8 @@ export interface AppState {
   analyticsEnabled?: boolean
   installationId?: string
   projectAssetsPath?: string
+  skippedUpdateVersion?: string
+  autoCheckUpdates?: boolean
   [key: string]: unknown
 }
 
@@ -49,4 +51,26 @@ export function setProjectAssetsPath(p: string): void {
   const state = readAppState()
   state.projectAssetsPath = resolvedPath
   writeAppState(state)
+}
+
+export function getSkippedUpdateVersion(): string | undefined {
+  return readAppState().skippedUpdateVersion
+}
+
+export function setSkippedUpdateVersion(version: string | undefined): void {
+  const s = readAppState()
+  if (version) s.skippedUpdateVersion = version
+  else delete s.skippedUpdateVersion
+  writeAppState(s)
+}
+
+export function getAutoCheckUpdates(): boolean {
+  // Default ON: existing installs and fresh installs behave as before.
+  return readAppState().autoCheckUpdates ?? true
+}
+
+export function setAutoCheckUpdates(enabled: boolean): void {
+  const s = readAppState()
+  s.autoCheckUpdates = enabled
+  writeAppState(s)
 }

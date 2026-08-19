@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
+from services.generation_interrupt import GenerationCancelledError
 from services.services_utils import compute_edit_dimensions
 from tests.http_error_assertions import assert_http_error
 
@@ -174,7 +175,7 @@ class TestEditImage:
     def test_cancelled(self, client, fake_services, create_fake_model_files, tmp_path):
         create_fake_model_files(include_zit=True)
         src = _write_source_png(tmp_path)
-        fake_services.image_generation_pipeline.raise_on_edit = RuntimeError("cancelled")
+        fake_services.image_generation_pipeline.raise_on_edit = GenerationCancelledError()
 
         r = client.post(
             "/api/generate-image",
@@ -311,7 +312,7 @@ class TestForcedApiEditImage:
     def test_cancelled(self, client, test_state, fake_services, tmp_path):
         self._force_api(test_state)
         src = _write_source_png(tmp_path)
-        fake_services.zit_api_client.raise_on_image_to_image = RuntimeError("cancelled")
+        fake_services.zit_api_client.raise_on_image_to_image = GenerationCancelledError()
         r = client.post(
             "/api/generate-image",
             json={"prompt": "x", "imagePath": src, "strength": 0.6},

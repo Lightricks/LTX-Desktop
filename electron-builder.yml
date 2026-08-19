@@ -16,6 +16,7 @@ files:
 
 asarUnpack:
   - dist/splash/**
+  - node_modules/koffi/**
 
 extraResources:
   - from: backend

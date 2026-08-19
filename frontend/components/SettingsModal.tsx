@@ -2,24 +2,30 @@ import { AlertCircle, Check, Download, Film, Folder, HardDrive, Info, KeyRound, 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from './ui/button'
 import { BaseModelSection } from './settings/BaseModelSection'
-import { useAppSettings, type AppSettings } from '../contexts/AppSettingsContext'
+import { useAppSettings, type AppSettings, DEFAULT_GEMINI_MODEL } from '../contexts/AppSettingsContext'
 import { ApiClient, type ApiSuccessOf } from '../lib/api-client'
 import { logger } from '../lib/logger'
 import { ApiKeyHelperRow, LtxApiKeyInput, LtxApiKeyHelperRow } from './LtxApiKeyInput'
 import { HfModelAccessGate } from './HfModelAccessGate'
 import { useHfAuth } from '../hooks/use-hf-auth'
 import { useHfModelAccess } from '../hooks/use-hf-model-access'
+import type { AppUpdate } from '../hooks/use-app-update'
+import type { UpdateStatePayload } from '../../shared/electron-api-schema'
 
 interface SettingsModalProps {
   isOpen: boolean
   onClose: () => void
   initialTab?: TabId
+  update: AppUpdate
+  onOpenUpdate: () => void
+  onCheckForUpdates: () => void
 }
 
 type TabId = 'general' | 'models' | 'apiKeys' | 'promptEnhancer' | 'about'
 
 /** A checkpoint this modal can download: the text encoder or the optional prompt enhancer. */
 type TextEncodingCp = NonNullable<ApiSuccessOf<'getTextEncoderRecommendation'>['cp_to_download']>
+type GeminiModelOption = ApiSuccessOf<'listGeminiModels'>['models'][number]
 
 /** Focuses an API Keys tab input once the modal has switched to that tab.
  *  Shared by the LTX and FAL key inputs — each call gets its own ref/pending state. */
@@ -96,8 +102,70 @@ function SettingToggle({ title, description, enabled, onToggle, statusOn, status
   )
 }
 
-export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
-  const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, forceApiGenerations, cudaAvailable, notifyModelsChanged } = useAppSettings()
+function GeminiModelSelect({
+  disabled,
+  models,
+  value,
+  onChange,
+}: {
+  disabled: boolean
+  models: GeminiModelOption[]
+  value: string
+  onChange: (id: string) => void
+}) {
+  const options = models.some((model) => model.id === value)
+    ? models
+    : [...models, { id: value, displayName: value, description: '' }]
+  const selectedDescription = options.find((model) => model.id === value)?.description?.trim() ?? ''
+  return (
+    <div className="space-y-1.5">
+      <select
+        disabled={disabled}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => e.stopPropagation()}
+        className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {options.map((model) => (
+          <option key={model.id} title={model.description} value={model.id}>
+            {model.displayName}
+          </option>
+        ))}
+      </select>
+      <p className="text-xs text-zinc-500">
+        Gemini chat models only — used for Enhance (API) and timeline gap
+        suggestions. Local Enhance still uses Gemma on-device.
+      </p>
+      {selectedDescription ? (
+        <p className="text-xs text-zinc-400 leading-relaxed">{selectedDescription}</p>
+      ) : null}
+    </div>
+  )
+}
+
+const ABOUT_ACTION_CLASS = 'w-full bg-zinc-700 hover:bg-zinc-600 text-white text-xs'
+
+function aboutUpdateAction(
+  state: UpdateStatePayload,
+  onOpenUpdate: () => void,
+  onCheckForUpdates: () => void,
+): { label: string; onClick?: () => void; disabled?: boolean } {
+  switch (state.status) {
+    case 'available':
+      return { label: `Update available — v${state.version}`, onClick: onOpenUpdate }
+    case 'downloaded':
+      return { label: 'Restart to update', onClick: onOpenUpdate }
+    case 'checking':
+      return { label: 'Checking…', disabled: true }
+    case 'downloading':
+      return { label: `Downloading… ${state.percent ?? 0}%`, disabled: true }
+    default:
+      return { label: 'Check for updates', onClick: onCheckForUpdates }
+  }
+}
+
+export function SettingsModal({ isOpen, onClose, initialTab, update, onOpenUpdate, onCheckForUpdates }: SettingsModalProps) {
+  const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, refreshSettings, forceApiGenerations, cudaAvailable, notifyModelsChanged } = useAppSettings()
   const onSettingsChange = (next: AppSettings) => updateSettings(next)
   const [activeTab, setActiveTab] = useState<TabId>('general')
   const ltxApiKey = useApiKeyFocus(isOpen, activeTab, setActiveTab)
@@ -106,6 +174,9 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const [falApiKeyInput, setFalApiKeyInput] = useState('')
   const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('')
   const geminiApiKeyInputRef = useRef<HTMLInputElement>(null)
+  const [geminiModelOptions, setGeminiModelOptions] = useState<GeminiModelOption[]>([])
+  const [resolvedGeminiModel, setResolvedGeminiModel] = useState(DEFAULT_GEMINI_MODEL)
+  const geminiModelSaveSeq = useRef(0)
   const [textEncoderRecommendation, setTextEncoderRecommendation] = useState<ApiSuccessOf<'getTextEncoderRecommendation'> | null>(null)
   // Which checkpoint is downloading, not just whether one is — the encoder and the optional
   // prompt enhancer each have their own card and must show progress only on their own.
@@ -144,7 +215,9 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const [modelLicenseLoading, setModelLicenseLoading] = useState(false)
   const [showModelLicense, setShowModelLicense] = useState(false)
   const [analyticsEnabled, setAnalyticsEnabled] = useState(false)
+  const [autoCheckUpdates, setAutoCheckUpdatesState] = useState(true)
   const [projectAssetsPath, setProjectAssetsPath] = useState('')
+  const updateAction = aboutUpdateAction(update.state, onOpenUpdate, onCheckForUpdates)
 
   // Sync active tab with initialTab prop when modal opens
   useEffect(() => {
@@ -176,7 +249,40 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     window.electronAPI.getProjectAssetsPath()
       .then((p: string) => setProjectAssetsPath(p))
       .catch(() => {})
+    window.electronAPI.getAutoCheckUpdates()
+      .then((s: { enabled: boolean }) => setAutoCheckUpdatesState(s.enabled))
+      .catch(() => {})
   }, [isOpen])
+
+  useEffect(() => {
+    const fallbackId = settings.geminiModel.trim() || DEFAULT_GEMINI_MODEL
+    if (!isOpen) return
+    if (!settings.hasGeminiApiKey) {
+      setGeminiModelOptions([{ id: fallbackId, displayName: fallbackId, description: '' }])
+      setResolvedGeminiModel(fallbackId)
+      return
+    }
+
+    let cancelled = false
+    const loadGeminiModels = async () => {
+      const result = await ApiClient.listGeminiModels()
+      if (cancelled) return
+      if (!result.ok) {
+        setGeminiModelOptions([{ id: fallbackId, displayName: fallbackId, description: '' }])
+        setResolvedGeminiModel(fallbackId)
+        return
+      }
+      setGeminiModelOptions(result.data.models)
+      setResolvedGeminiModel(result.data.resolvedModel)
+    }
+    void loadGeminiModels()
+    return () => {
+      cancelled = true
+    }
+    // Selecting a model calls refreshSettings(), which updates settings.geminiModel. Relisting
+    // on that change would hit the backend on every pick and wipe the dropdown if the GET failed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fallbackId is only used when the key is missing or the list fails
+  }, [isOpen, settings.hasGeminiApiKey])
 
   // Fetch text encoder recommendation when modal opens
   useEffect(() => {
@@ -300,6 +406,12 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     const next = !analyticsEnabled
     setAnalyticsEnabled(next)
     window.electronAPI.setAnalyticsEnabled({ enabled: next }).catch(() => {})
+  }
+
+  const handleToggleAutoCheck = () => {
+    const next = !autoCheckUpdates
+    setAutoCheckUpdatesState(next)
+    window.electronAPI.setAutoCheckUpdates({ enabled: next }).catch(() => {})
   }
 
   // Seed handlers
@@ -1122,6 +1234,25 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                       )}
                     </div>
                   </div>
+                  <GeminiModelSelect
+                    disabled={!settings.hasGeminiApiKey}
+                    models={geminiModelOptions}
+                    value={resolvedGeminiModel}
+                    onChange={(geminiModel) => {
+                      const previous = resolvedGeminiModel
+                      const requestId = ++geminiModelSaveSeq.current
+                      setResolvedGeminiModel(geminiModel)
+                      void (async () => {
+                        const result = await ApiClient.updateSettings({ geminiModel })
+                        if (requestId !== geminiModelSaveSeq.current) return
+                        if (!result.ok) {
+                          setResolvedGeminiModel(previous)
+                          return
+                        }
+                        await refreshSettings()
+                      })()
+                    }}
+                  />
                   <div className="flex items-center gap-2 text-xs">
                     <a
                       href="https://aistudio.google.com/app/apikey"
@@ -1303,6 +1434,53 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                     <h3 className="text-lg font-bold text-white">LTX Desktop</h3>
                     <p className="text-sm text-zinc-400">Version {appVersion || '...'}</p>
                     <p className="text-xs text-zinc-500">AI-Powered Video Editor</p>
+                  </div>
+
+                  {/* Updates */}
+                  <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Download className="h-4 w-4 text-blue-400" />
+                      <span className="text-sm font-medium text-white">Updates</span>
+                    </div>
+                    <p className="text-xs text-zinc-400">
+                      {update.state.status === 'available' && `Version ${update.state.version} is available.`}
+                      {update.state.status === 'downloading' && `Downloading… ${update.state.percent ?? 0}%`}
+                      {update.state.status === 'downloaded' && 'Download complete. Restart to apply the update.'}
+                      {update.state.status === 'checking' && 'Checking for updates…'}
+                      {update.state.status === 'not-available' && "You're up to date."}
+                      {update.state.status === 'idle' && 'Check for a newer version, or let the app check automatically.'}
+                    </p>
+                    {update.state.message && (
+                      <p className="text-xs text-red-400">{update.state.message}</p>
+                    )}
+                    <Button
+                      size="sm"
+                      onClick={updateAction.onClick}
+                      disabled={updateAction.disabled}
+                      className={ABOUT_ACTION_CLASS}
+                    >
+                      {updateAction.label}
+                    </Button>
+                    <div className="flex items-start justify-between gap-4 border-t border-zinc-700/50 pt-3">
+                      <div className="flex-1">
+                        <label className="text-sm font-medium text-white">Automatically check for updates</label>
+                        <p className="text-xs text-zinc-500 leading-relaxed">
+                          Periodically check for new versions. You can always check manually above.
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleToggleAutoCheck}
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          autoCheckUpdates ? 'bg-violet-500' : 'bg-zinc-700'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            autoCheckUpdates ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
                   </div>
 
                   {/* License */}

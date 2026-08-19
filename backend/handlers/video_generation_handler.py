@@ -50,6 +50,7 @@ from server_utils.media_validation import (
     validate_audio_file,
     validate_image_file,
 )
+from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
 from services.interfaces import LTXAPIClient
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError
 from state.app_state_types import AppState
@@ -232,6 +233,7 @@ class VideoGenerationHandler(StateHandlerBase):
             )
 
             try:
+                self._generation.raise_if_cancelled()
                 self._pipelines.load_gpu_pipeline("fast", loras=loras)
                 self._generation.start_generation(generation_id)
 
@@ -257,7 +259,7 @@ class VideoGenerationHandler(StateHandlerBase):
                 raise
             except Exception as e:
                 self._generation.fail_generation(str(e))
-                if "cancelled" in str(e).lower():
+                if is_cancel_exception(e):
                     logger.info("Generation cancelled by user")
                     return GenerateVideoCancelledResponse(status="cancelled")
 
@@ -302,8 +304,7 @@ class VideoGenerationHandler(StateHandlerBase):
         )
         logger.info("[%s] Generation started (model=fast, %dx%d, %s, %d fps)", gen_mode, width, height, frames_log, int(fps))
 
-        if self._generation.is_generation_cancelled():
-            raise RuntimeError("Generation was cancelled")
+        self._generation.raise_if_cancelled()
 
         total_steps = 8
 
@@ -334,6 +335,7 @@ class VideoGenerationHandler(StateHandlerBase):
             t_text_end = time.perf_counter()
             logger.info("[%s] Text encoding (%s): %.2fs", gen_mode, encoding_method, t_text_end - t_text_start)
 
+            self._generation.raise_if_cancelled()
             self._generation.update_progress("inference", 15, 0, total_steps)
 
             # Guard for the /64 two-stage grid. Half-way values round up: Python's round() is
@@ -357,10 +359,12 @@ class VideoGenerationHandler(StateHandlerBase):
             t_inference_end = time.perf_counter()
             logger.info("[%s] Inference: %.2fs", gen_mode, t_inference_end - t_inference_start)
 
+            # Denoiser interrupt cannot abort VAE decode / ffmpeg; a Stop after the last
+            # denoise step still finishes encode, then this check drops the file.
             if self._generation.is_generation_cancelled():
                 if output_path.exists():
                     output_path.unlink()
-                raise RuntimeError("Generation was cancelled")
+                raise GenerationCancelledError()
 
             t_total_end = time.perf_counter()
             logger.info("[%s] Total generation: %.2fs (load=%.2fs, text=%.2fs, inference=%.2fs)",
@@ -422,6 +426,7 @@ class VideoGenerationHandler(StateHandlerBase):
             )
             enhanced_prompt = a2v_base_prompt + self.config.camera_motion_prompts.get(req.cameraMotion, "")
 
+            self._generation.raise_if_cancelled()
             a2v_state = self._pipelines.load_a2v_pipeline(loras=loras)
             self._generation.start_generation(generation_id)
 
@@ -432,6 +437,7 @@ class VideoGenerationHandler(StateHandlerBase):
             self._generation.update_progress("loading_model", 5, 0, total_steps)
             self._generation.update_progress("encoding_text", 10, 0, total_steps)
             self._text.prepare_text_encoding(enhanced_prompt, enhance_prompt=a2v_enhance)
+            self._generation.raise_if_cancelled()
             self._generation.update_progress("inference", 15, 0, total_steps)
 
             a2v_state.pipeline.generate(
@@ -450,10 +456,12 @@ class VideoGenerationHandler(StateHandlerBase):
                 output_path=str(output_path),
             )
 
+            # Denoiser interrupt cannot abort VAE decode / ffmpeg; a Stop after the last
+            # denoise step still finishes encode, then this check drops the file.
             if self._generation.is_generation_cancelled():
                 if output_path.exists():
                     output_path.unlink()
-                raise RuntimeError("Generation was cancelled")
+                raise GenerationCancelledError()
 
             self._generation.update_progress("complete", 100, total_steps, total_steps)
             self._generation.complete_generation(str(output_path))
@@ -464,7 +472,7 @@ class VideoGenerationHandler(StateHandlerBase):
             raise
         except Exception as e:
             self._generation.fail_generation(str(e))
-            if "cancelled" in str(e).lower():
+            if is_cancel_exception(e):
                 logger.info("Generation cancelled by user")
                 return GenerateVideoCancelledResponse(status="cancelled")
             raise HTTPError(500, str(e)) from e
@@ -542,8 +550,7 @@ class VideoGenerationHandler(StateHandlerBase):
 
                 prompt = req.prompt
 
-                if self._generation.is_generation_cancelled():
-                    raise RuntimeError("Generation was cancelled")
+                self._generation.raise_if_cancelled()
 
                 if has_input_audio:
                     validated_audio_path = validate_audio_file(audio_path)
@@ -616,13 +623,12 @@ class VideoGenerationHandler(StateHandlerBase):
                     )
                     self._generation.update_progress("downloading_output", 85, None, None)
 
-                if self._generation.is_generation_cancelled():
-                    raise RuntimeError("Generation was cancelled")
+                self._generation.raise_if_cancelled()
 
                 output_path = self._write_forced_api_video(video_bytes)
                 if self._generation.is_generation_cancelled():
                     output_path.unlink(missing_ok=True)
-                    raise RuntimeError("Generation was cancelled")
+                    raise GenerationCancelledError()
 
                 self._generation.update_progress("complete", 100, None, None)
                 self._generation.complete_generation(str(output_path))
@@ -636,7 +642,7 @@ class VideoGenerationHandler(StateHandlerBase):
                 raise mapped_error from e
             except Exception as e:
                 self._generation.fail_generation(str(e))
-                if "cancelled" in str(e).lower():
+                if is_cancel_exception(e):
                     logger.info("Generation cancelled by user")
                     return GenerateVideoCancelledResponse(status="cancelled")
                 raise HTTPError(500, str(e)) from e

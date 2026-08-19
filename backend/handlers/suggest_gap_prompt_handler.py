@@ -14,7 +14,11 @@ from api_types import (
 from _routes._errors import HTTPError
 from handlers.base import StateHandlerBase
 from server_utils.media_validation import image_mime_type, normalize_optional_path, validate_image_file
-from services.gemini_text_client import call_gemini_generate_content
+from services.gemini_text_client import (
+    apply_gemini_thinking_config,
+    call_gemini_generate_content,
+    resolve_gemini_model,
+)
 from services.interfaces import HTTPClient, JSONValue
 from state.app_state_types import AppState
 
@@ -122,21 +126,20 @@ class SuggestGapPromptHandler(StateHandlerBase):
             user_parts.append({"inlineData": {"mimeType": mime_type, "data": data}})
 
         contents: list[JSONValue] = [{"role": "user", "parts": user_parts}]
-        # thinkingBudget=0 disables 2.5-flash's default "thinking" pass, which would
-        # otherwise eat into maxOutputTokens (starving the actual suggestion) and add latency.
-        generation_config: dict[str, JSONValue] = {
-            "temperature": 0.7,
-            "maxOutputTokens": 512,
-            "thinkingConfig": {"thinkingBudget": 0},
-        }
 
         try:
+            resolved_model = resolve_gemini_model(self.state.app_settings.gemini_model)
+            logger.info("Suggesting gap prompt via Gemini API (%s)", resolved_model)
             suggested_prompt = call_gemini_generate_content(
                 self._http,
                 api_key=gemini_api_key,
+                model=resolved_model,
                 contents=contents,
                 system_instruction=system_text,
-                generation_config=generation_config,
+                generation_config=apply_gemini_thinking_config(
+                    resolved_model,
+                    {"temperature": 0.7, "maxOutputTokens": 512},
+                ),
                 timeout=30,
             )
         except HTTPError as exc:

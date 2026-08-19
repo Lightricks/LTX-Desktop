@@ -101,6 +101,17 @@
             ],
             "title": "Geminiapikey"
           },
+          "geminiModel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geminimodel"
+          },
           "lockedSeed": {
             "anyOf": [
               {
@@ -859,6 +870,50 @@
         "title": "ExtendRequest",
         "type": "object"
       },
+      "GeminiModelOptionPayload": {
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "displayName": {
+            "title": "Displayname",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "displayName"
+        ],
+        "title": "GeminiModelOptionPayload",
+        "type": "object"
+      },
+      "GeminiModelsResponsePayload": {
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/GeminiModelOptionPayload"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "resolvedModel": {
+            "title": "Resolvedmodel",
+            "type": "string"
+          }
+        },
+        "required": [
+          "models",
+          "resolvedModel"
+        ],
+        "title": "GeminiModelsResponsePayload",
+        "type": "object"
+      },
       "GenerateImageCancelledResponse": {
         "properties": {
           "status": {
@@ -1156,6 +1211,10 @@
       },
       "GenerationProgressResponse": {
         "properties": {
+          "cancellable": {
+            "title": "Cancellable",
+            "type": "boolean"
+          },
           "currentStep": {
             "anyOf": [
               {
@@ -1231,7 +1290,8 @@
           "phase",
           "progress",
           "currentStep",
-          "totalSteps"
+          "totalSteps",
+          "cancellable"
         ],
         "title": "GenerationProgressResponse",
         "type": "object"
@@ -3745,6 +3805,11 @@
             "title": "Diffusionstagecacheenabled",
             "type": "boolean"
           },
+          "geminiModel": {
+            "default": "",
+            "title": "Geminimodel",
+            "type": "string"
+          },
           "hasFalApiKey": {
             "default": false,
             "title": "Hasfalapikey",
@@ -5977,6 +6042,47 @@
           }
         },
         "summary": "Route Post Settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/gemini-models": {
+      "get": {
+        "operationId": "route_list_gemini_models_api_settings_gemini_models_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeminiModelsResponsePayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route List Gemini Models",
         "tags": [
           "settings"
         ]

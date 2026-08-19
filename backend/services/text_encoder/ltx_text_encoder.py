@@ -6,8 +6,8 @@ import io
 import logging
 import pickle
 import time
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 import torch
 
@@ -18,6 +18,19 @@ if TYPE_CHECKING:
     from state.app_state_types import AppState
 
 logger = logging.getLogger(__name__)
+
+# Exact GLOBAL/STACK_GLOBAL symbols in a torch tensor pickle (protocols 2/4/5),
+# including CUDA tensors the LTX API emits. Anything else — including other
+# torch.* callables — is refused so a MITM'd /v1/prompt-embedding body cannot
+# name os.system, torch.jit, etc.
+_ALLOWED_PICKLE_GLOBALS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("torch._utils", "_rebuild_tensor_v2"),
+        ("torch.storage", "_load_from_bytes"),
+        ("collections", "OrderedDict"),
+        ("_codecs", "encode"),
+    }
+)
 
 
 class _CpuUnpickler(pickle.Unpickler):
@@ -31,20 +44,32 @@ class _CpuUnpickler(pickle.Unpickler):
     """
 
     def find_class(self, module: str, name: str) -> Any:
+        if (module, name) not in _ALLOWED_PICKLE_GLOBALS:
+            raise pickle.UnpicklingError(f"disallowed pickle global: {module}.{name}")
         if module == "torch.storage" and name == "_load_from_bytes":
 
             def _load_from_bytes_cpu(b: bytes) -> Any:
-                return torch.load(io.BytesIO(b), map_location="cpu")
+                return torch.load(io.BytesIO(b), map_location="cpu", weights_only=True)
 
             return _load_from_bytes_cpu
-        # Restrict deserialization to torch's rebuild helpers + stdlib containers. The
-        # payload comes from a network response; without this, a compromised / MITM'd
-        # response could name any importable callable (os.system, builtins.eval, …) and
-        # turn unpickling into RCE. A module-level allowlist blocks that while still
-        # admitting whatever torch rebuild symbol the conditioning stream actually uses.
-        if module.split(".", 1)[0] == "torch" or module == "collections":
-            return super().find_class(module, name)
-        raise pickle.UnpicklingError(f"disallowed pickle global: {module}.{name}")
+        return super().find_class(module, name)
+
+
+def _is_sequence(value: object) -> TypeGuard[Sequence[object]]:
+    return isinstance(value, (list, tuple))
+
+
+def _first_embedding_tensor(conditioning: object) -> torch.Tensor:
+    """Pull ``conditioning[0][0]`` only if the nest is sequences of a tensor."""
+    if not _is_sequence(conditioning) or len(conditioning) == 0:
+        raise pickle.UnpicklingError("unexpected conditioning container")
+    first = conditioning[0]
+    if not _is_sequence(first) or len(first) == 0:
+        raise pickle.UnpicklingError("unexpected conditioning row")
+    embeddings = first[0]
+    if not isinstance(embeddings, torch.Tensor):
+        raise pickle.UnpicklingError("conditioning is not a tensor")
+    return embeddings
 
 
 class LTXTextEncoder:
@@ -250,11 +275,7 @@ class LTXTextEncoder:
             # Map CUDA storages to CPU during unpickling so this works on non-CUDA hosts
             # (Apple Silicon / CPU-only); the tensors are moved to self.device below.
             conditioning = _CpuUnpickler(io.BytesIO(response.content)).load()  # noqa: S301
-            if not conditioning or len(conditioning) == 0:
-                logger.warning("LTX API returned unexpected conditioning format")
-                return None
-
-            embeddings = conditioning[0][0]
+            embeddings = _first_embedding_tensor(conditioning)
             video_dim = 4096
             if embeddings.shape[-1] > video_dim:
                 video_context = embeddings[..., :video_dim].contiguous().to(dtype=torch.bfloat16, device=self.device)

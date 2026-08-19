@@ -104,6 +104,7 @@ interface GapGenerationApi {
   cancel: () => void
   reset: () => void
   error: GenerationError | null
+  canCancel: boolean
 }
 
 export interface VideoEditorTimelineEditingPanelProps {
@@ -139,6 +140,7 @@ export interface VideoEditorTimelineEditingPanelProps {
   handleRegenerate: (assetId: string, clipId: string) => void
   handleRetakeClip: (clip: TimelineClip) => void
   handleCancelRegeneration: () => void
+  canCancelInFlight: boolean
   isRegenerating: boolean
   regenProgress: number
 }
@@ -177,6 +179,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     handleRegenerate,
     handleRetakeClip,
     handleCancelRegeneration,
+    canCancelInFlight,
     isRegenerating,
     regenProgress,
   } = props
@@ -992,9 +995,10 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
   }, [actions, currentProjectId, gapGenerationApi, generatingGap])
 
   const cancelGapGeneration = useCallback(() => {
+    if (!gapGenerationApi.canCancel) return
     gapGenerationApi.cancel()
-    gapGenerationApi.reset()
-    setGeneratingGap(null)
+    // Keep gap UI until the generate POST returns cancelled so liveness
+    // suppression stays up while the GPU job unwinds.
   }, [gapGenerationApi])
 
   const handleCloseGap = useCallback(() => {
@@ -2620,12 +2624,14 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                             <span className="text-[9px] text-blue-200 font-medium">
                               {regenProgress > 0 ? `${regenProgress}%` : 'Regenerating...'}
                             </span>
+                            {canCancelInFlight && (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleCancelRegeneration() }}
                               className="ml-1 px-1.5 py-0.5 rounded bg-zinc-800/80 border border-zinc-600/60 text-[9px] text-zinc-300 hover:text-red-400 hover:border-red-500/50 hover:bg-red-900/30 transition-colors"
                             >
                               Cancel
                             </button>
+                            )}
                           </div>
                         </div>
                       )}
@@ -2779,7 +2785,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                 />
                               </div>
                             )}
-                            {/* Cancel button */}
+                            {gapGenerationApi.canCancel && (
                             <Tooltip content="Cancel generation" side="top">
                               <button
                                 onClick={(e) => { e.stopPropagation(); cancelGapGeneration() }}
@@ -2788,6 +2794,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                 <X className="h-2.5 w-2.5" />
                               </button>
                             </Tooltip>
+                            )}
                           </div>
                         ) : (
                           <div className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity ${
@@ -3257,6 +3264,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
           setClips={setClips}
           handleRegenerate={handleRegenerate}
           handleCancelRegeneration={handleCancelRegeneration}
+          canCancelInFlight={canCancelInFlight}
           handleClipTakeChange={handleClipTakeChange}
           handleDeleteTake={handleDeleteTake}
           duplicateClip={duplicateClip}

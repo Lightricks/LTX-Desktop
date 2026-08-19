@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react'
 import { ApiClient } from '../lib/api-client'
-import { withGenerationActive } from '../lib/generation-active'
+import { canCancelLocalJob, withGenerationActive } from '../lib/generation-active'
 import { logger } from '../lib/logger'
+import { useAppSettings } from '../contexts/AppSettingsContext'
 import type { RetakeExtendModel } from './use-retake'
 
 export type ExtendDirection = 'start' | 'end'
@@ -25,14 +26,17 @@ export interface ExtendResult {
 
 interface UseExtendState {
   isExtending: boolean
+  canCancel: boolean
   extendStatus: string
   extendError: string | null
   result: ExtendResult | null
 }
 
 export function useExtend() {
+  const { shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi } = useAppSettings()
   const [state, setState] = useState<UseExtendState>({
     isExtending: false,
+    canCancel: false,
     extendStatus: '',
     extendError: null,
     result: null,
@@ -41,7 +45,13 @@ export function useExtend() {
   const submitExtend = useCallback(async (params: ExtendSubmitParams) => {
     if (!params.videoPath) return
 
-    setState({ isExtending: true, extendStatus: 'Generating', extendError: null, result: null })
+    setState({
+      isExtending: true,
+      canCancel: canCancelLocalJob('video', shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi),
+      extendStatus: 'Generating',
+      extendError: null,
+      result: null,
+    })
 
     await withGenerationActive(async () => {
       const result = await ApiClient.extend({
@@ -55,20 +65,21 @@ export function useExtend() {
 
       if (!result.ok) {
         logger.error(`Extend error: ${result.error.message}`)
-        setState({ isExtending: false, extendStatus: '', extendError: result.error.message, result: null })
+        setState({ isExtending: false, canCancel: false, extendStatus: '', extendError: result.error.message, result: null })
         return
       }
 
       const payload = result.data
 
       if (payload.status === 'cancelled') {
-        setState({ isExtending: false, extendStatus: 'Cancelled', extendError: null, result: null })
+        setState({ isExtending: false, canCancel: false, extendStatus: 'Cancelled', extendError: null, result: null })
         return
       }
 
       if ('video_path' in payload) {
         setState({
           isExtending: false,
+          canCancel: false,
           extendStatus: 'Extend complete!',
           extendError: null,
           result: { videoPath: payload.video_path },
@@ -82,21 +93,23 @@ export function useExtend() {
       logger.warn(`Extend completed with a remote payload and no local file: ${JSON.stringify(payload.result)}`)
       setState({
         isExtending: false,
+        canCancel: false,
         extendStatus: 'Extend complete!',
         extendError: null,
         result: null,
       })
     })
-  }, [])
+  }, [shouldImageGenerateWithFalApi, shouldVideoGenerateWithLtxApi])
 
   const resetExtend = useCallback(() => {
-    setState({ isExtending: false, extendStatus: '', extendError: null, result: null })
+    setState({ isExtending: false, canCancel: false, extendStatus: '', extendError: null, result: null })
   }, [])
 
   return {
     submitExtend,
     resetExtend,
     isExtending: state.isExtending,
+    canCancel: state.canCancel,
     extendStatus: state.extendStatus,
     extendError: state.extendError,
     extendResult: state.result,

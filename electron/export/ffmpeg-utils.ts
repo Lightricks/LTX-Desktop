@@ -1,4 +1,4 @@
-import { spawn, spawnSync, ChildProcess, execSync } from 'child_process'
+import { spawn, spawnSync, ChildProcess } from 'child_process'
 import os from 'os'
 import path from 'path'
 import fs from 'fs'
@@ -35,7 +35,7 @@ export function findFfmpegPath(): string | null {
     if (bin) return path.join(binDir, bin)
   }
 
-  try { execSync('ffmpeg -version', { stdio: 'ignore' }); return 'ffmpeg' } catch { return null }
+  return null
 }
 
 /** Check if a video file contains an audio stream using ffprobe/ffmpeg */
