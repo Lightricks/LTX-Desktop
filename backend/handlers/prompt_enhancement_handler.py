@@ -15,6 +15,7 @@ from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
 from handlers.text_handler import TextHandler
 from server_utils.media_validation import validate_image_file
+from services.gemini_text_client import resolve_gemini_model
 from services.interfaces import PromptEnhancerPipeline
 from services.lora_catalog import LoraCatalogProvider
 from services.prompt_enhancement import (
@@ -217,14 +218,24 @@ class PromptEnhancementHandler(StateHandlerBase):
 
         seed = self._random_seed()
         if req.provider == "api":
-            logger.info("Enhancing prompt via Gemini API")
+            resolved_model = resolve_gemini_model(self.state.app_settings.gemini_model)
+            logger.info("Enhancing prompt via Gemini API (%s)", resolved_model)
             api_key = self.state.app_settings.gemini_api_key
             if req.imagePath is not None:
                 return self._gemini_pipeline.enhance_i2v(
-                    req.prompt, req.imagePath, system_prompt=system_prompt, seed=seed, api_key=api_key
+                    req.prompt,
+                    req.imagePath,
+                    system_prompt=system_prompt,
+                    seed=seed,
+                    api_key=api_key,
+                    model=resolved_model,
                 )
             return self._gemini_pipeline.enhance_t2v(
-                req.prompt, system_prompt=system_prompt, seed=seed, api_key=api_key
+                req.prompt,
+                system_prompt=system_prompt,
+                seed=seed,
+                api_key=api_key,
+                model=resolved_model,
             )
 
         logger.info("Enhancing prompt via local Gemma")
@@ -245,12 +256,14 @@ class PromptEnhancementHandler(StateHandlerBase):
         seed = self._random_seed()
         try:
             if req.provider == "api":
-                logger.info("Enhancing prompt via Gemini API")
+                resolved_model = resolve_gemini_model(self.state.app_settings.gemini_model)
+                logger.info("Enhancing prompt via Gemini API (%s)", resolved_model)
                 raw = self._gemini_pipeline.enhance_t2v(
                     req.prompt,
                     system_prompt=system_prompt,
                     seed=seed,
                     api_key=self.state.app_settings.gemini_api_key,
+                    model=resolved_model,
                 )
             else:
                 logger.info("Enhancing prompt via local Gemma")

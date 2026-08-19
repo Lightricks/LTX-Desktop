@@ -21,6 +21,8 @@ import { SettingsModal, type SettingsTabId } from './components/SettingsModal'
 import { LogViewer } from './components/LogViewer'
 import { ApiGatewayModal, type ApiGatewaySection } from './components/ApiGatewayModal'
 import { Button } from './components/ui/button'
+import { useAppUpdateModal } from './hooks/use-app-update'
+import { UpdateAvailableModal } from './components/UpdateAvailableModal'
 
 type SetupState = 'loading' | { needsSetup: boolean; needsLicense: boolean }
 type RequiredModelsGateState = 'checking' | 'missing' | 'ready'
@@ -40,6 +42,7 @@ function AppContent() {
   const [setupState, setSetupState] = useState<SetupState>('loading')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTabId | undefined>(undefined)
+  const { update, isGenerationActive, isModalOpen, openModal, closeModal, checkForUpdates } = useAppUpdateModal()
   const [isLogViewerOpen, setIsLogViewerOpen] = useState(false)
   const [isFinalizingFirstRun, setIsFinalizingFirstRun] = useState(false)
   const [firstRunFinalizeError, setFirstRunFinalizeError] = useState<string | null>(null)
@@ -556,6 +559,9 @@ function AppContent() {
           setSettingsInitialTab(undefined)
         }}
         initialTab={settingsInitialTab}
+        update={update}
+        onOpenUpdate={openModal}
+        onCheckForUpdates={checkForUpdates}
       />
       <ApiGatewayModal
         isOpen={shouldShowGateway}
@@ -571,6 +577,13 @@ function AppContent() {
           onClose={handleDismissLtxUpgradePrompt}
           onDontShowAgain={handleDontShowLtxUpgradeAgain}
           onComplete={handleCompleteLtxUpgradePrompt}
+        />
+      )}
+      {isModalOpen && (
+        <UpdateAvailableModal
+          update={update}
+          isGenerationActive={isGenerationActive}
+          onClose={closeModal}
         />
       )}
 

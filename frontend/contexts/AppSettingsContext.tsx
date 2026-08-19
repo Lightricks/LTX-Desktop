@@ -10,6 +10,7 @@ export interface AppSettings {
   hasFalApiKey: boolean
   userPrefersFalApiImageGenerations: boolean
   hasGeminiApiKey: boolean
+  geminiModel: string
   useLocalTextEncoder: boolean
   promptCacheSize: number
   promptEnhancerEnabledT2V: boolean
@@ -25,6 +26,8 @@ export interface AppSettings {
   useConvVae: boolean
 }
 
+export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash-lite'
+
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   useTorchCompile: false,
   diffusionStageCacheEnabled: false,
@@ -33,6 +36,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   hasFalApiKey: false,
   userPrefersFalApiImageGenerations: false,
   hasGeminiApiKey: false,
+  geminiModel: '',
   useLocalTextEncoder: false,
   promptCacheSize: 1,
   promptEnhancerEnabledT2V: false,
@@ -89,6 +93,7 @@ function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
     hasFalApiKey: data.hasFalApiKey ?? DEFAULT_APP_SETTINGS.hasFalApiKey,
     userPrefersFalApiImageGenerations: data.userPrefersFalApiImageGenerations ?? DEFAULT_APP_SETTINGS.userPrefersFalApiImageGenerations,
     hasGeminiApiKey: data.hasGeminiApiKey ?? DEFAULT_APP_SETTINGS.hasGeminiApiKey,
+    geminiModel: data.geminiModel ?? DEFAULT_APP_SETTINGS.geminiModel,
     useLocalTextEncoder: data.useLocalTextEncoder ?? DEFAULT_APP_SETTINGS.useLocalTextEncoder,
     promptCacheSize: data.promptCacheSize ?? DEFAULT_APP_SETTINGS.promptCacheSize,
     promptEnhancerEnabledT2V: data.promptEnhancerEnabledT2V ?? DEFAULT_APP_SETTINGS.promptEnhancerEnabledT2V,

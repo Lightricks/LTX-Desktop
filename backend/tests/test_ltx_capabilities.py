@@ -13,14 +13,31 @@ from runtime_config.ltx_capabilities import (
 )
 
 
-def test_local_2_3_540p_is_historical_960x544():
+def test_local_models_share_one_two_stage_pixel_map():
+    """2.3 and 2.5 must advertise the same local sizes so a model switch cannot
+    land 540p on 960×544, which the two-stage pipeline rejects (not ÷64)."""
+    from runtime_config.model_download_specs import ALL_LTX_LOCAL_MODEL_IDS
+
+    reference = local_caps("ltx-2.5-22b-distilled").resolution_pixels_16_9
+    for model_id in ALL_LTX_LOCAL_MODEL_IDS:
+        caps = local_caps(model_id)
+        assert caps.resolution_pixels_16_9 == reference, model_id
+        for resolution in reference:
+            for aspect in ("16:9", "9:16"):
+                width, height = pixels_for(caps, resolution, aspect)
+                assert width % 64 == 0 and height % 64 == 0, (
+                    f"{model_id} {resolution} {aspect}: {width}x{height}"
+                )
+
+
+def test_local_2_3_540p_matches_2_5():
     caps = local_caps("ltx-2.3-22b-distilled-1.1")
-    assert pixels_for(caps, "540p", "16:9") == (960, 544)
-    assert pixels_for(caps, "540p", "9:16") == (544, 960)
+    assert pixels_for(caps, "540p", "16:9") == (1024, 576)
+    assert pixels_for(caps, "540p", "9:16") == (576, 1024)
 
 
 def test_local_2_3_v10_shares_2_3_pixel_map():
-    assert pixels_for(local_caps("ltx-2.3-22b-distilled"), "540p", "16:9") == (960, 544)
+    assert pixels_for(local_caps("ltx-2.3-22b-distilled"), "540p", "16:9") == (1024, 576)
 
 
 def test_local_2_5_540p_is_legal_16_9():

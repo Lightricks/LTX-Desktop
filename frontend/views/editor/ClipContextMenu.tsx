@@ -35,6 +35,7 @@ export interface ClipContextMenuProps {
   setClips: React.Dispatch<React.SetStateAction<TimelineClip[]>>
   handleRegenerate: (assetId: string, clipId: string) => void
   handleCancelRegeneration: () => void
+  canCancelInFlight: boolean
   handleClipTakeChange: (clipId: string, direction: 'prev' | 'next') => void
   handleDeleteTake: (clipId: string) => void
   duplicateClip: (clipId: string) => void
@@ -107,6 +108,7 @@ export function ClipContextMenu({
   setClips,
   handleRegenerate,
   handleCancelRegeneration,
+  canCancelInFlight,
   handleClipTakeChange,
   handleDeleteTake,
   duplicateClip,
@@ -219,6 +221,7 @@ export function ClipContextMenu({
           setClips={setClips}
           handleRegenerate={handleRegenerate}
           handleCancelRegeneration={handleCancelRegeneration}
+          canCancelInFlight={canCancelInFlight}
           handleClipTakeChange={handleClipTakeChange}
           handleDeleteTake={handleDeleteTake}
           duplicateClip={duplicateClip}
@@ -259,7 +262,7 @@ function SingleClipMenu({
   isRegenerating,
   currentProjectId, updateAsset,
   handleCopy, handleCut, handlePaste, setClips,
-  handleRegenerate, handleCancelRegeneration,
+  handleRegenerate, handleCancelRegeneration, canCancelInFlight,
   handleClipTakeChange, handleDeleteTake,
   duplicateClip, splitClipAtPlayhead, removeClip, updateClip,
   getLiveAsset, getMaxClipDuration,
@@ -279,6 +282,7 @@ function SingleClipMenu({
   setClips: React.Dispatch<React.SetStateAction<TimelineClip[]>>
   handleRegenerate: (assetId: string, clipId: string) => void
   handleCancelRegeneration: () => void
+  canCancelInFlight: boolean
   handleClipTakeChange: (clipId: string, direction: 'prev' | 'next') => void
   handleDeleteTake: (clipId: string) => void
   duplicateClip: (clipId: string) => void
@@ -450,7 +454,9 @@ function SingleClipMenu({
           <SectionLabel>AI Tools</SectionLabel>
 
           {contextClip.isRegenerating ? (
+            canCancelInFlight ? (
             <MenuItem icon={X} iconClass="text-red-400" label="Cancel Regeneration" onClick={() => { handleCancelRegeneration(); close() }} />
+            ) : null
           ) : (
             <MenuItem icon={RefreshCw} iconClass="text-blue-400" label="Regenerate Shot"
               disabled={isRegenerating} onClick={() => { handleRegenerate(contextClip.assetId!, contextClip.id); close() }} />

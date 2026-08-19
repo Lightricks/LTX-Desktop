@@ -82,6 +82,26 @@ def test_ltx_2_5_model_cp_ids_include_split_vaes():
     assert spec.duration_head_cp == "ltx-2.5-duration-head"
 
 
+def test_2_3_models_use_spatial_upscaler_1_1():
+    for model_id in ALL_LTX_LOCAL_MODEL_IDS:
+        spec = get_ltx_model_spec(model_id)
+        if not spec.model_cp.startswith("ltx-2.3-"):
+            continue
+        assert spec.upscale_cp == "ltx-2.3-spatial-upscaler-x2-1.1"
+
+
+def test_2_3_spatial_upscaler_legacy_spec_keeps_1_0_local_path():
+    live = get_model_cp_spec("ltx-2.3-spatial-upscaler-x2-1.1")
+    legacy = get_model_cp_spec("ltx-2.3-spatial-upscaler-x2-1.0")
+    assert live.download_filename == "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+    # Local path stays 1.0 so an orphaned file still lists/deletes. Downloads of this
+    # id are remapped to 1.1 in DownloadHandler — the spec itself must not fetch 1.1
+    # onto the 1.0 filename.
+    assert legacy.relative_path == Path("ltx-2.3-spatial-upscaler-x2-1.0.safetensors")
+    assert legacy.download_filename == "ltx-2.3-spatial-upscaler-x2-1.0.safetensors"
+    assert legacy.repo_filename is None
+
+
 def test_2_3_has_no_split_video_vaes():
     spec = get_ltx_model_spec("ltx-2.3-22b-distilled-1.1")
     assert spec.video_vae_cp is None

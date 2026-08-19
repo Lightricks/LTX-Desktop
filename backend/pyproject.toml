@@ -4,7 +4,7 @@ version = "1.0.0"
 description = "LTX-2 Video Generation Backend"
 requires-python = ">=3.12"
 dependencies = [
-    "pillow>=10.3.0",
+    "pillow>=12.3.0",
     # macOS caps at <2.12: ltx-core imports torchaudio (audio VAE), torchaudio tops out at
     # 2.11.0 with empty torch metadata, so an uncapped torch resolves to 2.12.1 and the
     # torchaudio 2.11.0 ABI mismatch crashes `import torchaudio` on Apple Silicon. Pinning
@@ -22,14 +22,15 @@ dependencies = [
     # LTX-2 inference dependencies (v1.2.0 is the 2.5-capable release).
     "ltx-core==1.2.0",
     "ltx-pipelines==1.2.0",
-    "diffusers>=0.36.0",
+    "diffusers>=0.39.0",
     "ftfy>=6.0.0",
     "imageio>=2.37.2",
     "imageio-ffmpeg>=0.6.0",
     "peft>=0.13.2",
     "protobuf>=3.20.0",
-    # ltx-core 1.2 / Gemma 4 need transformers 5.8+; 5.15 breaks Gemma 4 config access.
-    "transformers>=5.8.0,<5.15",
+    # ltx-core 1.2 / Gemma 4 need transformers 5.8+; 5.15 makes Gemma 4
+    # attention dims per-layer (AmbiguousGlobalPerLayerAttributeError).
+    "transformers>=5.14.1,<5.15",
     "sentencepiece>=0.1.99",
     "sageattention>=1.0.0; sys_platform != 'darwin'",
     # Official NATTEN wheels are Linux-only. GCS-hosted Windows wheel matches
@@ -42,9 +43,11 @@ dependencies = [
     # memory per attention call and OOMs longer generations. macOS-only.
     "ninja>=1.11; sys_platform == 'darwin'",
     "opencv-python-headless>=4.8.0",
-    "fastapi>=0.115.0",
+    "fastapi>=0.141.1",
+    # FastAPI 0.129 pinned starlette<1; 0.141+ allows the 1.x line.
+    "starlette>=1.6.0",
     "uvicorn[standard]>=0.30.0",
-    "python-multipart>=0.0.9",
+    "python-multipart>=0.0.32",
     "triton-windows; sys_platform == 'win32'",
     "triton; sys_platform == 'linux'",
 ]
@@ -70,7 +73,6 @@ torchvision = [
 # Linux keeps resolving sageattention from PyPI (no reported Blackwell crashes there yet).
 sageattention = { url = "https://github.com/woct0rdho/SageAttention/releases/download/v2.2.0-windows.post5/sageattention-2.2.0+cu128torch2.10.0andhigher.post5-cp310-abi3-win_amd64.whl", marker = "sys_platform == 'win32'" }
 natten = { url = "https://storage.googleapis.com/ltx-desktop-artifacts/wheels/natten-0.21.6+torch2100cu128-cp313-cp313-win_amd64.whl", marker = "sys_platform == 'win32'" }
-diffusers = { git = "https://github.com/huggingface/diffusers.git", rev = "01de02e8b4f2cc91df4f3e91cb6535ebcbeb490c" }
 # Official LTX-2 v1.2.0 packages (not on PyPI). Same git+subdirectory pattern as
 # 2.3; the tag is the 2.5-capable release. We do not take ltx-core's own
 # tool.uv.sources (cu132) — this app's pytorch-cu128 pin above owns torch.
@@ -101,7 +103,7 @@ version = "1.2.0"
 requires-dist = ["ltx-core", "av", "tqdm", "pillow", "openimageio", "cloudpickle>=3.1"]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0", "requests>=2.31", "httpx>=0.27"]
+test = ["pytest>=8.0", "requests>=2.34.2", "httpx>=0.27"]
 dev = ["pyright>=1.1.380", "debugpy>=1.8"]
 
 [tool.pytest.ini_options]

@@ -10,6 +10,7 @@ export function SettingsDropdown({
   title,
   tooltip,
   triggerClassName,
+  placement = 'above',
 }: {
   trigger: React.ReactNode
   options: { value: string; label: string; disabled?: boolean; tooltip?: string; icon?: React.ReactNode }[]
@@ -20,6 +21,8 @@ export function SettingsDropdown({
   // Extra classes on the trigger button — e.g. to visually attach it to an adjacent button
   // as a split-button (rounded-l-none, no left padding, etc).
   triggerClassName?: string
+  // Prompt-bar menus open upward; gallery toolbar menus open downward.
+  placement?: 'above' | 'below'
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -50,7 +53,9 @@ export function SettingsDropdown({
       {tooltip && !isOpen ? <Tooltip content={tooltip}>{triggerButton}</Tooltip> : triggerButton}
 
       {isOpen && (
-        <div className="absolute bottom-full left-0 mb-2 bg-zinc-800 border border-zinc-700 rounded-md p-2 min-w-[160px] shadow-xl z-[9999]">
+        <div className={`absolute left-0 bg-zinc-800 border border-zinc-700 rounded-md p-2 min-w-[160px] shadow-xl z-[9999] ${
+          placement === 'below' ? 'top-full mt-2' : 'bottom-full mb-2'
+        }`}>
           <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">{title}</div>
           {/* Cap height + scroll so a long option list (e.g. many catalog / custom IC-LoRAs)
               doesn't clip off-screen — matches the LoRA picker's max-h-80. */}

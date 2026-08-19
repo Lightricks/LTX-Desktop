@@ -38,6 +38,7 @@ from handlers.video_resolution import (
 from runtime_config.ltx_capabilities import local_caps, supports
 from runtime_config.model_download_specs import resolve_active_ltx_model_id
 from runtime_config.runtime_config import RuntimeConfig
+from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError
 from services.interfaces import LTXAPIClient
 from state.app_state_types import AppState
@@ -215,9 +216,11 @@ class ExtendHandler(StateHandlerBase):
                     target_frames=target_frames,
                 )
 
+                # Denoiser interrupt cannot abort VAE decode / ffmpeg; a Stop after the last
+                # denoise step still finishes encode, then this check drops the file.
                 if self._generation.is_generation_cancelled():
                     output_path.unlink(missing_ok=True)
-                    raise RuntimeError("Generation was cancelled")
+                    raise GenerationCancelledError()
 
                 self._generation.update_progress("complete", 100, 1, 1)
                 self._generation.complete_generation(str(output_path))
@@ -227,7 +230,7 @@ class ExtendHandler(StateHandlerBase):
                 raise
             except Exception as exc:
                 self._generation.fail_generation(str(exc))
-                if "cancelled" in str(exc).lower():
+                if is_cancel_exception(exc):
                     return RetakeCancelledResponse(status="cancelled")
                 raise HTTPError(500, f"Generation error: {exc}") from exc
             finally:

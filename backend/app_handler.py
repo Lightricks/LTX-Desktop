@@ -115,6 +115,7 @@ class AppHandler:
             state=self.state,
             lock=self._lock,
             config=config,
+            http=http,
         )
 
         self.models = ModelsHandler(

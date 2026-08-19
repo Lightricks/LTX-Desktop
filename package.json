@@ -1,6 +1,6 @@
 {
   "name": "ltx-desktop",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "LTX-2 Video Generation - Desktop App",
   "type": "module",
   "main": "dist-electron/main.js",
@@ -39,6 +39,7 @@
     "clsx": "^2.1.1",
     "electron-updater": "^6.8.3",
     "js-yaml": "^4.1.1",
+    "koffi": "3.1.4",
     "lucide-react": "^0.400.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

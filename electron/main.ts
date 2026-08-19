@@ -1,3 +1,4 @@
+import './win-dll-search'
 import './app-paths'
 import { app } from 'electron'
 import { setupCSP } from './csp'

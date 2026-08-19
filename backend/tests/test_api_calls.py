@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from services.interfaces import HttpTransportError
@@ -45,6 +46,42 @@ class TestSuggestGapPrompt:
         data = r.json()
         assert data["status"] == "success"
         assert data["suggested_prompt"] == "A smooth transition scene"
+        assert "models/gemini-2.5-flash-lite:generateContent" in test_state.http.calls[-1].url
+
+    def test_uses_configured_gemini_model(self, client, test_state, caplog):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.state.app_settings.gemini_model = "gemini-2.0-flash"
+        test_state.http.queue("post", _gemini_ok("A smooth transition scene"))
+        caplog.set_level(logging.INFO, logger="handlers.suggest_gap_prompt_handler")
+
+        r = client.post(
+            "/api/suggest-gap-prompt",
+            json={"beforePrompt": "sunset on a beach", "afterPrompt": "sunrise over mountains", "gapDuration": 3},
+        )
+        assert r.status_code == 200
+        url = test_state.http.calls[-1].url
+        assert "models/gemini-2.0-flash:generateContent" in url
+        assert "gemini-2.5-flash:" not in url
+        assert any(
+            record.getMessage() == "Suggesting gap prompt via Gemini API (gemini-2.0-flash)"
+            for record in caplog.records
+        )
+        assert "thinkingConfig" not in test_state.http.calls[-1].json_payload["generationConfig"]
+
+    def test_stored_non_text_gemini_model_uses_default(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.state.app_settings.gemini_model = "nano-banana-pro"
+        test_state.http.queue("post", _gemini_ok("A smooth transition scene"))
+
+        r = client.post(
+            "/api/suggest-gap-prompt",
+            json={"beforePrompt": "sunset on a beach", "afterPrompt": "sunrise over mountains", "gapDuration": 3},
+        )
+        assert r.status_code == 200
+        assert "models/gemini-2.5-flash-lite:generateContent" in test_state.http.calls[-1].url
+        assert test_state.http.calls[-1].json_payload["generationConfig"]["thinkingConfig"] == {
+            "thinkingBudget": 0
+        }
 
     def test_happy_path_with_frames(self, client, test_state, make_test_image, tmp_path):
         test_state.state.app_settings.gemini_api_key = "key"

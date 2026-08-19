@@ -52,6 +52,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _canonical_download_cp_id(cp_id: ModelCheckpointID) -> ModelCheckpointID:
+    # HF removed ltx-2.3-spatial-upscaler-x2-1.0.safetensors; fetch 1.1 onto the 1.1 path.
+    if cp_id == "ltx-2.3-spatial-upscaler-x2-1.0":
+        return "ltx-2.3-spatial-upscaler-x2-1.1"
+    return cp_id
+
+
 class DownloadHandler(StateHandlerBase):
     def __init__(
         self,
@@ -285,12 +292,17 @@ class DownloadHandler(StateHandlerBase):
             else:
                 path.unlink(missing_ok=True)
 
+    def _canonical_download_cp_ids(
+        self, cp_ids: Iterable[ModelCheckpointID]
+    ) -> tuple[ModelCheckpointID, ...]:
+        return self._ordered_cp_ids({_canonical_download_cp_id(cp_id) for cp_id in cp_ids})
+
     def _discover_download_cp_ids(self, requested_cp_ids: set[ModelCheckpointID]) -> tuple[ModelCheckpointID, ...]:
-        missing: set[ModelCheckpointID] = set()
-        for cp_id in requested_cp_ids:
-            if not self._models_handler.is_cp_downloaded(cp_id):
-                missing.add(cp_id)
-        return self._ordered_cp_ids(missing)
+        return tuple(
+            cp_id
+            for cp_id in self._canonical_download_cp_ids(requested_cp_ids)
+            if not self._models_handler.is_cp_downloaded(cp_id)
+        )
 
     def _download_worker(self, cp_ids: tuple[ModelCheckpointID, ...], *, atomic_commit: bool) -> None:
         if not cp_ids:
@@ -334,7 +346,7 @@ class DownloadHandler(StateHandlerBase):
         # Resolve what to download (may raise) before touching the lock.
         if download_type == "upgrade":
             resolved_upgrade = self._models_handler.resolve_upgrade_download(cp_ids)
-            ordered_cp_ids = resolved_upgrade.cp_ids
+            ordered_cp_ids = self._canonical_download_cp_ids(resolved_upgrade.cp_ids)
             atomic_commit = True
         elif download_type == "download":
             ordered_cp_ids = self._discover_download_cp_ids(set(cp_ids))

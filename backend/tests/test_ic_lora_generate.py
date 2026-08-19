@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -27,6 +28,41 @@ def test_ic_lora_generate_runs_inference(client: TestClient, tmp_path: Path, cre
     assert resp.json()["status"] == "complete"
     # 5s at the IC-LoRA's 24fps maps to 121 frames ((5*24)//8*8 + 1).
     assert fake_services.ic_lora_pipeline.generate_calls[-1]["num_frames"] == 121
+
+
+def test_catalog_stop_after_generate_unlinks_and_returns_cancelled(
+    client: TestClient, tmp_path: Path, test_state, create_fake_model_files, fake_services, caplog
+):
+    create_fake_model_files()
+    client.post("/api/ic-loras/download", json={"ic_lora_id": "ingredients-v1"})
+    img = tmp_path / "in.png"
+    img.write_bytes(b"\x89PNG\r\n")
+
+    pipeline = fake_services.ic_lora_pipeline
+    real_generate = pipeline.generate
+
+    def generate_then_cancel(**kwargs):
+        real_generate(**kwargs)
+        test_state.generation.cancel_generation()
+
+    pipeline.generate = generate_then_cancel  # type: ignore[method-assign]
+
+    caplog.set_level(logging.INFO, logger="handlers.ic_lora_handler")
+    resp = client.post(
+        "/api/ic-lora/generate",
+        json={
+            "ic_lora_id": "ingredients-v1",
+            "input_path": str(img),
+            "control_values": {"duration": 5},
+            "prompt": "a slow orbit",
+            "conditioning_type": "custom",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "cancelled"
+    written = Path(pipeline.generate_calls[-1]["output_path"])
+    assert not written.exists()
+    assert any(record.getMessage() == "Generation cancelled by user" for record in caplog.records)
 
 
 def test_ic_lora_generate_uses_ic_lora_default_when_no_override(

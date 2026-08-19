@@ -1,4 +1,4 @@
-import { electronAPISchemas, type BackendHealthStatus } from '../shared/electron-api-schema'
+import { electronAPISchemas, type BackendHealthStatus, type UpdateStatePayload } from '../shared/electron-api-schema'
 
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
@@ -22,6 +22,12 @@ api.onBackendHealthStatus = (cb: (data: BackendHealthStatus) => void) => {
   return () => {
     ipcRenderer.removeListener('backend-health-status', listener)
   }
+}
+
+api.onUpdateEvent = (cb: (data: UpdateStatePayload) => void) => {
+  const listener = (_: unknown, data: UpdateStatePayload) => cb(data)
+  ipcRenderer.on('update-event', listener)
+  return () => ipcRenderer.removeListener('update-event', listener)
 }
 
 api.getPathForFile = (file: File) => webUtils.getPathForFile(file)

@@ -65,6 +65,9 @@ class AppSettings(SettingsBaseModel):
     # fallback when the preferred provider is temporarily unavailable) ever sets this.
     prompt_enhancer_provider_preference: Literal["local", "api"] | None = None
     gemini_api_key: str = ""
+    # Empty string means "use DEFAULT_GEMINI_MODEL at generate time" — unlike API keys, an
+    # empty patch is persisted so the user can reset to the default without a tombstone value.
+    gemini_model: str = ""
     seed_locked: bool = False
     locked_seed: int = 42
     models_dir: str = ""
@@ -140,6 +143,7 @@ class SettingsResponse(SettingsBaseModel):
     prompt_enhancer_enabled_i2v: bool = False
     prompt_enhancer_provider_preference: Literal["local", "api"] | None = None
     has_gemini_api_key: bool = False
+    gemini_model: str = ""
     seed_locked: bool = False
     locked_seed: int = 42
     models_dir: str = ""

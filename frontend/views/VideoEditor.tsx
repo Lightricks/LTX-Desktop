@@ -143,6 +143,7 @@ function VideoEditorWithStore({
     error: regenError,
     cancel: regenCancel,
     reset: regenReset,
+    canCancel: regenCanCancel,
   } = useGeneration()
 
   const gapGenerationApi = useMemo(() => ({
@@ -156,9 +157,11 @@ function VideoEditorWithStore({
     cancel: regenCancel,
     reset: regenReset,
     error: regenError,
+    canCancel: regenCanCancel,
   }), [
     isRegenerating,
     regenCancel,
+    regenCanCancel,
     regenError,
     regenGenerate,
     regenGenerateImage,
@@ -505,6 +508,7 @@ function VideoEditorWithStore({
     regenVideoPath, regenImagePath,
     isRegenerating,
     regenCancel, regenReset, regenError,
+    canCancelInFlight: regenCanCancel,
     shouldVideoGenerateWithLtxApi,
   })
   const canUseIcLora = !forceApiGenerations
@@ -780,6 +784,7 @@ function VideoEditorWithStore({
                   handleImportFile={handleImportFile}
                   handleRegenerate={handleRegenerate}
                   handleCancelRegeneration={handleCancelRegeneration}
+                  canCancelInFlight={regenCanCancel}
                   isRegenerating={isRegenerating}
                   regeneratingAssetId={regeneratingAssetId}
                   regenProgress={regenProgress}
@@ -905,6 +910,7 @@ function VideoEditorWithStore({
             handleRegenerate={handleRegenerate}
             handleRetakeClip={handleRetakeClip}
             handleCancelRegeneration={handleCancelRegeneration}
+            canCancelInFlight={regenCanCancel}
             isRegenerating={isRegenerating}
             regenProgress={regenProgress}
           />

@@ -42,21 +42,12 @@ class LtxOfferingCapabilities:
     resolution_pixels_16_9: dict[LTXVideoGenResolution, tuple[int, int]]
 
 
-# Shared local Fast sizes except 540p, which is version-specific: 2.3 is 960×544
-# (off 16:9 on the /64 two-stage grid); 2.5 is 1024×576.
-_LOCAL_720P_1080P: dict[LTXVideoGenResolution, tuple[int, int]] = {
+# Local Fast sizes: one /64 two-stage grid for 2.3 and 2.5. Splitting 540p
+# (2.3 960×544 vs 2.5 1024×576) made a model switch fail assert_resolution.
+_LOCAL_PIXELS_16_9: dict[LTXVideoGenResolution, tuple[int, int]] = {
+    "540p": (1024, 576),
     "720p": (1280, 704),
     "1080p": (1920, 1088),
-}
-
-_LOCAL_2_3_PIXELS_16_9: dict[LTXVideoGenResolution, tuple[int, int]] = {
-    "540p": (960, 544),
-    **_LOCAL_720P_1080P,
-}
-
-_LOCAL_2_5_PIXELS_16_9: dict[LTXVideoGenResolution, tuple[int, int]] = {
-    "540p": (1024, 576),
-    **_LOCAL_720P_1080P,
 }
 
 _API_PIXELS_16_9: dict[LTXVideoGenResolution, tuple[int, int]] = {
@@ -75,7 +66,7 @@ _LOCAL_2_3 = LtxOfferingCapabilities(
     user_loras=True,
     camera_motion=True,
     auto_duration=False,
-    resolution_pixels_16_9=_LOCAL_2_3_PIXELS_16_9,
+    resolution_pixels_16_9=_LOCAL_PIXELS_16_9,
 )
 
 # DistilledA2V is wired for local 2.5. Auto duration is DurationHead on the
@@ -91,7 +82,7 @@ _LOCAL_2_5 = LtxOfferingCapabilities(
     user_loras=True,
     camera_motion=True,
     auto_duration=True,
-    resolution_pixels_16_9=_LOCAL_2_5_PIXELS_16_9,
+    resolution_pixels_16_9=_LOCAL_PIXELS_16_9,
 )
 
 # API rows follow ltxv-api handlers. camera_motion is a named LoRA on the tia2v

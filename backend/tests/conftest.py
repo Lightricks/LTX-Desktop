@@ -22,6 +22,7 @@ from runtime_config.port_constant import PORT
 from state import RuntimeConfig, build_initial_state, set_state_service_for_tests
 from state.app_settings import AppSettings
 from state.app_state_types import HfAuthenticated
+from services.gemini_text_client import clear_gemini_models_cache
 from tests.fake_camera_motion_prompts import FAKE_CAMERA_MOTION_PROMPTS
 from tests.fakes.services import FakeServices
 
@@ -33,6 +34,15 @@ DEFAULT_NEGATIVE_PROMPT = (
 DEFAULT_APP_SETTINGS = AppSettings()
 
 
+@pytest.fixture(autouse=True)
+def _reset_generation_interrupt() -> None:
+    from services.generation_interrupt import clear
+
+    clear()
+    yield
+    clear()
+
+
 @pytest.fixture
 def fake_services() -> FakeServices:
     return FakeServices()
@@ -41,6 +51,7 @@ def fake_services() -> FakeServices:
 @pytest.fixture(autouse=True)
 def test_state(tmp_path: Path, fake_services: FakeServices):
     """Provide a fresh AppHandler per test and register it in DI."""
+    clear_gemini_models_cache()
     app_data = tmp_path / "app_data"
     default_models_dir = app_data / "models"
     outputs_dir = tmp_path / "outputs"

@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { Asset, TimelineClip } from '../../types/project-model'
 import type { GenerationSettings } from '../../components/SettingsPanel'
 import type { GenerationError } from '../../lib/generation-errors'
@@ -86,6 +86,7 @@ export interface UseRegenerationParams {
   regenCancel: () => void
   regenReset: () => void
   regenError: GenerationError | null
+  canCancelInFlight: boolean
   shouldVideoGenerateWithLtxApi: boolean
 }
 
@@ -100,6 +101,7 @@ export function useRegeneration(params: UseRegenerationParams) {
     regenCancel,
     regenReset,
     regenError,
+    canCancelInFlight,
     shouldVideoGenerateWithLtxApi,
   } = params
   const {
@@ -115,6 +117,7 @@ export function useRegeneration(params: UseRegenerationParams) {
   const regeneratingAssetId = useEditorStore(selectRegeneratingAssetId)
   const regeneratingClipId = useEditorStore(selectRegeneratingClipId)
   const regenerationPreError = useEditorStore(selectRegenerationPreError)
+  const cancelRequestedRef = useRef(false)
 
   const dismissRegenerationPreError = useCallback(() => {
     setRegenerationPreError(null)
@@ -271,10 +274,10 @@ export function useRegeneration(params: UseRegenerationParams) {
   ])
 
   const handleCancelRegeneration = useCallback(() => {
+    if (!canCancelInFlight) return
+    cancelRequestedRef.current = true
     regenCancel()
-    cancelClipRegeneration()
-    regenReset()
-  }, [cancelClipRegeneration, regenCancel, regenReset])
+  }, [canCancelInFlight, regenCancel])
 
   const persistGeneratedTake = useCallback(async (
     generatedPath: string,
@@ -304,6 +307,7 @@ export function useRegeneration(params: UseRegenerationParams) {
   }, [applyGeneratedTake, cancelClipRegeneration, projectId, regenReset])
 
   useEffect(() => {
+    if (cancelRequestedRef.current) return
     if (!regenVideoPath || !regeneratingAssetId || !projectId || isRegenerating) return
     void persistGeneratedTake(regenVideoPath, 'video', regeneratingAssetId, regeneratingClipId)
   }, [
@@ -316,6 +320,7 @@ export function useRegeneration(params: UseRegenerationParams) {
   ])
 
   useEffect(() => {
+    if (cancelRequestedRef.current) return
     if (!regenImagePath || !regeneratingAssetId || !projectId || isRegenerating) return
     void persistGeneratedTake(regenImagePath, 'image', regeneratingAssetId, regeneratingClipId)
   }, [
@@ -330,9 +335,17 @@ export function useRegeneration(params: UseRegenerationParams) {
   // Keep UI clip state in sync if generation fails.
   // Do not reset generation error here; dialog owns that lifecycle.
   useEffect(() => {
+    if (cancelRequestedRef.current) return
     if (!regeneratingAssetId || isRegenerating || !regenError) return
     cancelClipRegeneration()
   }, [cancelClipRegeneration, isRegenerating, regeneratingAssetId, regenError])
+
+  useEffect(() => {
+    if (!cancelRequestedRef.current || isRegenerating) return
+    cancelRequestedRef.current = false
+    cancelClipRegeneration()
+    regenReset()
+  }, [cancelClipRegeneration, isRegenerating, regenReset])
 
   return {
     regeneratingAssetId,

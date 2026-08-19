@@ -305,3 +305,9 @@ class AppState:
     # that raises on some validation path before ever reaching start_generation()/
     # fail_generation() (both of which clear it) must not block every future generation forever.
     generation_starting_since: float | None = None
+    # True for the whole reserved_generation_start() body, including after start_generation()
+    # clears generation_starting_since and after cancel flips GenerationRunning → Cancelled.
+    # Without this, Stop during text-encoder/transformer build frees the slot while
+    # pipeline.generate() is still on the GPU; the next Start double-loads weights
+    # (meta vs cuda:0).
+    generation_in_flight: bool = False

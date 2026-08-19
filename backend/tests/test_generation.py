@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
+from _routes._errors import HTTPError
+from api_types import GenerateImageRequest, GenerateVideoRequest
 from frame_math import AutoDurationSpec
 from runtime_config.model_download_specs import delete_cp_path, get_ltx_model_spec, resolve_model_path
+from services import generation_interrupt
+from services.generation_interrupt import GenerationCancelledError
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError
 from state.app_state_types import GpuSlot, VideoPipelineState
 from tests.http_error_assertions import assert_http_error
@@ -62,6 +70,32 @@ def _fake_running_generation_state(test_state) -> None:
         ),
     )
     test_state.generation.start_generation("running")
+
+
+def _cancel_in_flight(client, entered_inference: threading.Event, run: Callable[[], object]) -> object:
+    """Run `run` on a thread, cancel via HTTP once inference has started, return its result.
+
+    TestClient is not safe for overlapping POSTs; the in-flight generate is a direct
+    handler call so cancel can use the HTTP client.
+    """
+    result: dict[str, object] = {}
+
+    def target() -> None:
+        try:
+            result["value"] = run()
+        except Exception as exc:
+            result["error"] = exc
+
+    thread = threading.Thread(target=target)
+    thread.start()
+    assert entered_inference.wait(timeout=5.0), "pipeline never entered inference"
+    cancel = client.post("/api/generate/cancel")
+    assert cancel.status_code == 200
+    thread.join(timeout=8.0)
+    assert not thread.is_alive(), "in-flight generate did not finish after cancel"
+    if "error" in result:
+        raise result["error"]  # type: ignore[misc]
+    return result["value"]
 
 
 class TestGenerate:
@@ -312,8 +346,7 @@ class TestGenerate:
         assert call["height"] == 576
 
     def test_resolution_mapping_540p_on_2_3(self, client, test_state, fake_services, create_fake_model_files):
-        # 2.3 540p is 960×544; snap_up_to_multiple(..., 64) maps height to 576
-        # on the two-stage grid.
+        # Same 540p as 2.5: 1024×576 is already on the /64 two-stage grid.
         create_fake_model_files(model_id="ltx-2.3-22b-distilled-1.1")
         test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
         _enable_local_text_encoding(test_state)
@@ -323,28 +356,30 @@ class TestGenerate:
 
         pipeline = fake_services.fast_video_pipeline
         call = pipeline.generate_calls[0]
-        assert call["width"] == 960
+        assert call["width"] == 1024
         assert call["height"] == 576
 
     def test_local_resolutions_are_all_on_the_two_stage_grid(
         self, client, test_state, fake_services, create_fake_model_files
     ):
-        # 2.5 Fast sizes are already /64. Two-stage halves each dimension onto a /32 latent grid,
-        # so anything not divisible by 64 gets silently snapped.
-        create_fake_model_files()
-        _enable_local_text_encoding(test_state)
+        # Both 2.3 and 2.5 Fast sizes must already be /64. Two-stage halves each
+        # dimension onto a /32 latent grid; sizes not divisible by 64 are rejected.
+        for model_id in ("ltx-2.5-22b-distilled", "ltx-2.3-22b-distilled-1.1"):
+            create_fake_model_files(model_id=model_id)
+            test_state.state.app_settings.active_ltx_model_id = model_id
+            _enable_local_text_encoding(test_state)
 
-        for resolution in ("540p", "720p", "1080p"):
-            for aspect_ratio in ("16:9", "9:16"):
-                fake_services.fast_video_pipeline.generate_calls.clear()
-                r = client.post(
-                    "/api/generate",
-                    json={**_T2V_JSON, "resolution": resolution, "aspectRatio": aspect_ratio, "duration": 5},
-                )
-                assert r.status_code == 200
-                call = fake_services.fast_video_pipeline.generate_calls[0]
-                assert call["width"] % 64 == 0, f"{resolution} {aspect_ratio}: width {call['width']}"
-                assert call["height"] % 64 == 0, f"{resolution} {aspect_ratio}: height {call['height']}"
+            for resolution in ("540p", "720p", "1080p"):
+                for aspect_ratio in ("16:9", "9:16"):
+                    fake_services.fast_video_pipeline.generate_calls.clear()
+                    r = client.post(
+                        "/api/generate",
+                        json={**_T2V_JSON, "resolution": resolution, "aspectRatio": aspect_ratio, "duration": 5},
+                    )
+                    assert r.status_code == 200
+                    call = fake_services.fast_video_pipeline.generate_calls[0]
+                    assert call["width"] % 64 == 0, f"{model_id} {resolution} {aspect_ratio}: width {call['width']}"
+                    assert call["height"] % 64 == 0, f"{model_id} {resolution} {aspect_ratio}: height {call['height']}"
 
     def test_resolution_mapping_720p(self, client, test_state, fake_services, create_fake_model_files):
         create_fake_model_files()
@@ -384,7 +419,7 @@ class TestGenerate:
     def test_cancelled_response(self, client, test_state, fake_services, create_fake_model_files):
         create_fake_model_files()
         _enable_local_text_encoding(test_state)
-        fake_services.fast_video_pipeline.raise_on_generate = RuntimeError("cancelled")
+        fake_services.fast_video_pipeline.raise_on_generate = GenerationCancelledError()
 
         r = client.post("/api/generate", json=_T2V_JSON)
         assert r.status_code == 200
@@ -700,7 +735,8 @@ class TestA2VGenerate:
             assert call["width"] == expected_w, f"{resolution}: expected width {expected_w}, got {call['width']}"
             assert call["height"] == expected_h, f"{resolution}: expected height {expected_h}, got {call['height']}"
 
-    def test_a2v_540p_on_2_3_uses_historical_pixels(self, client, test_state, fake_services, create_fake_model_files, tmp_path):
+    def test_a2v_540p_on_2_3_matches_2_5_pixels(self, client, test_state, fake_services, create_fake_model_files, tmp_path):
+        # A2V does not snap; 960×544 used to fail assert_resolution (not ÷64).
         create_fake_model_files(model_id="ltx-2.3-22b-distilled-1.1")
         test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
         _enable_local_text_encoding(test_state)
@@ -721,8 +757,8 @@ class TestA2VGenerate:
 
         assert r.status_code == 200
         call = fake_services.a2v_pipeline.generate_calls[0]
-        assert call["width"] == 960
-        assert call["height"] == 544
+        assert call["width"] == 1024
+        assert call["height"] == 576
 
     def test_a2v_forced_api_rejects_missing_audio_file(self, client, test_state):
         test_state.config.local_generations_mode = "unsupported"
@@ -771,7 +807,7 @@ class TestA2VGenerate:
     def test_a2v_forced_api_cancelled_response(self, client, test_state, fake_services, tmp_path):
         test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
-        fake_services.ltx_api_client.raise_on_audio_to_video = RuntimeError("cancelled")
+        fake_services.ltx_api_client.raise_on_audio_to_video = GenerationCancelledError()
         audio_file = tmp_path / "test_audio.wav"
         _write_test_wav(audio_file)
 
@@ -1308,7 +1344,7 @@ class TestForcedApiGenerate:
     def test_forced_api_cancelled_response(self, client, test_state, fake_services):
         test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
-        fake_services.ltx_api_client.raise_on_text_to_video = RuntimeError("cancelled")
+        fake_services.ltx_api_client.raise_on_text_to_video = GenerationCancelledError()
 
         r = client.post(
             "/api/generate",
@@ -1606,11 +1642,97 @@ class TestGenerateCancel:
         assert r.status_code == 200
         data = r.json()
         assert data["status"] == "cancelling"
+        assert generation_interrupt.is_requested()
+
+        idle = client.post("/api/generate/cancel")
+        assert idle.status_code == 200
+        assert idle.json()["status"] == "no_active_generation"
 
     def test_cancel_no_active(self, client):
         r = client.post("/api/generate/cancel")
         assert r.status_code == 200
         assert r.json()["status"] == "no_active_generation"
+        assert not generation_interrupt.is_requested()
+
+    def test_in_flight_cancel_stops_before_remaining_steps(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files()
+        _enable_local_text_encoding(test_state)
+        pipeline = fake_services.fast_video_pipeline
+        pipeline.inference_steps = 12
+        pipeline.step_delay_s = 0.05
+
+        response = _cancel_in_flight(
+            client,
+            pipeline.entered_inference,
+            lambda: test_state.video_generation.generate(GenerateVideoRequest.model_validate(_T2V_JSON)),
+        )
+
+        assert response.status == "cancelled"
+        assert pipeline.steps_completed < pipeline.inference_steps
+        assert pipeline.generate_calls == []
+        assert test_state.state.gpu_slot is not None
+
+    def test_generate_after_user_stop_is_not_immediately_cancelled(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files()
+        _enable_local_text_encoding(test_state)
+        pipeline = fake_services.fast_video_pipeline
+        pipeline.inference_steps = 8
+        pipeline.step_delay_s = 0.02
+
+        cancelled = _cancel_in_flight(
+            client,
+            pipeline.entered_inference,
+            lambda: test_state.video_generation.generate(
+                GenerateVideoRequest.model_validate(_T2V_JSON)
+            ),
+        )
+        assert cancelled.status == "cancelled"
+
+        pipeline.inference_steps = 1
+        pipeline.step_delay_s = 0
+        r = client.post("/api/generate", json=_T2V_JSON)
+        assert r.status_code == 200
+        assert r.json()["status"] == "complete"
+
+    def test_second_generate_409s_until_cancelled_job_unwinds(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files()
+        _enable_local_text_encoding(test_state)
+        pipeline = fake_services.fast_video_pipeline
+        pipeline.inference_steps = 20
+        pipeline.step_delay_s = 0.05
+
+        result: dict[str, object] = {}
+
+        def run() -> None:
+            result["value"] = test_state.video_generation.generate(
+                GenerateVideoRequest.model_validate(_T2V_JSON)
+            )
+
+        thread = threading.Thread(target=run)
+        thread.start()
+        assert pipeline.entered_inference.wait(timeout=5.0)
+        cancel = client.post("/api/generate/cancel")
+        assert cancel.status_code == 200
+        assert cancel.json()["status"] == "cancelling"
+
+        with pytest.raises(HTTPError) as exc_info:
+            test_state.video_generation.generate(GenerateVideoRequest.model_validate(_T2V_JSON))
+        assert exc_info.value.status_code == 409
+
+        thread.join(timeout=8.0)
+        assert not thread.is_alive()
+        assert result["value"].status == "cancelled"  # type: ignore[union-attr]
+        idle = client.post("/api/generate/cancel")
+        assert idle.status_code == 200
+        assert idle.json()["status"] == "no_active_generation"
+        assert test_state.generation.try_reserve_generation_start() is True
+        test_state.generation.release_generation_start_reservation()
 
 
 class TestGenerateModelSpecs:
@@ -1676,6 +1798,7 @@ class TestGenerationProgress:
         r = client.get("/api/generation/progress")
         assert r.status_code == 200
         assert r.json()["status"] == "idle"
+        assert r.json()["cancellable"] is False
 
     def test_running(self, client, test_state):
         _fake_running_generation_state(test_state)
@@ -1689,6 +1812,7 @@ class TestGenerationProgress:
         assert data["progress"] == 50
         assert data["currentStep"] == 4
         assert data["totalSteps"] == 8
+        assert data["cancellable"] is True
 
     def test_running_from_api_generation_state(self, client, test_state):
         test_state.generation.start_api_generation("api-running")
@@ -1702,6 +1826,17 @@ class TestGenerationProgress:
         assert data["progress"] == 35
         assert data["currentStep"] is None
         assert data["totalSteps"] is None
+        assert data["cancellable"] is False
+
+    def test_starting_reservation_is_cancellable(self, client, test_state):
+        assert test_state.generation.try_reserve_generation_start() is True
+        r = client.get("/api/generation/progress")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "running"
+        assert data["phase"] == "starting"
+        assert data["cancellable"] is True
+        test_state.generation.release_generation_start_reservation()
 
 
 class TestGenerateImage:
@@ -1749,11 +1884,31 @@ class TestGenerateImage:
 
     def test_cancelled(self, client, fake_services, create_fake_model_files):
         create_fake_model_files(include_zit=True)
-        fake_services.image_generation_pipeline.raise_on_generate = RuntimeError("cancelled")
+        fake_services.image_generation_pipeline.raise_on_generate = GenerationCancelledError()
 
         r = client.post("/api/generate-image", json={"prompt": "test"})
         assert r.status_code == 200
         assert r.json()["status"] == "cancelled"
+
+    def test_in_flight_cancel_stops_before_remaining_steps(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files(include_zit=True)
+        pipeline = fake_services.image_generation_pipeline
+        pipeline.inference_steps = 12
+        pipeline.step_delay_s = 0.05
+
+        response = _cancel_in_flight(
+            client,
+            pipeline.entered_inference,
+            lambda: test_state.image_generation.generate(
+                GenerateImageRequest.model_validate({"prompt": "test", "numSteps": 4})
+            ),
+        )
+
+        assert response.status == "cancelled"
+        assert pipeline.steps_completed < pipeline.inference_steps
+        assert test_state.state.gpu_slot is not None
 
     def test_partial_outputs_cleaned_up_on_mid_batch_error(self, client, fake_services, create_fake_model_files, tmp_path):
         create_fake_model_files(include_zit=True)
@@ -1793,7 +1948,7 @@ class TestForcedApiGenerateImage:
     def test_generate_image_cancelled(self, client, test_state, fake_services):
         test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.fal_api_key = "fal-key"
-        fake_services.zit_api_client.raise_on_text_to_image = RuntimeError("cancelled")
+        fake_services.zit_api_client.raise_on_text_to_image = GenerationCancelledError()
 
         r = client.post("/api/generate-image", json={"prompt": "A cat"})
 

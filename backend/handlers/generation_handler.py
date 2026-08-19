@@ -17,6 +17,8 @@ from api_types import (
     GenerationProgressResponse,
 )
 from handlers.base import StateHandlerBase, with_state_lock
+from services import generation_interrupt
+from services.generation_interrupt import GenerationCancelledError
 from services.patches import diffusion_stage_cache
 from state.app_state_types import (
     ApiGeneration,
@@ -50,24 +52,35 @@ class GenerationHandler(StateHandlerBase):
 
         Shared across every generation kind (video/image/retake/extend/ic-lora all hold a
         reference to this same GenerationHandler instance) — one global gate, not one per
-        endpoint. fail_generation() and start_generation()/start_api_generation() clear this on
-        every success/failure path they're reached from; the timeout below is a backstop for any
-        path that raises before reaching either (e.g. a request-validation check that runs after
-        the reservation but outside the try/except that calls fail_generation).
+        endpoint. reserved_generation_start() holds generation_in_flight until the handler
+        actually returns (including GPU unwind after Stop). start_generation() only clears
+        generation_starting_since so progress can move off phase=starting. The timeout below
+        is a backstop for a reservation that never got a context finally (legacy try_reserve
+        without the context manager).
         """
         since = self.state.generation_starting_since
         if self.is_generation_running():
             logger.info("Generation start reservation denied: a generation is already running")
             return False
-        if since is not None and time.monotonic() - since < _RESERVATION_TIMEOUT_S:
+        if self.state.generation_in_flight:
+            # After start_generation(), starting_since is None and in_flight stays True through
+            # generate() unwind — do not expire that. Only a pre-start reservation whose
+            # timestamp aged out (no finally) is reclaimable.
+            if since is None or time.monotonic() - since < _RESERVATION_TIMEOUT_S:
+                logger.info("Generation start reservation denied: a generation is still in flight")
+                return False
+        elif since is not None and time.monotonic() - since < _RESERVATION_TIMEOUT_S:
             logger.info("Generation start reservation denied: another reservation is still active")
             return False
+        self.state.generation_in_flight = True
         self.state.generation_starting_since = time.monotonic()
         return True
 
     @with_state_lock
     def release_generation_start_reservation(self) -> None:
+        self.state.generation_in_flight = False
         self.state.generation_starting_since = None
+        generation_interrupt.clear()
 
     @contextmanager
     def reserved_generation_start(self) -> Iterator[None]:
@@ -94,6 +107,15 @@ class GenerationHandler(StateHandlerBase):
             raise RuntimeError("Generation already in progress")
         if self.state.gpu_slot is None:
             raise RuntimeError("No active GPU pipeline")
+        if generation_interrupt.is_requested():
+            # Stop during reservation (enhance / pipeline load). Do not clear the Event
+            # or launch Running — that would let this call proceed and a second Start
+            # overlap on the GPU.
+            self.state.generation_starting_since = None
+            self.state.active_generation = GpuGeneration(
+                state=GenerationCancelled(id=generation_id)
+            )
+            raise GenerationCancelledError()
         self.state.generation_starting_since = None
 
         # EXPERIMENTAL: push the live Settings toggle, then drop any transformer
@@ -103,6 +125,7 @@ class GenerationHandler(StateHandlerBase):
         # docstring section for the RTX 5090 repro (~42GB reported on a 32GB card).
         diffusion_stage_cache.set_enabled(self.state.app_settings.diffusion_stage_cache_enabled)
         diffusion_stage_cache.evict()
+        generation_interrupt.clear()
 
         self.state.active_generation = GpuGeneration(
             state=GenerationRunning(
@@ -116,12 +139,19 @@ class GenerationHandler(StateHandlerBase):
     def start_api_generation(self, generation_id: str) -> None:
         if self.is_generation_running():
             raise RuntimeError("Generation already in progress")
+        if generation_interrupt.is_requested():
+            self.state.generation_starting_since = None
+            self.state.active_generation = ApiGeneration(
+                state=GenerationCancelled(id=generation_id)
+            )
+            raise GenerationCancelledError()
         self.state.generation_starting_since = None
 
         # EXPERIMENTAL: see start_generation -- an API generation doesn't build a
         # local transformer itself, but evicting here still releases VRAM held by
         # a previous local generation's cached build.
         diffusion_stage_cache.evict()
+        generation_interrupt.clear()
 
         self.state.active_generation = ApiGeneration(
             state=GenerationRunning(
@@ -216,6 +246,16 @@ class GenerationHandler(StateHandlerBase):
             case _:
                 return False
 
+    def raise_if_cancelled(self) -> None:
+        """Abort if the user cancelled THIS in-flight job.
+
+        AppState GenerationCancelled is sticky after the slot is released. Checking it
+        here made the next Generate return cancelled immediately (the Windows repro after
+        Stop). The interrupt Event is cleared on release; it is the signal for this
+        reservation.
+        """
+        generation_interrupt.raise_if_requested()
+
     @with_state_lock
     def update_progress(
         self,
@@ -238,16 +278,25 @@ class GenerationHandler(StateHandlerBase):
     def cancel_generation(self) -> CancelResponse:
         running_generation = self._running_generation()
         if running_generation is not None:
+            generation_interrupt.request()
             slot, running = running_generation
             self._set_generation_state(slot, GenerationCancelled(id=running.id))
             return CancelCancellingResponse(status="cancelling", id=running.id)
 
-        cancelled_generation = self._cancelled_generation()
-        match cancelled_generation:
-            case (_, GenerationCancelled(id=generation_id)):
-                return CancelCancellingResponse(status="cancelling", id=generation_id)
-            case _:
-                return CancelNoActiveGenerationResponse(status="no_active_generation")
+        if self.state.generation_in_flight:
+            generation_interrupt.request()
+            # After start_generation(), starting_since is None and active_generation is this
+            # job. During reservation it still holds the previous job's sticky terminal id.
+            if self.state.generation_starting_since is None:
+                cancelled_in_flight = self._cancelled_generation()
+                if cancelled_in_flight is not None:
+                    return CancelCancellingResponse(status="cancelling", id=cancelled_in_flight[1].id)
+            return CancelCancellingResponse(status="cancelling", id="pending")
+
+        # Sticky GenerationCancelled after the slot is released is idle, not in-flight.
+        # Returning "cancelling" here used to make a second Stop look accepted without
+        # arming the Event.
+        return CancelNoActiveGenerationResponse(status="no_active_generation")
 
     @with_state_lock
     def complete_generation(self, result: str | list[str] | None = None) -> None:
@@ -278,6 +327,14 @@ class GenerationHandler(StateHandlerBase):
         logger.error("Generation failed without active running job: %s", error)
 
     @with_state_lock
+    def _local_gpu_slot_occupied(self) -> bool:
+        match self.state.active_generation:
+            case GpuGeneration() if self.state.gpu_slot is not None:
+                return True
+            case _:
+                return False
+
+    @with_state_lock
     def get_generation_progress(self) -> GenerationProgressResponse:
         # Checked before matching active_generation: try_reserve_generation_start() only succeeds
         # when is_generation_running() is false, so a live reservation never coexists with an
@@ -293,15 +350,19 @@ class GenerationHandler(StateHandlerBase):
             # baseline capture) must not see "idle" during this window and wrongly
             # conclude the single global slot is free — see try_reserve_generation_start's
             # docstring for why this window needed closing on the write side too.
+            # cancellable=True: Stop during reservation sets the interrupt Event before
+            # start_generation()/start_api_generation(); sticky previous slot is not this job.
             return GenerationProgressResponse(
                 status="running",
                 phase="starting",
                 progress=0,
                 currentStep=0,
                 totalSteps=0,
+                cancellable=True,
             )
 
         gen = self._generation_for_polling()
+        gpu_cancellable = self._local_gpu_slot_occupied()
 
         match gen:
             case GenerationRunning(id=generation_id, progress=progress):
@@ -312,6 +373,7 @@ class GenerationHandler(StateHandlerBase):
                     currentStep=progress.current_step,
                     totalSteps=progress.total_steps,
                     id=generation_id,
+                    cancellable=gpu_cancellable,
                 )
             case GenerationComplete(id=generation_id, result=result):
                 return GenerationProgressResponse(
@@ -322,6 +384,19 @@ class GenerationHandler(StateHandlerBase):
                     totalSteps=0,
                     result=result,
                     id=generation_id,
+                    cancellable=False,
+                )
+            case GenerationCancelled(id=generation_id) if self.state.generation_in_flight:
+                # Slot is still occupied until pipeline.generate() unwinds. Report running so
+                # the cross-project Generate lock does not treat Stop as "slot is free".
+                return GenerationProgressResponse(
+                    status="running",
+                    phase="cancelled",
+                    progress=0,
+                    currentStep=0,
+                    totalSteps=0,
+                    id=generation_id,
+                    cancellable=gpu_cancellable,
                 )
             case GenerationCancelled(id=generation_id):
                 return GenerationProgressResponse(
@@ -331,6 +406,7 @@ class GenerationHandler(StateHandlerBase):
                     currentStep=0,
                     totalSteps=0,
                     id=generation_id,
+                    cancellable=False,
                 )
             case GenerationError(id=generation_id):
                 return GenerationProgressResponse(
@@ -340,6 +416,7 @@ class GenerationHandler(StateHandlerBase):
                     currentStep=0,
                     totalSteps=0,
                     id=generation_id,
+                    cancellable=False,
                 )
             case _:
                 return GenerationProgressResponse(
@@ -348,6 +425,7 @@ class GenerationHandler(StateHandlerBase):
                     progress=0,
                     currentStep=0,
                     totalSteps=0,
+                    cancellable=False,
                 )
 
     @with_state_lock
