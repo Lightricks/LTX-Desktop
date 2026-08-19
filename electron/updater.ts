@@ -18,6 +18,9 @@ const MAX_RELEASE_NOTES_CHARS = 16_384
 // The single in-memory value of update state. Broadcast on every change.
 let state: UpdateStatePayload = { status: 'idle', currentVersion: app.getVersion() }
 let periodicHandle: ReturnType<typeof setInterval> | null = null
+// Mac toggle-off sets UI to idle without aborting HTTP. Track the transfer so a
+// new check cannot start while a zip is still downloading.
+let macInFlight = false
 
 function setState(patch: Partial<UpdateStatePayload>): void {
   state = { ...state, ...patch }
@@ -34,9 +37,20 @@ export function getUpdateState(): UpdateStatePayload {
   return state
 }
 
+function beginMacFlight(): void {
+  if (process.platform === 'darwin') macInFlight = true
+}
+
+function endMacFlight(): void {
+  macInFlight = false
+}
+
 // True when we must not start or clobber with a new check.
 function isBusy(): boolean {
-  return state.status === 'checking' || state.status === 'downloading' || state.status === 'downloaded'
+  return macInFlight
+    || state.status === 'checking'
+    || state.status === 'downloading'
+    || state.status === 'downloaded'
 }
 
 function hasRestorableOffer(): boolean {
@@ -46,6 +60,16 @@ function hasRestorableOffer(): boolean {
 // Network/feed errors must not drop a known offer or a finished download.
 function failUpdate(message: string): void {
   logger.error(`[updater] ${message}`)
+  if (process.platform === 'darwin') {
+    // No modal / Try again. Keep a finished download; otherwise idle so Check retries.
+    if (state.status === 'downloaded') {
+      setState({ message })
+      return
+    }
+    endMacFlight()
+    setState({ status: 'idle', message })
+    return
+  }
   if (state.status === 'downloading') {
     setState({ status: 'available', message })
     return
@@ -63,6 +87,7 @@ function failUpdate(message: string): void {
 
 function runCheck(): void {
   if (isBusy()) return // never interrupt an in-flight download or a downloaded-and-waiting state
+  beginMacFlight()
   logger.info('[updater] Checking for update...')
   autoUpdater.checkForUpdates().catch((e) => {
     failUpdate(e instanceof Error ? e.message : String(e))
@@ -77,21 +102,54 @@ export function armPeriodicCheck(): void {
   }
 }
 
+// Mac has no update modal: the About toggle is the whole decision.
+// On = check, auto-download, feed Squirrel so quit installs (1.2.0-style).
+// Off = none of that. Windows/Linux keep user-gated download/install.
+// Flipping off cannot abort an in-flight HTTP download (no CancellationToken).
+// Squirrel is only fed when the zip finishes with autoInstallOnAppQuit still true;
+// after that, toggling off does not un-stage the update.
+function syncMacSilentUpdates(): void {
+  const enabled = process.platform === 'darwin' && getAutoCheckUpdates()
+  autoUpdater.autoDownload = enabled
+  autoUpdater.autoInstallOnAppQuit = enabled
+}
+
 export function initAutoUpdater(channel: UpdateChannel = 'latest'): void {
   if (channel !== 'latest') {
     autoUpdater.channel = channel
     autoUpdater.allowPrerelease = true
   }
 
-  // Core change: the user controls download and install.
+  // Windows/Linux: user controls download and install. Mac: syncMacSilentUpdates.
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = false
+  syncMacSilentUpdates()
 
-  autoUpdater.on('checking-for-update', () => setState({ status: 'checking', message: undefined }))
+  autoUpdater.on('checking-for-update', () => {
+    if (process.platform === 'darwin' && !getAutoCheckUpdates()) return
+    setState({ status: 'checking', message: undefined })
+  })
 
   autoUpdater.on('update-available', (info: UpdateInfo) => {
     const version = info.version
-    // Skip enforcement: if the user skipped THIS version, stay silent (idle).
+    if (process.platform === 'darwin') {
+      // Skip does not apply. If the toggle is off, do not sit in Windows `available`
+      // (that would disable Check and claim a download). autoDownload starts next.
+      if (!getAutoCheckUpdates()) {
+        endMacFlight()
+        setState({ status: 'idle', version })
+        return
+      }
+      setState({
+        status: 'downloading',
+        version,
+        percent: 0,
+        releaseNotes: releaseNotesFromFeed(info),
+        message: undefined,
+      })
+      return
+    }
+    // Skip is a Windows/Linux modal action.
     if (getSkippedUpdateVersion() === version) {
       setState({ status: 'idle', version })
       return
@@ -105,15 +163,28 @@ export function initAutoUpdater(channel: UpdateChannel = 'latest'): void {
     })
   })
 
-  autoUpdater.on('update-not-available', () => setState({ status: 'not-available', message: undefined }))
+  autoUpdater.on('update-not-available', () => {
+    endMacFlight()
+    setState({ status: 'not-available', message: undefined })
+  })
 
-  autoUpdater.on('download-progress', (p: ProgressInfo) =>
-    setState({ status: 'downloading', percent: Math.round(p.percent) }),
-  )
+  autoUpdater.on('download-progress', (p: ProgressInfo) => {
+    if (process.platform === 'darwin' && !getAutoCheckUpdates()) return
+    setState({ status: 'downloading', percent: Math.round(p.percent) })
+  })
 
   autoUpdater.on('update-downloaded', async (info: UpdateInfo) => {
+    endMacFlight()
+    if (process.platform === 'darwin') {
+      // Squirrel is fed only when autoInstallOnAppQuit is still true at zip-complete.
+      if (!getAutoCheckUpdates()) {
+        setState({ status: 'idle', version: info.version })
+        return
+      }
+      setState({ status: 'downloaded', version: info.version })
+      return // macOS: no python pre-download (unchanged)
+    }
     setState({ status: 'downloaded', version: info.version })
-    if (process.platform === 'darwin') return // macOS: no python pre-download (unchanged)
 
     logger.info(`[updater] Update downloaded: v${info.version}, pre-downloading python deps...`)
     try {
@@ -139,11 +210,13 @@ export function initAutoUpdater(channel: UpdateChannel = 'latest'): void {
 
 // ---- Actions called from IPC handlers ----
 
-// Manual "Check for updates": explicit user intent. Clear any skip and force a check even if
-// auto-check is off.
+// Manual "Check for updates". Windows: allowed even if auto-check is off (modal still
+// gates download). Mac: the toggle is the opt-out, so a check with it off is a no-op.
 export async function checkForUpdatesNow(): Promise<void> {
   if (isBusy()) return
+  if (process.platform === 'darwin' && !getAutoCheckUpdates()) return
   setSkippedUpdateVersion(undefined) // an explicit check overrides a previous skip
+  beginMacFlight()
   logger.info('[updater] Manual check for updates...')
   try {
     await autoUpdater.checkForUpdates()
@@ -186,4 +259,14 @@ export function skipUpdateVersion(version: string): void {
 export function setAutoCheckUpdatesEnabled(enabled: boolean): void {
   setAutoCheckUpdates(enabled)
   armPeriodicCheck()
+  syncMacSilentUpdates()
+  if (process.platform !== 'darwin') return
+  if (enabled) {
+    runCheck() // no-op while macInFlight (HTTP still running after toggle-off)
+    return
+  }
+  // Drop in-flight check/download UI. Leave `downloaded` — Squirrel is already staged.
+  if (state.status === 'checking' || state.status === 'available' || state.status === 'downloading') {
+    setState({ status: 'idle' })
+  }
 }
