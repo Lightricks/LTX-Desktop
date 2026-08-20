@@ -118,11 +118,10 @@ class GenerationHandler(StateHandlerBase):
             raise GenerationCancelledError()
         self.state.generation_starting_since = None
 
-        # EXPERIMENTAL: push the live Settings toggle, then drop any transformer
-        # cached from the previous generation before this one starts -- otherwise
-        # it stays resident while this generation's own text encoder/VAE/etc.
-        # build, double-booking VRAM. See that module's GENERATION-SCOPED
-        # docstring section for the RTX 5090 repro (~42GB reported on a 32GB card).
+        # Push the live Settings toggle, then drop any transformer left by a
+        # cancelled/failed generation before this one starts. A normal two-stage
+        # generation retires the cache immediately after the reuse hit, before VAE
+        # decode; this is the defensive backstop. See diffusion_stage_cache.py.
         diffusion_stage_cache.set_enabled(self.state.app_settings.diffusion_stage_cache_enabled)
         diffusion_stage_cache.evict()
         generation_interrupt.clear()

@@ -3807,7 +3807,7 @@
             "title": "Activeltxmodelid"
           },
           "diffusionStageCacheEnabled": {
-            "default": false,
+            "default": true,
             "title": "Diffusionstagecacheenabled",
             "type": "boolean"
           },
