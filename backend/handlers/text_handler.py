@@ -185,7 +185,7 @@ class TextHandler(StateHandlerBase):
             api_key=settings.ltx_api_key,
             checkpoint_path=str(get_existing_cp_path(self.models_dir, model_spec.model_cp)),
             enhance_prompt=enhance_prompt,
-            api_model_id=model_spec.api_text_encoder_model_id,
+            api_model=model_spec.api_prompt_embedding_model,
         )
         if encoded is not None:
             self._cache_prompt(prompt, enhance_prompt, encoded)

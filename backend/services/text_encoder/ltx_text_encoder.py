@@ -11,7 +11,9 @@ from typing import TYPE_CHECKING, Any, TypeGuard
 
 import torch
 
+from runtime_config.ltx_api_text_encoder_ids import LtxApiPromptEmbeddingModel
 from services.http_client.http_client import HTTPClient
+from services.services_utils import JSONValue
 from state.app_state_types import TextEncodingResult
 
 if TYPE_CHECKING:
@@ -243,14 +245,27 @@ class LTXTextEncoder:
         api_key: str,
         checkpoint_path: str,
         enhance_prompt: bool,
-        api_model_id: str | None = None,
+        api_model: LtxApiPromptEmbeddingModel | None = None,
     ) -> TextEncodingResult | None:
-        model_id = api_model_id or self.get_model_id_from_checkpoint(checkpoint_path)
-        if not model_id:
-            logger.warning(
-                "Checkpoint %s carries no API model id; skipping LTX API text encoding", checkpoint_path
-            )
-            return None
+        # Gateway XOR: exactly one of `model` (2.5+) or `model_id` (legacy 2.3 / Comfy).
+        json_payload: dict[str, JSONValue] = {
+            "prompt": prompt,
+            "enhance_prompt": enhance_prompt,
+        }
+        if api_model is not None:
+            json_payload["model"] = {
+                "ltx_version": api_model["ltx_version"],
+                "gemma_version": api_model["gemma_version"],
+            }
+        else:
+            model_id = self.get_model_id_from_checkpoint(checkpoint_path)
+            if not model_id:
+                logger.warning(
+                    "Checkpoint %s carries no API model selector; skipping LTX API text encoding",
+                    checkpoint_path,
+                )
+                return None
+            json_payload["model_id"] = model_id
 
         try:
             start = time.time()
@@ -260,11 +275,7 @@ class LTXTextEncoder:
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
-                json_payload={
-                    "prompt": prompt,
-                    "model_id": model_id,
-                    "enhance_prompt": enhance_prompt,
-                },
+                json_payload=json_payload,
                 timeout=60,
             )
 

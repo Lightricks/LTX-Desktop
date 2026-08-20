@@ -15,14 +15,24 @@ with the following adjustments:
 from __future__ import annotations
 
 from collections.abc import Iterator
+from functools import partial
+from typing import Any
 import torch
 
+from ltx_core.components.diffusion_steps import EulerAncestralDiffusionStep
 from ltx_core.components.guiders import MultiModalGuiderParams
 from ltx_core.loader import LoraPathStrengthAndSDOps
 from ltx_core.model.video_vae import DimensionSizeConfig, TileSizeConfig, get_video_chunks_number
 from ltx_core.quantization import QuantizationPolicy
 from ltx_core.types import Audio
+from ltx_pipelines.distilled import (
+    ANCESTRAL_ETA,
+    ANCESTRAL_NOISE_SEED_OFFSET,
+    ANCESTRAL_S_NOISE,
+    should_use_ancestral_sampler,
+)
 from ltx_pipelines.utils.media_io import encode_video, get_videostream_metadata
+from ltx_pipelines.utils.samplers import euler_ancestral_denoising_loop
 
 from api_types import ExtendMode
 from services.ltx_pipeline_common import build_model_paths, offload_mode_for_prefetch_count, resolve_tiling_config
@@ -35,6 +45,30 @@ from services.retake_pipeline.retake_pipeline import RetakePipeline
 # MASK_DELTA_SECONDS (ltxv-api retake-edit-window.computePadding). 0 disables the feather.
 _EXTEND_MASK_DELTA_SECONDS = 0.5
 
+
+def distilled_stage_sampler_kwargs(
+    *,
+    distilled: bool,
+    use_ancestral: bool,
+    seed: int,
+    dtype: torch.dtype,
+) -> dict[str, Any]:
+    """Optional ``stepper``/``loop`` overrides for :class:`DiffusionStage`.
+
+    Distilled 2.5+ checkpoints need the ancestral sampler; 2.3 and the guided
+    (non-distilled) path keep DiffusionStage's deterministic defaults.
+    ``use_ancestral`` is resolved once at pipeline init from checkpoint metadata.
+    """
+    if not distilled or not use_ancestral:
+        return {}
+    return {
+        "stepper": EulerAncestralDiffusionStep(eta=ANCESTRAL_ETA, s_noise=ANCESTRAL_S_NOISE),
+        "loop": partial(
+            euler_ancestral_denoising_loop,
+            noise_seed=seed + ANCESTRAL_NOISE_SEED_OFFSET,
+            model_dtype=dtype,
+        ),
+    }
 
 
 class LTXRetakePipeline:
@@ -98,6 +132,7 @@ class LTXRetakePipeline:
         video_vae = model_paths.video_vae()
         audio_vae = model_paths.audio_vae()
         transformer = model_paths.transformer()
+        self.use_ancestral_sampler = should_use_ancestral_sampler(transformer)
 
         self.prompt_encoder = PromptEncoder(
             model_paths,
@@ -132,6 +167,24 @@ class LTXRetakePipeline:
             audio_vae,
             self.dtype,
             device,
+        )
+
+    def _invoke_diffusion_stage(
+        self,
+        *,
+        distilled: bool,
+        seed: int,
+        **stage_kwargs: Any,
+    ) -> Any:
+        """Call ``DiffusionStage`` with distilled 2.5 ancestral overrides when needed."""
+        return self.stage(
+            **stage_kwargs,
+            **distilled_stage_sampler_kwargs(
+                distilled=distilled,
+                use_ancestral=self.use_ancestral_sampler,
+                seed=seed,
+                dtype=self.dtype,
+            ),
         )
 
     @torch.no_grad()
@@ -302,8 +355,9 @@ class LTXRetakePipeline:
             )
 
         # --- Run diffusion stage ---
-
-        video_state, audio_state = self.stage(
+        video_state, audio_state = self._invoke_diffusion_stage(
+            distilled=distilled,
+            seed=effective_seed,
             denoiser=denoiser,
             sigmas=sigmas,
             noiser=noiser,
@@ -314,7 +368,6 @@ class LTXRetakePipeline:
             video=video_modality_spec,
             audio=audio_modality_spec,
         )
-
 
         # --- Decode audio first (eager, small) ---
         assert audio_state is not None

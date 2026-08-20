@@ -42,6 +42,18 @@ class LtxOfferingCapabilities:
     resolution_pixels_16_9: dict[LTXVideoGenResolution, tuple[int, int]]
 
 
+@dataclass(frozen=True)
+class LocalOfferingCapabilities(LtxOfferingCapabilities):
+    """Same shape as the base class — this exists purely so local_caps()'s return
+    type can't be confused with api_caps()'s at the type-checker level."""
+
+
+@dataclass(frozen=True)
+class ApiOfferingCapabilities(LtxOfferingCapabilities):
+    """Same shape as the base class — this exists purely so api_caps()'s return
+    type can't be confused with local_caps()'s at the type-checker level."""
+
+
 # Local Fast sizes: one /64 two-stage grid for 2.3 and 2.5. Splitting 540p
 # (2.3 960×544 vs 2.5 1024×576) made a model switch fail assert_resolution.
 _LOCAL_PIXELS_16_9: dict[LTXVideoGenResolution, tuple[int, int]] = {
@@ -51,12 +63,13 @@ _LOCAL_PIXELS_16_9: dict[LTXVideoGenResolution, tuple[int, int]] = {
 }
 
 _API_PIXELS_16_9: dict[LTXVideoGenResolution, tuple[int, int]] = {
+    "720p": (1280, 720),
     "1080p": (1920, 1080),
     "1440p": (2560, 1440),
     "2160p": (3840, 2160),
 }
 
-_LOCAL_2_3 = LtxOfferingCapabilities(
+_LOCAL_2_3 = LocalOfferingCapabilities(
     t2v=True,
     i2v=True,
     a2v=True,
@@ -72,13 +85,13 @@ _LOCAL_2_3 = LtxOfferingCapabilities(
 # DistilledA2V is wired for local 2.5. Auto duration is DurationHead on the
 # distilled checkpoint (t2v/i2v; A2V length comes from the audio). Advertised
 # only when those weights are on disk — see effective_local_caps().
-_LOCAL_2_5 = LtxOfferingCapabilities(
+_LOCAL_2_5 = LocalOfferingCapabilities(
     t2v=True,
     i2v=True,
     a2v=True,
     ic_lora=True,
-    retake=False,
-    extend=False,
+    retake=True,
+    extend=True,
     user_loras=True,
     camera_motion=True,
     auto_duration=True,
@@ -87,7 +100,7 @@ _LOCAL_2_5 = LtxOfferingCapabilities(
 
 # API rows follow ltxv-api handlers. camera_motion is a named LoRA on the tia2v
 # stack, not a Desktop capability on Fast.
-_API_FAST = LtxOfferingCapabilities(
+_API_FAST = ApiOfferingCapabilities(
     t2v=True,
     i2v=True,
     a2v=False,
@@ -100,7 +113,7 @@ _API_FAST = LtxOfferingCapabilities(
     resolution_pixels_16_9=_API_PIXELS_16_9,
 )
 
-_API_FAST_2_5 = LtxOfferingCapabilities(
+_API_FAST_2_5 = ApiOfferingCapabilities(
     t2v=True,
     i2v=True,
     a2v=True,
@@ -113,7 +126,7 @@ _API_FAST_2_5 = LtxOfferingCapabilities(
     resolution_pixels_16_9=_API_PIXELS_16_9,
 )
 
-_API_PRO = LtxOfferingCapabilities(
+_API_PRO = ApiOfferingCapabilities(
     t2v=True,
     i2v=True,
     a2v=True,
@@ -128,7 +141,7 @@ _API_PRO = LtxOfferingCapabilities(
 
 # ltxv-api retake/extend accept ltx-2-pro / ltx-2-3-pro. Auto duration is on both
 # 2.5 API variants (t2v/i2v duration=null).
-_API_PRO_2_5 = LtxOfferingCapabilities(
+_API_PRO_2_5 = ApiOfferingCapabilities(
     t2v=True,
     i2v=True,
     a2v=True,
@@ -142,7 +155,7 @@ _API_PRO_2_5 = LtxOfferingCapabilities(
 )
 
 
-def local_caps(model_id: LTXLocalModelId) -> LtxOfferingCapabilities:
+def local_caps(model_id: LTXLocalModelId) -> LocalOfferingCapabilities:
     match model_id:
         case "ltx-2.5-22b-distilled":
             return _LOCAL_2_5
@@ -156,7 +169,7 @@ def effective_local_caps(
     model_id: LTXLocalModelId,
     *,
     duration_head_ready: bool,
-) -> LtxOfferingCapabilities:
+) -> LocalOfferingCapabilities:
     """Static offering flags, with Auto duration on only when DurationHead weights are on disk.
 
     Local-only. API 2.5 Auto duration is independent of this file.
@@ -167,7 +180,7 @@ def effective_local_caps(
     return caps
 
 
-def api_caps(pipeline: LTXVideoGenPipeline) -> LtxOfferingCapabilities:
+def api_caps(pipeline: LTXVideoGenPipeline) -> ApiOfferingCapabilities:
     match pipeline:
         case "fast":
             return _API_FAST

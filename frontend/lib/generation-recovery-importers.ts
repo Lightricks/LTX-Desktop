@@ -35,6 +35,7 @@ const importVideo: RecoveryImporter = async (ctx, result, { addAsset, modelsDir 
       mode: genMode,
       prompt: ctx.prompt,
       model: ctx.model ?? s?.model ?? 'fast',
+      modelLabel: ctx.modelLabel,
       duration: s?.duration ?? null,
       resolution: s?.videoResolution ?? '',
       fps: s?.fps ?? 24,

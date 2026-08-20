@@ -18,7 +18,10 @@ from api_types import (
     LTXVideoGenerationSpec,
     ModelCheckpointID,
 )
-from runtime_config.ltx_api_text_encoder_ids import LTX_2_5_API_TEXT_ENCODER_MODEL_ID
+from runtime_config.ltx_api_text_encoder_ids import (
+    LTX_2_5_API_PROMPT_EMBEDDING_MODEL,
+    LtxApiPromptEmbeddingModel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +95,9 @@ class LTXLocalModelSpec:
     supported_pipelines: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], ...]
     version_label: str
     supports_api_text_encoding: bool = True
-    # Overrides encrypted_wandb_properties for published checkpoints that omit it.
-    api_text_encoder_model_id: str | None = None
+    # `/v1/prompt-embedding` `model` selector for published checkpoints that omit
+    # `encrypted_wandb_properties` (LTX 2.5 OS split). XOR with checkpoint `model_id`.
+    api_prompt_embedding_model: LtxApiPromptEmbeddingModel | None = None
     # True when the model was captioned as audio-visual: enhancement must describe the soundscape
     # (and quote dialogue) as well as the visuals, or the prompt lands outside the training
     # distribution and the model improvises the missing audio — typically as someone speaking.
@@ -380,7 +384,7 @@ def get_ltx_model_spec(model_id: LTXLocalModelId) -> LTXLocalModelSpec:
                 ),
                 supported_pipelines=_DISTILLED_PIPELINES_2_5,
                 version_label="2.5",
-                api_text_encoder_model_id=LTX_2_5_API_TEXT_ENCODER_MODEL_ID,
+                api_prompt_embedding_model=LTX_2_5_API_PROMPT_EMBEDDING_MODEL,
                 wants_audio_visual_captions=True,
                 prompt_enhancer_cp="gemma-4-e2b-it",
                 is_latest=True,

@@ -39,6 +39,9 @@ export interface ResolvedVideoGenerationOptions {
 
 type DurationSelectionMode = 'preserve' | 'smallest_valid'
 
+/** GenSpace picker floor. The API envelope includes 2–5s so gap fill can request shorts. */
+export const GENSPACE_MIN_SELECTABLE_DURATION_S = 6
+
 interface ResolveVideoGenerationOptionsParams<T extends VideoGenerationSettingsShape> {
   settings: T
   modelSpecs: VideoGenerationModelSpecItem[]
@@ -154,6 +157,14 @@ export function getLocalOfferingCapabilities(
   specs: VideoGenerationModelSpecsResponse | null | undefined,
 ): VideoGenerationOfferingCapabilities | null {
   return specs?.local_models[0]?.spec.capabilities ?? null
+}
+
+export function getApiOfferingCapabilities(
+  specs: VideoGenerationModelSpecsResponse | null | undefined,
+  pipeline: string | null | undefined,
+): VideoGenerationOfferingCapabilities | null {
+  if (!specs || !pipeline) return null
+  return specs.api_models.find((item) => item.pipeline === pipeline)?.spec.capabilities ?? null
 }
 
 export function resolveVideoGenerationOptions<T extends VideoGenerationSettingsShape>({

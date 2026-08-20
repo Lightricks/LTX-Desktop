@@ -20,7 +20,7 @@ import {
   type RetakeExtendModel,
 } from '../hooks/use-retake'
 import { useExtend, type ExtendDirection, EXTEND_SECONDS, DEFAULT_EXTEND_SECONDS } from '../hooks/use-extend'
-import { resolutionOptions, type ResolutionOption } from '../lib/video-resolution'
+import { resolutionOptions, videoGenerationResolutionLabel, type ResolutionOption } from '../lib/video-resolution'
 import { useIcLora, type IcLoraAudioMode } from '../hooks/use-ic-lora'
 import { useCustomIcLoraEnabled } from '../hooks/use-custom-ic-lora-enabled'
 import { useDevFlags } from '../contexts/DevFlagsContext'
@@ -38,6 +38,8 @@ import { pathToFileUrl } from '../lib/file-url'
 import {
   areVideoGenerationSettingsEquivalent,
   formatPipelineDisplayName,
+  GENSPACE_MIN_SELECTABLE_DURATION_S,
+  getApiOfferingCapabilities,
   getVideoGenerationModelSpecs,
   getLocalOfferingCapabilities,
   resolvePipelineDisplayName,
@@ -48,7 +50,7 @@ import {
 } from '../lib/video-generation-model-specs'
 import { logger } from '../lib/logger'
 import { ApiClient, type ApiSuccessOf } from '../lib/api-client'
-import type { LoraSelection } from '../components/SettingsPanel'
+import type { GenerationSettings, LoraSelection } from '../components/SettingsPanel'
 import { RetakePanel } from '../components/RetakePanel'
 import { ExtendPanel } from '../components/ExtendPanel'
 import { ICLoraPanel, CONDITIONING_TYPES } from '../components/ICLoraPanel'
@@ -642,6 +644,7 @@ function PromptBar({
         settings,
         modelSpecs: videoModelSpecs,
         hasAudio: Boolean(inputAudio),
+        minimumDuration: isLocalMode ? undefined : GENSPACE_MIN_SELECTABLE_DURATION_S,
       })
     : null
   const showVideoFpsControl = Boolean(
@@ -1036,11 +1039,18 @@ function PromptBar({
                   title="RESOLUTION"
                   value={resolvedVideoOptions.selectedResolution ?? settings.videoResolution}
                   onChange={(v) => onSettingsChange({ ...settings, videoResolution: v })}
-                  options={resolvedVideoOptions.resolutionOptions.map((value) => ({ value, label: value }))}
+                  options={resolvedVideoOptions.resolutionOptions.map((value) => ({
+                    value,
+                    label: videoGenerationResolutionLabel(value),
+                  }))}
                   trigger={
                     <>
                       <Monitor className="h-3.5 w-3.5" />
-                      <span>{(resolvedVideoOptions.selectedResolution ?? settings.videoResolution).replace('p', '')}</span>
+                      <span>
+                        {videoGenerationResolutionLabel(
+                          resolvedVideoOptions.selectedResolution ?? settings.videoResolution,
+                        ).replace(/p$/, '')}
+                      </span>
                     </>
                   }
                 />
@@ -1268,6 +1278,17 @@ export function GenSpace() {
   // Provenance for the completion effect below: imagePaths/isGenerating alone can't tell
   // it whether the request that just finished was an edit or a plain generation.
   const lastImageEditRef = useRef<{ source: string; strength: number } | null>(null)
+  // Click-time t2v/i2v/a2v/image snapshot. The live picker can change while the job
+  // runs; the completion effects must tag the asset with what was actually submitted.
+  // Survives a refresh via the recovery marker restore below — the ref itself does not.
+  const generateSubmissionRef = useRef<{
+    kind: 'video' | 'image'
+    prompt: string
+    settings: GenerationSettings
+    modelLabel?: string
+    inputImageUrl: string | null
+    inputAudioUrl: string | null
+  } | null>(null)
   const [settings, setSettings] = useState(() => ({ ...DEFAULT_VIDEO_SETTINGS }))
   const videoModelSpecs = getVideoGenerationModelSpecs(videoGenerationModelSpecsResponse, {
     useApiSpecs: shouldVideoGenerateWithLtxApi,
@@ -1282,9 +1303,10 @@ export function GenSpace() {
       if (mode !== 'video' || videoModelSpecs.length === 0) return next
       return sanitizeVideoGenerationSettings(next, videoModelSpecs, {
         hasAudio: Boolean(inputAudio),
+        minimumDuration: shouldVideoGenerateWithLtxApi ? GENSPACE_MIN_SELECTABLE_DURATION_S : undefined,
       }) ?? next
     },
-    [inputAudio, mode, videoModelSpecs],
+    [inputAudio, mode, shouldVideoGenerateWithLtxApi, videoModelSpecs],
   )
   
   const {
@@ -1305,10 +1327,16 @@ export function GenSpace() {
   // Locally installed LoRAs are only usable in local generation mode.
   const isLocalMode = !shouldVideoGenerateWithLtxApi
   const localCaps = getLocalOfferingCapabilities(videoGenerationModelSpecsResponse)
+  // Retake/Extend always request RETAKE_EXTEND_MODELS (currently "pro" / 2.3 Pro),
+  // not the t2v/i2v picker in settings.model.
+  const apiCaps = getApiOfferingCapabilities(
+    videoGenerationModelSpecsResponse,
+    RETAKE_EXTEND_MODELS[0],
+  )
   const canUseUserLoras = isLocalMode && Boolean(localCaps?.user_loras)
   const canUseIcLora = !forceApiGenerations && Boolean(localCaps?.ic_lora)
-  const canUseRetake = !isLocalMode || Boolean(localCaps?.retake)
-  const canUseExtend = !isLocalMode || Boolean(localCaps?.extend)
+  const canUseRetake = isLocalMode ? Boolean(localCaps?.retake) : Boolean(apiCaps?.retake)
+  const canUseExtend = isLocalMode ? Boolean(localCaps?.extend) : Boolean(apiCaps?.extend)
   // Enhance itself is independent of the video-generation backend — the backend enhance
   // endpoint only cares about the enhancer provider (local Gemma vs. Gemini), not whether video
   // generation runs locally or via the LTX API. If no catalog LoRA is selected (e.g. because the
@@ -1602,6 +1630,9 @@ export function GenSpace() {
 
   useEffect(() => {
     if (!genSpaceRetakeSource) return
+    // Specs start null on remount (Project unmounts GenSpace off-tab). Don't drop an
+    // incoming timeline retake until we know whether the offering actually supports it.
+    if (isLoadingVideoGenerationModelSpecs) return
     if (!canUseRetake) {
       setGenSpaceRetakeSource(null)
       return
@@ -1619,7 +1650,13 @@ export function GenSpace() {
     })
     setRetakePanelKey((prev) => prev + 1)
     setGenSpaceRetakeSource(null)
-  }, [genSpaceRetakeSource, setGenSpaceRetakeSource, activeProject?.assets, canUseRetake])
+  }, [
+    genSpaceRetakeSource,
+    setGenSpaceRetakeSource,
+    activeProject?.assets,
+    canUseRetake,
+    isLoadingVideoGenerationModelSpecs,
+  ])
 
   useEffect(() => {
     if (!genSpaceIcLoraSource) return
@@ -1642,10 +1679,11 @@ export function GenSpace() {
   }, [genSpaceIcLoraSource, canUseIcLora, setGenSpaceIcLoraSource])
 
   useEffect(() => {
+    if (isLoadingVideoGenerationModelSpecs) return
     if (mode === 'ic-lora' && !canUseIcLora) setMode('video')
     if (mode === 'retake' && !canUseRetake) setMode('video')
     if (mode === 'extend' && !canUseExtend) setMode('video')
-  }, [canUseIcLora, canUseRetake, canUseExtend, mode])
+  }, [canUseIcLora, canUseRetake, canUseExtend, mode, isLoadingVideoGenerationModelSpecs])
 
   useEffect(() => {
     if (!canUseUserLoras && selectedLoras.length > 0) setSelectedLoras([])
@@ -1770,6 +1808,14 @@ export function GenSpace() {
           variations: s.variations ?? prev.variations,
           imageEditStrength: s.imageEditStrength ?? prev.imageEditStrength,
         }))
+        generateSubmissionRef.current = {
+          kind: ctx.genType === 'image' ? 'image' : 'video',
+          prompt: ctx.prompt,
+          settings: s,
+          modelLabel: ctx.modelLabel,
+          inputImageUrl: ctx.inputImageUrl ?? null,
+          inputAudioUrl: ctx.inputAudioUrl ?? null,
+        }
         // The completion effect reads this ref (not settings/inputImage) to tag a
         // recovered image asset as an edit — restore it so recovery matches the
         // live handleGenerate() path.
@@ -1793,10 +1839,32 @@ export function GenSpace() {
     if (persistedVideoKeyRef.current === generationKey) return
     persistedVideoKeyRef.current = generationKey
 
-    const genMode = inputAudio
+    const submission = generateSubmissionRef.current
+    if (submission?.kind !== 'video') {
+      logger.error('Video completed without a click-time submission; tagging from live picker state')
+    }
+    const usedPrompt = submission?.kind === 'video' ? submission.prompt : lastPrompt
+    const usedSettings: GenerationSettings = submission?.kind === 'video'
+      ? submission.settings
+      : {
+          model: settings.model as VideoGenerationPipeline,
+          duration: settings.duration,
+          videoResolution: settings.videoResolution,
+          fps: settings.fps,
+          audio: settings.audio,
+          cameraMotion: 'none',
+          aspectRatio: settings.aspectRatio,
+          imageResolution: settings.imageResolution,
+          imageAspectRatio: settings.aspectRatio ?? '16:9',
+          imageSteps: 4,
+          variations: settings.variations,
+          imageEditStrength: settings.imageEditStrength,
+        }
+    const usedImage = submission?.kind === 'video' ? submission.inputImageUrl : inputImage
+    const usedAudio = submission?.kind === 'video' ? submission.inputAudioUrl : inputAudio
+    const genMode = usedAudio
       ? 'audio-to-video'
-      : inputImage ? 'image-to-video' : 'text-to-video'
-    const savedVideoSettings = sanitizeVideoSettings(settings)
+      : usedImage ? 'image-to-video' : 'text-to-video'
 
     ;(async () => {
       try {
@@ -1809,25 +1877,27 @@ export function GenSpace() {
           smallThumbnailPath: copied.smallThumbnailPath,
           width: copied.width,
           height: copied.height,
-          prompt: lastPrompt,
-          resolution: savedVideoSettings.videoResolution,
-          duration: savedVideoSettings.duration ?? undefined,
+          prompt: usedPrompt,
+          resolution: usedSettings.videoResolution,
+          duration: usedSettings.duration ?? undefined,
           generationParams: {
             mode: genMode as 'text-to-video' | 'image-to-video' | 'audio-to-video',
-            prompt: lastPrompt,
-            model: savedVideoSettings.model,
-            modelLabel: resolvePipelineDisplayName(videoModelSpecs, savedVideoSettings.model) ?? undefined,
-            duration: savedVideoSettings.duration,
-            resolution: savedVideoSettings.videoResolution,
-            fps: savedVideoSettings.fps,
-            audio: savedVideoSettings.audio || false,
+            prompt: usedPrompt,
+            model: usedSettings.model,
+            modelLabel: (submission?.kind === 'video' ? submission.modelLabel : undefined)
+              ?? resolvePipelineDisplayName(videoModelSpecs, usedSettings.model)
+              ?? undefined,
+            duration: usedSettings.duration,
+            resolution: usedSettings.videoResolution,
+            fps: usedSettings.fps,
+            audio: usedSettings.audio || false,
             cameraMotion: 'none',
-            imageAspectRatio: savedVideoSettings.aspectRatio,
+            imageAspectRatio: usedSettings.aspectRatio,
             imageSteps: 4,
-            inputImageUrl: inputImage || undefined,
-            inputAudioUrl: inputAudio || undefined,
-            loras: canUseUserLoras && selectedLoras.length > 0
-              ? selectedLoras.map(l => ({ ...l, ref: toModelsDirRelativeRef(l.ref, appSettings.modelsDir) }))
+            inputImageUrl: usedImage || undefined,
+            inputAudioUrl: usedAudio || undefined,
+            loras: usedSettings.loras && usedSettings.loras.length > 0
+              ? usedSettings.loras.map(l => ({ ...l, ref: toModelsDirRelativeRef(l.ref, appSettings.modelsDir) }))
               : undefined,
           },
           takes: [{
@@ -1840,13 +1910,14 @@ export function GenSpace() {
           }],
           activeTakeIndex: 0,
         })
+        generateSubmissionRef.current = null
         reset()
       } catch (err) {
         persistedVideoKeyRef.current = null
         logger.error(`Failed to persist generated video asset: ${err}`)
       }
     })()
-  }, [videoPath, currentProjectId, isGenerating, sanitizeVideoSettings, settings, inputImage, inputAudio, lastPrompt, addAsset, reset, selectedLoras, canUseUserLoras, appSettings.modelsDir])
+  }, [videoPath, currentProjectId, isGenerating, settings, inputImage, inputAudio, lastPrompt, addAsset, reset, appSettings.modelsDir, videoModelSpecs])
 
   // When retake completes, add as take or new asset
   useEffect(() => {
@@ -2095,6 +2166,24 @@ export function GenSpace() {
     if (imagePaths.length === 0 || !currentProjectId || isGenerating) return
     if (addingImagesRef.current) return
     addingImagesRef.current = true
+    const submission = generateSubmissionRef.current
+    if (submission?.kind !== 'image') {
+      logger.error('Image completed without a click-time submission; tagging from live picker state')
+    }
+    const usedPrompt = submission?.kind === 'image' ? submission.prompt : lastPrompt
+    const usedSettings: GenerationSettings = submission?.kind === 'image'
+      ? submission.settings
+      : {
+          model: 'fast',
+          duration: 5,
+          videoResolution: settings.videoResolution,
+          fps: 24,
+          audio: false,
+          cameraMotion: 'none',
+          imageResolution: settings.imageResolution,
+          imageAspectRatio: settings.aspectRatio ?? '16:9',
+          imageSteps: 4,
+        }
     const editContext = lastImageEditRef.current
     const genMode = editContext ? 'image-edit' : 'text-to-image'
 
@@ -2118,18 +2207,18 @@ export function GenSpace() {
             smallThumbnailPath: copied.smallThumbnailPath,
             width: copied.width,
             height: copied.height,
-            prompt: lastPrompt,
-            resolution: settings.imageResolution,
+            prompt: usedPrompt,
+            resolution: usedSettings.imageResolution,
             generationParams: {
               mode: genMode,
-              prompt: lastPrompt,
+              prompt: usedPrompt,
               model: 'fast',
               duration: 5,
-              resolution: settings.imageResolution,
+              resolution: usedSettings.imageResolution,
               fps: 24,
               audio: false,
               cameraMotion: 'none',
-              imageAspectRatio: settings.aspectRatio,
+              imageAspectRatio: usedSettings.imageAspectRatio || usedSettings.aspectRatio,
               imageSteps: editContext ? IMAGE_STEPS_EDIT : IMAGE_STEPS_GENERATE,
               ...(editContext ? { inputImageUrl: editContext.source, imageEditStrength: editContext.strength } : {}),
             },
@@ -2144,6 +2233,7 @@ export function GenSpace() {
             activeTakeIndex: 0,
           })
         }
+        generateSubmissionRef.current = null
         reset()
       } catch (err) {
         logger.error(`Failed to persist generated image asset(s): ${err}`)
@@ -2525,43 +2615,64 @@ export function GenSpace() {
       lastImageEditRef.current = editSource
         ? { source: editSource, strength: settings.imageEditStrength ?? 0.6 }
         : null
-      const imageSettings = {
-        model: 'fast' as VideoGenerationPipeline,
+      const imageSettings: GenerationSettings = {
+        model: 'fast',
         duration: 5,
         videoResolution: settings.videoResolution,
         fps: 24,
         audio: false,
         cameraMotion: 'none',
         imageResolution: settings.imageResolution,
-        imageAspectRatio: settings.aspectRatio,
+        imageAspectRatio: settings.aspectRatio ?? '16:9',
         imageSteps: editSource ? IMAGE_STEPS_EDIT : IMAGE_STEPS_GENERATE,
         variations: settings.variations,
         imageEditStrength: settings.imageEditStrength,
       }
-      await writeRecoveryContext({ prompt, settings: imageSettings, genType: 'image', inputImageUrl: editSource ?? undefined })
+      const modelLabel = resolvePipelineDisplayName(videoModelSpecs, imageSettings.model) ?? undefined
+      generateSubmissionRef.current = {
+        kind: 'image',
+        prompt,
+        settings: imageSettings,
+        modelLabel,
+        inputImageUrl: editSource,
+        inputAudioUrl: null,
+      }
+      await writeRecoveryContext({
+        prompt,
+        settings: imageSettings,
+        modelLabel,
+        genType: 'image',
+        inputImageUrl: editSource ?? undefined,
+      })
       generateImage(prompt, imageSettings, editSource)
     } else {
       // Generate video (t2v if no image/audio, i2v if image, a2v if audio)
       const imagePath = inputImage || null
       const audioPath = inputAudio || null
       const videoSettings = sanitizeVideoSettings(settings)
-      const genSettings = {
+      if (!videoSettings) return
+      const genSettings: GenerationSettings = {
+          ...videoSettings,
           model: videoSettings.model as VideoGenerationPipeline,
-          duration: videoSettings.duration,
-          videoResolution: videoSettings.videoResolution,
-          fps: videoSettings.fps,
-          audio: videoSettings.audio || false,
           cameraMotion: 'none',
-          aspectRatio: videoSettings.aspectRatio,
-          imageResolution: videoSettings.imageResolution,
-          imageAspectRatio: videoSettings.aspectRatio,
+          imageAspectRatio: videoSettings.aspectRatio ?? '16:9',
           imageSteps: 4,
           // Local LoRA refs are filesystem paths the cloud API can't resolve.
           loras: canUseUserLoras && selectedLoras.length > 0 ? selectedLoras : undefined,
       }
+      const modelLabel = resolvePipelineDisplayName(videoModelSpecs, genSettings.model) ?? undefined
+      generateSubmissionRef.current = {
+        kind: 'video',
+        prompt,
+        settings: genSettings,
+        modelLabel,
+        inputImageUrl: imagePath,
+        inputAudioUrl: audioPath,
+      }
       await writeRecoveryContext({
         prompt,
         settings: genSettings,
+        modelLabel,
         inputImageUrl: imagePath ?? undefined,
         inputAudioUrl: audioPath ?? undefined,
       })
@@ -2641,6 +2752,7 @@ export function GenSpace() {
       settings,
       modelSpecs: videoModelSpecs,
       hasAudio: Boolean(inputAudio),
+      minimumDuration: shouldVideoGenerateWithLtxApi ? GENSPACE_MIN_SELECTABLE_DURATION_S : undefined,
     }).hasCompatibleOptions
   )
   // One global backend slot: Stop / Generate-disable must follow the in-flight job, not the
