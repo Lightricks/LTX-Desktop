@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { Select } from './ui/select'
+import { videoGenerationResolutionLabel } from '../lib/video-resolution'
 import {
   areVideoGenerationSettingsEquivalent,
   resolveVideoGenerationOptions,
@@ -199,7 +200,7 @@ export function SettingsPanel({
         >
           {resolvedVideoOptions.resolutionOptions.map((resolution) => (
             <option key={resolution} value={resolution}>
-              {resolution}
+              {videoGenerationResolutionLabel(resolution)}
             </option>
           ))}
         </Select>

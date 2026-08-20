@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from runtime_config.ltx_api_text_encoder_ids import LtxApiPromptEmbeddingModel
     from state.app_state_types import AppState, TextEncodingResult
 
 
@@ -19,6 +20,6 @@ class TextEncoder(Protocol):
         api_key: str,
         checkpoint_path: str,
         enhance_prompt: bool,
-        api_model_id: str | None = None,
+        api_model: LtxApiPromptEmbeddingModel | None = None,
     ) -> TextEncodingResult | None:
         ...

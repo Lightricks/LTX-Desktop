@@ -331,19 +331,15 @@ class TestRetake:
         assert data["status"] == "complete"
         assert data["video_path"]
 
-    def test_local_retake_rejected_on_2_5(self, client, test_state, create_fake_model_files):
+    def test_local_retake_happy_path_on_2_5(self, client, test_state, create_fake_model_files):
         create_fake_model_files(include_zit=False)
         test_state.state.app_settings.use_local_text_encoder = True
         test_state.config.local_generations_mode = "full_models_loading"
 
         video_path = self._make_valid_video(test_state)
         r = client.post("/api/retake", json=self._base_payload(video_path))
-        assert_http_error(
-            r,
-            status_code=409,
-            code="UNSUPPORTED_RETAKE",
-            message="Retake is not supported for the active LTX model.",
-        )
+        assert r.status_code == 200
+        assert r.json()["status"] == "complete"
 
     def test_local_retake_mode_mapping(self, client, test_state, create_fake_model_files, fake_services):
         _install_local_2_3(test_state, create_fake_model_files, include_zit=False)
@@ -581,19 +577,15 @@ class TestExtend:
         assert data["status"] == "complete"
         assert data["video_path"]
 
-    def test_local_extend_rejected_on_2_5(self, client, test_state, create_fake_model_files):
+    def test_local_extend_happy_path_on_2_5(self, client, test_state, create_fake_model_files):
         create_fake_model_files(include_zit=False)
         test_state.state.app_settings.use_local_text_encoder = True
         test_state.config.local_generations_mode = "full_models_loading"
 
         video_path = self._make_valid_video(test_state)
         r = client.post("/api/extend", json=self._base_payload(video_path))
-        assert_http_error(
-            r,
-            status_code=409,
-            code="UNSUPPORTED_EXTEND",
-            message="Extend is not supported for the active LTX model.",
-        )
+        assert r.status_code == 200
+        assert r.json()["status"] == "complete"
 
     def test_local_extend_snaps_frames_and_forwards_mode(self, client, test_state, create_fake_model_files, fake_services):
         _install_local_2_3(test_state, create_fake_model_files, include_zit=False)

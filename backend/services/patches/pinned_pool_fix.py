@@ -1,28 +1,28 @@
-"""Monkey-patch: replace pin-all-at-init with bounded pinned pool.
+"""Monkey-patch: do not report pinned-host allocation failure as CUDA VRAM OOM.
 
-The upstream _LayerStore.__init__ pins ALL layer tensors upfront via
-pin_memory(), allocating ~24 GB of page-locked host memory for a 22B model.
-This wastes USS (private memory) and CUDA reserved memory since most layers
-are idle at any given time.
+``OffloadMode.CPU`` streaming pre-allocates one pinned host buffer per
+transformer block via ``ltx_core.block_streaming.utils.alloc_buffer``. For the
+22B distilled checkpoint that is ~23 GiB of page-locked RAM (more if PyTorch's
+CachingHostAllocator rounds each block up to the next power of two).
 
-This patch replaces _LayerStore with an on-demand pinning strategy: only the
-layers about to be transferred to GPU are pinned (prefetch_count + 1 layers).
-After a layer is evicted from GPU, its pinned copy is freed and the original
-source data is restored.
+``alloc_buffer`` first tries ``cudaHostRegister`` on a regular CPU tensor. On
+Windows that call typically fails (pointer/size are not page-aligned for WDDM).
+The failure is left as CUDA's sticky last error. The fallback
+``torch.empty(..., pin_memory=True)`` then raises ``CUDA error: out of memory``
+even with ~14 GiB VRAM free, and every later CUDA call (including
+``cudaMemGetInfo``) fails until the process is restarted.
 
-Benefits (measured on RTX 5090, 22B distilled, spc=2, FP8):
-  - Peak USS: -11 GB (33.9 -> 22.4 GB)
-  - torch_peak_reserved: -4.6 GB (12.7 -> 8.1 GB)
-  - Duration: -12% (278 -> 245s)
+See https://github.com/Lightricks/LTX-Desktop/issues/141
 
-Remove this patch once the upstream ltx-core package includes the fix.
+This patch:
+- On Windows, skips both ``cudaHostRegister`` and the CachingHostAllocator
+  fallback and allocates pageable host memory. H2D copies stay correct; they
+  just will not overlap compute.
+- On other platforms, clears the sticky CUDA error after a failed register and
+  falls back to pageable memory if ``pin_memory=True`` itself OOMs.
 
-NOTE: the upstream MPS-support work rewrote the weight-streaming subsystem
-(`ltx_core.layer_streaming` -> `ltx_core.block_streaming`). When that module is
-absent this patch cleanly no-ops — it only ever applied to the old _LayerStore,
-and it is irrelevant on MPS (DISK streaming). Whether the new block_streaming
-pins all blocks upfront (the waste this patch fixed) must be re-evaluated on CUDA
-before shipping there.
+Remove once ltx-core ``alloc_buffer`` does not poison the CUDA context or
+mis-report pinned-host failure as VRAM OOM.
 
 Usage:
     import services.patches.pinned_pool_fix  # noqa: F401
@@ -30,91 +30,87 @@ Usage:
 
 from __future__ import annotations
 
-import itertools
 import logging
+import sys
 
 import torch
-from torch import nn
+from ltx_core.block_streaming import utils as bs_utils
 
-try:
-    from ltx_core.layer_streaming import _LayerStore
-
-    _AVAILABLE = True
-except ModuleNotFoundError:
-    _AVAILABLE = False
-    logging.getLogger(__name__).info(
-        "pinned_pool_fix: ltx_core.layer_streaming absent (streaming subsystem rewritten "
-        "upstream to block_streaming) — skipping bounded-pinned-pool patch."
-    )
+logger = logging.getLogger(__name__)
 
 
-def _patched_init(self: _LayerStore, layers: nn.ModuleList, target_device: torch.device) -> None:
-    self.target_device = target_device
-    self.num_layers = len(layers)
-    self._on_gpu: set[int] = set()
-
-    # Keep a reference to the source data for each layer so we can pin it
-    # on demand and restore it after eviction.
-    self._source_data: list[dict[str, torch.Tensor]] = []
-    for layer in layers:
-        source: dict[str, torch.Tensor] = {}
-        for name, tensor in itertools.chain(layer.named_parameters(), layer.named_buffers()):
-            source[name] = tensor.data
-        self._source_data.append(source)
-
-    # Hold pinned tensors alive until the H2D transfer completes.
-    # Without this, the CachingHostAllocator can reclaim a pinned tensor
-    # as soon as its Python reference is dropped, even if an async H2D
-    # transfer is still reading from it.
-    self._pinned_in_flight: dict[int, list[torch.Tensor]] = {}
+def _require_attr(name: str) -> None:
+    # Explicit raise so this still fires under `python -O` (asserts are stripped).
+    if not hasattr(bs_utils, name):
+        raise RuntimeError(
+            f"ltx_core.block_streaming.utils.{name} not found — patch needs updating."
+        )
 
 
-def _patched_move_to_gpu(self: _LayerStore, idx: int, layer: nn.Module, *, non_blocking: bool = False) -> None:
-    """Pin layer *idx* on demand, then transfer to GPU."""
-    self._check_idx(idx)
-    if idx in self._on_gpu:
+_require_attr("alloc_buffer")
+_require_attr("_alloc_pinned_exact")
+
+_orig_alloc_pinned_exact = bs_utils._alloc_pinned_exact
+_windows_pageable_logged = False
+
+
+def _clear_cuda_sticky_error() -> None:
+    """Drop a leftover CUDA runtime error so later API calls are not poisoned."""
+    if not torch.cuda.is_available():
         return
-    source = self._source_data[idx]
-    pinned_refs: list[torch.Tensor] = []
-    for name, param in itertools.chain(layer.named_parameters(), layer.named_buffers()):
-        pinned = source[name].pin_memory()
-        param.data = pinned.to(self.target_device, non_blocking=non_blocking)
-        pinned_refs.append(pinned)
-    # Keep pinned tensors alive until eviction — the async H2D transfer
-    # may still be reading from them.
-    self._pinned_in_flight[idx] = pinned_refs
-    self._on_gpu.add(idx)
+    try:
+        torch.cuda.cudart().cudaGetLastError()
+    except Exception:
+        logger.debug("pinned_pool_fix: failed to clear CUDA last error", exc_info=True)
 
 
-def _patched_evict_to_cpu(self: _LayerStore, idx: int, layer: nn.Module) -> None:
-    """Restore source data, freeing the GPU and pinned copies."""
-    self._check_idx(idx)
-    if idx not in self._on_gpu:
-        return
-    source = self._source_data[idx]
-    for name, param in itertools.chain(layer.named_parameters(), layer.named_buffers()):
-        param.data = source[name]
-    # Release pinned tensors — the H2D transfer is complete by now.
-    self._pinned_in_flight.pop(idx, None)
-    self._on_gpu.discard(idx)
+def _is_cuda_oom(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return "out of memory" in msg or "cudaerrormemoryallocation" in msg
 
 
-def _patched_cleanup(self: _LayerStore) -> None:
-    """Release all source data and in-flight pinned references."""
-    for source_dict in self._source_data:
-        source_dict.clear()
-    self._source_data.clear()
-    self._pinned_in_flight.clear()
+def _alloc_pinned_exact_cleared(nbytes: int) -> torch.Tensor | None:
+    buf = _orig_alloc_pinned_exact(nbytes)
+    if buf is None:
+        # cudaHostRegister returns the error to Python but also sets the thread's
+        # sticky last error. Clear it before any later CUDA call.
+        _clear_cuda_sticky_error()
+    return buf
 
 
-# Apply patches
-if _AVAILABLE:
-    assert hasattr(_LayerStore, "__init__"), "_LayerStore.__init__ not found — patch needs updating."
-    assert hasattr(_LayerStore, "move_to_gpu"), "_LayerStore.move_to_gpu not found — patch needs updating."
-    assert hasattr(_LayerStore, "evict_to_cpu"), "_LayerStore.evict_to_cpu not found — patch needs updating."
-    assert hasattr(_LayerStore, "cleanup"), "_LayerStore.cleanup not found — patch needs updating."
+def _patched_alloc_buffer(nbytes: int, device: torch.device | None, pin_memory: bool) -> torch.Tensor:
+    """Like upstream ``alloc_buffer``, but never raises a misleading CUDA VRAM OOM."""
+    if pin_memory and not torch.cuda.is_available():
+        pin_memory = False
+    cpu_pin = pin_memory and (device is None or torch.device(device).type == "cpu")
+    if cpu_pin and sys.platform == "win32":
+        global _windows_pageable_logged
+        if not _windows_pageable_logged:
+            logger.warning(
+                "Using pageable host memory for streaming weight buffers on Windows. "
+                "ltx-core would pin via cudaHostRegister / CachingHostAllocator, which "
+                "fails as a misleading CUDA OOM while VRAM is free (LTX-Desktop#141)."
+            )
+            _windows_pageable_logged = True
+        return torch.empty(nbytes, dtype=torch.uint8, device=device, pin_memory=False)
+    if cpu_pin:
+        buf = _alloc_pinned_exact_cleared(nbytes)
+        if buf is not None:
+            return buf
+        try:
+            return torch.empty(nbytes, dtype=torch.uint8, device=device, pin_memory=True)
+        except Exception as exc:
+            if not _is_cuda_oom(exc):
+                raise
+            _clear_cuda_sticky_error()
+            logger.warning(
+                "Pinned host-memory allocation of %s bytes failed (%s). "
+                "Falling back to pageable CPU memory. This is not a GPU VRAM shortage.",
+                nbytes,
+                exc,
+            )
+            pin_memory = False
+    return torch.empty(nbytes, dtype=torch.uint8, device=device, pin_memory=pin_memory)
 
-    _LayerStore.__init__ = _patched_init  # type: ignore[assignment]
-    _LayerStore.move_to_gpu = _patched_move_to_gpu  # type: ignore[assignment]
-    _LayerStore.evict_to_cpu = _patched_evict_to_cpu  # type: ignore[assignment]
-    _LayerStore.cleanup = _patched_cleanup  # type: ignore[assignment]
+
+bs_utils.alloc_buffer = _patched_alloc_buffer

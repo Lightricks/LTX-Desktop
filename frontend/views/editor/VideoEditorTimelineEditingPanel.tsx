@@ -20,6 +20,7 @@ import { ClipWaveform } from '../../components/AudioWaveform'
 import type { GenerationSettings } from '../../components/SettingsPanel'
 import { useAppSettings } from '../../contexts/AppSettingsContext'
 import { useVideoGenerationModelSpecs } from '../../hooks/use-video-generation-model-specs'
+import { RETAKE_EXTEND_MODELS } from '../../hooks/use-retake'
 import type { GenerationError } from '../../lib/generation-errors'
 import { addVisualAssetToProject } from '../../lib/asset-copy'
 import { GapGenerationModal } from './GapGenerationModal'
@@ -29,6 +30,7 @@ import { ApiClient } from '../../lib/api-client'
 import { pathToFileUrl } from '../../lib/file-url'
 import {
   areVideoGenerationSettingsEquivalent,
+  getApiOfferingCapabilities,
   getLocalOfferingCapabilities,
   getVideoGenerationModelSpecs,
   resolveVideoGenerationOptions,
@@ -191,7 +193,15 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     errorMessage: videoGenerationModelSpecsErrorMessage,
   } = useVideoGenerationModelSpecs()
   const localCaps = getLocalOfferingCapabilities(videoGenerationModelSpecsResponse)
-  const canUseRetake = shouldVideoGenerateWithLtxApi || Boolean(localCaps?.retake)
+  // Retake/Extend always request RETAKE_EXTEND_MODELS (currently "pro" / 2.3 Pro),
+  // not the timeline clip's t2v/i2v generation pipeline.
+  const apiCaps = getApiOfferingCapabilities(
+    videoGenerationModelSpecsResponse,
+    RETAKE_EXTEND_MODELS[0],
+  )
+  const canUseRetake = shouldVideoGenerateWithLtxApi
+    ? Boolean(apiCaps?.retake)
+    : Boolean(localCaps?.retake)
   const requestRetakeClip = (clip: TimelineClip) => {
     if (!canUseRetake) return
     handleRetakeClip(clip)

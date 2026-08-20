@@ -103,7 +103,7 @@ class TestGenerate:
         r = client.post("/api/generate", json=_T2V_JSON)
         assert_http_error(r, status_code=409, code="NO_DOWNLOADED_LTX_MODEL")
 
-    def test_t2v_on_2_5_uses_api_model_id_without_local_text_encoder(
+    def test_t2v_on_2_5_uses_api_model_selector_without_local_text_encoder(
         self, client, test_state, fake_services, create_fake_model_files
     ):
         create_fake_model_files()
@@ -116,7 +116,7 @@ class TestGenerate:
         r = client.post("/api/generate", json=_T2V_JSON)
 
         assert r.status_code == 200
-        assert fake_services.text_encoder.encode_calls[0]["api_model_id"] == spec.api_text_encoder_model_id
+        assert fake_services.text_encoder.encode_calls[0]["api_model"] == spec.api_prompt_embedding_model
         assert fake_services.text_encoder.encode_calls[0]["enhance_prompt"] is True
 
     def test_t2v_happy_path(self, client, test_state, fake_services, create_fake_model_files):
@@ -1023,7 +1023,7 @@ class TestForcedApiGenerate:
             "/api/generate",
             json={
                 "prompt": "Animate this frame",
-                "resolution": "2160p",
+                "resolution": "1080p",
                 "model": "pro-2.5",
                 "duration": 8,
                 "fps": 25,
@@ -1041,7 +1041,7 @@ class TestForcedApiGenerate:
         call = fake_services.ltx_api_client.image_to_video_calls[0]
         assert call["image_uri"] == "storage://uploaded/input.png"
         assert call["model"] == "ltx-2-5-pro"
-        assert call["resolution"] == "3840x2160"
+        assert call["resolution"] == "1920x1080"
         assert call["duration"] == 8.0
         assert call["fps"] == 25.0
         assert call["camera_motion"] == "jib_up"
@@ -1204,7 +1204,7 @@ class TestForcedApiGenerate:
             "/api/generate",
             json={
                 "prompt": "A city skyline",
-                "resolution": "720p",
+                "resolution": "540p",
                 "model": "pro",
                 "duration": 6,
                 "fps": 25,
@@ -1216,7 +1216,53 @@ class TestForcedApiGenerate:
             r,
             status_code=422,
             code="INVALID_VIDEO_GENERATION_SPEC",
-            message="Unsupported api text-to-video resolution '720p' for pipeline 'pro'",
+            message="Unsupported api text-to-video resolution '540p' for pipeline 'pro'",
+        )
+
+    def test_pro_2_5_rejects_4k_resolution(self, client, test_state):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A city skyline",
+                "resolution": "2160p",
+                "model": "pro-2.5",
+                "duration": 6,
+                "fps": 25,
+                "audio": False,
+            },
+        )
+
+        assert_http_error(
+            r,
+            status_code=422,
+            code="INVALID_VIDEO_GENERATION_SPEC",
+            message="Unsupported api text-to-video resolution '2160p' for pipeline 'pro-2.5'",
+        )
+
+    def test_pro_2_5_rejects_48_fps(self, client, test_state):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A city skyline",
+                "resolution": "1080p",
+                "model": "pro-2.5",
+                "duration": 6,
+                "fps": 48,
+                "audio": False,
+            },
+        )
+
+        assert_http_error(
+            r,
+            status_code=422,
+            code="INVALID_VIDEO_GENERATION_SPEC",
+            message="Unsupported api text-to-video fps '48' for pipeline 'pro-2.5' at resolution '1080p'",
         )
 
     def test_invalid_forced_duration_rejected(self, client, test_state):
@@ -1229,7 +1275,7 @@ class TestForcedApiGenerate:
                 "prompt": "A city skyline",
                 "resolution": "1080p",
                 "model": "pro",
-                "duration": 5,
+                "duration": 12,
                 "fps": 25,
                 "audio": False,
             },
@@ -1239,7 +1285,7 @@ class TestForcedApiGenerate:
             r,
             status_code=422,
             code="INVALID_VIDEO_GENERATION_SPEC",
-            message="Unsupported api text-to-video duration '5' for pipeline 'pro' at resolution '1080p' and fps '25'",
+            message="Unsupported api text-to-video duration '12' for pipeline 'pro' at resolution '1080p' and fps '25'",
         )
 
     def test_forced_api_a2v_rejects_fast_tier_pipeline(self, client, test_state, tmp_path):
@@ -1380,6 +1426,46 @@ class TestForcedApiGenerate:
         assert r.status_code == 200
         call = fake_services.ltx_api_client.text_to_video_calls[0]
         assert call["resolution"] == "1080x1920"
+
+    def test_portrait_resolution_720p(self, client, test_state, fake_services):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A portrait video",
+                "resolution": "720p",
+                "model": "fast",
+                "duration": 6,
+                "fps": 25,
+                "aspectRatio": "9:16",
+            },
+        )
+
+        assert r.status_code == 200
+        call = fake_services.ltx_api_client.text_to_video_calls[0]
+        assert call["resolution"] == "720x1280"
+
+    def test_landscape_resolution_720p(self, client, test_state, fake_services):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A landscape video",
+                "resolution": "720p",
+                "model": "pro-2.5",
+                "duration": 6,
+                "fps": 25,
+            },
+        )
+
+        assert r.status_code == 200
+        call = fake_services.ltx_api_client.text_to_video_calls[0]
+        assert call["resolution"] == "1280x720"
+        assert call["model"] == "ltx-2-5-pro"
 
     def test_portrait_resolution_1440p(self, client, test_state, fake_services):
         test_state.config.local_generations_mode = "unsupported"
@@ -1582,7 +1668,101 @@ class TestForcedApiGenerate:
         call = fake_services.ltx_api_client.audio_to_video_calls[0]
         assert call["resolution"] == "1080x1920"
 
-    def test_a2v_forced_api_rejects_non_1080p(self, client, test_state, fake_services, tmp_path):
+    def test_a2v_720p_routes_to_ltx_api(self, client, test_state, fake_services, tmp_path):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+        audio_file = tmp_path / "test_audio.wav"
+        _write_test_wav(audio_file)
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A music video",
+                "resolution": "720p",
+                "model": "pro",
+                "duration": 6,
+                "fps": 25,
+                "audioPath": str(audio_file),
+            },
+        )
+
+        assert r.status_code == 200
+        call = fake_services.ltx_api_client.audio_to_video_calls[0]
+        assert call["resolution"] == "1280x720"
+
+    def test_a2v_1440p_capped_at_10s(self, client, test_state, tmp_path):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+        audio_file = tmp_path / "test_audio.wav"
+        _write_test_wav(audio_file)
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A music video",
+                "resolution": "1440p",
+                "model": "pro",
+                "duration": 20,
+                "fps": 24,
+                "audioPath": str(audio_file),
+            },
+        )
+
+        assert_http_error(
+            r,
+            status_code=422,
+            code="INVALID_VIDEO_GENERATION_SPEC",
+            message="Unsupported api audio-to-video duration '20' for pipeline 'pro' at resolution '1440p' and fps '24'",
+        )
+
+    def test_a2v_1440p_10s_routes_to_ltx_api(self, client, test_state, fake_services, tmp_path):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+        audio_file = tmp_path / "test_audio.wav"
+        _write_test_wav(audio_file)
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A music video",
+                "resolution": "1440p",
+                "model": "pro",
+                "duration": 10,
+                "fps": 24,
+                "audioPath": str(audio_file),
+            },
+        )
+
+        assert r.status_code == 200
+        call = fake_services.ltx_api_client.audio_to_video_calls[0]
+        assert call["resolution"] == "2560x1440"
+
+    def test_a2v_pro_2_5_rejects_20s(self, client, test_state, tmp_path):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+        audio_file = tmp_path / "test_audio.wav"
+        _write_test_wav(audio_file)
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A music video",
+                "resolution": "1080p",
+                "model": "pro-2.5",
+                "duration": 20,
+                "fps": 24,
+                "audioPath": str(audio_file),
+            },
+        )
+
+        assert_http_error(
+            r,
+            status_code=422,
+            code="INVALID_VIDEO_GENERATION_SPEC",
+            message="Unsupported api audio-to-video duration '20' for pipeline 'pro-2.5' at resolution '1080p' and fps '24'",
+        )
+
+    def test_a2v_forced_api_rejects_fast(self, client, test_state, fake_services, tmp_path):
         test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "test_key"
         audio_file = tmp_path / "test_audio.wav"
@@ -1746,23 +1926,42 @@ class TestGenerateModelSpecs:
         assert list(data["local_models"][0]["spec"]["supported_resolutions_durations"]["540p"]["fps_to_durations"].keys()) == ["24"]
         assert [item["pipeline"] for item in data["api_models"]] == ["fast", "pro", "fast-2.5", "pro-2.5"]
         assert data["api_models"][0]["spec"]["supported_resolutions_durations"]["1080p"]["fps_to_durations"]["24"] == [
-            6, 8, 10, 12, 14, 16, 18, 20,
+            2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20,
         ]
 
         api_models_by_pipeline = {item["pipeline"]: item for item in data["api_models"]}
-        # A2V envelope: none on fast; 1080p on pro, fast-2.5, and pro-2.5.
+        # A2V: none on fast; 720p–4K on pro/fast-2.5; 720p+1080p on pro-2.5 (no 48 fps).
         assert api_models_by_pipeline["fast"]["spec"]["a2v_supported_resolutions_durations"] is None
-        assert list(api_models_by_pipeline["pro"]["spec"]["a2v_supported_resolutions_durations"].keys()) == ["1080p"]
+        assert list(api_models_by_pipeline["pro"]["spec"]["a2v_supported_resolutions_durations"].keys()) == [
+            "720p", "1080p", "1440p", "2160p",
+        ]
         assert api_models_by_pipeline["fast-2.5"]["spec"]["display_name"] == "LTX-2.5 Fast (API)"
-        assert list(api_models_by_pipeline["fast-2.5"]["spec"]["a2v_supported_resolutions_durations"].keys()) == ["1080p"]
-        assert list(api_models_by_pipeline["pro-2.5"]["spec"]["a2v_supported_resolutions_durations"].keys()) == ["1080p"]
+        assert list(api_models_by_pipeline["fast-2.5"]["spec"]["a2v_supported_resolutions_durations"].keys()) == [
+            "720p", "1080p", "1440p", "2160p",
+        ]
+        assert list(api_models_by_pipeline["pro-2.5"]["spec"]["a2v_supported_resolutions_durations"].keys()) == [
+            "720p", "1080p",
+        ]
+        assert list(api_models_by_pipeline["pro-2.5"]["spec"]["supported_resolutions_durations"].keys()) == [
+            "720p", "1080p",
+        ]
+        assert list(api_models_by_pipeline["fast"]["spec"]["supported_resolutions_durations"].keys()) == [
+            "720p", "1080p", "1440p", "2160p",
+        ]
+        assert "48" not in api_models_by_pipeline["pro-2.5"]["spec"]["supported_resolutions_durations"]["1080p"]["fps_to_durations"]
+        assert api_models_by_pipeline["pro"]["spec"]["a2v_supported_resolutions_durations"]["1440p"]["fps_to_durations"]["24"] == [
+            2, 3, 4, 5, 6, 8, 10,
+        ]
+        assert api_models_by_pipeline["pro"]["spec"]["a2v_supported_resolutions_durations"]["720p"]["fps_to_durations"]["24"] == [
+            2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20,
+        ]
 
         local_caps = data["local_models"][0]["spec"]["capabilities"]
         assert local_caps["a2v"] is True
         assert local_caps["ic_lora"] is True
         assert local_caps["user_loras"] is True
-        assert local_caps["retake"] is False
-        assert local_caps["extend"] is False
+        assert local_caps["retake"] is True
+        assert local_caps["extend"] is True
         # No DurationHead on disk in this fixture — Auto stays off until that file is present.
         assert local_caps["auto_duration"] is False
         assert api_models_by_pipeline["fast"]["spec"]["capabilities"]["a2v"] is False

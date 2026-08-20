@@ -51,7 +51,7 @@ import services.patches.safetensors_loader_fix as _safetensors_loader_fix  # pyr
 del _safetensors_loader_fix
 import services.patches.safetensors_metadata_fix as _safetensors_metadata_fix  # pyright: ignore[reportUnusedImport]  # Remove once safetensors supports read-only mmap
 del _safetensors_metadata_fix
-import services.patches.pinned_pool_fix as _pinned_pool_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core restores bounded pinned pool
+import services.patches.pinned_pool_fix as _pinned_pool_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core alloc_buffer does not report pinned-host failure as CUDA VRAM OOM (LTX-Desktop#141)
 del _pinned_pool_fix
 import services.patches.ic_lora_stage2_lora as _ic_lora_stage2_lora  # pyright: ignore[reportUnusedImport]  # EXPERIMENTAL: remove once upstream ships PR #494 (use_lora_in_stage_2)
 del _ic_lora_stage2_lora

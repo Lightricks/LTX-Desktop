@@ -25,6 +25,11 @@ export function namedResolutionDisplayName(tier: number): string {
   return tier >= 2160 ? '4K' : `${tier}p`
 }
 
+/** Display label for generation resolution ids (`2160p` → `4K`). */
+export function videoGenerationResolutionLabel(resolution: string): string {
+  return resolution === '2160p' ? '4K' : resolution
+}
+
 export function resolutionOptions(width: number, height: number): ResolutionOption[] {
   if (!width || !height) return []
   const shortEdge = Math.min(width, height)
@@ -34,7 +39,7 @@ export function resolutionOptions(width: number, height: number): ResolutionOpti
   const originalTier = namedResolutionTier(shortEdge)
 
   const options: ResolutionOption[] = [
-    { key: 'original', label: `${originalTier}p (Original)`, width: null, height: null },
+    { key: 'original', label: `${namedResolutionDisplayName(originalTier)} (Original)`, width: null, height: null },
   ]
   for (const tier of STANDARD_TIERS) {
     // Only smaller tiers, and drop the one that already maps to Original.

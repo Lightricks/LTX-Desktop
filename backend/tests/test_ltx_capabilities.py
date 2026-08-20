@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from runtime_config.ltx_capabilities import (
+    LocalOfferingCapabilities,
     api_caps,
     effective_local_caps,
     local_caps,
@@ -51,8 +52,8 @@ def test_local_2_5_allows_ic_lora_and_user_loras():
     caps = local_caps("ltx-2.5-22b-distilled")
     assert supports(caps, "ic_lora") is True
     assert supports(caps, "user_loras") is True
-    assert supports(caps, "retake") is False
-    assert supports(caps, "extend") is False
+    assert supports(caps, "retake") is True
+    assert supports(caps, "extend") is True
 
 
 def test_local_2_3_allows_ic_lora_user_loras_retake():
@@ -79,6 +80,11 @@ def test_local_2_5_auto_duration_requires_duration_head_ready():
     assert supports(effective_local_caps(model_id, duration_head_ready=False), "auto_duration") is False
 
 
+def test_effective_local_caps_preserves_local_subclass():
+    caps = effective_local_caps("ltx-2.5-22b-distilled", duration_head_ready=False)
+    assert isinstance(caps, LocalOfferingCapabilities)
+
+
 def test_local_2_3_auto_duration_stays_off_even_if_duration_head_ready():
     assert (
         supports(
@@ -96,6 +102,8 @@ def test_api_fast_2_3_has_no_a2v_or_auto_duration():
     assert supports(caps, "extend") is False
     assert supports(caps, "auto_duration") is False
     assert pixels_for(caps, "1080p", "16:9") == (1920, 1080)
+    assert pixels_for(caps, "720p", "16:9") == (1280, 720)
+    assert pixels_for(caps, "720p", "9:16") == (720, 1280)
 
 
 def test_api_fast_2_5_has_a2v_and_auto_duration():
@@ -105,6 +113,7 @@ def test_api_fast_2_5_has_a2v_and_auto_duration():
     assert supports(caps, "extend") is False
     assert supports(caps, "auto_duration") is True
     assert pixels_for(caps, "1080p", "16:9") == (1920, 1080)
+    assert pixels_for(caps, "720p", "16:9") == (1280, 720)
 
 
 def test_api_pro_2_3_has_a2v_and_retake():

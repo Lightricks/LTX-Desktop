@@ -18,6 +18,9 @@ export interface GenerationRecoveryContext {
   // Retake/extend write this instead of a full `settings` blob — the recovery importer
   // prefers it over `settings.model` (which defaults to 'fast' when absent).
   model?: string
+  // Frozen at click. Local `fast` and API `fast` share an id; display_name must not be
+  // re-resolved from whichever offering is selected when the job later finishes.
+  modelLabel?: string
   inputImageUrl?: string
   inputAudioUrl?: string
   genType?: 'image' | 'enhance'

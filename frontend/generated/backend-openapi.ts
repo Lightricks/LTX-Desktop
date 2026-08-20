@@ -1103,7 +1103,7 @@ export interface components {
              * Duration
              * @default 5
              */
-            duration: (5 | 6 | 8 | 10 | 12 | 14 | 16 | 18 | 20) | null;
+            duration: (2 | 3 | 4 | 5 | 6 | 8 | 10 | 12 | 14 | 16 | 18 | 20) | null;
             /**
              * Fps
              * @default 24
@@ -1629,7 +1629,7 @@ export interface components {
         LTXVideoGenerationResolutionSpec: {
             /** Fps To Durations */
             fps_to_durations: {
-                [key: string]: (5 | 6 | 8 | 10 | 12 | 14 | 16 | 18 | 20)[];
+                [key: string]: (2 | 3 | 4 | 5 | 6 | 8 | 10 | 12 | 14 | 16 | 18 | 20)[];
             };
         };
         /** LTXVideoGenerationSpec */

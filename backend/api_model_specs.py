@@ -29,10 +29,37 @@ FORCED_API_MODEL_MAP: dict[str, str] = {
 }
 
 
-def _resolution_spec(
-    *,
-    fps_to_durations: dict[LTXVideoGenFps, tuple[LTXVideoGenDuration, ...]],
-) -> LTXVideoGenerationResolutionSpec:
+_ApiDurationEnvelope = tuple[LTXVideoGenDuration, ...]
+_ApiFpsDurationMap = dict[LTXVideoGenFps, _ApiDurationEnvelope]
+_ApiResolutionMap = dict[LTXVideoGenResolution, LTXVideoGenerationResolutionSpec]
+
+# API duration envelopes (seconds). ltxv-api accepts 2–20s. GenSpace floors the
+# picker at 6s; gap fill uses smallest_valid from this full list.
+# 20s is Fast 720p/1080p at 24/25 and the A2V standard-tier audio cap.
+_API_DURATIONS_TO_10S: _ApiDurationEnvelope = (2, 3, 4, 5, 6, 8, 10)
+_API_DURATIONS_TO_20S: _ApiDurationEnvelope = (2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20)
+
+_API_FPS_STANDARD: _ApiFpsDurationMap = {
+    24: _API_DURATIONS_TO_10S,
+    25: _API_DURATIONS_TO_10S,
+    48: _API_DURATIONS_TO_10S,
+    50: _API_DURATIONS_TO_10S,
+}
+_API_FPS_EXTENDED: _ApiFpsDurationMap = {
+    24: _API_DURATIONS_TO_20S,
+    25: _API_DURATIONS_TO_20S,
+    48: _API_DURATIONS_TO_10S,
+    50: _API_DURATIONS_TO_10S,
+}
+# ltx-2-5-pro has no 48 fps in MODEL_CAPABILITY_MATRIX.
+_API_FPS_PRO_2_5: _ApiFpsDurationMap = {
+    24: _API_DURATIONS_TO_10S,
+    25: _API_DURATIONS_TO_10S,
+    50: _API_DURATIONS_TO_10S,
+}
+
+
+def _resolution_spec(fps_to_durations: _ApiFpsDurationMap) -> LTXVideoGenerationResolutionSpec:
     return LTXVideoGenerationResolutionSpec(
         fps_to_durations={
             fps: list(durations)
@@ -41,37 +68,44 @@ def _resolution_spec(
     )
 
 
+_API_STANDARD_RESOLUTION = _resolution_spec(_API_FPS_STANDARD)
+_API_EXTENDED_RESOLUTION = _resolution_spec(_API_FPS_EXTENDED)
+_API_PRO_2_5_RESOLUTION = _resolution_spec(_API_FPS_PRO_2_5)
+
+# Fast t2v/i2v: 720p/1080p get 20s at 24/25; 1440p/4K stay at 10s.
+_API_FAST_RESOLUTIONS: _ApiResolutionMap = {
+    "720p": _API_EXTENDED_RESOLUTION,
+    "1080p": _API_EXTENDED_RESOLUTION,
+    "1440p": _API_STANDARD_RESOLUTION,
+    "2160p": _API_STANDARD_RESOLUTION,
+}
+# Pro 2.3 t2v/i2v: 10s at every fps and resolution, including 720p.
+_API_PRO_RESOLUTIONS: _ApiResolutionMap = {
+    "720p": _API_STANDARD_RESOLUTION,
+    "1080p": _API_STANDARD_RESOLUTION,
+    "1440p": _API_STANDARD_RESOLUTION,
+    "2160p": _API_STANDARD_RESOLUTION,
+}
+# Pro 2.5 t2v/i2v/a2v: 720p+1080p, 24/25/50, 10s. No 48 fps, no 1440p/4K.
+_API_PRO_2_5_RESOLUTIONS: _ApiResolutionMap = {
+    "720p": _API_PRO_2_5_RESOLUTION,
+    "1080p": _API_PRO_2_5_RESOLUTION,
+}
+# A2V for Pro 2.3 / Fast 2.5: 20s audio at 720p/1080p, 10s at 1440p/4K.
+_API_A2V_RESOLUTIONS: _ApiResolutionMap = {
+    "720p": _API_EXTENDED_RESOLUTION,
+    "1080p": _API_EXTENDED_RESOLUTION,
+    "1440p": _API_STANDARD_RESOLUTION,
+    "2160p": _API_STANDARD_RESOLUTION,
+}
+
+
 ltx_api_model_specs: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], ...] = (
     (
         "fast",
         LTXVideoGenerationSpec(
             display_name="LTX-2.3 Fast (API)",
-            supported_resolutions_durations={
-                "1080p": _resolution_spec(
-                    fps_to_durations={
-                        24: (6, 8, 10, 12, 14, 16, 18, 20),
-                        25: (6, 8, 10, 12, 14, 16, 18, 20),
-                        48: (6, 8, 10),
-                        50: (6, 8, 10),
-                    },
-                ),
-                "1440p": _resolution_spec(
-                    fps_to_durations={
-                        24: (6, 8, 10),
-                        25: (6, 8, 10),
-                        48: (6, 8, 10),
-                        50: (6, 8, 10),
-                    },
-                ),
-                "2160p": _resolution_spec(
-                    fps_to_durations={
-                        24: (6, 8, 10),
-                        25: (6, 8, 10),
-                        48: (6, 8, 10),
-                        50: (6, 8, 10),
-                    },
-                ),
-            },
+            supported_resolutions_durations=_API_FAST_RESOLUTIONS,
             # No A2V envelope: ltxv-api audio-to-video does not accept ltx-2-3-fast.
         ),
     ),
@@ -79,128 +113,24 @@ ltx_api_model_specs: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], .
         "pro",
         LTXVideoGenerationSpec(
             display_name="LTX-2.3 Pro (API)",
-            supported_resolutions_durations={
-                "1080p": _resolution_spec(
-                    fps_to_durations={
-                        24: (6, 8, 10),
-                        25: (6, 8, 10),
-                        48: (6, 8, 10),
-                        50: (6, 8, 10),
-                    },
-                ),
-                "1440p": _resolution_spec(
-                    fps_to_durations={
-                        24: (6, 8, 10),
-                        25: (6, 8, 10),
-                        48: (6, 8, 10),
-                        50: (6, 8, 10),
-                    },
-                ),
-                "2160p": _resolution_spec(
-                    fps_to_durations={
-                        24: (6, 8, 10),
-                        25: (6, 8, 10),
-                        48: (6, 8, 10),
-                        50: (6, 8, 10),
-                    },
-                ),
-            },
-            a2v_supported_resolutions_durations={
-                "1080p": _resolution_spec(
-                    fps_to_durations={
-                        24: (6, 8, 10),
-                        25: (6, 8, 10),
-                        48: (6, 8, 10),
-                        50: (6, 8, 10),
-                    },
-                ),
-            },
+            supported_resolutions_durations=_API_PRO_RESOLUTIONS,
+            a2v_supported_resolutions_durations=_API_A2V_RESOLUTIONS,
         ),
     ),
-    # ltx-2-5-fast: t2v/i2v duration envelope matches API Fast. A2V is 1080p
-    # (ltxv-api MAX_AUDIO_SECONDS for this model).
     (
         "fast-2.5",
         LTXVideoGenerationSpec(
             display_name="LTX-2.5 Fast (API)",
-            supported_resolutions_durations={
-                "1080p": _resolution_spec(
-                    fps_to_durations={
-                        24: (6, 8, 10, 12, 14, 16, 18, 20),
-                        25: (6, 8, 10, 12, 14, 16, 18, 20),
-                        48: (6, 8, 10),
-                        50: (6, 8, 10),
-                    },
-                ),
-                "1440p": _resolution_spec(
-                    fps_to_durations={
-                        24: (6, 8, 10),
-                        25: (6, 8, 10),
-                        48: (6, 8, 10),
-                        50: (6, 8, 10),
-                    },
-                ),
-                "2160p": _resolution_spec(
-                    fps_to_durations={
-                        24: (6, 8, 10),
-                        25: (6, 8, 10),
-                        48: (6, 8, 10),
-                        50: (6, 8, 10),
-                    },
-                ),
-            },
-            a2v_supported_resolutions_durations={
-                "1080p": _resolution_spec(
-                    fps_to_durations={
-                        24: (6, 8, 10),
-                        25: (6, 8, 10),
-                        48: (6, 8, 10),
-                        50: (6, 8, 10),
-                    },
-                ),
-            },
+            supported_resolutions_durations=_API_FAST_RESOLUTIONS,
+            a2v_supported_resolutions_durations=_API_A2V_RESOLUTIONS,
         ),
     ),
     (
         "pro-2.5",
         LTXVideoGenerationSpec(
             display_name="LTX-2.5 Pro (API)",
-            supported_resolutions_durations={
-                "1080p": _resolution_spec(
-                    fps_to_durations={
-                        24: (6, 8, 10),
-                        25: (6, 8, 10),
-                        48: (6, 8, 10),
-                        50: (6, 8, 10),
-                    },
-                ),
-                "1440p": _resolution_spec(
-                    fps_to_durations={
-                        24: (6, 8, 10),
-                        25: (6, 8, 10),
-                        48: (6, 8, 10),
-                        50: (6, 8, 10),
-                    },
-                ),
-                "2160p": _resolution_spec(
-                    fps_to_durations={
-                        24: (6, 8, 10),
-                        25: (6, 8, 10),
-                        48: (6, 8, 10),
-                        50: (6, 8, 10),
-                    },
-                ),
-            },
-            a2v_supported_resolutions_durations={
-                "1080p": _resolution_spec(
-                    fps_to_durations={
-                        24: (6, 8, 10),
-                        25: (6, 8, 10),
-                        48: (6, 8, 10),
-                        50: (6, 8, 10),
-                    },
-                ),
-            },
+            supported_resolutions_durations=_API_PRO_2_5_RESOLUTIONS,
+            a2v_supported_resolutions_durations=_API_PRO_2_5_RESOLUTIONS,
         ),
     ),
 )

@@ -1023,23 +1023,21 @@ class FakeRetakePipeline:
         audio_vae_path: str | None = None,
         duration_head_path: str | None = None,
     ) -> "FakeRetakePipeline":
-        del (
-            checkpoint_path,
-            gemma_root,
-            device,
-            streaming_prefetch_count,
-            loras,
-            quantization,
-            video_vae_path,
-            audio_vae_path,
-            duration_head_path,
-        )
+        del device, streaming_prefetch_count, loras, quantization
         pipeline = FakeRetakePipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeRetakePipeline singleton is not bound")
+        pipeline.create_calls.append({
+            "checkpoint_path": checkpoint_path,
+            "gemma_root": gemma_root,
+            "video_vae_path": video_vae_path,
+            "audio_vae_path": audio_vae_path,
+            "duration_head_path": duration_head_path,
+        })
         return pipeline
 
     def __init__(self) -> None:
+        self.create_calls: list[dict[str, Any]] = []
         self.generate_calls: list[dict[str, Any]] = []
         self.extend_calls: list[dict[str, Any]] = []
         self.raise_on_generate: Exception | None = None
@@ -1079,7 +1077,7 @@ class FakeTextEncoder:
         api_key: str,
         checkpoint_path: str,
         enhance_prompt: bool,
-        api_model_id: str | None = None,
+        api_model: dict[str, str] | None = None,
     ) -> Any | None:
         self.encode_calls.append(
             {
@@ -1087,7 +1085,7 @@ class FakeTextEncoder:
                 "api_key": api_key,
                 "checkpoint_path": checkpoint_path,
                 "enhance_prompt": enhance_prompt,
-                "api_model_id": api_model_id,
+                "api_model": api_model,
             }
         )
         if self.encode_responses:
