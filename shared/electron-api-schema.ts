@@ -272,6 +272,16 @@ export const electronAPISchemas = {
     input: z.object({ sessionId: z.string() }),
     output: emptyResult,
   },
+  exportAudio: {
+    input: z.object({
+      clips: z.array(exportClip),
+      outputPath: z.string(),
+      format: z.enum(['mp3', 'aac', 'wav', 'flac']),
+      sampleRate: z.number(),
+      bitrate: z.number().optional(),
+    }),
+    output: emptyResult,
+  },
 
   // Python setup
   checkPythonReady: {
