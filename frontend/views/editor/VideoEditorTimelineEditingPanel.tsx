@@ -23,7 +23,7 @@ import { useVideoGenerationModelSpecs } from '../../hooks/use-video-generation-m
 import { RETAKE_EXTEND_MODELS } from '../../hooks/use-retake'
 import type { GenerationError } from '../../lib/generation-errors'
 import { addVisualAssetToProject } from '../../lib/asset-copy'
-import { GapGenerationModal } from './GapGenerationModal'
+import { GapGenerationModal, type GapFrameConditioning } from './GapGenerationModal'
 import { ClipContextMenu, type ClipContextMenuState } from './ClipContextMenu'
 import type { TimelineClip, Track, SubtitleClip, Asset, TextOverlayStyle } from '../../types/project-model'
 import { ApiClient } from '../../lib/api-client'
@@ -107,6 +107,20 @@ interface GapGenerationApi {
   reset: () => void
   error: GenerationError | null
   canCancel: boolean
+}
+
+async function materializeGapImageFile(file: File): Promise<string> {
+  const electronPath = window.electronAPI.getPathForFile(file)
+  if (electronPath) return electronPath
+
+  // Retain the byte-save fallback for browser-like File objects without a native path.
+  const buf = await file.arrayBuffer()
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)))
+  const modelsPath = await window.electronAPI.getModelsPath()
+  const tmpDir = modelsPath.replace(/[/\\]models$/, '')
+  const tmpPath = `${tmpDir}/tmp_gap_image_${Date.now()}.png`
+  await window.electronAPI.saveFile({ filePath: tmpPath, data: b64, encoding: 'base64' })
+  return tmpPath
 }
 
 export interface VideoEditorTimelineEditingPanelProps {
@@ -455,6 +469,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     prompt: string
     settings: GenerationSettings
     applyAudio: boolean
+    reverseResult: boolean
   } | null>(null)
   const [gapSuggesting, setGapSuggesting] = useState(false)
   const [gapSuggestion, setGapSuggestion] = useState<string | null>(null)
@@ -870,7 +885,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     runSuggestion(true)
   }, [runSuggestion])
 
-  const handleGapGenerate = useCallback(async () => {
+  const handleGapGenerate = useCallback(async (frameConditioning: GapFrameConditioning) => {
     if (!selectedGap || !gapGenerateMode || !gapPrompt.trim() || !currentProjectId) return
 
     const gap = selectedGap
@@ -892,6 +907,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
       prompt: finalPrompt,
       settings,
       applyAudio: gapApplyAudioToTrack,
+      reverseResult: mode !== 'text-to-image' && !gapImageFile && frameConditioning.reverseResult,
     })
 
     clearSelectedGap()
@@ -900,20 +916,10 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
       if (mode === 'text-to-image') {
         await gapGenerationApi.generateImage(finalPrompt, settings)
       } else {
-        let imagePath: string | null = null
-        if (gapImageFile) {
-          const electronPath = (gapImageFile as { path?: string }).path
-          if (electronPath) {
-            imagePath = electronPath
-          } else {
-            const buf = await gapImageFile.arrayBuffer()
-            const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)))
-            const modelsPath = await window.electronAPI.getModelsPath()
-            const tmpDir = modelsPath.replace(/[/\\]models$/, '')
-            const tmpPath = `${tmpDir}/tmp_gap_image_${Date.now()}.png`
-            await window.electronAPI.saveFile({ filePath: tmpPath, data: b64, encoding: 'base64' })
-            imagePath = tmpPath
-          }
+        let imagePath = frameConditioning.imagePath
+        const imageFile = gapImageFile ?? frameConditioning.imageFile
+        if (imageFile) {
+          imagePath = await materializeGapImageFile(imageFile)
         }
         await gapGenerationApi.generate(finalPrompt, imagePath, settings)
       }
@@ -994,6 +1000,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
           gap,
           asset,
           createAudio: assetType === 'video' && generatingGap.applyAudio && generatingGap.settings.audio,
+          reversed: assetType === 'video' && generatingGap.reverseResult,
         })
       }
 
