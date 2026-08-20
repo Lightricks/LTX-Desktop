@@ -986,10 +986,22 @@ function PromptBar({
                   title="MODEL"
                   value={resolvedVideoOptions.selectedModel ?? settings.model}
                   onChange={(v) => onSettingsChange({ ...settings, model: v })}
-                  options={resolvedVideoOptions.modelOptions.map((item) => ({
-                    value: item.pipeline,
-                    label: item.spec.display_name,
-                  }))}
+                  options={[
+                    ...resolvedVideoOptions.modelOptions.map((item) => ({
+                      value: item.pipeline,
+                      label: item.spec.display_name,
+                    })),
+                    ...(
+                      isLocalMode && !resolvedVideoOptions.modelOptions.some((item) => item.pipeline === 'pro')
+                        ? [{
+                            value: 'pro',
+                            label: 'LTX-2.3 Pro (API)',
+                            disabled: true,
+                            tooltip: 'Enable LTX API models in Settings → General',
+                          }]
+                        : []
+                    ),
+                  ]}
                   trigger={
                     <>
                       <LightricksIcon className="h-3.5 w-3.5" />
