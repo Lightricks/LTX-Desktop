@@ -1,4 +1,4 @@
-# LTX Desktop
+# LTX Desktop-2
 
 LTX Desktop is an open-source desktop app for generating videos with LTX models — locally on supported Windows/Linux NVIDIA GPUs or Apple Silicon Macs, with an API mode for unsupported hardware. Local generation defaults to **LTX 2.5 Fast**; **LTX 2.3 Fast** remains available. **LTX 2.5 Pro** is API-only.
 
