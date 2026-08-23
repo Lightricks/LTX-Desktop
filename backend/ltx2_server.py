@@ -235,11 +235,14 @@ LTX_API_BASE_URL = "https://api.ltx.video"
 
 
 def _resolve_local_generations_mode() -> LocalGenerationMode:
+    from runtime_config.accelerator import accelerator_backend
+
     gpu_info = GpuInfoImpl()
     system = platform.system()
     cuda_available = gpu_info.get_cuda_available()
     mps_available = gpu_info.get_mps_available()
     vram_gb = gpu_info.get_vram_total_gb()
+    fp8_capable = accelerator_backend() == "cuda"
     # On Darwin there's no discrete VRAM (unified memory), so gate on *available* RAM,
     # not total — total overstates real headroom once the OS/Electron/app are running.
     # See GpuInfoImpl.get_available_ram_gb.
@@ -252,16 +255,18 @@ def _resolve_local_generations_mode() -> LocalGenerationMode:
         vram_gb=vram_gb,
         mps_available=mps_available,
         ram_gb=available_ram_gb,
+        fp8_capable=fp8_capable,
     )
     logger.info(
         "Runtime policy local_generations_mode=%s (system=%s cuda_available=%s mps_available=%s "
-        "vram_gb=%s available_ram_gb=%s)",
+        "vram_gb=%s available_ram_gb=%s fp8_capable=%s)",
         mode,
         system,
         cuda_available,
         mps_available,
         vram_gb,
         available_ram_gb,
+        fp8_capable,
     )
     return mode
 
@@ -344,6 +349,8 @@ def log_hardware_info() -> None:
             "LTX 2.5 decode uses eager SDPA on Mac (no Triton; slower than Linux/Windows)."
         )
     logger.info(gpu_line)
+    from runtime_config.accelerator import accelerator_backend
+    logger.info(f"Accelerator: {accelerator_backend()}  |  HIP: {getattr(torch.version, 'hip', None)}")
     logger.info(f"SageAttention: {'enabled' if use_sage_attention else 'disabled'}")
     logger.info(f"Python: {sys.version.split()[0]}  |  Torch: {torch.__version__}")
 

@@ -48,6 +48,7 @@ def decide_local_generation_mode(
     vram_gb: int | None,
     mps_available: bool = False,
     ram_gb: int | None = None,
+    fp8_capable: bool = True,
 ) -> LocalGenerationMode:
     """Pick the local-generation mode for this runtime.
 
@@ -92,6 +93,14 @@ def decide_local_generation_mode(
             return "unsupported"
         if vram_gb < 15:
             return "unsupported"
+        # full_models_loading's >=31 GB floor assumes the fp8-halved (~23 GB) transformer
+        # (see module docstring). Without fp8 (ROCm today — see
+        # runtime_config.accelerator.accelerator_backend), holding the full bf16
+        # (~42-46 GB) transformer resident instead would OOM at this floor, so stay on
+        # the streaming path regardless of VRAM until a real bf16-full-resident floor is
+        # established on non-CUDA hardware.
+        if not fp8_capable:
+            return "streaming_models_loading"
         if vram_gb < 31:
             return "streaming_models_loading"
         return "full_models_loading"

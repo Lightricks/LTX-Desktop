@@ -90,7 +90,15 @@ def effective_edit_steps(num_inference_steps: int, strength: float) -> int:
 
 
 def device_supports_fp8(device: str | torch.device | object | None) -> bool:
-    return get_device_type(device) == "cuda"
+    # ROCm PyTorch also reports device.type == "cuda" (see runtime_config.accelerator),
+    # so this must not be a plain device-type check: ROCm has no fp8_cast kernel support
+    # here yet, and would otherwise be silently misidentified as CUDA/NVIDIA.
+    if get_device_type(device) != "cuda":
+        return False
+
+    from runtime_config.accelerator import accelerator_backend
+
+    return accelerator_backend() == "cuda"
 
 
 def sync_device(device: str | torch.device | object | None) -> None:
