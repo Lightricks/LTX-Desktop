@@ -24,6 +24,7 @@ class ImageGenerationPipeline(Protocol):
         guidance_scale: float,
         num_inference_steps: int,
         seed: int,
+        variation: float = 0.0,
     ) -> ImagePipelineOutputLike:
         ...
 

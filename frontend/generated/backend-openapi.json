@@ -1061,6 +1061,13 @@
             "title": "Strength",
             "type": "number"
           },
+          "variation": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Variation",
+            "type": "number"
+          },
           "width": {
             "default": 1024,
             "minimum": 16.0,

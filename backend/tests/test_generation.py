@@ -2398,6 +2398,18 @@ class TestGenerateImage:
         assert call["width"] == 1008
         assert call["height"] == 1008
 
+    def test_variation_forwarded_to_pipeline(self, client, fake_services, create_fake_model_files):
+        create_fake_model_files(include_zit=True)
+        r = client.post("/api/generate-image", json={"prompt": "test", "variation": 0.4})
+        assert r.status_code == 200
+        assert fake_services.image_generation_pipeline.generate_calls[0]["variation"] == 0.4
+
+    def test_variation_defaults_off_and_is_bounded(self, client, fake_services, create_fake_model_files):
+        create_fake_model_files(include_zit=True)
+        assert client.post("/api/generate-image", json={"prompt": "test"}).status_code == 200
+        assert fake_services.image_generation_pipeline.generate_calls[0]["variation"] == 0.0
+        assert client.post("/api/generate-image", json={"prompt": "test", "variation": 1.5}).status_code == 422
+
     def test_num_images_clamped(self, client, fake_services, create_fake_model_files):
         create_fake_model_files(include_zit=True)
         r = client.post(

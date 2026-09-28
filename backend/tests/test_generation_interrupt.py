@@ -86,10 +86,64 @@ def test_zit_pipeline_passes_step_end_callback() -> None:
         ZitImageGenerationPipeline,
     )
 
+    # generate() takes its callback from _variation_inputs (covered by the tests below).
     generate_src = inspect.getsource(ZitImageGenerationPipeline.generate)
     edit_src = inspect.getsource(ZitImageGenerationPipeline.edit)
-    assert "callback_on_step_end=diffusers_step_callback" in generate_src
+    assert "callback_on_step_end=callback" in generate_src
     assert "callback_on_step_end=diffusers_step_callback" in edit_src
+
+
+class _StubZImagePipeline:
+    _execution_device = "cpu"
+
+    def __init__(self) -> None:
+        import torch
+
+        self.clean = [torch.randn(5, 8, generator=torch.Generator().manual_seed(0))]
+
+    def encode_prompt(self, **_: object) -> tuple[list[object], list[object]]:
+        return self.clean, []
+
+
+def _zit_without_init() -> object:
+    from services.image_generation_pipeline.zit_image_generation_pipeline import (
+        ZitImageGenerationPipeline,
+    )
+
+    return ZitImageGenerationPipeline.__new__(ZitImageGenerationPipeline)
+
+
+def test_zit_variation_off_uses_plain_interrupt_callback() -> None:
+    zit = _zit_without_init()
+    kwargs, callback, inputs = zit._variation_inputs(_StubZImagePipeline(), "p", 1, 0.0, 4)  # type: ignore[attr-defined]
+    assert kwargs == {"prompt": "p"}
+    assert callback is diffusers_step_callback
+    assert inputs == ["latents"]
+
+
+def test_zit_variation_boost_perturbs_then_restores_and_stays_interruptible() -> None:
+    import torch
+
+    clear()
+    stub = _StubZImagePipeline()
+    zit = _zit_without_init()
+    kwargs, callback, inputs = zit._variation_inputs(stub, "p", 7, 0.5, 4)  # type: ignore[attr-defined]
+    noisy = kwargs["prompt_embeds"]
+    assert inputs == ["prompt_embeds"]
+    assert not torch.equal(noisy[0], stub.clean[0])
+
+    # Deterministic for the same seed + strength.
+    again, _, _ = zit._variation_inputs(stub, "p", 7, 0.5, 4)  # type: ignore[attr-defined]
+    assert torch.equal(again["prompt_embeds"][0], noisy[0])
+
+    # 4 steps x 0.25 boost => clean embeds restored at the end of step 0.
+    out = callback(None, 0, 0, {"prompt_embeds": noisy})
+    assert out["prompt_embeds"] is stub.clean
+
+    request()
+    with pytest.raises(GenerationCancelledError):
+        callback(None, 1, 0, {"prompt_embeds": stub.clean})
+    clear()
 
 
 def test_image_callback_stops_later_steps() -> None:

@@ -5,7 +5,7 @@ import {
   Heart, Film, Volume2, VolumeX, Sparkles, Sparkle,
   Clock, Monitor, ChevronUp, Scissors, Music, Undo2, Redo2, Loader2,
   ChevronLeft, ChevronRight, Copy, Check, Tag, Eraser, Square, MoveHorizontal, Wand2, Rows3, RefreshCw, Clapperboard,
-  CheckSquare
+  CheckSquare, Lock, Dices, History, Shuffle
 } from 'lucide-react'
 import { useProjects } from '../contexts/ProjectContext'
 import type { GenSpaceRetakeSource } from '../contexts/ProjectContext'
@@ -624,6 +624,73 @@ type GenSpaceMode = 'image' | 'video' | 'retake' | 'extend' | 'ic-lora' | 'multi
 
 // Resolve a selected resolution option key to {width,height}, or undefined for "original"
 // (backend then uses the source resolution).
+const MAX_SEED = 2147483647
+const randomSeed = () => Math.floor(Math.random() * MAX_SEED)
+
+// Quick seed controls in the prompt bar — same seedLocked/lockedSeed app settings as the
+// Settings modal (the context debounce-syncs them to the backend), just one click away.
+function SeedControl({ lastSeed }: { lastSeed: number | null }) {
+  const { settings, updateSettings } = useAppSettings()
+  const locked = settings.seedLocked
+  const [draft, setDraft] = useState(String(settings.lockedSeed))
+  useEffect(() => { setDraft(String(settings.lockedSeed)) }, [settings.lockedSeed])
+
+  const commitDraft = () => {
+    const n = parseInt(draft, 10)
+    if (Number.isFinite(n)) updateSettings({ lockedSeed: Math.max(0, Math.min(MAX_SEED, n)) })
+    else setDraft(String(settings.lockedSeed))
+  }
+
+  return (
+    <div className="ml-2 flex items-center gap-0.5">
+      <button
+        type="button"
+        onClick={() => updateSettings({ seedLocked: !locked })}
+        title={locked ? 'Seed locked — click for a random seed each generation' : 'Random seed each generation — click to lock the seed'}
+        className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
+          locked ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+        }`}
+      >
+        {locked ? <Lock className="h-3.5 w-3.5" /> : <Dices className="h-3.5 w-3.5" />}
+        {locked ? 'Locked' : 'Random'}
+      </button>
+      {locked && (
+        <>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ''))}
+            onBlur={commitDraft}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+            title="Locked seed"
+            className="w-[88px] px-1.5 py-1 rounded-md bg-zinc-900 border border-zinc-700 text-zinc-200 text-[11px] font-mono focus:outline-none focus:border-emerald-500"
+          />
+          <button
+            type="button"
+            onClick={() => updateSettings({ lockedSeed: randomSeed() })}
+            title="Roll a new random seed (stays locked)"
+            className="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+          >
+            <Dices className="h-3.5 w-3.5" />
+          </button>
+        </>
+      )}
+      {lastSeed != null && !(locked && settings.lockedSeed === lastSeed) && (
+        <button
+          type="button"
+          onClick={() => updateSettings({ seedLocked: true, lockedSeed: lastSeed })}
+          title={`Lock the last generation's seed (${lastSeed})`}
+          className="flex items-center gap-1 p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors text-[11px]"
+        >
+          <History className="h-3.5 w-3.5" />
+          <span className="font-mono">{lastSeed}</span>
+        </button>
+      )}
+    </div>
+  )
+}
+
 function resolveResolution(options: ResolutionOption[], key: string): { width: number; height: number } | undefined {
   const opt = options.find((o) => o.key === key)
   if (!opt || opt.width == null || opt.height == null) return undefined
@@ -697,6 +764,7 @@ function PromptBar({
   canRedoPrompt,
   onRedoPrompt,
   allowUltrawideVideo,
+  lastSeed,
 }: {
   mode: GenSpaceMode
   onModeChange: (mode: GenSpaceMode) => void
@@ -749,6 +817,7 @@ function PromptBar({
     variations: number
     audio?: boolean
     imageEditStrength?: number
+    imageVariation?: number
   }
   onSettingsChange: (settings: any) => void
   videoModelSpecs: VideoGenerationModelSpecItem[]
@@ -775,6 +844,7 @@ function PromptBar({
   canRedoPrompt?: boolean
   onRedoPrompt?: () => void
   allowUltrawideVideo?: boolean
+  lastSeed?: number | null
 }) {
   const enhanceDisabled = (!canEnhancePrompt && !enhanceBlockedByMissingGeminiKey) || !!isEnhancingPrompt
   const inputRef = useRef<HTMLInputElement>(null)
@@ -1252,6 +1322,8 @@ function PromptBar({
           Clear
         </button>
 
+        <SeedControl lastSeed={lastSeed ?? null} />
+
         <div className="flex-1" />
 
         {isRetake ? (
@@ -1350,6 +1422,28 @@ function PromptBar({
                     </>
                   }
                 />
+
+                {/* Variation boost: the turbo image models barely change composition across seeds,
+                    so this perturbs the prompt embeddings on the first step(s) (local only). */}
+                {!imageUsesFalApi && (
+                  <div
+                    className="flex items-center gap-1.5 px-2 text-[10px] text-zinc-400"
+                    title="Variation boost — more composition/pose/camera variety between seeds. 0 = off. Same seed + same value reproduces the same image. Above ~70% it gets looser with the prompt."
+                  >
+                    <Shuffle className="h-3.5 w-3.5" />
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={settings.imageVariation ?? 0}
+                      onChange={(e) => onSettingsChange({ ...settings, imageVariation: parseFloat(e.target.value) })}
+                      onDoubleClick={() => onSettingsChange({ ...settings, imageVariation: 0 })}
+                      className="w-16 accent-white"
+                    />
+                    <span className="w-7 text-right">{Math.round((settings.imageVariation ?? 0) * 100)}%</span>
+                  </div>
+                )}
 
                 {/* Resolution dropdown */}
                 <SettingsDropdown
@@ -1696,6 +1790,7 @@ const DEFAULT_VIDEO_SETTINGS = {
   variations: 1,
   audio: true,
   imageEditStrength: 0.6,
+  imageVariation: 0,
 }
 
 export function GenSpace() {
@@ -1727,7 +1822,7 @@ export function GenSpace() {
     clearGenSpacePrompt,
   } = useProjects()
   const currentProjectId = activeProject?.id ?? null
-  const { shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi, forceApiGenerations, settings: appSettings } = useAppSettings()
+  const { shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi, forceApiGenerations, settings: appSettings, updateSettings: updateAppSettings } = useAppSettings()
   const {
     modelSpecs: videoGenerationModelSpecsResponse,
     isLoading: isLoadingVideoGenerationModelSpecs,
@@ -1874,6 +1969,11 @@ export function GenSpace() {
     resumeIfRunning,
     cancel,
   } = useGeneration()
+
+  // generatedSeed clears on reset(); remember the most recent one for the prompt bar's
+  // "lock last seed" button.
+  const [lastSeed, setLastSeed] = useState<number | null>(null)
+  useEffect(() => { if (generatedSeed != null) setLastSeed(generatedSeed) }, [generatedSeed])
 
   // Locally installed LoRAs are only usable in local generation mode.
   const isLocalMode = !shouldVideoGenerateWithLtxApi
@@ -2439,6 +2539,7 @@ export function GenSpace() {
           imageResolution: s.imageResolution,
           variations: s.variations ?? prev.variations,
           imageEditStrength: s.imageEditStrength ?? prev.imageEditStrength,
+          imageVariation: s.imageVariation ?? prev.imageVariation,
         }))
         generateSubmissionRef.current = {
           kind: ctx.genType === 'image' ? 'image' : 'video',
@@ -2981,6 +3082,7 @@ export function GenSpace() {
               imageAspectRatio: usedSettings.imageAspectRatio || usedSettings.aspectRatio,
               imageSteps: editContext ? IMAGE_STEPS_EDIT : IMAGE_STEPS_GENERATE,
               ...(editContext ? { inputImageUrl: editContext.source, imageEditStrength: editContext.strength } : {}),
+              ...(!editContext && usedSettings.imageVariation ? { imageVariation: usedSettings.imageVariation } : {}),
             },
             takes: [{
               path: copied.path,
@@ -3440,6 +3542,7 @@ export function GenSpace() {
         imageModel: settings.imageModel as 'z-image-turbo' | 'krea-2-turbo',
         variations: settings.variations,
         imageEditStrength: settings.imageEditStrength,
+        imageVariation: settings.imageVariation,
       }
       const modelLabel = resolvePipelineDisplayName(videoModelSpecs, imageSettings.model) ?? undefined
       generateSubmissionRef.current = {
@@ -3547,7 +3650,16 @@ export function GenSpace() {
       fps: params.fps || prev.fps,
       audio: params.audio,
       aspectRatio: params.imageAspectRatio || prev.aspectRatio,
+      ...(isImageGen ? {
+        imageVariation: params.imageVariation ?? 0,
+        // Image assets store the placeholder model 'fast'; the real image model is in modelLabel.
+        ...(params.modelLabel === 'Krea 2 Turbo' ? { imageModel: 'krea-2-turbo' }
+          : params.modelLabel === 'Z-Image Turbo' ? { imageModel: 'z-image-turbo' } : {}),
+      } : {}),
     }))
+    // Reproduce exactly: lock the asset's seed (the prompt bar shows Locked; one click
+    // back to Random). Older assets without a saved seed leave the seed setting alone.
+    if (params.seed != null) updateAppSettings({ seedLocked: true, lockedSeed: params.seed })
     // Saved LoRA refs are models-dir-relative; re-select only those still installed.
     setSelectedLoras(
       (params.loras ?? []).flatMap((saved) => {
@@ -3560,7 +3672,7 @@ export function GenSpace() {
           : []
       }),
     )
-  }, [sanitizeVideoSettings, loraLibrary.items, appSettings.modelsDir])
+  }, [sanitizeVideoSettings, loraLibrary.items, appSettings.modelsDir, updateAppSettings])
 
   const handleEditImage = (imageAsset: Asset) => {
     setMode('image')
@@ -4359,6 +4471,7 @@ export function GenSpace() {
           prompt={prompt}
           onPromptChange={setPrompt}
           onClearPrompt={clearGenSpacePrompt}
+          lastSeed={lastSeed}
           onGenerate={handleGenerate}
           isGenerating={promptGenerating}
           canGenerate={canSubmit}
@@ -4553,6 +4666,7 @@ export function GenSpace() {
                   selectedAsset.resolution,
                   selectedAsset.duration ? `${formatSeconds(selectedAsset.duration)}s` : 'Image',
                   selectedAsset.generationParams?.seed != null ? `Seed ${selectedAsset.generationParams.seed}` : null,
+                  selectedAsset.generationParams?.imageVariation ? `Variation ${Math.round(selectedAsset.generationParams.imageVariation * 100)}%` : null,
                   selectedAsset.renderMs != null ? `${formatClock(selectedAsset.renderMs)} render` : null,
                 ].filter(Boolean).join(' • ')}
               </p>

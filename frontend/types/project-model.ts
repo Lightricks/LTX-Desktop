@@ -79,6 +79,8 @@ export const generationParamsSchema = z.object({
   imageAspectRatio: z.string().optional(),
   imageSteps: z.number().optional(),
   imageEditStrength: z.number().optional(),
+  // Variation boost (0-1) used for a local text-to-image gen; absent = 0 / older assets.
+  imageVariation: z.number().optional(),
   inputImageUrl: z.string().optional(),
   inputLastImageUrl: z.string().optional(),
   inputAudioUrl: z.string().optional(),

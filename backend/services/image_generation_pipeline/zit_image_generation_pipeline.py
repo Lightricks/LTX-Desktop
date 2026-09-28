@@ -24,6 +24,13 @@ from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 from transformers.models.qwen3.modeling_qwen3 import Qwen3Model
 
 from services.generation_interrupt import diffusers_step_callback
+from services.image_generation_pipeline.variation_boost import (
+    boost_step_count,
+    clamp_variation,
+    log_boost,
+    perturb_embeds,
+    restoring_callback,
+)
 from services.services_utils import (
     ImagePipelineOutputLike,
     PILImageType,
@@ -206,6 +213,7 @@ class ZitImageGenerationPipeline:
         guidance_scale: float,
         num_inference_steps: int,
         seed: int,
+        variation: float = 0.0,
     ) -> ImagePipelineOutputLike:
         # ZImagePipeline ignores guidance_scale, so we drop it explicitly.
         _ = guidance_scale
@@ -219,9 +227,12 @@ class ZitImageGenerationPipeline:
         device = self._resolve_generator_device()
         generator = torch.Generator(device=device).manual_seed(seed)
         pipeline = cast(Any, self.pipeline)
+        prompt_kwargs, callback, callback_inputs = self._variation_inputs(
+            pipeline, prompt, seed, variation, num_inference_steps
+        )
         try:
             output = pipeline(
-                prompt=prompt,
+                **prompt_kwargs,
                 height=height,
                 width=width,
                 guidance_scale=0.0,
@@ -229,7 +240,8 @@ class ZitImageGenerationPipeline:
                 generator=generator,
                 output_type="pil",
                 return_dict=True,
-                callback_on_step_end=diffusers_step_callback,
+                callback_on_step_end=callback,
+                callback_on_step_end_tensor_inputs=callback_inputs,
             )
         finally:
             # Leftover allocator cache would starve the next run.
@@ -244,6 +256,39 @@ class ZitImageGenerationPipeline:
                 ]
             )
         return result
+
+    # Variation boost (see variation_boost.py). Tuned 2026-09-27 on the 3090 (4 steps):
+    # noising only the FIRST step keeps prompt adherence up to 1.0 with big
+    # layout/pose/camera changes; noising 2 of 4 steps broke the prompt from ~0.75 up.
+    _VARIATION_MAX_NOISE = 1.0
+    _VARIATION_MASK_FRACTION = 0.5
+    _VARIATION_BOOST_FRACTION = 0.25
+
+    def _variation_inputs(
+        self,
+        pipeline: Any,
+        prompt: str,
+        seed: int,
+        variation: float,
+        num_inference_steps: int,
+    ) -> tuple[dict[str, Any], Any, list[str]]:
+        variation = clamp_variation(variation)
+        if variation <= 0.0:
+            return {"prompt": prompt}, diffusers_step_callback, ["latents"]
+
+        clean, _ = pipeline.encode_prompt(
+            prompt=prompt, device=pipeline._execution_device, do_classifier_free_guidance=False
+        )
+        noisy = perturb_embeds(
+            list(clean),
+            seed=seed,
+            variation=variation,
+            max_noise=self._VARIATION_MAX_NOISE,
+            mask_fraction=self._VARIATION_MASK_FRACTION,
+        )
+        boost_steps = boost_step_count(num_inference_steps, self._VARIATION_BOOST_FRACTION)
+        log_boost("Z-Image", variation, boost_steps, num_inference_steps)
+        return {"prompt_embeds": noisy}, restoring_callback(clean, boost_steps), ["prompt_embeds"]
 
     def _ensure_img2img_pipeline(self) -> Any:
         if self._img2img is not None:

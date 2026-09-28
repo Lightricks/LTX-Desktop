@@ -508,6 +508,8 @@ export function useGeneration(): UseGenerationReturn {
           // strength is ignored server-side unless imagePath is set, but the request type
           // requires it — send the default rather than the edit-only setting when not editing.
           strength: isEditing ? (settings.imageEditStrength ?? 0.6) : 0.6,
+          // Z-Image text-to-image only; the backend ignores it for Krea 2 and edits.
+          variation: isEditing ? 0 : (settings.imageVariation ?? 0),
           ...(isEditing ? { imagePath: editSource } : {}),
         }
         const result = await ApiClient.generateImage(imageRequest)

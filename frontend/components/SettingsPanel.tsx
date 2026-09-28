@@ -37,6 +37,7 @@ export interface GenerationSettings {
   imageModel?: 'z-image-turbo' | 'krea-2-turbo'
   variations?: number  // Number of image variations to generate
   imageEditStrength?: number  // Denoising strength when editing an existing image
+  imageVariation?: number  // Z-Image text-to-image composition variety across seeds (0 = off, 1 = max)
 }
 
 interface SettingsPanelProps {

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-import time
+import secrets
 from collections.abc import Callable
 from functools import wraps
 from pathlib import Path
@@ -63,14 +63,16 @@ class StateHandlerBase:
         return Path(custom) if custom else self._config.default_models_dir
 
     def _resolve_seed(self) -> int:
-        """Resolve the generation seed: locked seed, dev-mode constant, or time-based."""
+        """Resolve the generation seed: the locked seed, else a fresh random one.
+
+        (Dev mode used to pin unlocked gens to a constant 1000, which made "random"
+        silently non-random in every dev run — removed.)
+        """
         settings = self.state.app_settings
         if settings.seed_locked:
             logger.info("Using locked seed: %s", settings.locked_seed)
             return settings.locked_seed
-        if self.config.dev_mode:
-            return 1000
-        return int(time.time()) % _MAX_SEED
+        return secrets.randbelow(_MAX_SEED)
 
 
 def with_state_lock(

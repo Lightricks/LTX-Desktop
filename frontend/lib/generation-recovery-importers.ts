@@ -105,6 +105,7 @@ const importImage: RecoveryImporter = async (ctx, result, { addAsset }) => {
         imageAspectRatio: s?.aspectRatio,
         imageSteps: s?.imageSteps ?? 4,
         ...(ctx.inputImageUrl ? { inputImageUrl: ctx.inputImageUrl, imageEditStrength: s?.imageEditStrength } : {}),
+        ...(!ctx.inputImageUrl && s?.imageVariation ? { imageVariation: s.imageVariation } : {}),
       },
       takes: [{
         path: copied.path,

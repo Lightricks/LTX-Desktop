@@ -102,6 +102,7 @@ class ImageGenerationHandler(StateHandlerBase):
                     num_inference_steps=req.numSteps,
                     seed=seed,
                     num_images=num_images,
+                    variation=req.variation,
                 )
                 self._generation.complete_generation(output_paths)
                 return GenerateImageCompleteResponse(status="complete", image_paths=output_paths, seed=seed)
@@ -201,6 +202,7 @@ class ImageGenerationHandler(StateHandlerBase):
         num_inference_steps: int,
         seed: int,
         num_images: int,
+        variation: float = 0.0,
     ) -> list[str]:
         self._generation.raise_if_cancelled()
 
@@ -216,6 +218,7 @@ class ImageGenerationHandler(StateHandlerBase):
                 guidance_scale=0.0,
                 num_inference_steps=num_inference_steps,
                 seed=seed_i,
+                variation=variation,
             )
             return result.images[0]
 

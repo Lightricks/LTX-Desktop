@@ -1081,6 +1081,11 @@ export interface components {
              */
             strength: number;
             /**
+             * Variation
+             * @default 0
+             */
+            variation: number;
+            /**
              * Width
              * @default 1024
              */

@@ -25,6 +25,13 @@ from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLModel
 
 from services.generation_interrupt import diffusers_step_callback
+from services.image_generation_pipeline.variation_boost import (
+    boost_step_count,
+    clamp_variation,
+    log_boost,
+    perturb_embeds,
+    restoring_callback,
+)
 from services.services_utils import (
     ImagePipelineOutputLike,
     PILImageType,
@@ -192,6 +199,7 @@ class Krea2ImageGenerationPipeline:
         guidance_scale: float,
         num_inference_steps: int,
         seed: int,
+        variation: float = 0.0,
     ) -> ImagePipelineOutputLike:
         requested_width, requested_height = width, height
         if width * height > self._MAX_GENERATION_PIXELS:
@@ -202,10 +210,13 @@ class Krea2ImageGenerationPipeline:
         device = self._resolve_generator_device()
         generator = torch.Generator(device=device).manual_seed(seed)
         pipeline = cast(Any, self.pipeline)
+        prompt_kwargs, callback, callback_inputs = self._variation_inputs(
+            pipeline, prompt, seed, variation, num_inference_steps
+        )
 
         try:
             output = pipeline(
-                prompt=prompt,
+                **prompt_kwargs,
                 height=height,
                 width=width,
                 guidance_scale=guidance_scale,
@@ -216,7 +227,8 @@ class Krea2ImageGenerationPipeline:
                 # Poll the cooperative cancel Event between denoising steps so Stop
                 # actually aborts a Krea 2 run (this was missing, unlike the Z-Image
                 # path, so cancel spun forever and only exiting the app freed the GPU).
-                callback_on_step_end=diffusers_step_callback,
+                callback_on_step_end=callback,
+                callback_on_step_end_tensor_inputs=callback_inputs,
             )
         finally:
             # Leftover allocator cache would starve the next run.
@@ -233,6 +245,43 @@ class Krea2ImageGenerationPipeline:
                 ]
             )
         return result
+
+    # Variation boost (see variation_boost.py). Krea 2 embeds are
+    # [batch, seq, text_layers, dim] with a padding mask; noise on padded positions is
+    # harmless since attention masks them out. Not separately tuned: carries over the
+    # Z-Image finding that noising only the FIRST step keeps prompt adherence (2 noisy
+    # steps drifted off-prompt), so 0.15 x 6 steps => 1 step.
+    _VARIATION_MAX_NOISE = 1.0
+    _VARIATION_MASK_FRACTION = 0.5
+    _VARIATION_BOOST_FRACTION = 0.15
+
+    def _variation_inputs(
+        self,
+        pipeline: Any,
+        prompt: str,
+        seed: int,
+        variation: float,
+        num_inference_steps: int,
+    ) -> tuple[dict[str, Any], Any, list[str]]:
+        variation = clamp_variation(variation)
+        if variation <= 0.0:
+            return {"prompt": prompt}, diffusers_step_callback, ["latents"]
+
+        clean, mask = pipeline.encode_prompt(prompt=prompt, device=pipeline._execution_device)
+        noisy = perturb_embeds(
+            clean,
+            seed=seed,
+            variation=variation,
+            max_noise=self._VARIATION_MAX_NOISE,
+            mask_fraction=self._VARIATION_MASK_FRACTION,
+        )
+        boost_steps = boost_step_count(num_inference_steps, self._VARIATION_BOOST_FRACTION)
+        log_boost("Krea 2", variation, boost_steps, num_inference_steps)
+        return (
+            {"prompt_embeds": noisy, "prompt_embeds_mask": mask},
+            restoring_callback(clean, boost_steps),
+            ["prompt_embeds"],
+        )
 
     def edit(
         self,

@@ -497,6 +497,8 @@ class GenerateImageRequest(BaseModel):
     numImages: int = Field(default=1, ge=1)
     imagePath: str | None = None
     strength: float = Field(default=0.6, ge=0.0, le=1.0)
+    # Z-Image text-to-image only: 0 = off, 1 = max composition variety across seeds.
+    variation: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 def _default_model_types() -> set[ModelCheckpointID]:
