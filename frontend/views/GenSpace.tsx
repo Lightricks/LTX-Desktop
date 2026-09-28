@@ -521,6 +521,12 @@ const IMAGE_STEPS_EDIT = 8
 // FORK: Krea 2 Turbo (FLUX-family, ~4s/step in NF4) runs heavier than Z-Image.
 // 6 steps trades a little detail for ~25% faster renders; tune to taste.
 const IMAGE_STEPS_KREA2 = 6
+// FORK: Krea 2 is dev-only (license requires deployer content filters + forbids removing
+// its safety tuning); release builds offer Z-Image only. Backend enforces the same rule.
+const KREA2_ENABLED = import.meta.env.DEV
+type ImageModelId = 'z-image-turbo' | 'krea-2-turbo'
+const allowedImageModel = (model: string | undefined): ImageModelId =>
+  model === 'krea-2-turbo' && KREA2_ENABLED ? 'krea-2-turbo' : 'z-image-turbo'
 
 // Multi-select LoRA picker with a per-LoRA strength slider.
 function LoRAPicker({
@@ -1410,13 +1416,13 @@ function PromptBar({
                   onChange={(v) => onSettingsChange({ ...settings, imageModel: v })}
                   options={[
                     { value: 'z-image-turbo', label: 'Z-Image Turbo' },
-                    { value: 'krea-2-turbo', label: 'Krea 2 Turbo' },
+                    ...(KREA2_ENABLED ? [{ value: 'krea-2-turbo', label: 'Krea 2 Turbo' }] : []),
                   ]}
                   trigger={
                     <>
-                      {settings.imageModel === 'krea-2-turbo' ? <Sparkles className="h-3.5 w-3.5" /> : <ZitIcon className="h-3.5 w-3.5" />}
+                      {allowedImageModel(settings.imageModel) === 'krea-2-turbo' ? <Sparkles className="h-3.5 w-3.5" /> : <ZitIcon className="h-3.5 w-3.5" />}
                       <span className="text-zinc-300 font-medium">
-                        {settings.imageModel === 'krea-2-turbo' ? 'Krea 2 Turbo' : 'Z-Image Turbo'}{imageUsesFalApi ? ' (API)' : ''}
+                        {allowedImageModel(settings.imageModel) === 'krea-2-turbo' ? 'Krea 2 Turbo' : 'Z-Image Turbo'}{imageUsesFalApi ? ' (API)' : ''}
                       </span>
                       <ChevronUp className="h-3 w-3 text-zinc-500" />
                     </>
@@ -3538,8 +3544,8 @@ export function GenSpace() {
         imageResolution: settings.imageResolution,
         imageAspectRatio: settings.aspectRatio ?? '16:9',
         // FORK: Krea 2 Turbo runs at IMAGE_STEPS_KREA2; Z-Image is fine at 4. Editing uses IMAGE_STEPS_EDIT.
-        imageSteps: editSource ? IMAGE_STEPS_EDIT : (settings.imageModel === 'krea-2-turbo' ? IMAGE_STEPS_KREA2 : IMAGE_STEPS_GENERATE),
-        imageModel: settings.imageModel as 'z-image-turbo' | 'krea-2-turbo',
+        imageSteps: editSource ? IMAGE_STEPS_EDIT : (allowedImageModel(settings.imageModel) === 'krea-2-turbo' ? IMAGE_STEPS_KREA2 : IMAGE_STEPS_GENERATE),
+        imageModel: allowedImageModel(settings.imageModel),
         variations: settings.variations,
         imageEditStrength: settings.imageEditStrength,
         imageVariation: settings.imageVariation,
@@ -3572,7 +3578,7 @@ export function GenSpace() {
       const genSettings: GenerationSettings = {
           ...videoSettings,
           model: videoSettings.model as VideoGenerationPipeline,
-          imageModel: settings.imageModel as 'z-image-turbo' | 'krea-2-turbo',
+          imageModel: allowedImageModel(settings.imageModel),
           cameraMotion: 'none',
           imageAspectRatio: videoSettings.aspectRatio ?? '16:9',
           imageSteps: 4,
@@ -3653,7 +3659,7 @@ export function GenSpace() {
       ...(isImageGen ? {
         imageVariation: params.imageVariation ?? 0,
         // Image assets store the placeholder model 'fast'; the real image model is in modelLabel.
-        ...(params.modelLabel === 'Krea 2 Turbo' ? { imageModel: 'krea-2-turbo' }
+        ...(params.modelLabel === 'Krea 2 Turbo' ? { imageModel: allowedImageModel('krea-2-turbo') }
           : params.modelLabel === 'Z-Image Turbo' ? { imageModel: 'z-image-turbo' } : {}),
       } : {}),
     }))

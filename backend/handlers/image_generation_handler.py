@@ -74,6 +74,12 @@ class ImageGenerationHandler(StateHandlerBase):
                     use_fal_api=use_fal_api,
                 )
 
+            # FORK: Krea 2 is dev-only. Its license (§4.2) requires deployers to run content
+            # filters and forbids circumventing its safety tuning; release builds ship
+            # Z-Image (Apache 2.0) only. Checked before the API branch so it always applies.
+            if req.model == "krea-2-turbo" and not self.config.dev_mode:
+                raise HTTPError(400, "KREA_2_DEV_ONLY")
+
             if use_fal_api:
                 # FORK: Krea 2 is self-hosted only — it has no FAL/API path, so a
                 # forced-API request for it must fail rather than silently fall back

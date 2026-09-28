@@ -2410,6 +2410,23 @@ class TestGenerateImage:
         assert fake_services.image_generation_pipeline.generate_calls[0]["variation"] == 0.0
         assert client.post("/api/generate-image", json={"prompt": "test", "variation": 1.5}).status_code == 422
 
+    def test_krea2_rejected_in_release_builds(self, client, fake_services, create_fake_model_files):
+        create_fake_model_files(include_zit=True)
+        r = client.post("/api/generate-image", json={"prompt": "test", "model": "krea-2-turbo"})
+        assert r.status_code == 400
+        assert "KREA_2_DEV_ONLY" in r.text
+        assert fake_services.image_generation_pipeline.generate_calls == []
+
+    def test_krea2_allowed_in_dev_mode(self, client, test_state, fake_services, create_fake_model_files):
+        create_fake_model_files(include_zit=True)
+        krea_dir = resolve_model_path(test_state.config.default_models_dir, "krea-2-turbo")
+        krea_dir.mkdir(parents=True, exist_ok=True)
+        (krea_dir / "model.safetensors").write_bytes(b"\x00" * 1024)
+        test_state.config.dev_mode = True
+        r = client.post("/api/generate-image", json={"prompt": "test", "model": "krea-2-turbo"})
+        assert r.status_code == 200
+        assert len(fake_services.image_generation_pipeline.generate_calls) == 1
+
     def test_num_images_clamped(self, client, fake_services, create_fake_model_files):
         create_fake_model_files(include_zit=True)
         r = client.post(
