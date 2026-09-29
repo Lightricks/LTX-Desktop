@@ -39,6 +39,8 @@ import { addVisualAssetToProject } from '../lib/asset-copy'
 import { pathToFileUrl } from '../lib/file-url'
 import { GPM_IMAGE_DND_TYPE, saveDataUrlToTempFile, type GpmDndImage } from '../components/gpm/gpm-image-file'
 import { FILE_DND, type LibFile } from '../components/gpm/DownloadsBrowser'
+import { useDownloadsBrowserOpen } from '../components/gpm/downloads-browser-store'
+import { usePromptManagerProOpen } from '../components/gpm/prompt-manager-pro-store'
 import {
   areVideoGenerationSettingsEquivalent,
   formatPipelineDisplayName,
@@ -137,8 +139,14 @@ function AssetCard({
   selectMode = false,
   selected = false,
   onToggleSelect,
+  aspectRatio,
+  onMeasured,
 }: {
   asset: Asset
+  /** Natural-layout (masonry) card shape; undefined = uniform 16:9 cell. */
+  aspectRatio?: number
+  /** Reports the media's natural width/height ratio once it loads. */
+  onMeasured?: (id: string, ratio: number) => void
   onDelete: () => void
   onPlay: () => void
   onDragStart: (e: React.DragEvent, asset: Asset) => void
@@ -189,6 +197,11 @@ function AssetCard({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
+  const measureMedia = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { naturalWidth, naturalHeight } = e.currentTarget
+    if (naturalWidth > 0 && naturalHeight > 0) onMeasured?.(asset.id, naturalWidth / naturalHeight)
+  }
+
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation()
     // Quick-save into the last-used Studio Assets folder (no native Save dialog).
@@ -234,11 +247,15 @@ function AssetCard({
       {/* In select mode, a full-card shield swallows hover controls so clicks only toggle selection. */}
       {selectMode && <div className="absolute inset-0 z-20" />}
       {asset.type === 'video' ? (
-        <div className="relative w-full aspect-video bg-zinc-900">
+        <div
+          className={`relative w-full bg-zinc-900 ${aspectRatio ? '' : 'aspect-video'}`}
+          style={aspectRatio ? { aspectRatio } : undefined}
+        >
           {asset.bigThumbnailPath && (
             <img
               src={pathToFileUrl(asset.bigThumbnailPath)}
               alt=""
+              onLoad={measureMedia}
               className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-150 ${
                 isHovered ? 'opacity-0' : 'opacity-100'
               }`}
@@ -259,7 +276,13 @@ function AssetCard({
           )}
         </div>
       ) : (
-        <img src={pathToFileUrl(asset.path)} alt="" className="w-full aspect-video object-contain" />
+        <img
+          src={pathToFileUrl(asset.path)}
+          alt=""
+          onLoad={measureMedia}
+          className={`w-full object-contain ${aspectRatio ? '' : 'aspect-video'}`}
+          style={aspectRatio ? { aspectRatio } : undefined}
+        />
       )}
       
       {/* Favorite heart - always visible when favorited */}
@@ -1768,6 +1791,58 @@ const gallerySizeClasses: Record<GallerySize, string> = {
   large: 'grid-cols-[repeat(auto-fill,minmax(380px,1fr))]',
 }
 
+type GalleryLayout = 'natural' | 'uniform'
+
+// Same min column widths as the uniform grid so the size menu means the same thing in both layouts.
+const galleryMinColWidth: Record<GallerySize, number> = { small: 200, medium: 280, large: 380 }
+const GALLERY_GAP = 16
+
+// Width/height ratio for a card before its media has loaded: stored dims, then the
+// image gen's aspect setting, else 16:9 (the video default). Measured ratios override.
+function knownAspectRatio(asset: Asset): number | undefined {
+  if (asset.width && asset.height) return asset.width / asset.height
+  const ar = asset.generationParams?.imageAspectRatio
+  const m = ar?.match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/)
+  return m ? Number(m[1]) / Number(m[2]) : undefined
+}
+
+// Masonry (Grok/Pinterest-style): fixed-width columns, each card as tall as its media,
+// so 9:16 gens show full-size instead of letterboxed into a 16:9 cell. Items are placed
+// in order into the currently-shortest column, keeping newest-first roughly left→right.
+function MasonryGrid({ items, minColWidth }: {
+  items: Array<{ key: string; ratio: number; node: React.ReactNode }>
+  minColWidth: number
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(0)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const colCount = Math.max(1, Math.floor((width + GALLERY_GAP) / (minColWidth + GALLERY_GAP)))
+  const columns = useMemo(() => {
+    const cols: React.ReactNode[][] = Array.from({ length: colCount }, () => [])
+    const heights = new Array<number>(colCount).fill(0)
+    for (const item of items) {
+      let shortest = 0
+      for (let i = 1; i < colCount; i++) if (heights[i] < heights[shortest] - 0.01) shortest = i
+      cols[shortest].push(item.node)
+      heights[shortest] += 1 / item.ratio + 0.05 // card height in column-widths, + gap
+    }
+    return cols
+  }, [items, colCount])
+  return (
+    <div ref={ref} className="flex items-start" style={{ gap: GALLERY_GAP }}>
+      {width > 0 && columns.map((col, i) => (
+        <div key={i} className="flex-1 min-w-0 flex flex-col" style={{ gap: GALLERY_GAP }}>{col}</div>
+      ))}
+    </div>
+  )
+}
+
 // Map a source clip's geometry to Gen Space's discrete video settings so a
 // "Continue as new shot" continuation renders at a matching size/fps — the
 // separate clips must cut together cleanly on the timeline.
@@ -1851,6 +1926,12 @@ export function GenSpace() {
   const [, setDragFrame] = useState<DraggedFrame | null>(null)
   const [localError, setLocalError] = useState<GenerationError | null>(null)
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
+  // The side panels (z-75) sit above the lightbox (z-50); inset the lightbox by the
+  // open panels' width + their 24px toggle tab so the nav arrows stay visible.
+  const studioAssetsOpen = useDownloadsBrowserOpen()
+  const promptManagerOpen = usePromptManagerProOpen()
+  const lightboxInsetLeft = (studioAssetsOpen ? 340 : 0) + 24
+  const lightboxInsetRight = (promptManagerOpen ? 396 : 0) + 24
   const enlargedVideoRef = useRef<HTMLVideoElement | null>(null)
   const [copiedPrompt, setCopiedPrompt] = useState(false)
   // Live render stopwatch: elapsedMs ticks while generating and freezes on
@@ -1870,6 +1951,29 @@ export function GenSpace() {
   const [creatingTagFor, setCreatingTagFor] = useState<'__bar__' | '__selection__' | string | null>(null)
   const [newTagName, setNewTagName] = useState('')
   const [gallerySize, setGallerySize] = useState<GallerySize>('medium')
+  const [galleryLayout, setGalleryLayoutState] = useState<GalleryLayout>(() => {
+    try { return localStorage.getItem('genspace.galleryLayout') === 'uniform' ? 'uniform' : 'natural' } catch { return 'natural' }
+  })
+  const setGalleryLayout = useCallback((layout: GalleryLayout) => {
+    setGalleryLayoutState(layout)
+    try { localStorage.setItem('genspace.galleryLayout', layout) } catch { /* per-viewer convenience only */ }
+  }, [])
+  // Natural ratios measured from loaded media (assets rarely store width/height).
+  // Buffered in a ref and flushed once per frame so a gallery of loads = a few renders.
+  const measuredRatiosRef = useRef(new Map<string, number>())
+  const [measuredRatiosVersion, setMeasuredRatiosVersion] = useState(0)
+  const measureFlushRef = useRef<number | null>(null)
+  const handleMediaMeasured = useCallback((id: string, ratio: number) => {
+    const prev = measuredRatiosRef.current.get(id)
+    if (prev !== undefined && Math.abs(prev - ratio) < 0.01) return
+    measuredRatiosRef.current.set(id, ratio)
+    if (measureFlushRef.current === null) {
+      measureFlushRef.current = requestAnimationFrame(() => {
+        measureFlushRef.current = null
+        setMeasuredRatiosVersion(v => v + 1)
+      })
+    }
+  }, [])
   const [showSizeMenu, setShowSizeMenu] = useState(false)
   const sizeMenuRef = useRef<HTMLDivElement>(null)
   // Multi-select: bulk-tag/delete many assets at once. Drag a marquee over the
@@ -3941,10 +4045,15 @@ export function GenSpace() {
   // Memoized so typing in the prompt box (which re-renders GenSpace) doesn't
   // rebuild every thumbnail. Recomputes only when the assets or a card handler
   // actually change — all deps are stable (useCallback/useMemo/stable setters).
-  const assetCards = useMemo(() => filteredAssets.map(asset => (
+  const natural = galleryLayout === 'natural'
+  const assetCardItems = useMemo(() => filteredAssets.map(asset => {
+    const ratio = measuredRatiosRef.current.get(asset.id) ?? knownAspectRatio(asset) ?? 16 / 9
+    return { key: asset.id, ratio, node: (
     <AssetCard
       key={asset.id}
       asset={asset}
+      aspectRatio={natural ? ratio : undefined}
+      onMeasured={handleMediaMeasured}
       onDelete={() => handleDelete(asset.id)}
       onPlay={() => setSelectedAsset(asset)}
       onDragStart={handleDragStart}
@@ -3966,11 +4075,13 @@ export function GenSpace() {
         toggleSelect(asset.id)
       }}
     />
-  )), [
+  ) }
+  }), [
+    // measuredRatiosVersion: bumps when measuredRatiosRef gains entries, so ratios are re-read.
     filteredAssets, bins, handleDelete, handleDragStart, handleCreateVideo, handleRegenerate,
     handleRetake, handleExtend, handleIcLora, forceApiGenerations, currentProjectId,
     toggleFavorite, updateAsset, setSelectedAsset, setCreatingTagFor,
-    selectMode, selectedIds, toggleSelect,
+    selectMode, selectedIds, toggleSelect, natural, handleMediaMeasured, measuredRatiosVersion,
   ])
 
   // Navigation for the asset preview modal
@@ -4267,6 +4378,28 @@ export function GenSpace() {
                       )}
                     </button>
                   ))}
+                  <div className="my-2 border-t border-zinc-700" />
+                  <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Layout</div>
+                  {([
+                    { value: 'natural' as GalleryLayout, label: 'Natural', hint: 'Full shape (9:16 tall)' },
+                    { value: 'uniform' as GalleryLayout, label: 'Uniform', hint: 'Equal 16:9 cells' },
+                  ]).map(option => (
+                    <button
+                      key={option.value}
+                      onClick={() => { setGalleryLayout(option.value); setShowSizeMenu(false) }}
+                      className={`w-full flex items-center justify-between px-2 py-2 rounded-md transition-colors text-left ${galleryLayout === option.value ? 'bg-white/20 hover:bg-white/25' : 'hover:bg-zinc-700'}`}
+                    >
+                      <div className="flex flex-col">
+                        <span className={`text-sm ${galleryLayout === option.value ? 'text-white font-medium' : 'text-zinc-400'}`}>{option.label}</span>
+                        <span className="text-[11px] text-zinc-500">{option.hint}</span>
+                      </div>
+                      {galleryLayout === option.value && (
+                        <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
@@ -4288,9 +4421,9 @@ export function GenSpace() {
                 style={{ left: marquee.left, top: marquee.top, width: marquee.width, height: marquee.height }}
               />
             )}
-            <div className={`grid ${gallerySizeClasses[gallerySize]} gap-4`}>
-              {isGenerating && (
-                <div className="relative rounded-xl overflow-hidden bg-zinc-800 aspect-video">
+            {(() => {
+              const generatingCard = isGenerating && (
+                <div key="__generating__" className="relative rounded-xl overflow-hidden bg-zinc-800 aspect-video">
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
                     <div className="relative w-16 h-16 mb-3">
                       <div className="absolute inset-0 rounded-full border-2 border-violet-500/30" />
@@ -4319,9 +4452,21 @@ export function GenSpace() {
                     </button>
                   </div>
                 </div>
-              )}
-              {assetCards}
-            </div>
+              )
+              return natural ? (
+                <MasonryGrid
+                  minColWidth={galleryMinColWidth[gallerySize]}
+                  items={generatingCard
+                    ? [{ key: '__generating__', ratio: 16 / 9, node: generatingCard }, ...assetCardItems]
+                    : assetCardItems}
+                />
+              ) : (
+                <div className={`grid ${gallerySizeClasses[gallerySize]} gap-4`}>
+                  {generatingCard}
+                  {assetCardItems.map(item => item.node)}
+                </div>
+              )
+            })()}
           </div>
         </div>
       )}
@@ -4533,16 +4678,18 @@ export function GenSpace() {
       {selectedAsset && (
         <div 
           className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+          style={{ paddingLeft: lightboxInsetLeft, paddingRight: lightboxInsetRight }}
           onClick={() => setSelectedAsset(null)}
         >
           {/* Previous button */}
           <button
             onClick={(e) => { e.stopPropagation(); goToPrev() }}
             disabled={!canGoPrev}
-            className={`absolute left-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full backdrop-blur-md transition-all ${
+            style={{ left: lightboxInsetLeft + 12 }}
+            className={`absolute top-1/2 -translate-y-1/2 z-10 p-3 rounded-full transition-all ${
               canGoPrev
-                ? 'bg-white/10 text-white hover:bg-white/20 cursor-pointer'
-                : 'bg-white/5 text-zinc-600 cursor-default'
+                ? 'bg-[rgb(var(--accent))] text-white shadow-lg shadow-black/60 ring-2 ring-white/25 hover:brightness-110 hover:scale-105 cursor-pointer'
+                : 'bg-[rgb(var(--accent)/0.2)] text-white/30 cursor-default'
             }`}
           >
             <ChevronLeft className="h-6 w-6" />
@@ -4552,10 +4699,11 @@ export function GenSpace() {
           <button
             onClick={(e) => { e.stopPropagation(); goToNext() }}
             disabled={!canGoNext}
-            className={`absolute right-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full backdrop-blur-md transition-all ${
+            style={{ right: lightboxInsetRight + 12 }}
+            className={`absolute top-1/2 -translate-y-1/2 z-10 p-3 rounded-full transition-all ${
               canGoNext
-                ? 'bg-white/10 text-white hover:bg-white/20 cursor-pointer'
-                : 'bg-white/5 text-zinc-600 cursor-default'
+                ? 'bg-[rgb(var(--accent))] text-white shadow-lg shadow-black/60 ring-2 ring-white/25 hover:brightness-110 hover:scale-105 cursor-pointer'
+                : 'bg-[rgb(var(--accent)/0.2)] text-white/30 cursor-default'
             }`}
           >
             <ChevronRight className="h-6 w-6" />
