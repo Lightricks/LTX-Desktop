@@ -76,6 +76,7 @@ import {
   type EditorStoreApi,
 } from './editor/editor-store'
 import { GenerationErrorDialog } from '../components/GenerationErrorDialog'
+import { registerMcpEditor } from './editor/mcp-editor-tools'
 import { SubtitleTrackStyleEditor } from './editor/SubtitleTrackStyleEditor'
 
 interface VideoEditorProps {
@@ -103,6 +104,13 @@ export function VideoEditor(props: VideoEditorProps) {
 
   const editorStore = editorStoreRef.current
   if (!editorStore) throw new Error('Editor store failed to initialize')
+
+  // Expose this editor to the RiX MCP server (agent-driven timeline edits). The
+  // registry is keyed on globalThis, so a hot-reload of the tools module keeps it.
+  useEffect(
+    () => registerMcpEditor({ store: editorStore, projectId: currentProject.id, projectName: currentProject.name }),
+    [editorStore, currentProject.id, currentProject.name],
+  )
 
   return (
     <EditorStoreProvider store={editorStore}>
@@ -195,6 +203,13 @@ function VideoEditorWithStore({
   editorModelRef.current = editorModel
   const currentProjectRef = useRef(currentProject)
   currentProjectRef.current = currentProject
+  // Union of every asset id ever seen on the live project (see updatedProject).
+  const seenProjectAssetIdsRef = useRef(new Set<string>())
+  for (const asset of currentProject.assets) seenProjectAssetIdsRef.current.add(asset.id)
+  // ...and every asset id the editor has held, so an editor-side delete isn't
+  // mistaken for an external add and pulled straight back in.
+  const seenEditorAssetIdsRef = useRef(new Set<string>())
+  for (const asset of editorModel.assets) seenEditorAssetIdsRef.current.add(asset.id)
 
   const bladeShiftHeldRef = useRef(false)
   const [bladeShiftHeld, setBladeShiftHeld] = useState(false)
@@ -471,6 +486,8 @@ function VideoEditorWithStore({
       currentProjectRef.current,
       editorModelRef.current,
       getEditorState().session.transport.timelineInOutMap,
+      seenProjectAssetIdsRef.current,
+      seenEditorAssetIdsRef.current,
     ))
   }, [saveProject, getEditorState])
 
@@ -512,8 +529,8 @@ function VideoEditorWithStore({
   // added after that point would stay invisible to the editor until something
   // here pulls it in.
   useEffect(() => {
-    const knownIds = new Set(editorModel.assets.map(asset => asset.id))
-    const newAssets = currentProject.assets.filter(asset => !knownIds.has(asset.id))
+    // Skip ids the editor already held: those missing now were deleted here.
+    const newAssets = currentProject.assets.filter(asset => !seenEditorAssetIdsRef.current.has(asset.id))
     if (newAssets.length > 0) actions.addAssetsToEditor(newAssets)
 
     // Same staleness risk applies field-by-field to assets the editor already

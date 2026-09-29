@@ -14,6 +14,7 @@ export interface ExportTextOverlay {
     strokeColor: string; strokeWidth: number;
     shadowColor: string; shadowOffsetX: number; shadowOffsetY: number;
     opacity: number; padding: number;
+    textAlign?: string;
   };
 }
 
@@ -32,7 +33,14 @@ function escapeDrawtext(text: string): string {
     .replace(/'/g, "'\\\\\\''")
     .replace(/:/g, '\\:')
     .replace(/%/g, '%%')
-    .replace(/\n/g, '\\n')
+  // Newlines stay RAW: inside the quoted value a literal newline survives the
+  // filtergraph parser and drawtext breaks the line there. An escaped `\n` is
+  // un-escaped to a plain "n" ("TRICK ORnTREAT").
+}
+
+/** drawtext text_align letter for a CSS text-align (multi-line blocks). */
+function drawtextAlign(align: string | undefined): 'L' | 'C' | 'R' {
+  return align === 'left' ? 'L' : align === 'right' ? 'R' : 'C'
 }
 
 /** Convert a CSS color (hex / rgb(a) / named / transparent) to an ffmpeg color
@@ -388,6 +396,7 @@ export function buildVideoFilterGraph(
       const parts: string[] = []
       if (fontFile) parts.push(fontFileArg(fontFile))
       parts.push(`text='${escapeDrawtext(ov.text)}'`)
+      if (ov.text.includes('\n')) parts.push(`text_align=${drawtextAlign(s.textAlign)}`)
       parts.push(`fontsize=${fontSize}`)
       parts.push(`fontcolor=${fontColor}`)
       parts.push(`x=(w*${px.toFixed(4)})-(text_w/2)`)
@@ -445,13 +454,9 @@ export function buildVideoFilterGraph(
     for (let si = 0; si < subtitles.length; si++) {
       const sub = subtitles[si]
       const nextLabel = `sub${si}`
-      // Escape text for ffmpeg drawtext: replace special chars
-      const escapedText = sub.text
-        .replace(/\\/g, '\\\\\\\\')
-        .replace(/'/g, "'\\\\\\''")
-        .replace(/:/g, '\\:')
-        .replace(/%/g, '%%')
-        .replace(/\n/g, '\\n')
+      // Escape text for ffmpeg drawtext (newlines stay raw, see escapeDrawtext).
+      const escapedText = escapeDrawtext(sub.text)
+      const alignPart = sub.text.includes('\n') ? ':text_align=C' : ''
 
       const fontSize = Math.round(sub.style.fontSize * (height / 1080)) // scale relative to export res
       const fontColor = sub.style.color.replace('#', '0x')
@@ -476,7 +481,7 @@ export function buildVideoFilterGraph(
         boxPart = `:box=1:boxcolor=${bgColor}@${bgAlpha}:boxborderw=8`
       }
 
-      const dtFilter = `drawtext=text='${escapedText}':fontsize=${fontSize}:fontcolor=${fontColor}:x=(w-text_w)/2:y=${yExpr}${boxPart}:enable='between(t\\,${sub.startTime.toFixed(3)}\\,${sub.endTime.toFixed(3)})'`
+      const dtFilter = `drawtext=text='${escapedText}'${alignPart}:fontsize=${fontSize}:fontcolor=${fontColor}:x=(w-text_w)/2:y=${yExpr}${boxPart}:enable='between(t\\,${sub.startTime.toFixed(3)}\\,${sub.endTime.toFixed(3)})'`
 
       filterParts.push(`[${lastLabel}]${dtFilter}[${nextLabel}]`)
       lastLabel = nextLabel

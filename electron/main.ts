@@ -10,6 +10,7 @@ import { registerLibraryHandlers } from './ipc/library-handlers'
 import { registerLogHandlers } from './ipc/log-handlers'
 import { registerVideoProcessingHandlers } from './ipc/video-processing-handlers'
 import { logger } from './logger'
+import { startMcpServer } from './mcp/mcp-server'
 import { initSessionLog } from './logging-management'
 import { stopPythonBackend } from './python-backend'
 import { initAutoUpdater } from './updater'
@@ -39,6 +40,7 @@ if (!gotLock) {
   registerLogHandlers()
   registerExportHandlers()
   registerVideoProcessingHandlers()
+  startMcpServer()
 
   app.on('second-instance', () => {
     const mainWindow = getMainWindow()

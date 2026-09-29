@@ -1,4 +1,4 @@
-import { electronAPISchemas, type BackendHealthStatus, type UpdateStatePayload, type ExportProgress } from '../shared/electron-api-schema'
+import { electronAPISchemas, type BackendHealthStatus, type UpdateStatePayload, type ExportProgress, type McpEditorRequest } from '../shared/electron-api-schema'
 
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
@@ -48,7 +48,13 @@ api.onGpmLibChanged = (cb: () => void) => {
   }
 }
 
-api.onUpdateEvent = (cb: (data: UpdateStatePayload) => void) => {
+api.onMcpEditorRequest = (cb: (req: McpEditorRequest) => void) => {
+  const listener = (_: unknown, req: McpEditorRequest) => cb(req)
+  ipcRenderer.on('mcp-editor-request', listener)
+  return () => ipcRenderer.removeListener('mcp-editor-request', listener)
+}
+
+api.onUpdateEvent =(cb: (data: UpdateStatePayload) => void) => {
   const listener = (_: unknown, data: UpdateStatePayload) => cb(data)
   ipcRenderer.on('update-event', listener)
   return () => ipcRenderer.removeListener('update-event', listener)

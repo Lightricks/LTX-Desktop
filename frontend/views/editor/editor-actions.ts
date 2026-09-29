@@ -405,7 +405,9 @@ function buildDroppedAudioClipInsertion(
   }
 }
 
-function buildDroppedAssetInsertion(
+/** Clips (+ any auto-created audio track) for dropping `asset` at `startTime`.
+ *  Exported for the RiX MCP editor tools, which trim before resolving overlaps. */
+export function buildDroppedAssetInsertion(
   asset: Asset,
   trackIndex: number,
   startTime: number,
@@ -418,7 +420,7 @@ function buildDroppedAssetInsertion(
   return buildDroppedVisualClipInsertion(asset, trackIndex, startTime, tracks)
 }
 
-function createTextClip(style?: Partial<TextOverlayStyle>, startTime = 0, trackIndex = 0): TimelineClip {
+export function createTextClip(style?: Partial<TextOverlayStyle>, startTime = 0, trackIndex = 0): TimelineClip {
   return {
     id: makeId('clip-text'),
     assetId: null,

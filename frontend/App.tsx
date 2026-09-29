@@ -27,6 +27,7 @@ import { useDownloadsBrowserOpen, getDownloadsBrowserOpen, setDownloadsBrowserOp
 import { usePromptManagerProOpen, getPromptManagerProOpen, setPromptManagerProOpen } from './components/gpm/prompt-manager-pro-store'
 import { useAppUpdateModal } from './hooks/use-app-update'
 import { UpdateAvailableModal } from './components/UpdateAvailableModal'
+import { dispatchMcpEditorRequest } from './views/editor/mcp-editor-tools'
 
 type SetupState = 'loading' | { needsSetup: boolean; needsLicense: boolean }
 type RequiredModelsGateState = 'checking' | 'missing' | 'ready'
@@ -65,6 +66,13 @@ function AppContent() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
+  // RiX MCP server: answer editor tool calls forwarded from the main process. Lives
+  // here (always mounted) so a call with no editor open fails fast instead of timing out.
+  useEffect(() => window.electronAPI?.onMcpEditorRequest?.(({ id, tool, args }) => {
+    void dispatchMcpEditorRequest(tool, args)
+      .then(result => window.electronAPI.mcpEditorResponse({ id, ok: true, result }))
+      .catch((e: unknown) => window.electronAPI.mcpEditorResponse({ id, ok: false, error: e instanceof Error ? e.message : String(e) }))
+  }), [])
   const { connected, processStatus, isLoading: backendLoading } = useBackend()
   const { settings, saveLtxApiKey, saveFalApiKey, forceApiGenerations, isLoaded, runtimePolicyLoaded, notifyModelsChanged } = useAppSettings()
   // Always mounted here (unlike GenSpace, which unmounts on every view/tab switch) so a

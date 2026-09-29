@@ -30,6 +30,15 @@ export function updatedProject(
   fromProject: Project,
   editorModel: EditorModel,
   timelineInOutMap: Record<string, TimelineInOutRange> = {},
+  /** Every asset id the editor has ever seen on the live project. Lets the merge
+   *  tell an asset deleted elsewhere (seen before, now gone → drop) from one just
+   *  imported in the editor (never saved yet → keep). Omitted = treat every
+   *  editor-only asset as deleted elsewhere (the old, import-losing behavior). */
+  seenProjectAssetIds?: ReadonlySet<string>,
+  /** Every asset id the editor has ever held. A project asset the editor lacks
+   *  but once held was deleted in the editor (drop it); one it never held was
+   *  added elsewhere (keep it). Omitted = keep all (the old, resurrecting behavior). */
+  seenEditorAssetIds?: ReadonlySet<string>,
 ): Project {
   // The editor's asset list is a snapshot taken when it first mounted (or last
   // synced) — it doesn't know about assets added or deleted elsewhere since
@@ -42,8 +51,15 @@ export function updatedProject(
   // snapshot would silently erase newer assets, or resurrect deleted ones.
   const editorAssetIds = new Set(editorModel.assets.map(asset => asset.id))
   const fromProjectAssetIds = new Set(fromProject.assets.map(asset => asset.id))
-  const externallyAddedAssets = fromProject.assets.filter(asset => !editorAssetIds.has(asset.id))
-  const survivingEditorAssets = editorModel.assets.filter(asset => fromProjectAssetIds.has(asset.id))
+  const externallyAddedAssets = fromProject.assets.filter(asset => (
+    !editorAssetIds.has(asset.id) && !seenEditorAssetIds?.has(asset.id)
+  ))
+  // An editor asset missing from the live project was either deleted elsewhere
+  // (drop it) or imported in the editor and not saved yet (keep it). Dropping
+  // both lost every Video Editor import on its first autosave.
+  const survivingEditorAssets = editorModel.assets.filter(asset => (
+    fromProjectAssetIds.has(asset.id) || (seenProjectAssetIds !== undefined && !seenProjectAssetIds.has(asset.id))
+  ))
 
   // Same staleness risk applies to the bin/tag name map: Gen Space's tagging
   // UI can create folders while the editor sits mounted in the background, so

@@ -281,7 +281,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
   )
 
   useEffect(() => {
-    if (!sourceAsset || sourceAsset.type !== 'video') return
+    if (!sourceAsset || (sourceAsset.type !== 'video' && sourceAsset.type !== 'audio')) return
     const pending = pendingSeekRef.current
     if (pending === null || !sourceVideoRef.current) return
     sourceVideoRef.current.currentTime = pending
@@ -424,11 +424,20 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
                 Used
               </div>
             )}
-            {sourceAsset.type === 'video' ? (
+            {/* Audio assets play through the same <video> element (hidden) so the
+                transport, scrub bar and in/out marks work for auditioning music. */}
+            {sourceAsset.type === 'audio' && (
+              <div className="text-center text-zinc-500">
+                <Music className={`h-12 w-12 mx-auto mb-2 ${sourceIsPlaying ? 'text-accent animate-pulse' : ''}`} />
+                <p className="text-sm">{sourceAsset.path?.split(/[\\/]/).pop() || 'Audio'}</p>
+              </div>
+            )}
+            {sourceAsset.type === 'video' || sourceAsset.type === 'audio' ? (
               <video
+                key={sourceAsset.id}
                 ref={sourceVideoRef}
                 src={pathToFileUrl(sourceAsset.path)}
-                className="max-w-full max-h-full object-contain"
+                className={sourceAsset.type === 'audio' ? 'hidden' : 'max-w-full max-h-full object-contain'}
                 onLoadedMetadata={() => {
                   const pending = pendingSeekRef.current
                   if (pending !== null && sourceVideoRef.current) {
@@ -454,12 +463,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
               />
             ) : sourceAsset.type === 'image' ? (
               <img src={pathToFileUrl(sourceAsset.path)} alt="" className="max-w-full max-h-full object-contain" />
-            ) : (
-              <div className="text-center text-zinc-500">
-                <Music className="h-12 w-12 mx-auto mb-2" />
-                <p className="text-sm">{sourceAsset.path?.split('/').pop() || 'Audio'}</p>
-              </div>
-            )}
+            ) : null}
           </>
         ) : (
           <div className="text-center text-zinc-600">

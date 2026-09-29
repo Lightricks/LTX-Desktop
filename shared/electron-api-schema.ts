@@ -85,6 +85,7 @@ const exportTextOverlay = z.object({
     shadowOffsetY: z.number(),
     opacity: z.number(),
     padding: z.number(),
+    textAlign: z.string().optional(),
   }),
 })
 
@@ -330,6 +331,12 @@ export const electronAPISchemas = {
     output: emptyResult,
   },
 
+  // RiX MCP server: the renderer's reply to an editor tool request (see onMcpEditorRequest).
+  mcpEditorResponse: {
+    input: z.object({ id: z.string(), ok: z.boolean(), result: z.unknown().optional(), error: z.string().optional() }),
+    output: z.void(),
+  },
+
   // Python setup
   checkPythonReady: {
     input: z.object({}),
@@ -485,7 +492,15 @@ export interface ExportProgress {
   stage: string
 }
 
+/** An editor tool call forwarded from the RiX MCP server; answered via mcpEditorResponse. */
+export interface McpEditorRequest {
+  id: string
+  tool: string
+  args: Record<string, unknown>
+}
+
 export type ElectronAPI = InvokeAPI & {
+  onMcpEditorRequest: (cb: (req: McpEditorRequest) => void) => (() => void)
   onPythonSetupProgress: (cb: (data: unknown) => void) => void
   removePythonSetupProgress: () => void
   onBackendHealthStatus: (cb: (data: BackendHealthStatus) => void) => (() => void)

@@ -116,27 +116,37 @@ function nextSequencedName(dir: string, subject: string, ext: string): string {
   return `${subject}-${String(max + 1).padStart(2, '0')}${ext}`
 }
 
+export type LibraryListing = {
+  root: string
+  folders: string[]
+  files: Array<{ folder: string; name: string; path: string; isVideo: boolean; isAudio: boolean; mtimeMs: number }>
+}
+
+/** Snapshot of the Studio Assets library (folders + media files). Shared by the
+ *  gpmLibList IPC and the RiX MCP server's library search. */
+export function listLibrary(): LibraryListing {
+  const root = libRoot()
+  let folders = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name)
+  if (folders.length === 0) {
+    fs.mkdirSync(path.join(root, 'Inbox'), { recursive: true })
+    folders = ['Inbox']
+  }
+  const files: LibraryListing['files'] = []
+  for (const folder of folders) {
+    const fp = path.join(root, folder)
+    for (const entry of fs.readdirSync(fp, { withFileTypes: true })) {
+      if (!entry.isFile()) continue
+      const ext = path.extname(entry.name).toLowerCase()
+      if (!MEDIA_EXT.has(ext)) continue
+      const full = path.join(fp, entry.name)
+      files.push({ folder, name: entry.name, path: full, isVideo: VIDEO_EXT.has(ext), isAudio: AUDIO_EXT.has(ext), mtimeMs: fs.statSync(full).mtimeMs })
+    }
+  }
+  return { root, folders, files }
+}
+
 export function registerLibraryHandlers(): void {
-  handle('gpmLibList', () => {
-    const root = libRoot()
-    let folders = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name)
-    if (folders.length === 0) {
-      fs.mkdirSync(path.join(root, 'Inbox'), { recursive: true })
-      folders = ['Inbox']
-    }
-    const files: Array<{ folder: string; name: string; path: string; isVideo: boolean; isAudio: boolean; mtimeMs: number }> = []
-    for (const folder of folders) {
-      const fp = path.join(root, folder)
-      for (const entry of fs.readdirSync(fp, { withFileTypes: true })) {
-        if (!entry.isFile()) continue
-        const ext = path.extname(entry.name).toLowerCase()
-        if (!MEDIA_EXT.has(ext)) continue
-        const full = path.join(fp, entry.name)
-        files.push({ folder, name: entry.name, path: full, isVideo: VIDEO_EXT.has(ext), isAudio: AUDIO_EXT.has(ext), mtimeMs: fs.statSync(full).mtimeMs })
-      }
-    }
-    return { root, folders, files }
-  })
+  handle('gpmLibList', () => listLibrary())
 
   handle('gpmLibCreateFolder', ({ name }) => {
     try { fs.mkdirSync(folderPath(name)); return { success: true as const } }
