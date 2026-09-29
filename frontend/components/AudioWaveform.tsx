@@ -15,9 +15,22 @@ interface AudioWaveformProps {
   isPlaying: boolean
 }
 
-// Global waveform cache: URL → Float32Array of peak amplitudes (one per pixel-bucket)
+// High-resolution amplitude envelope of a whole audio file, decoded once per URL.
+// Every view (monitor, timeline clips at any zoom) derives what it draws from this.
+export interface WaveformEnvelope {
+  peak: Float32Array // max |sample| per window
+  rms: Float32Array // root-mean-square per window (the "body" of the sound)
+  rate: number // windows per second of audio
+  duration: number // seconds
+}
+
+const ENVELOPE_RATE = 200 // 5ms windows: smooth at any practical timeline zoom
+
+const envelopeCache = new Map<string, WaveformEnvelope>()
+const pendingEnvelopes = new Map<string, Promise<WaveformEnvelope>>()
+
+// Global waveform cache: `${url}@${buckets}` → peak amplitudes resampled to `buckets`
 export const waveformCache = new Map<string, Float32Array>()
-const pendingDecodes = new Set<string>()
 
 // Convert a base64 string to an ArrayBuffer
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
@@ -29,53 +42,81 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
   return bytes.buffer
 }
 
-// Decode audio file and extract amplitude envelope
+async function decodeEnvelope(url: string): Promise<WaveformEnvelope> {
+  let arrayBuffer: ArrayBuffer
+
+  if (url.startsWith('file://') && (window as any).electronAPI?.readLocalFile) {
+    const { data } = await (window as any).electronAPI.readLocalFile({ filePath: url })
+    arrayBuffer = base64ToArrayBuffer(data)
+  } else {
+    const response = await fetch(url)
+    arrayBuffer = await response.arrayBuffer()
+  }
+
+  const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
+  audioCtx.close()
+
+  // Mix all channels so a hard-panned stereo track still shows its full shape
+  const channels = Array.from({ length: audioBuffer.numberOfChannels }, (_, c) => audioBuffer.getChannelData(c))
+  const length = audioBuffer.length
+  const samplesPerWindow = Math.max(1, Math.round(audioBuffer.sampleRate / ENVELOPE_RATE))
+  const windows = Math.ceil(length / samplesPerWindow)
+  const peak = new Float32Array(windows)
+  const rms = new Float32Array(windows)
+
+  for (let i = 0; i < windows; i++) {
+    const start = i * samplesPerWindow
+    const end = Math.min(start + samplesPerWindow, length)
+    let max = 0
+    let sumSq = 0
+    for (let j = start; j < end; j++) {
+      let s = 0
+      for (const ch of channels) s += ch[j]
+      s /= channels.length
+      const abs = Math.abs(s)
+      if (abs > max) max = abs
+      sumSq += s * s
+    }
+    peak[i] = max
+    rms[i] = Math.sqrt(sumSq / Math.max(1, end - start))
+  }
+
+  return { peak, rms, rate: audioBuffer.sampleRate / samplesPerWindow, duration: audioBuffer.duration }
+}
+
+// Decode (once) and return the high-resolution envelope for a file
+export async function getWaveformEnvelope(url: string): Promise<WaveformEnvelope> {
+  const cached = envelopeCache.get(url)
+  if (cached) return cached
+  let pending = pendingEnvelopes.get(url)
+  if (!pending) {
+    pending = decodeEnvelope(url)
+      .then(env => { envelopeCache.set(url, env); return env })
+      .finally(() => pendingEnvelopes.delete(url))
+    pendingEnvelopes.set(url, pending)
+  }
+  return pending
+}
+
+// Peak amplitudes of the whole file resampled to `buckets` (max-pooled, so short hits survive)
 export async function computeWaveform(url: string, buckets: number = 800): Promise<Float32Array> {
-  if (waveformCache.has(url)) return waveformCache.get(url)!
+  const key = `${url}@${buckets}`
+  const cached = waveformCache.get(key)
+  if (cached) return cached
 
-  if (pendingDecodes.has(url)) {
-    while (pendingDecodes.has(url)) {
-      await new Promise(r => setTimeout(r, 50))
-    }
-    if (waveformCache.has(url)) return waveformCache.get(url)!
+  const { peak } = await getWaveformEnvelope(url)
+  const peaks = new Float32Array(buckets)
+  for (let i = 0; i < buckets; i++) {
+    const start = Math.floor((i / buckets) * peak.length)
+    const end = Math.max(start + 1, Math.floor(((i + 1) / buckets) * peak.length))
+    let max = 0
+    for (let j = start; j < end && j < peak.length; j++) if (peak[j] > max) max = peak[j]
+    peaks[i] = max
   }
 
-  pendingDecodes.add(url)
-  try {
-    let arrayBuffer: ArrayBuffer
-
-    if (url.startsWith('file://') && (window as any).electronAPI?.readLocalFile) {
-      const { data } = await (window as any).electronAPI.readLocalFile({ filePath: url })
-      arrayBuffer = base64ToArrayBuffer(data)
-    } else {
-      const response = await fetch(url)
-      arrayBuffer = await response.arrayBuffer()
-    }
-
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
-    audioCtx.close()
-
-    const channelData = audioBuffer.getChannelData(0)
-    const samplesPerBucket = Math.floor(channelData.length / buckets)
-    const peaks = new Float32Array(buckets)
-
-    for (let i = 0; i < buckets; i++) {
-      let max = 0
-      const start = i * samplesPerBucket
-      const end = Math.min(start + samplesPerBucket, channelData.length)
-      for (let j = start; j < end; j++) {
-        const abs = Math.abs(channelData[j])
-        if (abs > max) max = abs
-      }
-      peaks[i] = max
-    }
-
-    waveformCache.set(url, peaks)
-    return peaks
-  } finally {
-    pendingDecodes.delete(url)
-  }
+  waveformCache.set(key, peaks)
+  return peaks
 }
 
 export function AudioWaveform({ audioClips, currentTime, isPlaying }: AudioWaveformProps) {
@@ -308,19 +349,57 @@ export function AudioWaveform({ audioClips, currentTime, isPlaying }: AudioWavef
 interface ClipWaveformProps {
   url: string
   className?: string
+  // Outer (peak) layer
   color?: string
+  // Inner (RMS) layer: the loudness body of the sound
+  bodyColor?: string
+  // Source window the clip plays. Omit to show the whole file.
+  trimStart?: number
+  duration?: number
+  speed?: number
+  reversed?: boolean
 }
 
-export function ClipWaveform({ url, className = '', color = 'rgba(52, 211, 153, 0.7)' }: ClipWaveformProps) {
+// Envelope value over [a, b) window indices: max for peaks, power-mean for RMS.
+// Sub-window spans are linearly interpolated so zoomed-in waveforms stay smooth.
+function sampleEnvelope(data: Float32Array, a: number, b: number, mode: 'max' | 'rms'): number {
+  const n = data.length
+  if (n === 0) return 0
+  if (b - a <= 1) {
+    const t = Math.min(Math.max((a + b) / 2 - 0.5, 0), n - 1)
+    const i = Math.floor(t)
+    const f = t - i
+    return data[i] * (1 - f) + data[Math.min(i + 1, n - 1)] * f
+  }
+  const start = Math.max(0, Math.floor(a))
+  const end = Math.min(n, Math.ceil(b))
+  let acc = 0
+  for (let i = start; i < end; i++) {
+    const v = data[i]
+    if (mode === 'max') { if (v > acc) acc = v } else acc += v * v
+  }
+  return mode === 'max' ? acc : Math.sqrt(acc / Math.max(1, end - start))
+}
+
+export function ClipWaveform({
+  url,
+  className = '',
+  color = 'rgba(52, 211, 153, 0.45)',
+  bodyColor = 'rgba(110, 231, 183, 0.95)',
+  trimStart = 0,
+  duration,
+  speed = 1,
+  reversed = false,
+}: ClipWaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [peaks, setPeaks] = useState<Float32Array | null>(null)
+  const [envelope, setEnvelope] = useState<WaveformEnvelope | null>(null)
 
   useEffect(() => {
     if (!url) return
     let cancelled = false
-    computeWaveform(url, 200).then(p => {
-      if (!cancelled) setPeaks(p)
+    getWaveformEnvelope(url).then(env => {
+      if (!cancelled) setEnvelope(env)
     }).catch(() => {})
     return () => { cancelled = true }
   }, [url])
@@ -328,7 +407,7 @@ export function ClipWaveform({ url, className = '', color = 'rgba(52, 211, 153, 
   const draw = useCallback(() => {
     const canvas = canvasRef.current
     const container = containerRef.current
-    if (!canvas || !container || !peaks) return
+    if (!canvas || !container || !envelope) return
 
     const dpr = window.devicePixelRatio || 1
     const rect = container.getBoundingClientRect()
@@ -349,24 +428,42 @@ export function ClipWaveform({ url, className = '', color = 'rgba(52, 211, 153, 
     const centerY = h / 2
     const maxAmp = h * 0.45
 
-    ctx.fillStyle = color
-    ctx.beginPath()
-    for (let i = 0; i < w; i++) {
-      const peakIdx = Math.floor((i / w) * peaks.length)
-      const amp = peaks[Math.min(peakIdx, peaks.length - 1)]
-      const y = centerY - amp * maxAmp
-      if (i === 0) ctx.moveTo(i, y)
-      else ctx.lineTo(i, y)
+    // Source seconds this clip plays (in envelope-window units)
+    const srcLen = (duration ?? envelope.duration - trimStart) * speed
+    const srcStart = trimStart * envelope.rate
+    const srcSpan = Math.max(0, srcLen * envelope.rate)
+    const cols = Math.max(1, Math.ceil(w))
+    const peakCol = new Float32Array(cols)
+    const rmsCol = new Float32Array(cols)
+    for (let x = 0; x < cols; x++) {
+      const fa = x / cols
+      const fb = (x + 1) / cols
+      const a = srcStart + (reversed ? 1 - fb : fa) * srcSpan
+      const b = srcStart + (reversed ? 1 - fa : fb) * srcSpan
+      peakCol[x] = sampleEnvelope(envelope.peak, a, b, 'max')
+      rmsCol[x] = Math.min(peakCol[x], sampleEnvelope(envelope.rms, a, b, 'rms'))
     }
-    for (let i = w - 1; i >= 0; i--) {
-      const peakIdx = Math.floor((i / w) * peaks.length)
-      const amp = peaks[Math.min(peakIdx, peaks.length - 1)]
-      const y = centerY + amp * maxAmp
-      ctx.lineTo(i, y)
+
+    const fillMirrored = (amps: Float32Array, style: string) => {
+      ctx.fillStyle = style
+      ctx.beginPath()
+      ctx.moveTo(0, centerY)
+      for (let x = 0; x < cols; x++) ctx.lineTo(x + 0.5, centerY - amps[x] * maxAmp)
+      ctx.lineTo(cols, centerY)
+      for (let x = cols - 1; x >= 0; x--) ctx.lineTo(x + 0.5, centerY + amps[x] * maxAmp)
+      ctx.closePath()
+      ctx.fill()
     }
-    ctx.closePath()
-    ctx.fill()
-  }, [peaks, color])
+
+    fillMirrored(peakCol, color)
+    fillMirrored(rmsCol, bodyColor)
+
+    // Hairline centre so silence still reads as "audio here"
+    ctx.fillStyle = bodyColor
+    ctx.globalAlpha = 0.35
+    ctx.fillRect(0, Math.round(centerY) - 0.5, w, 1)
+    ctx.globalAlpha = 1
+  }, [envelope, color, bodyColor, trimStart, duration, speed, reversed])
 
   useEffect(() => {
     draw()

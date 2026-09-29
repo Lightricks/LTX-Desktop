@@ -2742,7 +2742,13 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           </div>
                         ) : clip.type === 'audio' ? (
                           <>
-                            <ClipWaveform url={pathToFileUrl(getClipPath(clip) || clip.asset?.path || '')} />
+                            <ClipWaveform
+                              url={pathToFileUrl(getClipPath(clip) || clip.asset?.path || '')}
+                              trimStart={clip.trimStart}
+                              duration={clip.duration}
+                              speed={clip.speed}
+                              reversed={clip.reversed}
+                            />
                             <div className="h-8 w-8 flex-shrink-0 rounded bg-emerald-800/50 flex items-center justify-center relative z-10">
                               <Music className="h-4 w-4 text-emerald-400" />
                             </div>
