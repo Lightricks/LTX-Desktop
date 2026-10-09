@@ -18,6 +18,7 @@ from services.gemini_text_client import (
 from services.interfaces import HttpTransportError
 from state import build_initial_state
 from app_handler import ServiceBundle
+from services.sqlite_store import SqliteStore
 from tests.conftest import TEST_ADMIN_TOKEN
 from tests.fakes import FakeResponse
 from tests.fakes.services import FakeServices
@@ -35,13 +36,21 @@ class TestGetSettings:
         assert data["hasFalApiKey"] is False
         assert data["useLocalTextEncoder"] is False
         assert data["promptCacheSize"] == 100
-        assert data["promptEnhancerEnabledT2V"] is True
-        assert data["promptEnhancerEnabledI2V"] is False
+        assert data["promptEnhancerEnabled"] is True
+        assert data["exploreAutoEnhancePrompts"] is True
         assert data["hasGeminiApiKey"] is False
         assert data["geminiModel"] == ""
         assert data["seedLocked"] is False
         assert data["lockedSeed"] == 42
         assert data["useConvVae"] is resolved_use_conv_vae(AppSettings())
+        assert data["remoteExposure"] == "off"
+        assert data["activityDashboardSelections"] == {
+            "range": "7d",
+            "models": [],
+            "resolutions": [],
+            "aspectRatios": [],
+            "fps": [],
+        }
         # When no custom path is set, the response surfaces the runtime default
         # so the first-run UI can show the install location.
         assert data["modelsDir"] == str(test_state.config.default_models_dir)
@@ -70,6 +79,42 @@ class TestPostSettings:
         assert r.status_code == 200
         assert test_state.state.app_settings.use_torch_compile is True
 
+    def test_dashboard_selection_round_trip(self, client, test_state):
+        selected = {
+            "range": "all",
+            "models": ["ltx-2.5-fast"],
+            "resolutions": ["540p"],
+            "aspectRatios": ["16:9"],
+            "fps": ["24"],
+        }
+        saved = client.post("/api/settings", json={"activityDashboardSelections": selected})
+        assert saved.status_code == 200
+        assert client.get("/api/settings").json()["activityDashboardSelections"] == selected
+        cleared = client.post(
+            "/api/settings",
+            json={"activityDashboardSelections": {**selected, "models": [], "range": "30d"}},
+        )
+        assert cleared.status_code == 200
+        stored = test_state.state.app_settings.activity_dashboard_selections
+        assert stored.models == []
+        assert stored.range == "30d"
+        assert stored.fps == ["24"]
+
+    def test_dashboard_selection_rejects_an_unknown_range(self, client):
+        bogus = {"range": "bogus"}
+        assert client.post("/api/stats/activity-dashboard-selections", json=bogus).status_code == 422
+        assert client.post("/api/settings", json={"activityDashboardSelections": bogus}).status_code == 422
+
+    def test_stored_unknown_dashboard_range_loads_as_seven_days(self):
+        loaded = AppSettings.model_validate({"activity_dashboard_selections": {"range": "bogus"}})
+        assert loaded.activity_dashboard_selections.range == "7d"
+
+    def test_explore_auto_enhance_prompts_round_trip(self, client, test_state):
+        r = client.post("/api/settings", json={"exploreAutoEnhancePrompts": False})
+        assert r.status_code == 200
+        assert test_state.state.app_settings.explore_auto_enhance_prompts is False
+        assert client.get("/api/settings").json()["exploreAutoEnhancePrompts"] is False
+
     def test_update_multiple_fields(self, client, test_state):
         r = client.post("/api/settings", json={"useTorchCompile": True, "promptCacheSize": 42})
         assert r.status_code == 200
@@ -95,13 +140,16 @@ class TestPostSettings:
         te = test_state.state.text_encoder
         assert te is not None
         for i in range(5):
-            te.prompt_cache[(f"key_{i}", False)] = f"value_{i}"  # type: ignore[assignment]
+            te.prompt_cache[(f"key_{i}", False, "ltx-2.5-22b-distilled")] = f"value_{i}"  # type: ignore[assignment]
 
         r = client.post("/api/settings", json={"promptCacheSize": 2})
         assert r.status_code == 200
         assert len(te.prompt_cache) <= 2
 
     def test_update_api_keys(self, client, test_state):
+        # LTX is stored without a provider probe. Gemini then Fal are checked.
+        test_state.http.queue("get", FakeResponse(status_code=200, json_payload={"models": []}))
+        test_state.http.queue("get", FakeResponse(status_code=200, json_payload={"models": []}))
         r = client.post(
             "/api/settings",
             json={
@@ -114,19 +162,92 @@ class TestPostSettings:
         assert test_state.state.app_settings.ltx_api_key == "ltx-key-abc"
         assert test_state.state.app_settings.gemini_api_key == "gemini-key-xyz"
         assert test_state.state.app_settings.fal_api_key == "fal-key-123"
+        assert [call.url for call in test_state.http.calls] == [
+            "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1",
+            "https://api.fal.ai/v1/models?limit=1",
+        ]
+
+    def test_ltx_api_key_is_stored_without_a_probe(self, client, test_state):
+        test_state.state.app_settings.ltx_api_key = "real-key"
+        r = client.post("/api/settings", json={"ltxApiKey": "  random-junk  "})
+        assert r.status_code == 200
+        assert test_state.state.app_settings.ltx_api_key == "random-junk"
+        assert test_state.http.calls == []
+
+    def test_api_key_is_stored_trimmed(self, client, test_state):
+        test_state.http.queue("get", FakeResponse(status_code=200, json_payload={"models": []}))
+        r = client.post("/api/settings", json={"falApiKey": "  fal-key  "})
+        assert r.status_code == 200
+        assert test_state.state.app_settings.fal_api_key == "fal-key"
+        headers = test_state.http.calls[0].headers
+        assert headers is not None
+        assert headers["Authorization"] == "Key fal-key"
+
+    def test_rejected_fal_api_key_is_not_saved(self, client, test_state):
+        test_state.state.app_settings.fal_api_key = "real-fal-key"
+        test_state.http.queue("get", FakeResponse(status_code=401, text="Invalid API key"))
+        r = client.post("/api/settings", json={"falApiKey": "random-junk"})
+        assert_http_error(
+            r,
+            status_code=400,
+            code="FAL_INVALID_API_KEY",
+            message="This key isn’t valid.",
+        )
+        assert test_state.state.app_settings.fal_api_key == "real-fal-key"
+
+    def test_fal_non_auth_failure_is_not_an_invalid_key(self, client, test_state):
+        test_state.state.app_settings.fal_api_key = "real-fal-key"
+        test_state.http.queue("get", FakeResponse(status_code=404, text="missing"))
+        r = client.post("/api/settings", json={"falApiKey": "real-looking-key"})
+        assert_http_error(
+            r,
+            status_code=502,
+            code="FAL_API_KEY_UNVERIFIED",
+            message="Couldn’t verify this key. Try again in a moment.",
+        )
+        assert test_state.state.app_settings.fal_api_key == "real-fal-key"
+
+    def test_gemini_server_error_is_not_an_invalid_key(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "real-gemini-key"
+        test_state.http.queue("get", FakeResponse(status_code=503, text="unavailable"))
+        r = client.post("/api/settings", json={"geminiApiKey": "real-looking-key"})
+        assert_http_error(
+            r,
+            status_code=502,
+            code="GEMINI_API_KEY_UNVERIFIED",
+            message="Couldn’t verify this key. Try again in a moment.",
+        )
+        assert test_state.state.app_settings.gemini_api_key == "real-gemini-key"
 
     def test_update_user_prefers_api_video_generations(self, client, test_state):
         r = client.post("/api/settings", json={"userPrefersLtxApiVideoGenerations": True})
         assert r.status_code == 200
         assert test_state.state.app_settings.user_prefers_ltx_api_video_generations is True
 
-    def test_empty_string_does_not_erase_key(self, client, test_state):
+    def test_empty_string_clears_api_key(self, client, test_state):
         test_state.state.app_settings.ltx_api_key = "real-key"
         test_state.state.app_settings.fal_api_key = "fal-key"
         r = client.post("/api/settings", json={"ltxApiKey": "", "falApiKey": ""})
         assert r.status_code == 200
-        assert test_state.state.app_settings.ltx_api_key == "real-key"
-        assert test_state.state.app_settings.fal_api_key == "fal-key"
+        assert test_state.state.app_settings.ltx_api_key == ""
+        assert test_state.state.app_settings.fal_api_key == ""
+
+    def test_null_clears_api_key(self, client, test_state):
+        test_state.state.app_settings.ltx_api_key = "real-key"
+        test_state.state.app_settings.gemini_api_key = "gemini-key"
+        test_state.state.app_settings.fal_api_key = "fal-key"
+        r = client.post(
+            "/api/settings",
+            json={"ltxApiKey": None, "geminiApiKey": None, "falApiKey": None},
+        )
+        assert r.status_code == 200
+        assert test_state.state.app_settings.ltx_api_key == ""
+        assert test_state.state.app_settings.gemini_api_key == ""
+        assert test_state.state.app_settings.fal_api_key == ""
+        body = client.get("/api/settings").json()
+        assert body["hasLtxApiKey"] is False
+        assert body["hasGeminiApiKey"] is False
+        assert body["hasFalApiKey"] is False
 
     def test_empty_gemini_model_persists_as_use_default(self, client, test_state):
         # Unlike API keys, an empty model string is stored so generate-time resolution can
@@ -266,6 +387,7 @@ class TestModelsDirAdminGuard:
             a2v_pipeline_class=type(fake_services.a2v_pipeline),
             retake_pipeline_class=type(fake_services.retake_pipeline),
             prompt_enhancer_pipeline_class=type(fake_services.prompt_enhancer_pipeline),
+            store=SqliteStore(test_state.config.app_data_dir),
         )
         loaded = build_initial_state(test_state.config, default_app_settings.model_copy(deep=True), service_bundle=bundle)
         assert loaded.state.app_settings.models_dir == "/tmp/persisted-models"
@@ -294,6 +416,7 @@ class TestSettingsPersistence:
             a2v_pipeline_class=type(fake_services.a2v_pipeline),
             retake_pipeline_class=type(fake_services.retake_pipeline),
             prompt_enhancer_pipeline_class=type(fake_services.prompt_enhancer_pipeline),
+            store=SqliteStore(test_state.config.app_data_dir),
         )
         return build_initial_state(test_state.config, default_app_settings.model_copy(deep=True), service_bundle=bundle)
 
@@ -316,15 +439,56 @@ class TestSettingsPersistence:
         assert "fast_model" not in loaded.state.app_settings.model_dump(by_alias=False)
         assert "pro_model" not in loaded.state.app_settings.model_dump(by_alias=False)
 
-    def test_legacy_prompt_enhancer_key_migrates(self, test_state, default_app_settings):
+    def test_legacy_prompt_enhancer_key_is_kept(self, test_state, default_app_settings):
         test_state.config.settings_file.write_text(
             json.dumps({"prompt_enhancer_enabled": False}),
             encoding="utf-8",
         )
 
         loaded = self._new_state(test_state, default_app_settings)
-        assert loaded.state.app_settings.prompt_enhancer_enabled_t2v is False
-        assert loaded.state.app_settings.prompt_enhancer_enabled_i2v is False
+        assert loaded.state.app_settings.prompt_enhancer_enabled is False
+
+    def test_split_prompt_enhancer_flags_fold_back_into_one(
+        self, test_state, default_app_settings
+    ):
+        test_state.config.settings_file.write_text(
+            json.dumps(
+                {
+                    "prompt_enhancer_enabled_t2v": False,
+                    "prompt_enhancer_enabled_i2v": False,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        loaded = self._new_state(test_state, default_app_settings)
+        assert loaded.state.app_settings.prompt_enhancer_enabled is False
+        dumped = loaded.state.app_settings.model_dump(by_alias=False)
+        assert "prompt_enhancer_enabled_t2v" not in dumped
+        assert "prompt_enhancer_enabled_i2v" not in dumped
+
+    def test_a_disagreeing_split_pair_keeps_enhancement_on(
+        self, test_state, default_app_settings
+    ):
+        # OR, not AND: someone who had it on for one conditioning should not lose it silently.
+        test_state.config.settings_file.write_text(
+            json.dumps(
+                {
+                    "prompt_enhancer_enabled_t2v": True,
+                    "prompt_enhancer_enabled_i2v": False,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        loaded = self._new_state(test_state, default_app_settings)
+        assert loaded.state.app_settings.prompt_enhancer_enabled is True
+
+    def test_missing_prompt_enhancer_flag_defaults_on(self, test_state, default_app_settings):
+        test_state.config.settings_file.write_text("{}", encoding="utf-8")
+
+        loaded = self._new_state(test_state, default_app_settings)
+        assert loaded.state.app_settings.prompt_enhancer_enabled is True
 
     def test_user_prefers_api_video_generations_persists(self, client, test_state, default_app_settings):
         r = client.post("/api/settings", json={"userPrefersLtxApiVideoGenerations": True})
@@ -333,6 +497,25 @@ class TestSettingsPersistence:
 
         loaded = self._new_state(test_state, default_app_settings)
         assert loaded.state.app_settings.user_prefers_ltx_api_video_generations is True
+
+    def test_remote_exposure_round_trip(self, client, test_state, monkeypatch):
+        monkeypatch.setenv("LTX_AUTH_TOKEN", "")
+        r = client.post("/api/settings", json={"remoteExposure": "lan"})
+        assert r.status_code == 200
+        assert test_state.state.app_settings.remote_exposure == "lan"
+        assert client.get("/api/settings").json()["remoteExposure"] == "lan"
+
+        r = client.post("/api/settings", json={"remoteExposure": "off"})
+        assert r.status_code == 200
+        assert test_state.state.app_settings.remote_exposure == "off"
+
+    def test_poc_tunnel_mode_on_disk_coerces_to_off(self, test_state, default_app_settings):
+        test_state.config.settings_file.write_text(
+            json.dumps({"remote_exposure": "personal"}),
+            encoding="utf-8",
+        )
+        loaded = self._new_state(test_state, default_app_settings)
+        assert loaded.state.app_settings.remote_exposure == "off"
 
     def test_gemini_model_persists_and_loads(self, client, test_state, default_app_settings):
         r = client.post("/api/settings", json={"geminiModel": "gemini-2.0-flash"})

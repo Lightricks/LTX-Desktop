@@ -18,6 +18,7 @@ import shutil
 import statistics
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from dataclasses import dataclass
@@ -34,6 +35,7 @@ _PORT = os.environ.get("LTX_PORT") or "41954"
 BASE_URL = os.environ.get("PERF_BASE_URL") or f"http://127.0.0.1:{_PORT}"
 HEALTH_PATH = "/health"                              # backend/_routes/health.py
 GPU_INDEX = int(os.environ.get("PERF_GPU_INDEX", "0"))  # nvidia-smi index of the 5090
+_MAX_IDLE_POLLS = 5                                    # consecutive "idle" polls = nothing is running
 HTTP_TIMEOUT_S = 1800                                 # a 1080p/20s gen can take minutes
 
 # Auth: the backend requires a Bearer token on every request when it's launched
@@ -85,6 +87,7 @@ BACKEND_LOGS_DIR = _app_data_dir() / "logs"
 #    strict=True -> field names and types must match EXACTLY (no extras).
 # --------------------------------------------------------------------------- #
 GENERATE_PATH = "/api/generate"                       # POST, blocks until terminal
+CANCEL_PATH = "/api/generate/cancel"                  # POST, cooperative interrupt
 STATUS_PATH = "/api/generation/progress"              # GET, poll fallback
 
 # Default: 540p / 5s "fast" distilled two-stage. The leak accumulates per
@@ -157,6 +160,81 @@ def trigger_generation(overrides: dict[str, Any] | None = None) -> str | None:
     return _poll_until_done()
 
 
+def cancel_generation() -> Any:
+    """POST /api/generate/cancel. Empty body."""
+    return _post(CANCEL_PATH, {})
+
+
+def trigger_generation_cancellable(
+    *,
+    after_s: float,
+    payload: dict[str, Any],
+    path: str = GENERATE_PATH,
+    wait_timeout_s: float = 120.0,
+) -> dict[str, Any]:
+    """Start a generation on a thread, wait until denoise has started, sleep ``after_s``,
+    then cancel. Returns the generate response, which must be ``status=cancelled``.
+
+    ``path`` / ``payload`` are the full POST (GenSpace generate, extend, retake, ic-lora);
+    they share the same cancel and progress endpoints.
+
+    Waits for ``phase=inference``, not merely ``status=running``: the progress endpoint
+    reports running/starting during reservation and model load, before DiffusionStage
+    wraps the denoiser.
+
+    Raises if the generate finishes first, inference never starts, cancel is refused,
+    or the POST errors.
+    """
+    holder: dict[str, Any] = {}
+    errors: list[BaseException] = []
+
+    def _run() -> None:
+        try:
+            holder["resp"] = _post(path, payload)
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    deadline = time.time() + wait_timeout_s
+    saw_inference = False
+    try:
+        while time.time() < deadline:
+            if errors:
+                break
+            if "resp" in holder:
+                break
+            try:
+                st = _get(STATUS_PATH) or {}
+            except Exception:  # noqa: BLE001
+                st = {}
+            if st.get("status") == "running" and st.get("phase") == "inference":
+                saw_inference = True
+                break
+            time.sleep(0.2)
+        if saw_inference:
+            time.sleep(after_s)
+    finally:
+        # Always cancel + join, including wait-timeout / cancel-POST failure. Otherwise
+        # the next bump scenario hits a still-running generate (409 or mixed output).
+        try:
+            cancel_generation()
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+        thread.join(timeout=HTTP_TIMEOUT_S)
+    if errors:
+        raise errors[0]
+    if not saw_inference:
+        raise RuntimeError(
+            f"generate never reached phase=inference within {wait_timeout_s:.0f}s "
+            f"(got {holder.get('resp')!r})"
+        )
+    resp = holder.get("resp")
+    if not isinstance(resp, dict) or resp.get("status") != "cancelled":
+        raise RuntimeError(f"expected cancelled generate, got {resp!r}")
+    return resp
+
+
 def set_torch_compile_enabled(enabled: bool) -> None:
     """Flip AppSettings.use_torch_compile.
 
@@ -190,6 +268,79 @@ def get_settings() -> dict:
     """Read the live backend settings (GET /api/settings). Keys are camelCase
     aliases (diffusionStageCacheEnabled, useTorchCompile, ...)."""
     return _get(SETTINGS_PATH) or {}
+
+
+# Same endpoints the Settings modal uses: BaseModelSection (ltx-versions /
+# active-ltx-model) and Fast decode (useConvVae). Caps come from models-specs
+# (GenSpace) plus ltx-ic-lora-recommendation (canny/depth).
+_DIFF_VAE_CP = "ltx-2.5-video-vae"
+_CONV_VAE_CP = "ltx-2.5-video-vae-conv"
+
+
+def ltx_versions() -> list[dict[str, Any]]:
+    return (_get("/api/models/ltx-versions") or {}).get("versions") or []
+
+
+def activate_ltx_model(want: str) -> str:
+    """Activate by model_id or Settings label ('2.5', '2.3'). Must already be installed."""
+    versions = ltx_versions()
+    match = next((v for v in versions if v.get("model_id") == want or v.get("label") == want), None)
+    if match is None:
+        known = ", ".join(str(v.get("label") or v.get("model_id")) for v in versions) or "none"
+        raise RuntimeError(f"unknown LTX version {want!r} (known: {known})")
+    if not match.get("installed"):
+        raise RuntimeError(f"LTX {match.get('label')} is not installed — download it in Settings")
+    _post("/api/models/active-ltx-model", {"model_id": match["model_id"]})
+    return str(match["model_id"])
+
+
+def described_vaes() -> dict[str, bool]:
+    """Which 2.5 video VAEs are on disk (POST /api/models/describe)."""
+    try:
+        payload = _post("/api/models/describe", {"cp_ids": [_DIFF_VAE_CP, _CONV_VAE_CP]})
+    except Exception:  # noqa: BLE001
+        return {"diff": False, "conv": False}
+    by_id = {
+        str(c.get("cp_id")): bool(c.get("downloaded"))
+        for c in (payload or {}).get("checkpoints") or []
+    }
+    return {"diff": by_id.get(_DIFF_VAE_CP, False), "conv": by_id.get(_CONV_VAE_CP, False)}
+
+
+def set_use_conv_vae(enabled: bool) -> None:
+    """Fast decode on/off. Same setting as Settings → Fast decode (useConvVae)."""
+    active = next((v for v in ltx_versions() if v.get("active")), None)
+    if not str((active or {}).get("model_id") or "").startswith("ltx-2.5"):
+        raise RuntimeError("Fast decode only applies to LTX 2.5")
+    vaes = described_vaes()
+    need, name = ("conv", "conv VAE") if enabled else ("diff", "DiffVAE")
+    if not vaes.get(need):
+        raise RuntimeError(f"{name} weights are not downloaded — download them in Settings")
+    _post(SETTINGS_PATH, {"useConvVae": enabled})
+
+
+def scenario_caps() -> dict[str, Any] | None:
+    """Active local offering flags for greying out scenarios the current model cannot run.
+
+    `retake` / `extend` / `ic_lora` come from GET /api/generate/models-specs (same payload
+    GenSpace uses). Built-in canny/depth is GET /api/models/ltx-ic-lora-recommendation
+    (`supported`). Unreachable backend → None so the sweep still attempts.
+    """
+    try:
+        specs = _get("/api/generate/models-specs") or {}
+        models = specs.get("local_models") or []
+        caps = ((models[0].get("spec") or {}).get("capabilities") if models else None)
+        if not isinstance(caps, dict):
+            return None
+        rec = _get("/api/models/ltx-ic-lora-recommendation") or {}
+        active = next((v for v in ltx_versions() if v.get("active")), None)
+        return {
+            **caps,
+            "builtin_control": bool(rec.get("supported")),
+            "family": (active or {}).get("label") or (active or {}).get("model_id"),
+        }
+    except Exception:  # noqa: BLE001
+        return None
 
 
 _MODELS_DIR: Path | None = None
@@ -416,6 +567,10 @@ def wait_for_backend(timeout_s: int = 120) -> None:
     """Block until /health responds ok."""
     deadline = time.time() + timeout_s
     last = None
+    auth = "set" if AUTH_TOKEN else "NOT set (PERF_AUTH_TOKEN)"
+    print(f"[perf] waiting for the backend at {BASE_URL} (auth token {auth}, up to {timeout_s}s). "
+          "This does not start a backend: run `pnpm perf:dev` or the app first.", flush=True)
+    next_report = time.time() + 10
     while time.time() < deadline:
         try:
             h = _get(HEALTH_PATH)
@@ -423,6 +578,9 @@ def wait_for_backend(timeout_s: int = 120) -> None:
                 return
         except Exception as exc:  # noqa: BLE001
             last = exc
+        if time.time() >= next_report:
+            print(f"[perf] still waiting for {BASE_URL}{HEALTH_PATH}: {last}", flush=True)
+            next_report = time.time() + 10
         time.sleep(1.0)
     raise RuntimeError(f"backend not healthy after {timeout_s}s (last: {last})")
 
@@ -455,10 +613,19 @@ def _poll_until_done(interval_s: float = 1.0) -> str | None:
     GenerationProgressResponse.status is one of
     idle|running|complete|cancelled|error; the output (if any) is in `result`
     (str | list[str] | None).
+
+    Bounded: the caller only polls after the POST returned without an output, so a run
+    that stays ``idle`` (nothing running, nothing produced) or never finishes is an error,
+    not something to wait on forever.
     """
-    while True:
+    deadline = time.time() + HTTP_TIMEOUT_S
+    idle_polls = 0
+    while time.time() < deadline:
         st = _get(STATUS_PATH) or {}
         status = st.get("status", "")
+        idle_polls = idle_polls + 1 if status == "idle" else 0
+        if idle_polls >= _MAX_IDLE_POLLS:
+            raise RuntimeError("generation returned no output and the backend is idle")
         if status == "complete":
             result = st.get("result")
             if isinstance(result, list):
@@ -467,3 +634,4 @@ def _poll_until_done(interval_s: float = 1.0) -> str | None:
         if status in {"error", "cancelled"}:
             raise RuntimeError(f"generation failed: {st}")
         time.sleep(interval_s)
+    raise RuntimeError(f"generation still not finished after {HTTP_TIMEOUT_S}s")

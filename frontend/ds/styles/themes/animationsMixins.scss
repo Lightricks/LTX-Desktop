@@ -1,0 +1,31 @@
+@use "@ds/styles/themes/animationsValues.scss" as *;
+
+@mixin menu_out_animation {
+  opacity: 0;
+  transform: translateY(5px) scale(0.97);
+}
+
+@mixin menu_in_animation {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+@keyframes menu-fade-in {
+  from {
+    @include menu_out_animation;
+  }
+
+  to {
+    @include menu_in_animation;
+  }
+}
+
+@keyframes menu-fade-out {
+  from {
+    @include menu_in_animation;
+  }
+
+  to {
+    @include menu_out_animation;
+  }
+}

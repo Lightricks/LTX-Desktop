@@ -11,6 +11,7 @@ import { createLocalGenerationError } from '../lib/generation-errors'
 import { logger } from '../lib/logger'
 import { Tooltip } from '../components/ui/tooltip'
 import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels'
+import { Text } from '@ds/Text/Text'
 import { ExportModal } from '../components/ExportModal'
 import { MenuBar, type MenuDefinition } from '../components/MenuBar'
 import { ImportTimelineModal } from '../components/ImportTimelineModal'
@@ -721,8 +722,10 @@ function VideoEditorWithStore({
       onMouseDown={handleActivateTimelineFocus}
     >
       {showHeader && (
-        <div className="h-7 bg-zinc-900 border-b border-zinc-800 flex items-center px-3 flex-shrink-0">
-          <span className="text-[11px] font-semibold text-zinc-400 tracking-wide">Timeline Viewer</span>
+        <div className="h-7 bg-surface-primary border-b border-separator flex items-center px-3 flex-shrink-0">
+          <Text as="span" variant="label" size="sm" className="tracking-wide text-fg-secondary">
+            Timeline Viewer
+          </Text>
         </div>
       )}
       <ProgramMonitor
@@ -827,7 +830,7 @@ function VideoEditorWithStore({
                 className="min-h-0 min-w-0"
               >
                 <div
-                  className={`flex h-full min-h-0 ${activeFocusArea === 'source' ? 'ring-2 ring-blue-500 ring-inset' : 'border-r border-zinc-800'}`}
+                  className={`flex h-full min-h-0 ${activeFocusArea === 'source' ? 'ring-2 ring-blue-500 ring-inset' : 'border-r border-separator'}`}
                   onMouseDown={handleActivateSourceFocus}
                 >
                   <VideoEditorSourceMonitor
@@ -852,9 +855,9 @@ function VideoEditorWithStore({
         
         {/* Timeline Info Bar (shuttle indicator only — timecode moved to ruler area) */}
         {shuttleSpeed !== 0 && (
-          <div className="h-6 bg-zinc-900 border-t border-zinc-800 flex items-center px-4">
+          <div className="h-6 bg-surface-primary border-t border-separator flex items-center px-4">
             <div className={`px-2 py-0.5 rounded text-xs font-mono font-bold ${
-              shuttleSpeed < 0 ? 'bg-orange-600/20 text-orange-400' : 'bg-blue-600/20 text-blue-400'
+              shuttleSpeed < 0 ? 'bg-warning-soft text-fg-warning' : 'bg-blue-600/20 text-blue-400'
             }`}>
               {shuttleSpeed < 0 ? '◀' : '▶'}{' '}{Math.abs(shuttleSpeed)}x
             </div>
@@ -938,7 +941,7 @@ function VideoEditorWithStore({
                 <div className="relative h-full group">
                 <Tooltip content="Collapse Properties Panel" side="left">
                   <button
-                    className="absolute top-1/2 -translate-y-1/2 -left-3 w-6 h-8 bg-zinc-800 border border-zinc-700 rounded-l-md flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors opacity-0 group-hover:opacity-100 z-20 cursor-pointer"
+                    className="absolute top-1/2 -translate-y-1/2 -left-3 w-6 h-8 bg-action border border-separator rounded-l-md flex items-center justify-center text-fg-secondary hover:text-fg-primary hover:bg-action-hover transition-colors opacity-0 group-hover:opacity-100 z-20 cursor-pointer"
                     onClick={() => actions.setShowPropertiesPanel(false)}
                   >
                     <ChevronRight className="h-3.5 w-3.5" />
@@ -959,8 +962,10 @@ function VideoEditorWithStore({
                     onCreateVideoFromImage={handleCreateVideoFromImage}
                   />
                 ) : !selectedSubtitleId ? (
-                  <div className="h-full bg-zinc-950 border-l border-zinc-800 flex flex-col items-center justify-center text-zinc-600 text-[12px]">
-                    <span>No clip selected</span>
+                  <div className="h-full bg-surface-secondary border-l border-separator flex flex-col items-center justify-center">
+                    <Text as="span" variant="body" size="md" className="text-fg-tertiary">
+                      No clip selected
+                    </Text>
                   </div>
                 ) : null}
                 </div>

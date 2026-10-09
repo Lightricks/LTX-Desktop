@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NewType, Protocol
 
 from api_types import LTXLocalModelId, ModelCheckpointID
+from runtime_config.ic_lora_tiling import IcLoraTiling
+from runtime_config.runtime_policy import LocalGenerationMode
 from state.conditioning_cache import ConditioningCache
 
 if TYPE_CHECKING:
@@ -101,14 +103,14 @@ class CachedTextEncoder(Protocol):
         ...
 
 
-def _new_prompt_cache() -> dict[tuple[str, bool], TextEncodingResult]:
+def _new_prompt_cache() -> dict[tuple[str, bool, str], TextEncodingResult]:
     return {}
 
 
 @dataclass
 class TextEncoderState:
     service: TextEncoder
-    prompt_cache: dict[tuple[str, bool], TextEncodingResult] = field(default_factory=_new_prompt_cache)
+    prompt_cache: dict[tuple[str, bool, str], TextEncodingResult] = field(default_factory=_new_prompt_cache)
     api_embeddings: TextEncodingResult | None = None
     cached_encoder: CachedTextEncoder | None = None
 
@@ -125,6 +127,9 @@ class VideoPipelineState:
     # Cache key: API text-encode mode leaves gemma_root=None across versions, so without this a
     # switch (2.5 <-> 2.3) wouldn't rebuild.
     ltx_model_id: LTXLocalModelId
+    # Full vs stream for this resident pipeline. A 5s full load must not be reused for
+    # a 720p/20s job that needs streaming weights.
+    loading_mode: LocalGenerationMode
     loras: tuple[tuple[str, float], ...] = field(default_factory=tuple)
     # gemma_root the pipeline's text encoder was built with. Part of the cache key: switching
     # text-encoding mode (API<->local) changes it, and a cached pipeline built for the other
@@ -149,17 +154,24 @@ class ICLoraState:
     depth_pipeline: DepthProcessorPipeline | None
     depth_model_path: str | None
     ltx_model_id: LTXLocalModelId  # cache key — see VideoPipelineState.ltx_model_id
+    loading_mode: LocalGenerationMode
     lora_strength: float = 1.0
     pose_resources: PoseResources | None = None
     conditioning_cache: ConditioningCache = field(default_factory=ConditioningCache)
     gemma_root: str | None = None  # cache key — see VideoPipelineState.gemma_root
     video_vae_path: str | None = None  # cache key — see VideoPipelineState.video_vae_path
+    # Cache key. The stage list is fixed at build, so a one-stage-LoRA pipeline cannot serve it.
+    stage_2_ic_lora: bool = False
+    # Cache key: the catalog tiling. The tile size follows the canvas orientation, so the
+    # pipeline sets the stage list per job. A pipeline built for another tiling cannot serve it.
+    tiling: IcLoraTiling | None = None
 
 
 @dataclass
 class A2VPipelineState:
     pipeline: A2VPipeline
     ltx_model_id: LTXLocalModelId  # cache key — see VideoPipelineState.ltx_model_id
+    loading_mode: LocalGenerationMode
     loras: tuple[tuple[str, float], ...] = field(default_factory=tuple)
     gemma_root: str | None = None  # cache key — see VideoPipelineState.gemma_root
     video_vae_path: str | None = None  # cache key — see VideoPipelineState.video_vae_path
@@ -171,6 +183,9 @@ class RetakePipelineState:
     distilled: bool
     quantized: bool
     ltx_model_id: LTXLocalModelId  # cache key — see VideoPipelineState.ltx_model_id
+    # Full vs stream for this resident pipeline. A small retake must not be reused
+    # for a 1080p job that the budget streamed.
+    loading_mode: LocalGenerationMode
     gemma_root: str | None = None  # cache key — see VideoPipelineState.gemma_root
     video_vae_path: str | None = None  # cache key — see VideoPipelineState.video_vae_path
 

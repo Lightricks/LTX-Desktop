@@ -1,0 +1,366 @@
+@use "@/ds/styles/themes/animationsValues.scss" as *;
+
+.offset {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  height: 100%;
+  transition:
+    width $duration-moderate $easing-standard-productive,
+    flex-basis $duration-moderate $easing-standard-productive;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+.mobileBar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  height: calc(52px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) var(--spacing-sm) 0;
+  box-sizing: border-box;
+  background: var(--semantic-bg-primary);
+  border-bottom: 1px solid var(--semantic-bg-separator-primary);
+  z-index: var(--z-sticky);
+}
+
+.barButton.barButton {
+  width: 32px;
+  height: 32px;
+  justify-content: center;
+  flex: none;
+}
+
+.barIcon {
+  width: 16px;
+  height: 16px;
+}
+
+.barLogo {
+  height: 20px;
+  width: auto;
+  color: var(--semantic-fg-primary);
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-modal);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: rgb(0 0 0 / 48%);
+  cursor: pointer;
+}
+
+.sidebar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: var(--z-dropdown);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  // 8px sides: with the 8px row gutters, icons land at 16px — the traffic
+  // lights' own left edge.
+  padding: var(--spacing-lg) var(--spacing-md) var(--spacing-md);
+  gap: var(--spacing-lg);
+  background: var(--semantic-bg-primary);
+  border-right: 1px solid var(--semantic-bg-separator-primary);
+  box-sizing: border-box;
+  overflow: hidden;
+  transition: width $duration-moderate $easing-standard-productive;
+
+  &:not(.drawer) {
+    transform: translateX(-100%);
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      transform $duration-moderate $easing-standard-productive,
+      visibility 0s linear $duration-moderate;
+  }
+
+  :global(html[data-platform="darwin"]) &:not(.drawer) {
+    padding-top: 0;
+    // Drag here steals hover from the logo/toggle/traffic-light row (native chrome
+    // isn't in the DOM), which collapses the overlay before you can keep it open.
+    -webkit-app-region: no-drag;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+.sidebarOpen:not(.drawer) {
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
+  transition: transform $duration-moderate $easing-standard-productive;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+.sidebarOverlay {
+  z-index: calc(var(--z-dropdown) + 1);
+}
+
+.collapsedChrome {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--collapsed-sidebar-chrome-width);
+  z-index: calc(var(--z-dropdown) + 1);
+  pointer-events: none;
+}
+
+.peekHotspot {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--spacing-lg);
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+.chromeToggle {
+  position: absolute;
+  top: var(--spacing-lg);
+  left: var(--spacing-lg);
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+:global(html[data-platform="darwin"]) .chromeToggle {
+  top: var(--spacing-md);
+  left: calc(var(--window-chrome-start) + var(--spacing-lg));
+}
+
+.drawer {
+  z-index: calc(var(--z-modal) + 1);
+  width: min(240px, calc(100vw - 48px));
+  height: 100%;
+  max-height: 100dvh;
+  padding-top: calc(var(--spacing-lg) + env(safe-area-inset-top, 0px));
+  transform: translateX(-100%);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    transform $duration-moderate $easing-standard-productive,
+    visibility 0s linear $duration-moderate;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+.drawerOpen {
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
+  transition: transform $duration-moderate $easing-standard-productive;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  min-height: 32px;
+  width: 100%;
+
+  :global(html[data-platform="darwin"]) & {
+    -webkit-app-region: no-drag;
+  }
+}
+
+:global(html[data-platform="darwin"]) .sidebar:not(.drawer) .brand {
+  min-height: var(--window-chrome-top);
+  // Chrome clearance plus a breath of air before the logo (sidebar-only; the
+  // shared token itself is untouched).
+  padding-left: calc(var(--window-chrome-start) + var(--spacing-xs));
+}
+
+:global(html[data-platform="darwin"]) .sidebar:not(.drawer) .logo {
+  flex: none;
+}
+
+.logoButton {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.logo {
+  display: block;
+  height: 20px;
+  width: auto;
+  color: var(--semantic-fg-primary);
+}
+
+.menu {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+
+  :global(html[data-platform="darwin"]) & {
+    -webkit-app-region: no-drag;
+  }
+}
+
+.pinButton.pinButton {
+  width: 32px;
+  height: 32px;
+  justify-content: center;
+  flex: none;
+
+  &[aria-pressed="true"] {
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+  }
+
+  @media (hover: hover) {
+    &[aria-pressed="true"]:hover {
+      background: var(--btn-bg-hover);
+      color: var(--btn-fg-hover);
+    }
+  }
+
+  :global(html[data-platform="darwin"]) & {
+    -webkit-app-region: no-drag;
+    pointer-events: auto;
+  }
+}
+
+.navButton.navButton {
+  justify-content: flex-start;
+  width: 100%;
+  height: 32px;
+  text-decoration: none;
+  color: inherit;
+  // Roomier icon-to-label rhythm than the stock md button (scoped here so no
+  // other button moves).
+  gap: var(--gap-sm);
+  // Smooth rest/hover/active/pressed fades; scoped here so shared DS Button
+  // stays instant everywhere else.
+  transition:
+    background-color $duration-moderate $easing-standard-productive,
+    color $duration-moderate $easing-standard-productive;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+
+  // 14px glyphs instead of the md 16px (same sm token the DS uses).
+  --btn-icon-size: var(--sm-icon-size);
+  // 8px row gutters instead of the stock 6px (md-h-padding + xxs).
+  padding-left: calc(var(--md-h-padding) + var(--spacing-xxs));
+  padding-right: calc(var(--md-h-padding) + var(--spacing-xxs));
+}
+
+// Selected rows set their icon and label in secondary ink; the fill stays the
+// stock action treatment. Keyed off aria-current (set exactly when the row is
+// selected). Hover keeps its own treatment via --btn-fg-hover; press inherits
+// this secondary ink because --btn-fg-active also drives the :active state.
+.navButton.navButton[aria-current="page"] {
+  --btn-fg-active: var(--semantic-fg-secondary);
+}
+
+.navButton.navButton > span {
+  flex-grow: 1;
+  text-align: left;
+  font-weight: 400;
+}
+
+.navShortcut {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.navShortcutKey {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--dimensions-icon-xl);
+  min-height: var(--dimensions-icon-xl);
+  padding: var(--spacing-xxs) var(--spacing-xs);
+  color: var(--semantic-fg-tertiary);
+  background: var(--semantic-bg-transparent);
+  border: var(--spacing-3xs) solid var(--semantic-bg-separator-primary);
+  border-radius: var(--radius-xs);
+}
+.loraNavItem {
+  padding: var(--spacing-md) 0 0 var(--spacing-lg);
+}
+
+// Footer divider spans the full sidebar width instead of obeying the content
+// padding. Its bottom margin mostly cancels the section wrapper's inline lg
+// flex gap (16px, same value as --spacing-lg): a stylesheet cannot override an
+// inline gap any other way. It keeps a net --spacing-md of breathing room
+// above Settings — a full cancel sat the divider hard against the row.
+// Doubled for specificity over the DS separator.
+.footerSeparator.footerSeparator {
+  width: auto;
+  margin: 0 calc(-1 * var(--spacing-md)) calc(var(--spacing-md) - var(--spacing-lg));
+}
+
+// The DS menu puts a gap between the scrolling list and the footer; the
+// footer divider should sit directly under the list instead. Doubled for
+// specificity over the DS container.
+.flushFooter.flushFooter {
+  gap: 0;
+}
+
+// The scrolling list's box bleeds a few px past its slot (DS focus-outline
+// trick), which would let rows paint below the divider. An opaque footer in
+// the sidebar's own bg covers the bleed.
+.flushFooter.flushFooter > div:last-child {
+  background: var(--semantic-bg-primary);
+}
+
+// More air between the pages chunk and the Featured label: the DS sections
+// wrapper's lg gap reads cramped next to the roomy sidebar. Structural child
+// selector (the sections div is the container's first child, the footer div
+// the second) keeps this scoped to the sidebar without touching shared DS
+// styles. Doubled for specificity over the DS sections gap.
+.flushFooter.flushFooter > div:first-child {
+  gap: var(--spacing-xl);
+}
+
+// The Featured section needs no divider above it — the pages chunk flows
+// straight into the label. Doubled for specificity over the DS separator.
+.hideSeparator.hideSeparator {
+  display: none;
+}
+
+// Featured reads as body/md in primary ink: the type comes from the DS itself
+// via labelVariant/labelSize. Passed via labelClassName so no other DS menu
+// label moves. Doubled for specificity over the DS sectionLabel rule
+// (0-2-0 beats 0-1-0 outright, with no ramp rule contested).
+.featuredLabel.featuredLabel {
+  color: var(--semantic-fg-primary);
+  // Label text sits on the icon boxes' left edge: mirrors the row's own
+  // horizontal inset above (md-h-padding + xxs).
+  padding-left: calc(var(--md-h-padding) + var(--spacing-xxs));
+  // Pull the first item up: cancels most of the section wrapper's inline lg
+  // flex gap, leaving an md rhythm between label and list.
+  margin-bottom: calc(var(--spacing-md) - var(--spacing-lg));
+}
+
+// Tighter item rhythm across every sidebar list (pages, Featured, footer):
+// well down from the DS menuItems md gap. Descendant of the
+// sidebar-only flushFooter class so shared DS menus keep their gap. Doubled
+// for specificity over the DS menuItems rule.
+.flushFooter.flushFooter ul {
+  gap: var(--spacing-xxs);
+}

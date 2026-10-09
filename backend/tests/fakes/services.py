@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar
+import shutil
 import threading
 import time
 
@@ -27,6 +28,7 @@ from api_types import (
     RetakeMode,
     VideoCameraMotion,
 )
+from runtime_config.ic_lora_tiling import IcLoraTiling
 from services.interfaces import VideoInfoPayload
 from services.ltx_api_client.ltx_api_client import LTXRetakeResult
 from tests.fakes.fake_gpu_info import FakeGpuInfo
@@ -36,7 +38,7 @@ def _dl(repo_id: str, filename: str, size_bytes: int = 10) -> DownloadSpec:
     """Single-checkpoint DownloadSpec (first/only variant = default)."""
     return DownloadSpec(
         repo_id=repo_id,
-        variants=[DownloadVariant(id="default", label="Default", filename=filename, size_bytes=size_bytes)],
+        variants=[DownloadVariant(id="default", label="Default", filename=filename, size_bytes=size_bytes, base_model="LTX-2.3")],
     )
 
 
@@ -172,6 +174,7 @@ class FakeLTXAPIClient:
             {
                 "api_key": api_key,
                 "file_path": file_path,
+                "contents": Path(file_path).read_bytes(),
             }
         )
         if self.raise_on_upload_file is not None:
@@ -190,6 +193,7 @@ class FakeLTXAPIClient:
         fps: float,
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
+        enhance_prompt: bool = True,
     ) -> bytes:
         self.text_to_video_calls.append(
             {
@@ -201,6 +205,7 @@ class FakeLTXAPIClient:
                 "fps": fps,
                 "generate_audio": generate_audio,
                 "camera_motion": camera_motion,
+                "enhance_prompt": enhance_prompt,
             }
         )
         if self.raise_on_text_to_video is not None:
@@ -220,6 +225,7 @@ class FakeLTXAPIClient:
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
         last_frame_uri: str | None = None,
+        enhance_prompt: bool = True,
     ) -> bytes:
         self.image_to_video_calls.append(
             {
@@ -233,6 +239,7 @@ class FakeLTXAPIClient:
                 "fps": fps,
                 "generate_audio": generate_audio,
                 "camera_motion": camera_motion,
+                "enhance_prompt": enhance_prompt,
             }
         )
         if self.raise_on_image_to_video is not None:
@@ -249,6 +256,7 @@ class FakeLTXAPIClient:
         model: str,
         resolution: str,
         last_frame_uri: str | None = None,
+        enhance_prompt: bool = True,
     ) -> bytes:
         self.audio_to_video_calls.append(
             {
@@ -259,6 +267,7 @@ class FakeLTXAPIClient:
                 "last_frame_uri": last_frame_uri,
                 "model": model,
                 "resolution": resolution,
+                "enhance_prompt": enhance_prompt,
             }
         )
         if self.raise_on_audio_to_video is not None:
@@ -457,9 +466,9 @@ class FakeLoraCatalogProvider:
                     requires_hf_login=True,
                     input=InputSpec(kind="image"),
                     preprocessing=[PreprocessingStep(utility="image_to_frames", params={})],
-                    controls=[IcLoraControl(id="duration", label="Duration", default=5, options=[5, 8])],
+                    controls=[IcLoraControl(id="duration", label="Duration", default=5, options=[5, 8, 20])],
                     instructions=[InstructionSection(kind="summary", title="What it does", body="use it")],
-                    default_settings=IcLoraSettings(skip_stage_2=True),
+                    default_settings=IcLoraSettings(skip_stage_2=True, resolution_factor=1.5),
                 ),
                 IcLoraCatalogItem(
                     id="colorize-v1",
@@ -470,7 +479,7 @@ class FakeLoraCatalogProvider:
                     input=InputSpec(kind="video"),
                     preprocessing=[],
                     instructions=[InstructionSection(kind="summary", title="What it does", body="use it")],
-                    default_settings=IcLoraSettings(skip_stage_2=True),
+                    default_settings=IcLoraSettings(skip_stage_2=True, resolution_factor=1.5),
                 ),
                 IcLoraCatalogItem(
                     id="outpaint-v1",
@@ -483,7 +492,7 @@ class FakeLoraCatalogProvider:
                     preprocessing=[PreprocessingStep(utility="outpaint_canvas", params={})],
                     controls=[IcLoraControl(id="outpaint_pads", kind="position_canvas", label="Canvas")],
                     instructions=[InstructionSection(kind="summary", title="What it does", body="use it")],
-                    default_settings=IcLoraSettings(skip_stage_2=True),
+                    default_settings=IcLoraSettings(skip_stage_2=True, resolution_factor=1.5),
                 ),
                 IcLoraCatalogItem(
                     id="refimg-v1",
@@ -495,7 +504,7 @@ class FakeLoraCatalogProvider:
                     input=InputSpec(kind="video"),
                     preprocessing=[],
                     instructions=[InstructionSection(kind="summary", title="What it does", body="use it")],
-                    default_settings=IcLoraSettings(skip_stage_2=True),
+                    default_settings=IcLoraSettings(skip_stage_2=True, resolution_factor=1.5),
                 ),
                 IcLoraCatalogItem(
                     id="multi-v1",
@@ -504,15 +513,15 @@ class FakeLoraCatalogProvider:
                     download=DownloadSpec(
                         repo_id="org/multi",
                         variants=[
-                            DownloadVariant(id="strong", label="Strong", filename="strong.safetensors", size_bytes=10),
-                            DownloadVariant(id="light", label="Light", filename="light.safetensors", size_bytes=5),
+                            DownloadVariant(id="strong", label="Strong", filename="strong.safetensors", size_bytes=10, base_model="LTX-2.3"),
+                            DownloadVariant(id="light", label="Light", filename="light.safetensors", size_bytes=5, base_model="LTX-2.3"),
                         ],
                     ),
                     requires_hf_login=False,
                     input=InputSpec(kind="video"),
                     preprocessing=[],
                     instructions=[InstructionSection(kind="summary", title="What it does", body="use it")],
-                    default_settings=IcLoraSettings(skip_stage_2=True),
+                    default_settings=IcLoraSettings(skip_stage_2=True, resolution_factor=1.5),
                 ),
             ],
             loras=[
@@ -525,6 +534,155 @@ class FakeLoraCatalogProvider:
                     trigger="F3ltCut0u7",
                     trigger_placement="anywhere",
                     tags=["style"],
+                    recommended_strength=1.0,
+                ),
+                # Matches the real catalog id the "cozy-felt" recipe maps to, so
+                # create_lora_recipe can resolve + gate it in tests.
+                LoraCatalogItem(
+                    id="cozy-felt-style",
+                    name="Cozy Felt Style",
+                    description="d",
+                    download=_dl("vrg/felt-style", "CozyFelt.safetensors", size_bytes=20),
+                    requires_hf_login=False,
+                    trigger="F3ltCut0u7",
+                    trigger_placement="anywhere",
+                    tags=["style"],
+                    recommended_strength=1.0,
+                ),
+                LoraCatalogItem(
+                    id="dolly-in",
+                    name="Dolly In",
+                    description="d",
+                    download=_dl(
+                        "Lightricks/LTX-2-19b-LoRA-Camera-Control-Dolly-In",
+                        "ltx-2-19b-lora-camera-control-dolly-in.safetensors",
+                        size_bytes=20,
+                    ),
+                    requires_hf_login=True,
+                    tags=["motion"],
+                    recommended_strength=1.0,
+                ),
+                LoraCatalogItem(
+                    id="claymation-style",
+                    name="Claymation Style",
+                    description="d",
+                    download=_dl("vrg/clay", "Claymation.safetensors", size_bytes=20),
+                    requires_hf_login=False,
+                    tags=["style"],
+                    recommended_strength=1.0,
+                ),
+                LoraCatalogItem(
+                    id="fantasy-painterly-style",
+                    name="Fantasy Painterly Style",
+                    description="d",
+                    download=_dl("vrg/paint", "Fantasy_Painterly.safetensors", size_bytes=20),
+                    requires_hf_login=False,
+                    tags=["style"],
+                    recommended_strength=1.0,
+                ),
+                LoraCatalogItem(
+                    id="paper-cutout-style",
+                    name="Paper Cut-Out Style",
+                    description="d",
+                    download=_dl("vrg/paper", "PaperCutOutStyle.safetensors", size_bytes=20),
+                    requires_hf_login=False,
+                    tags=["style"],
+                    recommended_strength=1.0,
+                ),
+                LoraCatalogItem(
+                    id="cinemagraph-motion",
+                    name="Cinemagraph Motion",
+                    description="d",
+                    download=_dl(
+                        "Lightricks/LTX-2.3-22b-LoRA-Cinemagraph",
+                        "ltx-2.3-22b-lora-cinemagraph-0.9.safetensors",
+                        size_bytes=20,
+                    ),
+                    requires_hf_login=True,
+                    tags=["motion"],
+                    recommended_strength=1.0,
+                ),
+                LoraCatalogItem(
+                    id="jib-up",
+                    name="Jib Up",
+                    description="d",
+                    download=_dl(
+                        "Lightricks/LTX-2-19b-LoRA-Camera-Control-Jib-Up",
+                        "ltx-2-19b-lora-camera-control-jib-up.safetensors",
+                        size_bytes=20,
+                    ),
+                    requires_hf_login=True,
+                    tags=["motion"],
+                    recommended_strength=1.0,
+                ),
+                LoraCatalogItem(
+                    id="jib-down",
+                    name="Jib Down",
+                    description="d",
+                    download=_dl(
+                        "Lightricks/LTX-2-19b-LoRA-Camera-Control-Jib-Down",
+                        "ltx-2-19b-lora-camera-control-jib-down.safetensors",
+                        size_bytes=20,
+                    ),
+                    requires_hf_login=True,
+                    tags=["motion"],
+                    recommended_strength=1.0,
+                ),
+                LoraCatalogItem(
+                    id="dolly-out",
+                    name="Dolly Out",
+                    description="d",
+                    download=_dl(
+                        "Lightricks/LTX-2-19b-LoRA-Camera-Control-Dolly-Out",
+                        "ltx-2-19b-lora-camera-control-dolly-out.safetensors",
+                        size_bytes=20,
+                    ),
+                    requires_hf_login=True,
+                    tags=["motion"],
+                    recommended_strength=1.0,
+                ),
+                LoraCatalogItem(
+                    id="fpv-motion",
+                    name="FPV Motion",
+                    description="d",
+                    download=_dl("chsengni/fpv", "ltx2.3_fpv_motion.safetensors", size_bytes=20),
+                    requires_hf_login=False,
+                    tags=["motion"],
+                    recommended_strength=1.0,
+                ),
+                LoraCatalogItem(
+                    id="openwheel-tcam-style",
+                    name="Open-Wheel Motorsport T-Cam",
+                    description="d",
+                    download=_dl(
+                        "mxturbo/tcam",
+                        "openwheel-t-cam-ltx2.3_000000500.safetensors",
+                        size_bytes=20,
+                    ),
+                    requires_hf_login=False,
+                    tags=["style"],
+                    recommended_strength=1.0,
+                ),
+                LoraCatalogItem(
+                    id="transition",
+                    name="Transition",
+                    description="d",
+                    download=_dl("joyfox/transition", "ltx2.3-transition.safetensors", size_bytes=20),
+                    requires_hf_login=False,
+                    tags=["motion"],
+                    recommended_strength=1.0,
+                ),
+                LoraCatalogItem(
+                    id="vbvr",
+                    name="VBVR",
+                    description="d",
+                    download=_dl(
+                        "LiconStudio/vbvr",
+                        "Ltx2.3-Licon-VBVR-I2V-390K-R32.safetensors",
+                        size_bytes=20,
+                    ),
+                    requires_hf_login=False,
+                    tags=["motion"],
                     recommended_strength=1.0,
                 ),
             ],
@@ -642,6 +800,15 @@ class FakeVideoProcessor:
 
     def release(self, cap_or_writer: FakeCapture | FakeWriter) -> None:
         cap_or_writer.release()
+        if isinstance(cap_or_writer, FakeWriter) and cap_or_writer.frames:
+            frame = cap_or_writer.frames[0]
+            if hasattr(frame, "shape") and len(frame.shape) >= 2:
+                height, width = int(frame.shape[0]), int(frame.shape[1])
+                self.videos[str(cap_or_writer.path)] = FakeCapture(
+                    frames=list(cap_or_writer.frames),
+                    width=width,
+                    height=height,
+                )
 
 
 class _FakeVideoPipelineBase:
@@ -657,6 +824,8 @@ class _FakeVideoPipelineBase:
         self.step_delay_s = 0.0
         self.steps_completed = 0
         self.entered_inference = threading.Event()
+        self.last_streaming_prefetch_count: int | None = None
+        self.create_count: int = 0
 
     def _record_generate(self, payload: dict[str, Any]) -> None:
         self.generate_calls.append(payload)
@@ -704,7 +873,6 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
             gemma_root,
             upsampler_path,
             device,
-            streaming_prefetch_count,
             video_vae_path,
             audio_vae_path,
             duration_head_path,
@@ -712,6 +880,8 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
         pipeline = FakeFastVideoPipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeFastVideoPipeline singleton is not bound")
+        pipeline.last_streaming_prefetch_count = streaming_prefetch_count
+        pipeline.create_count += 1
         pipeline.create_loras.append(list(loras or []))
         return pipeline
 
@@ -727,6 +897,7 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
         output_path: str,
         *,
         guide_all_images: bool = False,
+        skip_stage_2: bool = False,
     ) -> None:
         payload = {
             "prompt": prompt,
@@ -738,6 +909,7 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
             "images": images,
             "output_path": output_path,
             "guide_all_images": guide_all_images,
+            "skip_stage_2": skip_stage_2,
         }
         if self.inference_steps:
             from services.generation_interrupt import raise_if_requested
@@ -896,15 +1068,12 @@ class FakeIcLoraPipeline:
         video_vae_path: str | None = None,
         audio_vae_path: str | None = None,
         duration_head_path: str | None = None,
+        stage_2_ic_lora: bool = False,
+        tiling: IcLoraTiling | None = None,
     ) -> "FakeIcLoraPipeline":
         del (
-            checkpoint_path,
-            gemma_root,
             upsampler_path,
-            lora_path,
             device,
-            streaming_prefetch_count,
-            lora_strength,
             video_vae_path,
             audio_vae_path,
             duration_head_path,
@@ -912,11 +1081,27 @@ class FakeIcLoraPipeline:
         pipeline = FakeIcLoraPipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeIcLoraPipeline singleton is not bound")
+        pipeline.last_checkpoint_path = checkpoint_path
+        pipeline.last_gemma_root = gemma_root
+        pipeline.last_lora_path = lora_path
+        pipeline.last_lora_strength = lora_strength
+        pipeline.last_stage_2_ic_lora = stage_2_ic_lora
+        pipeline.last_tiling = tiling
+        pipeline.last_streaming_prefetch_count = streaming_prefetch_count
+        pipeline.create_count += 1
         return pipeline
 
     def __init__(self) -> None:
         self.generate_calls: list[dict[str, Any]] = []
         self.raise_on_generate: Exception | None = None
+        self.last_streaming_prefetch_count: int | None = None
+        self.last_checkpoint_path: str | None = None
+        self.last_gemma_root: str | None = None
+        self.last_lora_path: str | None = None
+        self.last_lora_strength: float | None = None
+        self.last_stage_2_ic_lora: bool | None = None
+        self.last_tiling: IcLoraTiling | None = None
+        self.create_count: int = 0
 
     def generate(self, **kwargs: Any) -> None:
         self.generate_calls.append(kwargs)
@@ -1006,7 +1191,6 @@ class FakeA2VPipeline:
             gemma_root,
             upsampler_path,
             device,
-            streaming_prefetch_count,
             video_vae_path,
             audio_vae_path,
             duration_head_path,
@@ -1014,6 +1198,8 @@ class FakeA2VPipeline:
         pipeline = FakeA2VPipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeA2VPipeline singleton is not bound")
+        pipeline.last_streaming_prefetch_count = streaming_prefetch_count
+        pipeline.create_count += 1
         pipeline.create_loras.append(list(loras or []))
         return pipeline
 
@@ -1021,6 +1207,8 @@ class FakeA2VPipeline:
         self.generate_calls: list[dict[str, Any]] = []
         self.create_loras: list[list[tuple[str, float]]] = []
         self.raise_on_generate: Exception | None = None
+        self.last_streaming_prefetch_count: int | None = None
+        self.create_count: int = 0
 
     def generate(self, **kwargs: Any) -> None:
         self.generate_calls.append(kwargs)
@@ -1052,10 +1240,11 @@ class FakeRetakePipeline:
         audio_vae_path: str | None = None,
         duration_head_path: str | None = None,
     ) -> "FakeRetakePipeline":
-        del device, streaming_prefetch_count, loras, quantization
+        del device, loras, quantization
         pipeline = FakeRetakePipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeRetakePipeline singleton is not bound")
+        pipeline.last_streaming_prefetch_count = streaming_prefetch_count
         pipeline.create_calls.append({
             "checkpoint_path": checkpoint_path,
             "gemma_root": gemma_root,
@@ -1071,6 +1260,7 @@ class FakeRetakePipeline:
         self.extend_calls: list[dict[str, Any]] = []
         self.raise_on_generate: Exception | None = None
         self.raise_on_extend: Exception | None = None
+        self.last_streaming_prefetch_count: int | None = None
 
     def generate(self, **kwargs: Any) -> None:
         self.generate_calls.append(kwargs)
@@ -1079,7 +1269,11 @@ class FakeRetakePipeline:
 
         output_path = Path(kwargs["output_path"])
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_bytes(b"fake-retake-video")
+        source = Path(kwargs.get("video_path", ""))
+        if source.is_file():
+            shutil.copy2(source, output_path)
+        else:
+            output_path.write_bytes(b"fake-retake-video")
 
     def extend(self, **kwargs: Any) -> None:
         self.extend_calls.append(kwargs)
@@ -1088,7 +1282,11 @@ class FakeRetakePipeline:
 
         output_path = Path(kwargs["output_path"])
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_bytes(b"fake-extend-video")
+        src = Path(str(kwargs.get("video_path") or ""))
+        if src.is_file():
+            shutil.copy2(src, output_path)
+        else:
+            output_path.write_bytes(b"fake-extend-video")
 
 
 class FakeTextEncoder:

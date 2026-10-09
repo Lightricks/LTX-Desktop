@@ -20,14 +20,14 @@ def _async_client(http: FakeHTTPClient) -> LTXAPIClientImpl:
     )
 
 
-def _queue_upload(http: FakeHTTPClient) -> None:
+def _queue_upload(http: FakeHTTPClient, storage_uri: str = "storage://extend/123") -> None:
     http.queue(
         "post",
         FakeResponse(
             status_code=200,
             json_payload={
                 "upload_url": "https://upload.example.com/extend",
-                "storage_uri": "storage://extend/123",
+                "storage_uri": storage_uri,
                 "required_headers": {},
             },
         ),
@@ -35,18 +35,25 @@ def _queue_upload(http: FakeHTTPClient) -> None:
     http.queue("put", FakeResponse(status_code=200))
 
 
-def test_generate_text_to_video_returns_binary_content() -> None:
-    http = FakeHTTPClient()
+def _queue_completed_job(
+    http: FakeHTTPClient, *, job_id: str = "job-1", video_url: str, video_bytes: bytes
+) -> None:
+    http.queue("post", FakeResponse(status_code=202, json_payload={"id": job_id}))
     http.queue(
-        "post",
+        "get",
         FakeResponse(
             status_code=200,
-            headers={"Content-Type": "video/mp4"},
-            content=b"video-bytes",
+            json_payload={"status": "completed", "result": {"video_url": video_url}},
         ),
     )
+    http.queue("get", FakeResponse(status_code=200, content=video_bytes))
 
-    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
+
+def test_generate_text_to_video_returns_downloaded_bytes() -> None:
+    http = FakeHTTPClient()
+    _queue_completed_job(http, video_url="https://cdn.example.com/t2v.mp4", video_bytes=b"video-bytes")
+
+    client = _async_client(http)
     out = client.generate_text_to_video(
         api_key="test-key",
         prompt="A mountain",
@@ -59,104 +66,33 @@ def test_generate_text_to_video_returns_binary_content() -> None:
     )
 
     assert out == b"video-bytes"
-    assert len(http.calls) == 1
-    call = http.calls[0]
-    assert call.url == "https://api.ltx.video/v1/text-to-video"
-    assert call.headers == {
+    assert len(http.calls) == 3
+    submit, poll, download = http.calls
+    assert submit.url == "https://api.ltx.video/v2/text-to-video"
+    assert submit.headers == {
         "Authorization": "Bearer test-key",
         "Content-Type": "application/json",
     }
-    assert call.json_payload is not None
-    assert call.json_payload["prompt"] == "A mountain"
-    assert call.json_payload["resolution"] == "1920x1080"
-    assert call.json_payload["camera_motion"] == "dolly_in"
-
-
-def test_generate_image_to_video_with_image_uri_downloads_video() -> None:
-    http = FakeHTTPClient()
-    http.queue(
-        "post",
-        FakeResponse(
-            status_code=200,
-            headers={"Content-Type": "application/json"},
-            json_payload={"video_url": "https://cdn.example.com/output.mp4"},
-        ),
-    )
-    http.queue(
-        "get",
-        FakeResponse(status_code=200, content=b"downloaded-video"),
-    )
-
-    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
-    out = client.generate_image_to_video(
-        api_key="test-key",
-        prompt="Animate this frame",
-        image_uri="storage://image/123",
-        model="ltx-2-3-pro",
-        resolution="1920x1080",
-        duration=4.0,
-        fps=24.0,
-        generate_audio=True,
-        camera_motion="jib_up",
-    )
-
-    assert out == b"downloaded-video"
-    assert len(http.calls) == 2
-    assert http.calls[0].url == "https://api.ltx.video/v1/image-to-video"
-    assert http.calls[0].json_payload is not None
-    assert http.calls[0].json_payload["image_uri"] == "storage://image/123"
-    assert http.calls[0].json_payload["camera_motion"] == "jib_up"
-    assert "last_frame_uri" not in http.calls[0].json_payload
-    assert http.calls[1].url == "https://cdn.example.com/output.mp4"
-
-
-def test_generate_image_to_video_with_last_frame_uri() -> None:
-    http = FakeHTTPClient()
-    http.queue(
-        "post",
-        FakeResponse(
-            status_code=200,
-            headers={"Content-Type": "application/json"},
-            json_payload={"video_url": "https://cdn.example.com/output.mp4"},
-        ),
-    )
-    http.queue(
-        "get",
-        FakeResponse(status_code=200, content=b"downloaded-video"),
-    )
-
-    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
-    out = client.generate_image_to_video(
-        api_key="test-key",
-        prompt="Animate from first to last",
-        image_uri="storage://image/123",
-        last_frame_uri="storage://image/456",
-        model="ltx-2-3-pro",
-        resolution="1920x1080",
-        duration=4.0,
-        fps=24.0,
-        generate_audio=True,
-        camera_motion="jib_up",
-    )
-
-    assert out == b"downloaded-video"
-    assert http.calls[0].json_payload is not None
-    assert http.calls[0].json_payload["image_uri"] == "storage://image/123"
-    assert http.calls[0].json_payload["last_frame_uri"] == "storage://image/456"
+    assert submit.json_payload is not None
+    assert submit.json_payload["prompt"] == "A mountain"
+    assert submit.json_payload["model"] == "ltx-2-3-pro"
+    assert submit.json_payload["resolution"] == "1920x1080"
+    assert submit.json_payload["duration"] == 5.0
+    assert submit.json_payload["fps"] == 24.0
+    assert submit.json_payload["generate_audio"] is False
+    assert submit.json_payload["camera_motion"] == "dolly_in"
+    assert submit.json_payload["enhance_prompt"] is True
+    assert poll.url == "https://api.ltx.video/v2/text-to-video/job-1"
+    assert download.url == "https://cdn.example.com/t2v.mp4"
+    # Signed result URL: no Authorization header on the download.
+    assert download.headers is None
 
 
 def test_generate_text_to_video_omits_camera_motion_when_none() -> None:
     http = FakeHTTPClient()
-    http.queue(
-        "post",
-        FakeResponse(
-            status_code=200,
-            headers={"Content-Type": "video/mp4"},
-            content=b"video-bytes",
-        ),
-    )
+    _queue_completed_job(http, video_url="https://cdn.example.com/t2v.mp4", video_bytes=b"video-bytes")
 
-    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
+    client = _async_client(http)
     out = client.generate_text_to_video(
         api_key="test-key",
         prompt="A mountain",
@@ -174,19 +110,40 @@ def test_generate_text_to_video_omits_camera_motion_when_none() -> None:
     assert "camera_motion" not in call.json_payload
 
 
-def test_generate_text_to_video_raises_on_non_200() -> None:
+def test_generate_text_to_video_forwards_enhance_prompt_false() -> None:
+    http = FakeHTTPClient()
+    _queue_completed_job(http, video_url="https://cdn.example.com/t2v.mp4", video_bytes=b"video-bytes")
+
+    client = _async_client(http)
+    client.generate_text_to_video(
+        api_key="test-key",
+        prompt="A mountain",
+        model="ltx-2-3-pro",
+        resolution="1920x1080",
+        duration=5.0,
+        fps=24.0,
+        generate_audio=False,
+        enhance_prompt=False,
+    )
+
+    call = http.calls[0]
+    assert call.json_payload is not None
+    assert call.json_payload["enhance_prompt"] is False
+
+
+def test_generate_text_to_video_submit_401_passes_through() -> None:
     http = FakeHTTPClient()
     http.queue(
         "post",
         FakeResponse(
             status_code=401,
             text="unauthorized",
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "x-request-id": "req-401"},
             json_payload={"error": "unauthorized"},
         ),
     )
 
-    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
+    client = _async_client(http)
     with pytest.raises(LTXAPIClientError, match="401") as exc:
         client.generate_text_to_video(
             api_key="bad-key",
@@ -198,10 +155,10 @@ def test_generate_text_to_video_raises_on_non_200() -> None:
             generate_audio=False,
         )
     assert exc.value.status_code == 401
-    assert exc.value.stage == "generation"
+    assert exc.value.request_id == "req-401"
 
 
-def test_generate_text_to_video_extracts_insufficient_funds_error() -> None:
+def test_generate_text_to_video_submit_402_attaches_insufficient_funds() -> None:
     http = FakeHTTPClient()
     http.queue(
         "post",
@@ -219,7 +176,7 @@ def test_generate_text_to_video_extracts_insufficient_funds_error() -> None:
         ),
     )
 
-    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
+    client = _async_client(http)
     with pytest.raises(LTXAPIClientError, match="insufficient_funds_error") as exc:
         client.generate_text_to_video(
             api_key="bad-key",
@@ -231,10 +188,80 @@ def test_generate_text_to_video_extracts_insufficient_funds_error() -> None:
             generate_audio=False,
         )
     assert exc.value.status_code == 402
-    assert exc.value.stage == "generation"
+    # Async submit errors carry no stage by design (handlers key on status + provider type).
     assert exc.value.provider_error_type == "insufficient_funds_error"
     assert exc.value.provider_message == "Insufficient funds. Required: 36 cents"
     assert exc.value.request_id == "req-123"
+
+
+def test_generate_text_to_video_transport_failure_maps_to_504() -> None:
+    http = FakeHTTPClient()
+    http.queue("post", HttpTransportError("Connection reset by peer"))
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="please retry") as exc:
+        client.generate_text_to_video(
+            api_key="k",
+            prompt="A mountain",
+            model="ltx-2-3-pro",
+            resolution="1920x1080",
+            duration=5.0,
+            fps=24.0,
+            generate_audio=False,
+        )
+    assert exc.value.status_code == 504
+
+
+def test_generate_image_to_video_with_image_uri_downloads_video() -> None:
+    http = FakeHTTPClient()
+    _queue_completed_job(http, video_url="https://cdn.example.com/output.mp4", video_bytes=b"downloaded-video")
+
+    client = _async_client(http)
+    out = client.generate_image_to_video(
+        api_key="test-key",
+        prompt="Animate this frame",
+        image_uri="storage://image/123",
+        model="ltx-2-3-pro",
+        resolution="1920x1080",
+        duration=4.0,
+        fps=24.0,
+        generate_audio=True,
+        camera_motion="jib_up",
+    )
+
+    assert out == b"downloaded-video"
+    assert len(http.calls) == 3
+    assert http.calls[0].url == "https://api.ltx.video/v2/image-to-video"
+    assert http.calls[0].json_payload is not None
+    assert http.calls[0].json_payload["image_uri"] == "storage://image/123"
+    assert http.calls[0].json_payload["camera_motion"] == "jib_up"
+    assert "last_frame_uri" not in http.calls[0].json_payload
+    assert http.calls[1].url == "https://api.ltx.video/v2/image-to-video/job-1"
+    assert http.calls[2].url == "https://cdn.example.com/output.mp4"
+
+
+def test_generate_image_to_video_with_last_frame_uri() -> None:
+    http = FakeHTTPClient()
+    _queue_completed_job(http, video_url="https://cdn.example.com/output.mp4", video_bytes=b"downloaded-video")
+
+    client = _async_client(http)
+    out = client.generate_image_to_video(
+        api_key="test-key",
+        prompt="Animate from first to last",
+        image_uri="storage://image/123",
+        last_frame_uri="storage://image/456",
+        model="ltx-2-3-pro",
+        resolution="1920x1080",
+        duration=4.0,
+        fps=24.0,
+        generate_audio=True,
+        camera_motion="jib_up",
+    )
+
+    assert out == b"downloaded-video"
+    assert http.calls[0].json_payload is not None
+    assert http.calls[0].json_payload["image_uri"] == "storage://image/123"
+    assert http.calls[0].json_payload["last_frame_uri"] == "storage://image/456"
 
 
 def test_upload_file_returns_storage_uri(tmp_path) -> None:
@@ -269,17 +296,9 @@ def test_upload_file_returns_storage_uri(tmp_path) -> None:
 
 def test_generate_audio_to_video_with_audio_uri_downloads_video() -> None:
     http = FakeHTTPClient()
-    http.queue(
-        "post",
-        FakeResponse(
-            status_code=200,
-            headers={"Content-Type": "application/json"},
-            json_payload={"video_url": "https://cdn.example.com/a2v.mp4"},
-        ),
-    )
-    http.queue("get", FakeResponse(status_code=200, content=b"downloaded-a2v-video"))
+    _queue_completed_job(http, video_url="https://cdn.example.com/a2v.mp4", video_bytes=b"downloaded-a2v-video")
 
-    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
+    client = _async_client(http)
     out = client.generate_audio_to_video(
         api_key="test-key",
         prompt="Sync to this song",
@@ -290,26 +309,19 @@ def test_generate_audio_to_video_with_audio_uri_downloads_video() -> None:
     )
 
     assert out == b"downloaded-a2v-video"
-    assert len(http.calls) == 2
-    assert http.calls[0].url == "https://api.ltx.video/v1/audio-to-video"
+    assert len(http.calls) == 3
+    assert http.calls[0].url == "https://api.ltx.video/v2/audio-to-video"
     assert http.calls[0].json_payload is not None
     assert http.calls[0].json_payload["audio_uri"] == "storage://audio/123"
     assert "image_uri" not in http.calls[0].json_payload
-    assert http.calls[1].url == "https://cdn.example.com/a2v.mp4"
+    assert http.calls[2].url == "https://cdn.example.com/a2v.mp4"
 
 
 def test_generate_audio_to_video_with_image_uri_posts_both_inputs() -> None:
     http = FakeHTTPClient()
-    http.queue(
-        "post",
-        FakeResponse(
-            status_code=200,
-            headers={"Content-Type": "video/mp4"},
-            content=b"direct-a2v-video",
-        ),
-    )
+    _queue_completed_job(http, video_url="https://cdn.example.com/a2v.mp4", video_bytes=b"downloaded-a2v-video")
 
-    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
+    client = _async_client(http)
     out = client.generate_audio_to_video(
         api_key="test-key",
         prompt="Animate from image and audio",
@@ -319,9 +331,8 @@ def test_generate_audio_to_video_with_image_uri_posts_both_inputs() -> None:
         resolution="3840x2160",
     )
 
-    assert out == b"direct-a2v-video"
-    assert len(http.calls) == 1
-    assert http.calls[0].url == "https://api.ltx.video/v1/audio-to-video"
+    assert out == b"downloaded-a2v-video"
+    assert http.calls[0].url == "https://api.ltx.video/v2/audio-to-video"
     assert http.calls[0].json_payload is not None
     assert http.calls[0].json_payload["audio_uri"] == "storage://audio/123"
     assert http.calls[0].json_payload["image_uri"] == "storage://image/456"
@@ -332,16 +343,9 @@ def test_generate_audio_to_video_with_image_uri_posts_both_inputs() -> None:
 
 def test_generate_audio_to_video_with_last_frame_uri() -> None:
     http = FakeHTTPClient()
-    http.queue(
-        "post",
-        FakeResponse(
-            status_code=200,
-            headers={"Content-Type": "video/mp4"},
-            content=b"direct-a2v-video",
-        ),
-    )
+    _queue_completed_job(http, video_url="https://cdn.example.com/a2v.mp4", video_bytes=b"downloaded-a2v-video")
 
-    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
+    client = _async_client(http)
     out = client.generate_audio_to_video(
         api_key="test-key",
         prompt="Animate from image and audio",
@@ -352,17 +356,17 @@ def test_generate_audio_to_video_with_last_frame_uri() -> None:
         resolution="3840x2160",
     )
 
-    assert out == b"direct-a2v-video"
+    assert out == b"downloaded-a2v-video"
     assert http.calls[0].json_payload is not None
     assert http.calls[0].json_payload["last_frame_uri"] == "storage://image/789"
 
 
-def test_generate_audio_to_video_raises_on_non_200() -> None:
+def test_generate_audio_to_video_submit_422_maps_to_safety_filter() -> None:
     http = FakeHTTPClient()
     http.queue("post", FakeResponse(status_code=422, text="unprocessable"))
 
-    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
-    with pytest.raises(LTXAPIClientError, match="422") as exc:
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="Content rejected by safety filters") as exc:
         client.generate_audio_to_video(
             api_key="bad-key",
             prompt="Bad request",
@@ -372,7 +376,6 @@ def test_generate_audio_to_video_raises_on_non_200() -> None:
             resolution="1920x1080",
         )
     assert exc.value.status_code == 422
-    assert exc.value.stage == "generation"
 
 
 def _write_dummy_video(tmp_path) -> str:
@@ -381,28 +384,22 @@ def _write_dummy_video(tmp_path) -> str:
     return str(input_path)
 
 
-def test_retake_returns_direct_video_bytes(tmp_path) -> None:
+def test_retake_async_submits_polls_and_downloads(tmp_path) -> None:
     http = FakeHTTPClient()
     input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http, storage_uri="storage://retake/123")
+    http.queue("post", FakeResponse(status_code=202, json_payload={"id": "job-rt"}))
+    http.queue("get", FakeResponse(status_code=200, json_payload={"status": "processing"}))
     http.queue(
-        "post",
+        "get",
         FakeResponse(
             status_code=200,
-            json_payload={
-                "upload_url": "https://upload.example.com/retake",
-                "storage_uri": "storage://retake/123",
-                "required_headers": {},
-            },
-        ),
-        FakeResponse(
-            status_code=200,
-            headers={"Content-Type": "video/mp4"},
-            content=b"retake-bytes",
+            json_payload={"status": "completed", "result": {"video_url": "https://cdn.example.com/retake.mp4"}},
         ),
     )
-    http.queue("put", FakeResponse(status_code=200))
+    http.queue("get", FakeResponse(status_code=200, content=b"retake-bytes"))
 
-    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
+    client = _async_client(http)
     result = client.retake(
         api_key="test-key",
         video_path=input_path,
@@ -415,107 +412,26 @@ def test_retake_returns_direct_video_bytes(tmp_path) -> None:
 
     assert result.video_bytes == b"retake-bytes"
     assert result.result_payload is None
-    assert len(http.calls) == 3
-    assert http.calls[0].url == "https://api.ltx.video/v1/upload"
-    assert http.calls[1].method == "put"
-    assert http.calls[2].url == "https://api.ltx.video/v1/retake"
-    assert http.calls[2].json_payload is not None
-    assert http.calls[2].json_payload["video_uri"] == "storage://retake/123"
-
-
-def test_retake_json_video_url_downloads_bytes(tmp_path) -> None:
-    http = FakeHTTPClient()
-    input_path = _write_dummy_video(tmp_path)
-    http.queue(
-        "post",
-        FakeResponse(
-            status_code=200,
-            json_payload={
-                "upload_url": "https://upload.example.com/retake",
-                "storage_uri": "storage://retake/456",
-                "required_headers": {},
-            },
-        ),
-        FakeResponse(
-            status_code=200,
-            headers={"Content-Type": "application/json"},
-            json_payload={"video_url": "https://cdn.example.com/retake.mp4"},
-        ),
-    )
-    http.queue("put", FakeResponse(status_code=200))
-    http.queue("get", FakeResponse(status_code=200, content=b"downloaded-retake"))
-
-    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
-    result = client.retake(
-        api_key="test-key",
-        video_path=input_path,
-        start_time=2.0,
-        duration=4.0,
-        prompt="test",
-        mode="replace_video",
-        model="ltx-2-3-pro",
-    )
-
-    assert result.video_bytes == b"downloaded-retake"
-    assert result.result_payload is None
+    submit_call = next(c for c in http.calls if c.url == "https://api.ltx.video/v2/retake")
+    assert submit_call.json_payload is not None
+    assert submit_call.json_payload["video_uri"] == "storage://retake/123"
+    assert submit_call.json_payload["start_time"] == 1.0
+    assert submit_call.json_payload["duration"] == 3.0
+    assert submit_call.json_payload["mode"] == "replace_audio_and_video"
+    assert submit_call.json_payload["model"] == "ltx-2-3-pro"
+    assert submit_call.json_payload["prompt"] == "make it dramatic"
+    poll_calls = [c for c in http.calls if c.url == "https://api.ltx.video/v2/retake/job-rt"]
+    assert len(poll_calls) == 2
     assert http.calls[-1].url == "https://cdn.example.com/retake.mp4"
 
 
-def test_retake_json_without_video_url_returns_payload(tmp_path) -> None:
+def test_retake_async_422_maps_to_safety_filter(tmp_path) -> None:
     http = FakeHTTPClient()
     input_path = _write_dummy_video(tmp_path)
-    http.queue(
-        "post",
-        FakeResponse(
-            status_code=200,
-            json_payload={
-                "upload_url": "https://upload.example.com/retake",
-                "storage_uri": "storage://retake/789",
-                "required_headers": {},
-            },
-        ),
-        FakeResponse(
-            status_code=200,
-            headers={"Content-Type": "application/json"},
-            json_payload={"status": "processing"},
-        ),
-    )
-    http.queue("put", FakeResponse(status_code=200))
+    _queue_upload(http)
+    http.queue("post", FakeResponse(status_code=422, text="filtered"))
 
-    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
-    result = client.retake(
-        api_key="test-key",
-        video_path=input_path,
-        start_time=0.0,
-        duration=2.5,
-        prompt="test",
-        mode="replace_audio_and_video",
-        model="ltx-2-3-pro",
-    )
-
-    assert result.video_bytes is None
-    assert result.result_payload is not None
-    assert result.result_payload["status"] == "processing"
-
-
-def test_retake_422_maps_to_safety_filter_error(tmp_path) -> None:
-    http = FakeHTTPClient()
-    input_path = _write_dummy_video(tmp_path)
-    http.queue(
-        "post",
-        FakeResponse(
-            status_code=200,
-            json_payload={
-                "upload_url": "https://upload.example.com/retake",
-                "storage_uri": "storage://retake/000",
-                "required_headers": {},
-            },
-        ),
-        FakeResponse(status_code=422, text="Content filtered"),
-    )
-    http.queue("put", FakeResponse(status_code=200))
-
-    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
+    client = _async_client(http)
     with pytest.raises(LTXAPIClientError, match="Content rejected by safety filters") as exc:
         client.retake(
             api_key="test-key",
@@ -628,12 +544,56 @@ def test_extend_async_422_maps_to_safety_filter(tmp_path) -> None:
     http = FakeHTTPClient()
     input_path = _write_dummy_video(tmp_path)
     _queue_upload(http)
-    http.queue("post", FakeResponse(status_code=422, text="filtered"))
+    http.queue(
+        "post",
+        FakeResponse(
+            status_code=422,
+            text='{"type":"error","error":{"type":"content_filtered_error","message":"blocked"}}',
+            headers={"x-request-id": "req-422"},
+            json_payload={
+                "type": "error",
+                "error": {"type": "content_filtered_error", "message": "blocked"},
+            },
+        ),
+    )
 
     client = _async_client(http)
     with pytest.raises(LTXAPIClientError, match="Content rejected by safety filters") as exc:
         client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
     assert exc.value.status_code == 422
+    assert exc.value.request_id == "req-422"
+    assert exc.value.provider_error_type == "content_filtered_error"
+    assert exc.value.provider_message == "blocked"
+
+
+def test_async_submit_missing_job_id_attaches_request_id(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue(
+        "post",
+        FakeResponse(status_code=202, json_payload={}, headers={"x-request-id": "req-noid"}),
+    )
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="no job id") as exc:
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
+    assert exc.value.request_id == "req-noid"
+
+
+def test_async_submit_malformed_body_attaches_request_id(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue(
+        "post",
+        FakeResponse(status_code=202, json_payload=[], headers={"x-request-id": "req-malformed"}),
+    )
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="Unexpected") as exc:
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
+    assert exc.value.request_id == "req-malformed"
 
 
 def test_extend_async_connection_reset_maps_to_504(tmp_path) -> None:
@@ -661,6 +621,75 @@ def test_extend_async_completed_without_url_raises(tmp_path) -> None:
         client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
 
 
+def test_async_submit_402_attaches_provider_error_fields(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue(
+        "post",
+        FakeResponse(
+            status_code=402,
+            text='{"type":"error","error":{"type":"insufficient_funds_error","message":"Insufficient funds. Required: 36 cents"}}',
+            headers={"Content-Type": "application/json", "x-request-id": "req-submit-1"},
+            json_payload={
+                "type": "error",
+                "error": {
+                    "type": "insufficient_funds_error",
+                    "message": "Insufficient funds. Required: 36 cents",
+                },
+            },
+        ),
+    )
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="Insufficient funds") as exc:
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
+    assert exc.value.status_code == 402
+    assert exc.value.provider_error_type == "insufficient_funds_error"
+    assert exc.value.provider_message == "Insufficient funds. Required: 36 cents"
+    assert exc.value.request_id == "req-submit-1"
+
+
+def test_async_submit_401_passes_through_with_request_id(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue(
+        "post",
+        FakeResponse(
+            status_code=401,
+            text="unauthorized",
+            headers={"x-request-id": "req-submit-2"},
+            json_payload={"error": "unauthorized"},
+        ),
+    )
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="unauthorized") as exc:
+        client.extend(api_key="bad-key", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
+    assert exc.value.status_code == 401
+    assert exc.value.request_id == "req-submit-2"
+
+
+def test_retake_upload_transport_failure_maps_to_504(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    http.queue("post", HttpTransportError("connection reset"))
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="please retry") as exc:
+        client.retake(
+            api_key="k",
+            video_path=input_path,
+            start_time=1.0,
+            duration=3.0,
+            prompt="",
+            mode="replace_audio_and_video",
+            model="ltx-2-3-pro",
+        )
+    assert exc.value.status_code == 504
+
+
 def test_retake_upload_init_failure_maps_message() -> None:
     http = FakeHTTPClient()
     http.queue("post", FakeResponse(status_code=401, text="Unauthorized"))
@@ -677,3 +706,188 @@ def test_retake_upload_init_failure_maps_message() -> None:
             model="ltx-2-3-pro",
         )
     assert exc.value.status_code == 401
+
+
+def test_async_failed_job_insufficient_funds_maps_to_402(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue("post", FakeResponse(status_code=202, json_payload={"id": "job-funds"}))
+    http.queue(
+        "get",
+        FakeResponse(
+            status_code=200,
+            json_payload={
+                "status": "failed",
+                "error": {
+                    "type": "insufficient_funds_error",
+                    "message": "Insufficient funds. Required: 36 cents",
+                },
+            },
+        ),
+    )
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="Insufficient funds") as exc:
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
+    assert exc.value.status_code == 402
+    assert exc.value.provider_error_type == "insufficient_funds_error"
+    assert exc.value.provider_message == "Insufficient funds. Required: 36 cents"
+
+
+def test_async_failed_job_content_filtered_maps_to_422(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue("post", FakeResponse(status_code=202, json_payload={"id": "job-filter"}))
+    http.queue(
+        "get",
+        FakeResponse(
+            status_code=200,
+            json_payload={
+                "status": "failed",
+                "error": {"type": "content_filtered_error", "message": "blocked by filter"},
+            },
+        ),
+    )
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="Content rejected by safety filters") as exc:
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
+    assert exc.value.status_code == 422
+    assert exc.value.provider_error_type == "content_filtered_error"
+
+
+def test_async_failed_job_unknown_type_surfaces_with_type(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue("post", FakeResponse(status_code=202, json_payload={"id": "job-over"}))
+    http.queue(
+        "get",
+        FakeResponse(
+            status_code=200,
+            json_payload={
+                "status": "failed",
+                "error": {"type": "overloaded_error", "message": "backend overloaded"},
+            },
+        ),
+    )
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="backend overloaded") as exc:
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
+    assert exc.value.status_code == 500
+    assert exc.value.provider_error_type == "overloaded_error"
+    assert exc.value.provider_message == "backend overloaded"
+
+
+def test_async_download_empty_body_raises(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue("post", FakeResponse(status_code=202, json_payload={"id": "job-empty"}))
+    http.queue(
+        "get",
+        FakeResponse(
+            status_code=200,
+            json_payload={"status": "completed", "result": {"video_url": "https://cdn.example.com/empty.mp4"}},
+        ),
+    )
+    http.queue("get", FakeResponse(status_code=200, content=b""))
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="empty") as exc:
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
+    assert exc.value.status_code == 500
+
+
+def test_async_poll_402_attaches_provider_error_fields(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue("post", FakeResponse(status_code=202, json_payload={"id": "job-poll402"}))
+    http.queue(
+        "get",
+        FakeResponse(
+            status_code=402,
+            text='{"type":"error","error":{"type":"insufficient_funds_error","message":"Insufficient funds"}}',
+            headers={"x-request-id": "req-poll-402"},
+            json_payload={"type": "error", "error": {"type": "insufficient_funds_error", "message": "Insufficient funds"}},
+        ),
+    )
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="status check failed") as exc:
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
+    assert exc.value.status_code == 402
+    assert exc.value.provider_error_type == "insufficient_funds_error"
+    assert exc.value.provider_message == "Insufficient funds"
+    assert exc.value.request_id == "req-poll-402"
+
+
+def test_async_poll_422_maps_to_safety_filter(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue("post", FakeResponse(status_code=202, json_payload={"id": "job-poll422"}))
+    http.queue(
+        "get",
+        FakeResponse(
+            status_code=422,
+            text='{"type":"error","error":{"type":"content_filtered_error","message":"blocked"}}',
+            headers={"x-request-id": "req-poll-422"},
+            json_payload={"type": "error", "error": {"type": "content_filtered_error", "message": "blocked"}},
+        ),
+    )
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="Content rejected by safety filters") as exc:
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
+    assert exc.value.status_code == 422
+    assert exc.value.provider_error_type == "content_filtered_error"
+    assert exc.value.request_id == "req-poll-422"
+
+
+def test_async_failed_job_payment_declined_maps_to_402(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue("post", FakeResponse(status_code=202, json_payload={"id": "job-declined"}))
+    http.queue(
+        "get",
+        FakeResponse(
+            status_code=200,
+            json_payload={
+                "status": "failed",
+                "error": {"type": "payment_declined_error", "message": "Card declined"},
+            },
+        ),
+    )
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="Card declined") as exc:
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
+    assert exc.value.status_code == 402
+    assert exc.value.provider_error_type == "payment_declined_error"
+    assert exc.value.provider_message == "Card declined"
+
+
+def test_async_poll_error_attaches_request_id(tmp_path) -> None:
+    http = FakeHTTPClient()
+    input_path = _write_dummy_video(tmp_path)
+    _queue_upload(http)
+    http.queue("post", FakeResponse(status_code=202, json_payload={"id": "job-pollerr"}))
+    http.queue("get", FakeResponse(status_code=500, text="upstream exploded", headers={"x-request-id": "req-poll-1"}))
+
+    client = _async_client(http)
+    with pytest.raises(LTXAPIClientError, match="status check failed") as exc:
+        client.extend(api_key="k", video_path=input_path, duration=4.0, prompt="", mode="end", model="ltx-2-3-pro")
+    assert exc.value.status_code == 500
+    assert exc.value.request_id == "req-poll-1"
+
+
+def test_async_default_max_wait_is_1200s() -> None:
+    http = FakeHTTPClient()
+    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
+    assert client._async_max_wait_s == 1200.0

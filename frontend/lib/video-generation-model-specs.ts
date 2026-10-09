@@ -2,6 +2,9 @@ import type { components } from '../generated/backend-openapi'
 
 export type VideoGenerationModelSpecsResponse = components['schemas']['GenerateVideoModelsSpecsResponse']
 export type VideoGenerationModelSpecItem = components['schemas']['LTXVideoGenerationModelSpecItem']
+export type DownloadedLocalVideoGenerationModelSpecItem =
+  components['schemas']['DownloadedLocalVideoGenerationModelSpecItem']
+export type OfferingId = DownloadedLocalVideoGenerationModelSpecItem['model']
 export type VideoGenerationResolutionSpec = components['schemas']['LTXVideoGenerationResolutionSpec']
 export type VideoGenerationOfferingCapabilities = NonNullable<
   VideoGenerationModelSpecItem['spec']['capabilities']
@@ -15,6 +18,15 @@ export type VideoGenerationDuration = Exclude<
 export type VideoGenerationFps = components['schemas']['GenerateVideoRequest']['fps']
 export type VideoGenerationAspectRatio = components['schemas']['GenerateVideoRequest']['aspectRatio']
 
+/** Shared local-video catalog. Features pick a subset of keys; models restrict values. */
+export type VideoGenerationFormSettings = {
+  model: VideoGenerationPipeline
+  aspectRatio: VideoGenerationAspectRatio
+  resolution: VideoGenerationResolution
+  duration: VideoGenerationDuration
+  fps: VideoGenerationFps
+}
+
 export interface VideoGenerationSettingsShape {
   model: string
   duration: number | null
@@ -24,15 +36,61 @@ export interface VideoGenerationSettingsShape {
   audio?: boolean
 }
 
+export const VIDEO_GENERATION_ASPECT_RATIOS = [
+  '21:9',
+  '16:9',
+  '3:2',
+  '4:3',
+  '1:1',
+  '4:5',
+  '9:16',
+] as const satisfies readonly VideoGenerationAspectRatio[]
+
+/** Distilled models were trained on this pair. Other shapes still run, with a quality caveat. */
+export const TRAINED_VIDEO_ASPECT_RATIOS = ['16:9', '9:16'] as const satisfies readonly VideoGenerationAspectRatio[]
+
+export const UNTRAINED_ASPECT_RATIO_WARNING =
+  'The model was trained on 16:9 and 9:16, other ratios may produce lower quality results.'
+
+export function isTrainedVideoAspectRatio(value: string): boolean {
+  return (TRAINED_VIDEO_ASPECT_RATIOS as readonly string[]).includes(value)
+}
+
+/** Trained pair first, then the rest in the cell's order. */
+export function orderAspectRatiosForPicker<T extends string>(
+  ratios: readonly T[],
+): T[] {
+  const trained = TRAINED_VIDEO_ASPECT_RATIOS.filter((ratio) =>
+    (ratios as readonly string[]).includes(ratio),
+  ) as T[]
+  const rest = ratios.filter((ratio) => !isTrainedVideoAspectRatio(ratio))
+  return [...trained, ...rest]
+}
+
+export function untrainedAspectRatioWarning(
+  value: string,
+): string | undefined {
+  if (value === 'auto' || isTrainedVideoAspectRatio(value)) return undefined
+  return UNTRAINED_ASPECT_RATIO_WARNING
+}
+
+export function isVideoGenerationAspectRatio(
+  value: unknown,
+): value is VideoGenerationAspectRatio {
+  return (VIDEO_GENERATION_ASPECT_RATIOS as readonly unknown[]).includes(value)
+}
+
 export interface ResolvedVideoGenerationOptions {
   modelOptions: VideoGenerationModelSpecItem[]
   resolutionOptions: VideoGenerationResolution[]
   fpsOptions: VideoGenerationFps[]
   durationOptions: VideoGenerationDuration[]
+  aspectRatioOptions: VideoGenerationAspectRatio[]
   selectedModel: VideoGenerationPipeline | null
   selectedResolution: VideoGenerationResolution | null
   selectedFps: VideoGenerationFps | null
   selectedDuration: VideoGenerationDuration | null
+  selectedAspectRatio: VideoGenerationAspectRatio | null
   autoDurationAvailable: boolean
   hasCompatibleOptions: boolean
 }
@@ -40,7 +98,7 @@ export interface ResolvedVideoGenerationOptions {
 type DurationSelectionMode = 'preserve' | 'smallest_valid'
 
 /** GenSpace picker floor. The API envelope includes 2–5s so gap fill can request shorts. */
-export const GENSPACE_MIN_SELECTABLE_DURATION_S = 6
+export const GENSPACE_MIN_SELECTABLE_DURATION_S = 2
 
 interface ResolveVideoGenerationOptionsParams<T extends VideoGenerationSettingsShape> {
   settings: T
@@ -130,10 +188,12 @@ function emptyResolvedOptions(
     resolutionOptions: [],
     fpsOptions: [],
     durationOptions: [],
+    aspectRatioOptions: [],
     selectedModel: null,
     selectedResolution: null,
     selectedFps: null,
     selectedDuration: null,
+    selectedAspectRatio: null,
     autoDurationAvailable: false,
     hasCompatibleOptions: false,
     ...extras,
@@ -144,6 +204,18 @@ function chooseOption<T>(current: string | number | null, options: T[]): T | nul
   return options.find((option) => option === current) ?? options[0] ?? null
 }
 
+/** Same ids as backend `OFFERING_IDS`. Home create `params.model` values. */
+export const OFFERING_IDS = ["ltx-2.5-fast", "ltx-2.3-fast"] as const
+
+export function isOfferingId(value: unknown): value is OfferingId {
+  return typeof value === "string" && (OFFERING_IDS as readonly string[]).includes(value)
+}
+
+export type OfferingVideoGenerationModelSpecItem = {
+  model: OfferingId
+  spec: VideoGenerationModelSpecItem["spec"]
+}
+
 export function getVideoGenerationModelSpecs(
   specs: VideoGenerationModelSpecsResponse | null | undefined,
   options: { useApiSpecs: boolean },
@@ -151,6 +223,65 @@ export function getVideoGenerationModelSpecs(
   const { useApiSpecs } = options
   if (!specs) return []
   return useApiSpecs ? specs.api_models : specs.local_models
+}
+
+/** Downloaded offerings keyed by offering id, not pipeline. */
+export function getOfferingVideoGenerationModelSpecs(
+  specs: VideoGenerationModelSpecsResponse | null | undefined,
+): OfferingVideoGenerationModelSpecItem[] {
+  return (specs?.downloaded_local_models ?? []).map((item) => ({
+    model: item.model,
+    spec: item.spec,
+  }))
+}
+
+/**
+ * Adapter for `resolveVideoGenerationOptions` / clamp, which still key models as
+ * `pipeline`. Localized here so Home option fields can keep using `item.model`.
+ */
+export function offeringSpecsAsPipelineItems(
+  items: OfferingVideoGenerationModelSpecItem[],
+): VideoGenerationModelSpecItem[] {
+  return items.map((item) => ({
+    pipeline: item.model as VideoGenerationPipeline,
+    spec: item.spec,
+  }))
+}
+
+/**
+ * Prefer the offering that matches Settings' active checkpoint; else newest
+ * downloaded. `active_offering` is the stable join — both local offerings share
+ * pipeline `fast`, so display_name is not a discriminator.
+ */
+export function defaultOfferingId(
+  specs: VideoGenerationModelSpecsResponse | null | undefined,
+): OfferingId | null {
+  const downloaded = specs?.downloaded_local_models ?? []
+  const active = specs?.active_offering
+  if (active != null) {
+    const matching = downloaded.find((item) => item.model === active)
+    if (matching) return matching.model
+  }
+  return downloaded[0]?.model ?? null
+}
+
+/** Restore a stored offering id, or fall back to Settings' active downloaded offering. */
+export function restoreOfferingId(
+  model: unknown,
+  specs: VideoGenerationModelSpecsResponse | null | undefined,
+): OfferingId | null {
+  if (isOfferingId(model)) return model
+  return defaultOfferingId(specs)
+}
+
+export function withDefaultOffering<T extends { model: OfferingId }>(
+  specs: VideoGenerationModelSpecsResponse | null | undefined,
+  defaults: T,
+): T {
+  return {
+    ...defaults,
+    model: defaultOfferingId(specs) ?? defaults.model,
+  }
 }
 
 export function getLocalOfferingCapabilities(
@@ -196,6 +327,8 @@ export function resolveVideoGenerationOptions<T extends VideoGenerationSettingsS
     })
   }
 
+  const aspectRatioOptions = (selectedResolutionSpec.aspect_ratios ?? []) as VideoGenerationAspectRatio[]
+  const selectedAspectRatio = chooseOption(settings.aspectRatio ?? null, aspectRatioOptions)
   const fpsOptions = getCompatibleFps(selectedResolutionSpec, { minimumDuration })
   const selectedFps = chooseOption(settings.fps, fpsOptions)
   if (!selectedFps) {
@@ -204,6 +337,8 @@ export function resolveVideoGenerationOptions<T extends VideoGenerationSettingsS
       resolutionOptions,
       selectedResolution,
       fpsOptions,
+      aspectRatioOptions,
+      selectedAspectRatio,
     })
   }
 
@@ -227,6 +362,8 @@ export function resolveVideoGenerationOptions<T extends VideoGenerationSettingsS
     selectedResolution,
     selectedFps,
     selectedDuration,
+    aspectRatioOptions,
+    selectedAspectRatio,
     autoDurationAvailable,
     hasCompatibleOptions: selectedDuration !== null || autoDurationAvailable,
   }
@@ -264,7 +401,7 @@ export function sanitizeVideoGenerationSettings<T extends VideoGenerationSetting
     videoResolution: resolved.selectedResolution,
     fps: resolved.selectedFps,
     duration: resolved.selectedDuration,
-    aspectRatio: (settings.aspectRatio === '9:16' ? '9:16' : '16:9') as VideoGenerationAspectRatio,
+    aspectRatio: resolved.selectedAspectRatio ?? '16:9',
   }
 }
 
@@ -294,6 +431,8 @@ const PIPELINE_DISPLAY_NAMES: Record<string, string> = {
   pro: 'LTX Pro',
   'fast-2.5': 'LTX-2.5 Fast',
   'pro-2.5': 'LTX-2.5 Pro',
+  'ltx-2.3-fast': 'LTX 2.3 Fast',
+  'ltx-2.5-fast': 'LTX 2.5 Fast',
 }
 
 /** Returns a display label for a known video pipeline, or null if unknown/absent. */

@@ -64,7 +64,7 @@ class LTXFastVideoPipeline:
         from ltx_core.loader.primitives import LoraPathStrengthAndSDOps
         from ltx_core.loader.sd_ops import LTXV_LORA_COMFY_RENAMING_MAP
         from ltx_core.quantization.fp8_cast import build_policy as build_fp8_cast_policy
-        from ltx_pipelines.distilled import DistilledPipeline
+        from services.fast_video_pipeline.distilled_skip_stage_2 import DistilledPipelineWithSkipStage2
 
         self._checkpoint_path = checkpoint_path
         self._gemma_root = gemma_root
@@ -82,7 +82,7 @@ class LTXFastVideoPipeline:
             for path, scale in self._loras
         ]
 
-        self.pipeline = DistilledPipeline(
+        self.pipeline = DistilledPipelineWithSkipStage2(
             model_paths=build_model_paths(
                 checkpoint_path,
                 gemma_root,
@@ -109,10 +109,11 @@ class LTXFastVideoPipeline:
         tiling_config: PipelineTilingType,
         *,
         guide_all_images: bool = False,
+        skip_stage_2: bool = False,
     ) -> tuple[torch.Tensor | Iterator[torch.Tensor], AudioOrNone, int, TilingConfigType | None]:
         from contextlib import nullcontext
 
-        from ltx_pipelines.utils.args import ImageConditioningInput as _LtxImageInput
+        from ltx_pipelines.utils.types import ImageConditioningInput as _LtxImageInput
         from ltx_pipelines.utils.types import AutoDuration
         from services.fast_video_pipeline.distilled_keyframe_guiding import distilled_keyframe_guiding
 
@@ -124,7 +125,7 @@ class LTXFastVideoPipeline:
 
         ctx = distilled_keyframe_guiding() if guide_all_images else nullcontext()
         with ctx:
-            video, audio, resolved_frames, resolved_tiling = self.pipeline(
+            result = self.pipeline(
                 prompt=prompt,
                 seed=seed,
                 height=height,
@@ -133,8 +134,9 @@ class LTXFastVideoPipeline:
                 frame_rate=frame_rate,
                 images=[_LtxImageInput(img.path, img.frame_idx, img.strength) for img in images],
                 tiling_config=tiling_config,
+                skip_stage_2=skip_stage_2,
             )
-        return video, audio, resolved_frames, resolved_tiling
+        return result.video, result.audio, result.num_frames, result.tiling_config
 
     @torch.inference_mode()
     def generate(
@@ -149,18 +151,23 @@ class LTXFastVideoPipeline:
         output_path: str,
         *,
         guide_all_images: bool = False,
+        skip_stage_2: bool = False,
     ) -> None:
-        video, audio, resolved_frames, resolved_tiling = self._run_inference(
-            prompt=prompt,
-            seed=seed,
-            height=height,
-            width=width,
-            num_frames=num_frames,
-            frame_rate=frame_rate,
-            images=images,
-            tiling_config=auto_tiling_config(),
-            guide_all_images=guide_all_images,
-        )
+        from services.denoising_progress import distilled_total_steps, track_denoising
+
+        with track_denoising(distilled_total_steps(stage_2=not skip_stage_2)):
+            video, audio, resolved_frames, resolved_tiling = self._run_inference(
+                prompt=prompt,
+                seed=seed,
+                height=height,
+                width=width,
+                num_frames=num_frames,
+                frame_rate=frame_rate,
+                images=images,
+                tiling_config=auto_tiling_config(),
+                guide_all_images=guide_all_images,
+                skip_stage_2=skip_stage_2,
+            )
         chunks = video_chunks_number(resolved_frames, resolved_tiling)
         encode_video_output(video=video, audio=audio, fps=int(frame_rate), output_path=output_path, video_chunks_number_value=chunks)
 
@@ -189,14 +196,14 @@ class LTXFastVideoPipeline:
         from ltx_core.loader.primitives import LoraPathStrengthAndSDOps
         from ltx_core.loader.sd_ops import LTXV_LORA_COMFY_RENAMING_MAP
         from ltx_core.model.transformer.compiling import CompilationConfig
-        from ltx_pipelines.distilled import DistilledPipeline
+        from services.fast_video_pipeline.distilled_skip_stage_2 import DistilledPipelineWithSkipStage2
 
         lora_entries = [
             LoraPathStrengthAndSDOps(path=path, strength=scale, sd_ops=LTXV_LORA_COMFY_RENAMING_MAP)
             for path, scale in self._loras
         ]
 
-        self.pipeline = DistilledPipeline(
+        self.pipeline = DistilledPipelineWithSkipStage2(
             model_paths=build_model_paths(
                 self._checkpoint_path,
                 self._gemma_root,

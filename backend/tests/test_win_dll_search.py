@@ -13,6 +13,7 @@ def test_remove_cwd_from_dll_search_path_does_not_raise() -> None:
     remove_cwd_from_dll_search_path()
 
 
+@pytest.mark.ci_os
 @pytest.mark.skipif(sys.platform != "win32", reason="SetDllDirectoryW is Windows-only")
 def test_remove_cwd_clears_dll_directory_on_windows() -> None:
     import ctypes

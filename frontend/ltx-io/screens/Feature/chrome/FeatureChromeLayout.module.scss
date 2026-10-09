@@ -1,0 +1,16 @@
+.chrome {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  padding-inline: var(--shell-page-inset, var(--spacing-lg));
+  background: var(--semantic-bg-tertiary);
+}
+
+.outlet {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}

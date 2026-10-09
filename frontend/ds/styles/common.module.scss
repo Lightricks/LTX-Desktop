@@ -1,0 +1,84 @@
+/** The height of the primary navbar displayed at the top of the screen. */
+$navbar-height: 60px;
+
+/** The height of the secondary navbar(e.g. the actor space) displayed at the top of the screen. */
+$secondary-navbar-height: 46px;
+
+/** The height of the toobar displayed below the navbar in some screens */
+$toolbar-height: 40px;
+
+/** The height of the app header, which is the sum of the main navbar and the toolbar. */
+$app-header-height: $navbar-height + $toolbar-height;
+
+/** The height of the app header with secondary nav, which is the sum of the secondary navbar and the toolbar. */
+$secondary-app-header-height: $secondary-navbar-height + $toolbar-height;
+
+@mixin loadingMore {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding: var(--spacing-lg) 0;
+}
+
+@mixin hide_scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.pageContainer {
+  height: 100%;
+  width: 100%;
+  background-color: var(--semantic-bg-primary);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  flex: 1;
+}
+
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out {
+  0% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+.checkerboardBackground {
+  --checkerboard-size: 20px;
+
+  background-color: var(--checkerboard-base);
+  background-image:
+    linear-gradient(45deg, var(--checkerboard-square) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--checkerboard-square) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--checkerboard-square) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--checkerboard-square) 75%);
+  background-size: var(--checkerboard-size) var(--checkerboard-size);
+  background-position:
+    0 0,
+    0 calc(var(--checkerboard-size) / 2),
+    calc(var(--checkerboard-size) / 2) calc(var(--checkerboard-size) / -2),
+    calc(var(--checkerboard-size) / -2) 0;
+}
+
+.checkerboardBackgroundLarge {
+  /* stylelint-disable-next-line value-keyword-case */
+  composes: checkerboardBackground;
+
+  --checkerboard-size: 40px;
+}

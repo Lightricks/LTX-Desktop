@@ -1,0 +1,154 @@
+.container {
+  position: relative;
+  width: 100%;
+  // Room for the playhead head that pops out above the track.
+  margin-top: var(--playhead-head, 0px);
+  user-select: none;
+  touch-action: none;
+}
+
+.track {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--semantic-bg-tertiary);
+}
+
+.dimmed {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: color-mix(in srgb, var(--semantic-bg-primary) 65%, transparent);
+  pointer-events: none;
+}
+
+.selection {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  touch-action: none;
+}
+
+// Stroke only. It does not inset the brackets, and it stays under the needle
+// so the playhead is never clipped by the frame.
+.selection::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  box-sizing: border-box;
+  border: var(--selection-border, 2px) solid
+    var(--semantic-bg-brand-primary, #4d7cff);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.selection:active {
+  cursor: grabbing;
+}
+
+.handle {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  flex: none;
+  align-self: stretch;
+  background: var(--semantic-bg-brand-primary, #4d7cff);
+  cursor: ew-resize;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  border-radius: 1px;
+  background: var(--semantic-fg-on-brand, #fff);
+}
+
+.handleLeft {
+  // Same outer radius as the track. A smaller inset radius leaves a light
+  // crescent between the bracket and the stroke.
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.handleRight {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+// Room an outside label takes: its line box plus padding, plus the gap.
+$label-space: 22px;
+$label-gap: 4px;
+
+.labelSpaceTop {
+  margin-top: calc(var(--playhead-head, 0px) + #{$label-space});
+}
+
+.labelSpaceBottom {
+  margin-bottom: $label-space;
+}
+
+// Positioned off the selection's center instead of inside its flex row, so
+// the label never holds In/Out apart.
+.label {
+  position: absolute;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs, 4px);
+  background: color-mix(in srgb, var(--semantic-bg-primary) 70%, transparent);
+  color: var(--semantic-fg-primary);
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.labelInside {
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.labelTop {
+  bottom: calc(100% + var(--playhead-head, 0px) + #{$label-gap});
+  transform: translateX(-50%);
+}
+
+.labelBottom {
+  top: calc(100% + #{$label-gap});
+  transform: translateX(-50%);
+}
+
+.seekLayer {
+  position: absolute;
+  top: 0;
+  // Above the stroke and the brackets. The stem drops its hits on In/Out.
+  z-index: 2;
+  height: 100%;
+  pointer-events: none;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

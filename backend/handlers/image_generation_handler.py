@@ -27,6 +27,7 @@ from services.generation_interrupt import is_cancel_exception
 from services.interfaces import ZitAPIClient
 from server_utils.heartbeat import log_heartbeat
 from server_utils.media_validation import validate_image_file
+from server_utils.oriented_image import open_oriented_rgb
 from services.services_utils import clamp_strength, compute_edit_dimensions, effective_edit_steps
 from state.app_settings import should_image_generate_with_fal_api
 from state.app_state_types import AppState
@@ -60,6 +61,7 @@ class ImageGenerationHandler(StateHandlerBase):
             num_images = max(1, min(12, req.numImages))
 
             seed = self._resolve_seed()
+            self._require_local_generation_possible(api_key=self.state.app_settings.fal_api_key)
             use_fal_api = should_image_generate_with_fal_api(
                 force_api_generations=self.config.force_api_generations,
                 settings=self.state.app_settings,
@@ -248,8 +250,7 @@ class ImageGenerationHandler(StateHandlerBase):
     def _load_edit_source(self, image_path: str) -> PILImage.Image:
         # Downscale to the same /16 target the local edit path uses before the pipeline
         # runs — keeps the base64 upload on the FAL path from inflating with source size.
-        with PILImage.open(image_path) as raw:
-            source = raw.convert("RGB")
+        source = open_oriented_rgb(image_path)
         target_w, target_h = compute_edit_dimensions(source.width, source.height)
         return source.resize((target_w, target_h), PILImage.Resampling.LANCZOS)
 

@@ -1,0 +1,27 @@
+@import "@ds/styles/textInputStyles.scss";
+@import "@ds/styles/highlightedStyles.scss";
+
+.content {
+  display: flex;
+  width: 100%;
+
+  @include text_input_styles;
+
+  &:disabled {
+    border: 1px solid var(--semantic-bg-disabled-secondary);
+    background-color: var(--semantic-bg-action-secondary-enabled);
+  }
+
+  &.compact {
+    height: 32px;
+  }
+
+  &.comfortable {
+    padding: var(--spacing-lg);
+  }
+
+  &.highlighted {
+    @include highlighted_input_styles;
+    @include user_color_data_attributes;
+  }
+}

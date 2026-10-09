@@ -33,16 +33,18 @@ LTX Desktop is an open-source desktop app for generating videos with LTX models 
 
 ## Local vs API mode
 
+See [`docs/local-compat-matrix.md`](docs/local-compat-matrix.md) for the tool × hardware projection of the same generate decisions (not a second Yes table). CUDA **16 GB** cards are local-viable but do not advertise Fast 720p/20s or 1080p/10s.
+
 | Platform / hardware | Generation mode | Notes |
 | --- | --- | --- |
-| Windows + CUDA GPU with **≥16GB VRAM** | Local generation | Downloads model weights locally |
-| Windows (no CUDA, <16GB VRAM, or unknown VRAM) | API-only | **LTX API key required** |
-| Linux + CUDA GPU with **≥16GB VRAM** | Local generation | Downloads model weights locally |
-| Linux (no CUDA, <16GB VRAM, or unknown VRAM) | API-only | **LTX API key required** |
-| macOS, Apple Silicon with **≥15GB free RAM** | Local generation | Downloads model weights locally; runs on MPS |
-| macOS, Apple Silicon with <15GB free RAM, or Intel Mac | API-only | **LTX API key required** |
+| Windows + CUDA GPU with **≥15 GiB VRAM** | Local generation | Integer GiB from `total_memory // 1024**3` |
+| Windows (no CUDA, <15 GiB VRAM, or unknown VRAM) | Local unsupported | Cloud API is optional if configured |
+| Linux + CUDA GPU with **≥15 GiB VRAM** | Local generation | Integer GiB from `total_memory // 1024**3` |
+| Linux (no CUDA, <15 GiB VRAM, or unknown VRAM) | Local unsupported | Cloud API is optional if configured |
+| macOS, Apple Silicon with **≥32 GiB total RAM** | Local generation | Downloads model weights locally; runs on MPS |
+| macOS, Apple Silicon with <32 GiB total RAM, or Intel Mac | Local unsupported | Cloud API is optional if configured |
 
-In API-only mode, available resolutions/durations may be limited to what the API supports. The API path also offers **LTX 2.5 Fast**, **LTX 2.5 Pro**, and 2.3 Fast/Pro.
+When local generation is unsupported, the app does not require an LTX API key. The optional API path still offers **LTX 2.5 Fast**, **LTX 2.5 Pro**, and 2.3 Fast/Pro.
 
 ### Local models
 
@@ -59,30 +61,26 @@ Switch the active local checkpoint in **Settings > Models**. Newer weights (incl
 ### Windows (local generation)
 
 - Windows 10/11 (x64)
-- NVIDIA GPU with CUDA support and **≥16GB VRAM** (more is better)
+- NVIDIA GPU with CUDA support and **≥15 GiB VRAM** (integer GiB from `total_memory // 1024**3`; more is better)
 - 16GB+ RAM (32GB recommended)
-- **160GB+ free disk space** (for model weights, Python environment, and outputs)
+- **~72 GB free disk** for the 2.5 Fast core pack (transformer, text encoder, VAEs). Kitchen-sink installs (2.3, image models, processors, prompt enhancer) are larger.
 
 ### Linux (local generation)
 
 - Ubuntu 22.04+ or similar distro (x64 or arm64)
-- NVIDIA GPU with CUDA support and **≥16GB VRAM** (more is better)
+- NVIDIA GPU with CUDA support and **≥15 GiB VRAM** (integer GiB from `total_memory // 1024**3`; more is better)
 - NVIDIA driver installed (PyTorch bundles the CUDA runtime)
 - 16GB+ RAM (32GB recommended)
-- Plenty of free disk space for model weights and outputs
+- Plenty of free disk space for model weights and outputs (~72 GB for the 2.5 Fast core pack; kitchen-sink is larger)
 
 ### macOS (local generation)
 
-- Apple Silicon (arm64) — Intel Macs have no MPS backend and stay in API-only mode
+- Apple Silicon (arm64) — Intel Macs have no MPS backend and cannot run local generation
 - macOS 13+ (Ventura)
-- **≥15GB free RAM** (not total — the OS/Electron/app already use some); more avoids weight streaming from disk
-- Plenty of free disk space for model weights and outputs
+- **≥32 GiB total RAM** (machine SKU, integer GiB from physical memory; not free RAM at launch)
+- Plenty of free disk space for model weights and outputs (~72 GB for the 2.5 Fast core pack; kitchen-sink is larger)
 
-Below the free-RAM floor, or on an Intel Mac, the app falls back to API-only mode instead — same as underpowered Windows/Linux hardware (see the table above). API-only mode just needs a stable internet connection.
-
-**How the RAM check works.** The app checks *free* RAM — not total — and only **once**, at launch (when the Python backend process starts). It is not re-checked while the app is running. If other apps are using memory at that moment, you can land in API-only mode even on a capable Mac.
-
-If you have 32GB+ of total RAM but still see API-only mode: close memory-heavy apps (browsers are usually the biggest offender), then **quit and relaunch LTX Desktop** — freeing memory while the app is already open has no effect, since the check doesn't run again until the next launch.
+Below the total-RAM floor, or on an Intel Mac, local generation is unsupported — same as underpowered Windows/Linux hardware (see the table above). An LTX API key is not required.
 
 ## Install
 
@@ -155,10 +153,10 @@ Open the selector to tick one or more LoRAs and adjust each one's strength. If y
 The LTX API is used for:
 
 - **Cloud text encoding and prompt enhancement** — **FREE**; text encoding is highly recommended to speed up inference and save memory
-- API-based video generations (required on unsupported hardware; optional Fast/Pro cloud generations including **LTX 2.5**) — paid
+- API-based video generations (optional Fast/Pro cloud generations including **LTX 2.5**) — paid
 - Retake — paid
 
-An LTX API key is required in API-only mode, but optional for local generation if you enable the Local Text Encoder.
+An LTX API key is optional. Local generation does not require one. Cloud text encoding, prompt enhancement, and API video generation use it when configured.
 
 Generate a FREE API key at the [LTX Console](https://console.ltx.video/). Text encoding is free; video generation API usage is paid. [Read more](https://ltx.io/model/model-blog/ltx-2-better-control-for-real-workflows).
 
@@ -256,7 +254,7 @@ Building installers:
 
 ## Telemetry
 
-LTX Desktop collects minimal, anonymous usage analytics (app version, platform, and a random installation ID) to help prioritize development. No personal information or generated content is collected. Analytics is enabled by default and can be disabled in **Settings > General > Anonymous Analytics**. See [`TELEMETRY.md`](docs/TELEMETRY.md) for details.
+LTX Desktop collects minimal, anonymous usage analytics (app version, platform, hardware information, and a random installation ID) to help prioritize development. No personal information or generated content is collected. Analytics is enabled by default and can be disabled in **Settings > General > Anonymous Analytics**. See [`TELEMETRY.md`](docs/TELEMETRY.md) for details.
 
 ## Docs
 

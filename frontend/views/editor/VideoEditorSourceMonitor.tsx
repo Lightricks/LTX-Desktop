@@ -3,6 +3,7 @@ import { Play, Pause, Square, SkipBack, SkipForward, ChevronLeft, ChevronRight, 
 import type { Asset } from '../../types/project-model'
 import { formatTime } from './video-editor-utils'
 import { Tooltip } from '../../components/ui/tooltip'
+import { Text } from '@ds/Text/Text'
 import { pathToFileUrl } from '../../lib/file-url'
 import { selectHasSourceAsset } from './editor-selectors'
 import { useEditorActions, useEditorStore } from './editor-store'
@@ -360,15 +361,17 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0">
-      <div className="h-7 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-3 flex-shrink-0">
-        <span className="text-[11px] font-semibold text-zinc-400 tracking-wide">Clip Viewer</span>
+      <div className="h-7 bg-surface-primary border-b border-separator flex items-center justify-between px-3 flex-shrink-0">
+        <Text as="span" variant="label" size="sm" className="tracking-wide text-fg-secondary">
+          Clip Viewer
+        </Text>
         <Tooltip content="Close clip viewer" side="left">
           <button
             onClick={() => {
               stopPlayback()
               closeSourceMonitor()
             }}
-            className="text-zinc-500 hover:text-white"
+            className="text-fg-tertiary hover:text-fg-primary"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -409,14 +412,14 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
             ) : sourceAsset.type === 'image' ? (
               <img src={pathToFileUrl(sourceAsset.path)} alt="" className="max-w-full max-h-full object-contain" />
             ) : (
-              <div className="text-center text-zinc-500">
+              <div className="text-center text-fg-tertiary">
                 <Music className="h-12 w-12 mx-auto mb-2" />
                 <p className="text-sm">{sourceAsset.path?.split('/').pop() || 'Audio'}</p>
               </div>
             )}
           </>
         ) : (
-          <div className="text-center text-zinc-600">
+          <div className="text-center text-fg-tertiary">
             <Video className="h-10 w-10 mx-auto mb-2" />
             <p className="text-xs">Double-click an asset to load it here</p>
           </div>
@@ -424,7 +427,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
       </div>
 
       {sourceAsset && (sourceAsset.type === 'video' || sourceAsset.type === 'audio') && (
-        <div className="bg-zinc-900 border-t border-zinc-800 flex-shrink-0 relative px-2 py-1">
+        <div className="bg-surface-primary border-t border-separator flex-shrink-0 relative px-2 py-1">
           <div
             id="source-scrub-bar"
             className="relative h-6 cursor-pointer group"
@@ -447,7 +450,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
               window.addEventListener('mouseup', onUp)
             }}
           >
-            <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 bg-zinc-700 rounded-full" />
+            <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 bg-action-hover rounded-full" />
             {sourceIn !== null && (
               <div
                 className="absolute top-0 bottom-0 left-0 bg-black/50 rounded-l"
@@ -509,7 +512,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
               <span className="text-[9px] font-mono text-blue-400/80">
                 {sourceIn !== null ? `IN ${formatTime(sourceIn)}` : ''}
               </span>
-              <span className="text-[9px] font-mono text-zinc-500">
+              <span className="text-[9px] font-mono text-fg-tertiary">
                 {sourceIn !== null && sourceOut !== null
                   ? `Duration: ${formatTime(sourceOut - sourceIn)}`
                   : ''}
@@ -522,15 +525,15 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
         </div>
       )}
 
-      <div className="h-8 bg-zinc-950 border-t border-zinc-800 flex items-center px-3 flex-shrink-0 gap-2">
-        <span className="text-[12px] font-mono font-medium text-amber-400 tabular-nums tracking-tight select-none min-w-[90px]">
+      <div className="h-8 bg-surface-secondary border-t border-separator flex items-center px-3 flex-shrink-0 gap-2">
+        <span className="text-[12px] font-mono font-medium text-fg-primary tabular-nums tracking-tight select-none min-w-[90px]">
           {formatTime(sourceTime)}
         </span>
         <div className="flex-1 flex items-center justify-center gap-0.5">
           <Tooltip content={sourceIn !== null ? `In: ${formatTime(sourceIn)}` : 'Set In (I)'} side="top">
             <button
               onClick={() => setSourceIn(prev => prev !== null && Math.abs(prev - sourceTime) < 0.01 ? null : sourceTime)}
-              className={`h-6 w-6 flex items-center justify-center rounded transition-colors ${sourceIn !== null ? 'text-yellow-400' : 'text-zinc-500 hover:text-white hover:bg-zinc-800'}`}
+              className={`h-6 w-6 flex items-center justify-center rounded transition-colors ${sourceIn !== null ? 'text-fg-warning' : 'text-fg-tertiary hover:text-fg-primary hover:bg-action'}`}
             >
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="7,4 4,4 4,20 7,20" />
@@ -539,11 +542,11 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
               </svg>
             </button>
           </Tooltip>
-          <div className="w-px h-3 bg-zinc-700" />
+          <div className="w-px h-3 bg-action-hover" />
           <Tooltip content="Go to start" side="top">
             <button
               onClick={() => seekTo(sourceIn ?? 0)}
-              className="h-6 w-6 flex items-center justify-center rounded text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors"
+              className="h-6 w-6 flex items-center justify-center rounded text-fg-tertiary hover:text-fg-primary hover:bg-action transition-colors"
             >
               <SkipBack className="h-3 w-3" />
             </button>
@@ -551,7 +554,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
           <Tooltip content="Step back" side="top">
             <button
               onClick={() => dispatchKeyboardAction('transport.stepBackward')}
-              className="h-6 w-6 flex items-center justify-center rounded text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors"
+              className="h-6 w-6 flex items-center justify-center rounded text-fg-tertiary hover:text-fg-primary hover:bg-action transition-colors"
             >
               <ChevronLeft className="h-3.5 w-3.5" />
             </button>
@@ -567,7 +570,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
                   setSourceReversePlaying(true)
                 }
               }}
-              className={`h-6 w-6 flex items-center justify-center rounded transition-colors ${sourceReversePlaying ? 'text-blue-400' : 'text-zinc-500 hover:text-white hover:bg-zinc-800'}`}
+              className={`h-6 w-6 flex items-center justify-center rounded transition-colors ${sourceReversePlaying ? 'text-blue-400' : 'text-fg-tertiary hover:text-fg-primary hover:bg-action'}`}
             >
               <Play className="h-3 w-3 mr-0.5 rotate-180" />
             </button>
@@ -575,7 +578,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
           <Tooltip content="Stop" side="top">
             <button
               onClick={() => dispatchKeyboardAction('transport.shuttleStop')}
-              className="h-6 w-6 flex items-center justify-center rounded text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors"
+              className="h-6 w-6 flex items-center justify-center rounded text-fg-tertiary hover:text-fg-primary hover:bg-action transition-colors"
             >
               <Square className="h-2.5 w-2.5" />
             </button>
@@ -583,7 +586,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
           <Tooltip content={sourceIsPlaying ? 'Pause' : 'Play'} side="top">
             <button
               onClick={() => dispatchKeyboardAction('transport.playPause')}
-              className="h-6 w-6 flex items-center justify-center rounded text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+              className="h-6 w-6 flex items-center justify-center rounded text-fg-secondary hover:text-fg-primary hover:bg-action transition-colors"
             >
               {sourceIsPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3 ml-0.5" />}
             </button>
@@ -591,7 +594,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
           <Tooltip content="Step forward" side="top">
             <button
               onClick={() => dispatchKeyboardAction('transport.stepForward')}
-              className="h-6 w-6 flex items-center justify-center rounded text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors"
+              className="h-6 w-6 flex items-center justify-center rounded text-fg-tertiary hover:text-fg-primary hover:bg-action transition-colors"
             >
               <ChevronRight className="h-3.5 w-3.5" />
             </button>
@@ -599,16 +602,16 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
           <Tooltip content="Go to end" side="top">
             <button
               onClick={() => seekTo(sourceOut ?? (sourceAsset?.duration || 5))}
-              className="h-6 w-6 flex items-center justify-center rounded text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors"
+              className="h-6 w-6 flex items-center justify-center rounded text-fg-tertiary hover:text-fg-primary hover:bg-action transition-colors"
             >
               <SkipForward className="h-3 w-3" />
             </button>
           </Tooltip>
-          <div className="w-px h-3 bg-zinc-700" />
+          <div className="w-px h-3 bg-action-hover" />
           <Tooltip content={sourceOut !== null ? `Out: ${formatTime(sourceOut)}` : 'Set Out (O)'} side="top">
             <button
               onClick={() => setSourceOut(prev => prev !== null && Math.abs(prev - sourceTime) < 0.01 ? null : sourceTime)}
-              className={`h-6 w-6 flex items-center justify-center rounded transition-colors ${sourceOut !== null ? 'text-yellow-400' : 'text-zinc-500 hover:text-white hover:bg-zinc-800'}`}
+              className={`h-6 w-6 flex items-center justify-center rounded transition-colors ${sourceOut !== null ? 'text-fg-warning' : 'text-fg-tertiary hover:text-fg-primary hover:bg-action'}`}
             >
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="17,4 20,4 20,20 17,20" />
@@ -637,18 +640,18 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
                 setSourceIsPlaying(true)
               }}
               className={`h-6 w-6 flex items-center justify-center rounded transition-colors ${
-                sourcePlayingInOut ? 'text-yellow-400 bg-yellow-400/10' : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
+                sourcePlayingInOut ? 'text-fg-warning bg-warning-soft' : 'text-fg-tertiary hover:text-fg-primary hover:bg-action'
               }`}
             >
               <Repeat className="h-3 w-3" />
             </button>
           </Tooltip>
-          <div className="w-px h-3 bg-zinc-700 mx-0.5" />
+          <div className="w-px h-3 bg-action-hover mx-0.5" />
           <Tooltip content="Insert Edit (,)" side="top">
             <button
               onClick={emitInsertRequest}
               disabled={!sourceAsset}
-              className="h-6 px-1 flex items-center rounded text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="h-6 px-1 flex items-center rounded text-fg-secondary hover:text-fg-primary hover:bg-action disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
             </button>
@@ -657,13 +660,13 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
             <button
               onClick={emitOverwriteRequest}
               disabled={!sourceAsset}
-              className="h-6 px-1 flex items-center rounded text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="h-6 px-1 flex items-center rounded text-fg-secondary hover:text-fg-primary hover:bg-action disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 12h6" /></svg>
             </button>
           </Tooltip>
         </div>
-        <span className="text-[12px] font-mono font-medium text-zinc-400 tabular-nums tracking-tight select-none min-w-[90px] text-right">
+        <span className="text-[12px] font-mono font-medium text-fg-secondary tabular-nums tracking-tight select-none min-w-[90px] text-right">
           {formatTime(sourceAsset?.duration || 0)}
         </span>
       </div>

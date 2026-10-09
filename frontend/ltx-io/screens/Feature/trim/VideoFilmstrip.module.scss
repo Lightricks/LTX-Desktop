@@ -1,0 +1,17 @@
+.strip {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--semantic-bg-overlay-secondary);
+}
+
+.frame {
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}

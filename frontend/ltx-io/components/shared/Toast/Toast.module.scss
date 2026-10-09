@@ -1,0 +1,78 @@
+@import "@ds/styles/themes/mixins.module.scss";
+
+.toast {
+  @include effect_style_shadow_elevation_medium;
+
+  background-color: var(--semantic-bg-primary);
+  color: var(--semantic-fg-primary);
+  border-radius: var(--radius-xs);
+  min-width: 256px;
+  max-width: 320px;
+  min-height: 40px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 8px 8px 8px 12px;
+  gap: var(--gap-md);
+  pointer-events: auto;
+
+  .icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+
+    &.neutral {
+      color: var(--semantic-fg-primary);
+    }
+
+    &.warning {
+      color: var(--semantic-fg-warning-primary-enabled);
+    }
+
+    &.danger {
+      color: var(--semantic-fg-danger-primary-enabled);
+    }
+
+    &.success {
+      color: var(--semantic-fg-success-primary-enabled);
+    }
+
+    &.brand {
+      color: var(--semantic-fg-brand-primary-enabled);
+    }
+  }
+
+  .topRow {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    flex-grow: 1;
+    gap: 10px;
+  }
+
+  .action {
+    justify-self: flex-end;
+    flex-shrink: 0;
+  }
+
+  .close {
+    color: var(--semantic-fg-action-primary-enabled);
+    justify-self: flex-end;
+    flex-shrink: 0;
+  }
+}
+
+.message {
+  @include text_style_body_md;
+
+  white-space: pre-line;
+  flex-grow: 1;
+
+  &.with_action {
+    min-width: unset;
+  }
+}

@@ -38,7 +38,7 @@ PRs must pass: `pnpm typecheck` + `pnpm backend:test` + frontend Vite build.
 - **IPC bridge**: All Electron communication through `window.electronAPI` (defined in `electron/preload.ts`)
 - **Backend calls**: Always use `backendFetch` from `frontend/lib/backend.ts` for app backend HTTP requests (it attaches auth/session details). Do not call `fetch` directly for backend endpoints.
 - **Styling**: Tailwind with custom semantic color tokens via CSS variables; utilities from `class-variance-authority` + `clsx` + `tailwind-merge`
-- **No frontend tests** currently exist
+- Frontend, Electron, and shared tests are `node:test` files. `pnpm run scripts:test` runs them. Which ones are worth writing is in [Tests](#tests).
 
 ## Backend Architecture
 
@@ -57,8 +57,10 @@ Key patterns:
 
 - Integration-first using Starlette `TestClient` against real FastAPI app
 - **No mocks**: `test_no_mock_usage.py` enforces no `unittest.mock`. Swap services via `ServiceBundle` fakes only.
+- Assert the status, the body, the resulting state, or the persisted row. A call assertion on a fake is out.
 - Fakes live in `tests/fakes/`; `conftest.py` wires fresh `AppHandler` per test
-- Pyright strict mode is also enforced as a test (`test_pyright.py`)
+- Pyright strict mode runs in the CI typecheck job (`uv run pyright`). Pytest does not run it again.
+- Which tests are worth writing is in [Tests](#tests)
 
 ### Adding a Backend Feature
 
@@ -89,3 +91,39 @@ Key patterns:
 - Electron builder config: `electron-builder.yml`
 - Video editor (largest frontend file): `frontend/views/VideoEditor.tsx`
 - Project types: `frontend/types/project.ts`
+
+## Tests
+
+Before writing tests, list the cases you intend to cover and wait for approval.
+Each line names one bug. Do not create or edit a test file until that list is approved.
+
+Each test must correspond to a specific bug a reasonable developer could
+introduce. Put that bug in the test name. Use a one-line comment only when the
+name would be unreadable. If you can't name the bug, don't write the test.
+
+Do NOT write tests that:
+
+- assert a component renders without throwing
+- assert a pure function returns its own obvious output (add(1, 2) === 3). A cap, an alignment grid, or None when over the cap is in scope
+- verify that a mock you just configured was called with what you configured
+- re-assert types the compiler already guarantees
+- re-assert a Pydantic model, dataclass, or TypedDict field type that Pyright or the schema already enforces. A wire alias (currentStep present, current_step absent) and the error envelope (code, message) are in scope
+- snapshot entire component trees
+- test library behaviour (Zustand's set, React's useState, Radix internals)
+- exist to raise coverage
+- fail only when the entire module is deleted
+
+DO write tests for:
+
+- branch and boundary conditions (empty, single, off-by-one, null vs undefined)
+- error paths and failure modes
+- state transitions and their ordering
+- anything with non-obvious business rules
+- regressions: bugs previously fixed
+
+Prefer fewer tests with real assertions over many shallow ones.
+Test observable behaviour through the public interface.
+
+When you touch a file that already has tests, delete any that break the rules
+above. On legacy surfaces (GenSpace and similar), keep the smallest set that
+still catches the cases above. Do not grow those suites.

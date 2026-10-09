@@ -1,0 +1,550 @@
+/* stylelint-disable font-family-no-missing-generic-family-keyword */
+
+/* Automatically generated from figma using CSSGen */
+
+/* and manually converted from classes to mixins */
+
+$color-monetization-enabled: linear-gradient(
+  270deg,
+  var(--color-blue-500) 20%,
+  var(--color-pink-500) 100%
+);
+$color-monetization-hover: linear-gradient(
+  270deg,
+  var(--color-blue-600) 20%,
+  var(--color-pink-500) 100%
+);
+$color-monetization-active: linear-gradient(
+  270deg,
+  var(--color-blue-700) 20%,
+  var(--color-pink-500) 100%
+);
+
+$color-monetization-overlay: linear-gradient(
+  270deg,
+  rgb(from var(--color-blue-500) r g b / 24%) 20%,
+  rgb(from var(--color-pink-500) r g b / 24%) 100%
+);
+
+$color-workflow-dynamic-enabled: linear-gradient(
+  to bottom,
+  rgba(25, 91, 141, 9.8%) 0%,
+  rgba(25, 120, 141, 9.8%) 76.85%
+);
+$color-workflow-dynamic-selected: linear-gradient(
+  to bottom,
+  rgba(25, 91, 141, 9.8%) 0%,
+  rgba(25, 120, 141, 9.8%) 76.85%
+);
+$color-workflow-frame-2-motion-enabled: linear-gradient(
+  to bottom,
+  rgba(141, 25, 67, 55.3%) 0%,
+  rgba(141, 25, 122, 55.3%) 100%
+);
+$color-workflow-frame-2-motion-selected: linear-gradient(
+  to bottom,
+  rgba(141, 25, 67, 55.3%) 0%,
+  rgba(141, 25, 122, 55.3%) 100%
+);
+
+@mixin text_style_display_xxl {
+  font-size: 92px;
+  font-family: var(--app-font-family);
+  font-weight: 700;
+  font-style: normal;
+  line-height: 96px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_display_xl {
+  font-size: 64px;
+  font-family: var(--app-font-family);
+  font-weight: 700;
+  font-style: normal;
+  line-height: 64px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_display_lg {
+  font-size: 56px;
+  font-family: var(--app-font-family);
+  font-weight: 700;
+  font-style: normal;
+  line-height: 56px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_display_md {
+  font-size: 48px;
+  font-family: var(--app-font-family);
+  font-weight: 700;
+  font-style: normal;
+  line-height: 48px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_display_sm {
+  font-size: 40px;
+  font-family: var(--app-font-family);
+  font-weight: 700;
+  font-style: normal;
+  line-height: 40px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_heading_xxl {
+  font-size: 32px;
+  font-family: var(--app-font-family);
+  font-weight: 700;
+  font-style: normal;
+  line-height: 40px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_heading_xl {
+  font-size: 24px;
+  font-family: var(--app-font-family);
+  font-weight: 700;
+  font-style: normal;
+  line-height: 30px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_heading_lg {
+  font-size: 20px;
+  font-family: var(--app-font-family);
+  font-weight: 700;
+  font-style: normal;
+  line-height: 24px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_heading_md {
+  font-size: 18px;
+  font-family: var(--app-font-family);
+  font-weight: 700;
+  font-style: normal;
+  line-height: 22px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_heading_sm {
+  font-size: 16px;
+  font-family: var(--app-font-family);
+  font-weight: 700;
+  font-style: normal;
+  line-height: 20px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_heading_xs {
+  font-size: 14px;
+  font-family: var(--app-font-family);
+  font-weight: 700;
+  font-style: normal;
+  line-height: 18px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_heading_xxs {
+  font-size: 12px;
+  font-family: var(--app-font-family);
+  font-weight: 700;
+  font-style: normal;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_label_xxl {
+  font-size: 18px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 22px;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_label_xxl_underline {
+  font-size: 18px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 22px;
+  text-decoration: underline;
+  text-transform: none;
+}
+
+@mixin text_style_label_xl {
+  font-size: 16px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 20px;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_label_xl_underline {
+  font-size: 16px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 20px;
+  text-decoration: underline;
+  text-transform: none;
+}
+
+@mixin text_style_label_lg {
+  font-size: 14px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_label_lg_underline {
+  font-size: 14px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 18px;
+  text-decoration: underline;
+  text-transform: none;
+}
+
+@mixin text_style_label_md {
+  font-size: 12px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 16px;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_label_md_underline {
+  font-size: 12px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 16px;
+  text-decoration: underline;
+  text-transform: none;
+}
+
+@mixin text_style_label_sm {
+  font-size: 10px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 14px;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_label_sm_underline {
+  font-size: 10px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 14px;
+  text-decoration: underline;
+  text-transform: none;
+}
+
+@mixin text_style_label_xs {
+  font-size: 9px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 12px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_label_xs_underline {
+  font-size: 9px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 12px;
+  letter-spacing: 0;
+  text-decoration: underline;
+  text-transform: none;
+}
+
+@mixin text_style_body_xl {
+  font-size: 16px;
+  font-family: var(--app-font-family);
+  font-weight: 400;
+  font-style: normal;
+  line-height: 20px;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_body_lg {
+  font-size: 14px;
+  font-family: var(--app-font-family);
+  font-weight: 400;
+  font-style: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_body_md {
+  font-size: 12px;
+  font-family: var(--app-font-family);
+  font-weight: 400;
+  font-style: normal;
+  line-height: 16px;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_body_sm {
+  font-size: 10px;
+  font-family: var(--app-font-family);
+  font-weight: 400;
+  font-style: normal;
+  line-height: 14px;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_body_xs {
+  font-size: 9px;
+  font-family: var(--app-font-family);
+  font-weight: 400;
+  font-style: normal;
+  line-height: 12px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+@mixin text_style_label_caps_xxl {
+  font-size: 16px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 20px;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+@mixin text_style_label_caps_xxl_underline {
+  font-size: 16px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 20px;
+  text-decoration: underline;
+  text-transform: uppercase;
+}
+
+@mixin text_style_label_caps_xl {
+  font-size: 14px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 18px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+@mixin text_style_label_caps_xl_underline {
+  font-size: 14px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 18px;
+  letter-spacing: 0;
+  text-decoration: underline;
+  text-transform: uppercase;
+}
+
+@mixin text_style_label_caps_lg {
+  font-size: 12px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+@mixin text_style_label_caps_lg_underline {
+  font-size: 12px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-decoration: underline;
+  text-transform: uppercase;
+}
+
+@mixin text_style_label_caps_md {
+  font-size: 10px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 14px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+@mixin text_style_label_caps_md_underline {
+  font-size: 10px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 14px;
+  letter-spacing: 0;
+  text-decoration: underline;
+  text-transform: uppercase;
+}
+
+@mixin text_style_label_caps_sm {
+  font-size: 9px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 12px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+@mixin text_style_label_caps_sm_underline {
+  font-size: 9px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 12px;
+  letter-spacing: 0;
+  text-decoration: underline;
+  text-transform: uppercase;
+}
+
+@mixin text_style_label_caps_xs {
+  font-size: 8px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 12px;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+@mixin text_style_label_caps_xs_underline {
+  font-size: 8px;
+  font-family: var(--app-font-family);
+  font-weight: 600;
+  font-style: normal;
+  line-height: 12px;
+  letter-spacing: 0;
+  text-decoration: underline;
+  text-transform: uppercase;
+}
+
+@mixin format_time {
+  font-feature-settings: "tnum";
+}
+
+@mixin effect_style_overlay_primary {
+  backdrop-filter: blur(80px);
+}
+
+@mixin effect_style_overlay_secondary {
+  backdrop-filter: blur(24px);
+}
+
+@mixin effect_style_overlay_tertiary {
+  backdrop-filter: blur(2px);
+}
+
+$dark-mode-shadow: 0 0 0 1px var(--dark-mode-shadow);
+
+@mixin effect_style_shadow_elevation_low {
+  // Intentionally using box-shadow only for low elevation
+  box-shadow:
+    0 0 2px 0 rgba(0, 0, 0, 8%),
+    0 6px 12px 0 rgba(0, 0, 0, 4%);
+
+  [data-theme="dark"] & {
+    box-shadow: $dark-mode-shadow;
+  }
+}
+
+@mixin effect_style_shadow_elevation_medium {
+  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 12%));
+
+  [data-theme="dark"] & {
+    box-shadow: $dark-mode-shadow;
+    filter: none;
+  }
+}
+
+@mixin effect_style_shadow_elevation_high {
+  filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 15%));
+
+  [data-theme="dark"] & {
+    box-shadow: $dark-mode-shadow;
+    filter: none;
+  }
+}
+
+@mixin effect_style_shadow_text_shadow {
+  text-shadow: 0 0 4px rgba(0, 0, 0, 24%);
+
+  [data-theme="dark"] & {
+    text-shadow: $dark-mode-shadow;
+  }
+}
+
+@mixin gradient_text($gradient) {
+  background: $gradient;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+$genspace-controls-height: 188px;
+$genspace-controls-width: 848px;
+$genspace-controls-bottom-margin: var(--spacing-md);

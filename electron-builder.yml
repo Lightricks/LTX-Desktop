@@ -2,6 +2,11 @@ appId: com.lightricks.ltx-desktop
 productName: LTX Desktop
 copyright: Copyright © 2026 Lightricks
 
+protocols:
+  name: LTX Desktop
+  schemes:
+    - ltxdesktop
+
 directories:
   output: release
   buildResources: resources
@@ -25,10 +30,15 @@ asarUnpack:
 afterPack: scripts/copy-koffi-native.cjs
 
 extraResources:
+  - from: resources/explore-assets
+    to: explore-assets
+  - from: dist-remote
+    to: dist-remote
   - from: backend
     to: backend
     filter:
       - "**/*.py"
+      - "**/*.sql"
       - pyproject.toml
       - runtime_config/lora_catalog.json
       - "!**/__pycache__/**"
@@ -37,6 +47,12 @@ extraResources:
       - "!outputs/**"
       - "!models/**"
       - "!tests/**"
+  # The backend reads this file at import time (services/features/ic_lora_recipes.py).
+  # Name each file. Do not use a glob.
+  - from: shared
+    to: shared
+    filter:
+      - ic-lora-input-cap.json
   - from: python-deps-hash.txt
     to: python-deps-hash.txt
 
@@ -99,6 +115,8 @@ mac:
   icon: resources/icon.icns
   category: public.app-category.video
   artifactName: ${productName}-${arch}.${ext}
+  extendInfo:
+    NSMicrophoneUsageDescription: LTX Desktop needs the microphone to record audio for Audio to Video.
 
 dmg:
   contents:

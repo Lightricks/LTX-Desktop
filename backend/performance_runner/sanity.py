@@ -17,6 +17,7 @@ Usage (backend running on the box):
     python sanity.py                     # run all wired scenarios
     python sanity.py --only t2v_540p_20s i2v
     python sanity.py --tags modality     # run scenarios matching a tag
+    python sanity.py --tags bump --model-id 2.5 --use-conv-vae --gate-integrity
     python sanity.py --include-unwired    # attempt everything (expect failures)
 
 Emits sanity_runs/<ts>/ (index.html + copied media + results.json) and a table.
@@ -30,10 +31,14 @@ import json
 import os
 import shutil
 import statistics
+import sys
 import time
 from pathlib import Path
 
+import checks
+import keep_awake
 import perf_config
+import queued
 import scenarios as scn
 from gpu_sampler import GpuSampler
 
@@ -54,6 +59,8 @@ _ICLORA_ROUTE = "/api/ic-lora/generate"
 def _fast_overrides(s: scn.Scenario) -> dict:
     """Scenario overrides with the fast caps applied (leaves the original untouched)."""
     ov = dict(s.overrides)
+    if "regression" in s.tags:  # already minimal; --fast would inflate 270p/2s to 540p/5s
+        return ov
     if s.route is None:                                   # default video route (Literal knobs)
         ov.update(_FAST_VIDEO)
     elif s.route in _FAST_DURATION_CAP_ROUTES and isinstance(ov.get("duration"), (int, float)):
@@ -83,7 +90,7 @@ def _integrity(payload: dict, probe: dict) -> tuple[bool, str]:
     return (not issues, "ok" if not issues else ", ".join(issues))
 
 
-def run_one(s: scn.Scenario, fast: bool = False) -> dict:
+def run_one(s: scn.Scenario, fast: bool = False, gate_integrity: bool = False) -> dict:
     t0 = time.time()
     row: dict = {"key": s.key, "title": s.title, "status": "", "wall_s": 0.0,
                  "detail": "", "output": None, "inputs": s.input_paths(),
@@ -92,12 +99,34 @@ def run_one(s: scn.Scenario, fast: bool = False) -> dict:
     overrides = s.build_overrides(_fast_overrides(s) if fast else s.overrides)
     route = s.route or perf_config.GENERATE_PATH
     payload = overrides if s.route else {**perf_config.GEN_PAYLOAD_TEMPLATE, **overrides}
-    print(f"[sanity]   request  POST {route}")
-    print(f"[sanity]   payload  {json.dumps(payload)}")
     sampler = GpuSampler(hz=5).start()
     try:
+        if s.queued:  # queued surface: one create body per job (see queued.py)
+            for job in s.queued:
+                print(f"[sanity]   request  POST {job.route}  (queued)")
+                print(f"[sanity]   payload  {json.dumps(queued.request_body(job))}")
+        else:
+            print(f"[sanity]   request  POST {route}")
+            print(f"[sanity]   payload  {json.dumps(payload)}")
         sampler.mark("start")
-        out = perf_config.trigger(s.route, overrides) if s.route else perf_config.trigger_generation(overrides)
+        if s.cancel_after_s is not None:
+            if s.queued:
+                resp = queued.trigger_cancellable(s.queued[0], after_s=s.cancel_after_s)
+            else:
+                resp = perf_config.trigger_generation_cancellable(
+                    after_s=s.cancel_after_s, payload=payload, path=route
+                )
+            sampler.mark("end")
+            row["wall_s"] = round(time.time() - t0, 1)
+            row["status"] = "PASS"
+            row["detail"] = f"cancelled after {s.cancel_after_s}s running ({resp.get('status')})"
+            return row
+        outs: list[str | None] = []
+        if s.queued:
+            outs = queued.trigger(s.queued)
+            out = outs[-1]
+        else:
+            out = perf_config.trigger(s.route, overrides) if s.route else perf_config.trigger_generation(overrides)
         sampler.mark("end")
         row["output"] = out
         row["wall_s"] = round(time.time() - t0, 1)
@@ -106,6 +135,10 @@ def run_one(s: scn.Scenario, fast: bool = False) -> dict:
             ok, msg = chk(out)
             ok_all = ok_all and ok
             details.append(f"{chk.__name__}={'ok' if ok else 'FAIL'}({msg})")
+        for batch_chk in s.batch_checks:
+            ok, msg = batch_chk(outs)
+            ok_all = ok_all and ok
+            details.append(f"{batch_chk.__name__}={'ok' if ok else 'FAIL'}({msg})")
         wall = row["wall_s"]
         # Peak VRAM this scenario needed -> which card tier runs it, and how close to OOM.
         peak = sampler.window_peak("start", "end")
@@ -120,9 +153,8 @@ def run_one(s: scn.Scenario, fast: bool = False) -> dict:
         row["energy_wh"] = round(power * wall / 3600.0, 2) if power else None
         if row["energy_wh"]:
             details.append(f"energy={row['energy_wh']}Wh")
-        # Output: resolution, throughput (video seconds per wall second), and an ADVISORY
-        # integrity note. Integrity never fails the smoke sweep — a valid file that
-        # generated PASSES; the note just surfaces any mismatch vs the request.
+        # Output: resolution, throughput (video seconds per wall second), and an
+        # integrity note. Integrity is advisory unless --gate-integrity.
         probe = perf_config.ffprobe_info(out)
         row["media"] = probe
         if probe:
@@ -130,9 +162,11 @@ def run_one(s: scn.Scenario, fast: bool = False) -> dict:
             if probe.get("duration") and wall:
                 row["realtime"] = round(probe["duration"] / wall, 2)
                 details.append(f"{row['realtime']}x realtime")
-            if s.route is None:  # default video route: duration/fps/audio are in the request
+            if s.route is None and not s.queued:  # default video route: duration/fps/audio are in the request
                 ok_i, msg_i = _integrity(payload, probe)
                 details.append(f"integrity={'ok' if ok_i else 'DIFF'}({msg_i})")
+                if gate_integrity and not ok_i:
+                    ok_all = False
         row["status"] = "PASS" if ok_all else "FAIL"
         row["detail"] = "; ".join(details)
     except Exception as exc:  # noqa: BLE001
@@ -154,6 +188,14 @@ def _media_tag(rel: str) -> str:
     if ext in AUDIO_EXT:
         return f'<audio controls src="{r}"></audio>'
     return f'<a href="{r}">{r}</a>'
+
+
+def _backend_up() -> bool:
+    try:
+        perf_config._get("/health")
+    except Exception:  # noqa: BLE001  connection refused, reset, timeout: all mean "not serving"
+        return False
+    return True
 
 
 def collect_results(rows: list[dict], ts: str) -> Path:
@@ -238,7 +280,7 @@ def collect_results(rows: list[dict], ts: str) -> Path:
 {''.join(cards)}
 """
     (run_dir / "index.html").write_text(doc, encoding="utf-8")
-    with open(run_dir / "results.json", "w") as f:
+    with open(run_dir / "results.json", "w", encoding="utf-8") as f:
         json.dump(rows, f, indent=2)
     return run_dir
 
@@ -251,12 +293,38 @@ def main() -> int:
     ap.add_argument("--include-unwired", action="store_true")
     ap.add_argument("--fast", action="store_true",
                     help="cheapest valid knobs (540p/5s) — quick 'does each path run' surface check")
+    ap.add_argument("--gate-integrity", action="store_true",
+                    help="fail a default-route scenario whose output duration/fps/audio "
+                         "mismatches the request (advisory unless this flag is set)")
+    ap.add_argument("--model-id",
+                    help="activate an LTX version first (Settings label or model_id, e.g. 2.5); "
+                         "must already be installed")
+    ap.add_argument("--use-conv-vae", action=argparse.BooleanOptionalAction, default=None,
+                    help="Fast decode on/off (same as Settings); 2.5 only, weights must be on disk")
     args = ap.parse_args()
 
+    # A Windows console is often cp1252: never let a "≥" in a detail string kill the sweep.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(errors="replace")
+
     perf_config.wait_for_backend()
+    try:
+        if args.model_id:
+            perf_config.activate_ltx_model(args.model_id)
+        if args.use_conv_vae is not None:
+            perf_config.set_use_conv_vae(args.use_conv_vae)
+    except RuntimeError as exc:
+        print(f"[sanity] {exc}", file=sys.stderr)
+        return 1
 
     if args.only:
-        pool = [scn.SCENARIOS[k] for k in args.only if k in scn.SCENARIOS]
+        unknown = [k for k in args.only if k not in scn.SCENARIOS]
+        if unknown:
+            print(f"[sanity] unknown scenario key(s): {', '.join(unknown)}", file=sys.stderr)
+            return 1
+        pool = [scn.SCENARIOS[k] for k in args.only]
     elif args.tags:
         pool = [s for s in scn.all_scenarios() if set(s.tags) & set(args.tags)]
     elif args.include_unwired:
@@ -264,13 +332,37 @@ def main() -> int:
     else:
         pool = scn.ready()
 
+    if not pool:  # an empty selection must never look like a green run
+        print("[sanity] no scenarios selected (check --only / --tags)", file=sys.stderr)
+        return 1
+    missing_tools = [t for t in ("ffmpeg", "ffprobe") if shutil.which(t) is None]
+    if missing_tools and any("regression" in s.tags for s in pool):
+        # Every oracle decodes the output with these; without them the run can only report noise.
+        print(f"[sanity] {' and '.join(missing_tools)} not on PATH: the regression checks need them. "
+              "Install ffmpeg (Windows: `winget install Gyan.FFmpeg`, macOS: `brew install ffmpeg`), "
+              "open a new terminal and re-run.", file=sys.stderr)
+        return 1
+    if not args.only:
+        pool.sort(key=lambda s: s.order)  # stable: registration order within the same position
+    checks.reset()
+    queued.reset()
+    keep_awake.start()  # a long sweep must not idle into sleep and kill the backend
+
     ts = time.strftime("%Y%m%d_%H%M%S")
     rows: list[dict] = []
-    for s in pool:
+    caps = perf_config.scenario_caps()
+    for pos, s in enumerate(pool):
+        print(f"[sanity] Running test {pos + 1}/{len(pool)}", flush=True)
         if s.needs_wiring and not args.include_unwired and not args.only:
             rows.append({"key": s.key, "title": s.title, "status": "SKIP",
                          "wall_s": 0.0, "detail": "needs_wiring", "output": None, "inputs": s.input_paths()})
             print(f"[sanity] SKIP  {s.key:<18} (needs wiring)")
+            continue
+        cap_reason = s.blocked_by_caps(caps)
+        if cap_reason:
+            rows.append({"key": s.key, "title": s.title, "status": "SKIP", "wall_s": 0.0,
+                         "detail": cap_reason, "output": None, "inputs": s.input_paths()})
+            print(f"[sanity] SKIP  {s.key:<18} ({cap_reason})")
             continue
         missing = s.unavailable()
         if missing:
@@ -280,9 +372,17 @@ def main() -> int:
             print(f"[sanity] SKIP  {s.key:<18} ({detail})")
             continue
         print(f"[sanity] run   {s.key:<18} ...", flush=True)
-        row = run_one(s, fast=args.fast)
+        row = run_one(s, fast=args.fast, gate_integrity=args.gate_integrity)
         rows.append(row)
         print(f"[sanity] {row['status']:<5} {s.key:<18} {row['wall_s']:>6.1f}s  out={row['output']}  {row['detail']}")
+        if row["status"] == "ERROR" and not _backend_up():
+            # A crashed backend (OOM, kill) would otherwise turn every remaining scenario into noise.
+            print("[sanity] backend unreachable: aborting the sweep", file=sys.stderr)
+            for rest in pool[pos + 1:]:
+                rows.append({"key": rest.key, "title": rest.title, "status": "SKIP", "wall_s": 0.0,
+                             "detail": "backend unreachable (crashed earlier in the sweep)",
+                             "output": None, "inputs": rest.input_paths()})
+            break
 
     run_dir = collect_results(rows, ts)
 

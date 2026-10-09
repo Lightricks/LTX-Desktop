@@ -24,6 +24,7 @@ from services.gemini_text_client import (
     normalize_gemini_model_id,
     resolve_gemini_model,
 )
+from services.api_key_validation import validate_fal_api_key, validate_gemini_api_key
 from services.interfaces import HTTPClient
 from state.app_state_types import AppState
 
@@ -77,13 +78,38 @@ class SettingsHandler(StateHandlerBase):
         self.state.app_settings.active_ltx_model_id = model_id
         self.save_settings()
 
-    @with_state_lock
     def update_settings(self, patch: UpdateSettingsRequest) -> tuple[AppSettings, AppSettings, set[str]]:
-        patch_payload = strip_none_values(ensure_json_object(patch.model_dump(by_alias=False, exclude_unset=True)))
+        # Probe Fal and Gemini outside the lock — these are network calls.
+        # LTX is stored without a probe: no LTX route checks a key without a side effect.
+        self._validate_incoming_api_keys(patch)
+        return self._apply_settings_patch(patch)
+
+    def _validate_incoming_api_keys(self, patch: UpdateSettingsRequest) -> None:
+        gemini_key = _nonempty_key(patch, "gemini_api_key")
+        fal_key = _nonempty_key(patch, "fal_api_key")
+        if gemini_key is not None:
+            validate_gemini_api_key(self._http, api_key=gemini_key)
+        if fal_key is not None:
+            validate_fal_api_key(self._http, api_key=fal_key)
+
+    @with_state_lock
+    def _apply_settings_patch(
+        self, patch: UpdateSettingsRequest
+    ) -> tuple[AppSettings, AppSettings, set[str]]:
+        raw_patch = patch.model_dump(by_alias=False, exclude_unset=True)
+        patch_payload = strip_none_values(ensure_json_object(raw_patch))
 
         for key_field in ("ltx_api_key", "gemini_api_key", "fal_api_key"):
-            if key_field in patch_payload and patch_payload[key_field] == "":
-                del patch_payload[key_field]
+            explicitly_set = key_field in patch.model_fields_set
+            if not explicitly_set:
+                continue
+            value = getattr(patch, key_field)
+            # null or blank = user removed the key. (Omitted fields stay unchanged.)
+            # Non-empty keys are stored trimmed, matching the value Fal/Gemini were probed with.
+            if isinstance(value, str) and value.strip():
+                patch_payload[key_field] = value.strip()
+            else:
+                patch_payload[key_field] = ""
         # Empty gemini_model is kept: it means "use DEFAULT_GEMINI_MODEL", not "leave unchanged".
         # Image/audio/video generators cannot enhance a prompt — persist them as "use default"
         # so a leftover Nano Banana setting cannot round-trip back into the picker.
@@ -136,3 +162,13 @@ class SettingsHandler(StateHandlerBase):
         while len(te.prompt_cache) > max_size:
             oldest = next(iter(te.prompt_cache))
             del te.prompt_cache[oldest]
+
+
+def _nonempty_key(patch: UpdateSettingsRequest, field: str) -> str | None:
+    if field not in patch.model_fields_set:
+        return None
+    value = getattr(patch, field)
+    if not isinstance(value, str):
+        return None
+    trimmed = value.strip()
+    return trimmed or None

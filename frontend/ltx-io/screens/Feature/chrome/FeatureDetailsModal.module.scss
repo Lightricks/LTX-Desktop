@@ -1,0 +1,233 @@
+.modalFrame {
+  width: fit-content;
+  max-width: min(1220px, calc(100vw - var(--spacing-xxl)));
+  height: fit-content;
+  max-height: calc(100vh - var(--spacing-xxl));
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  background: var(--semantic-bg-secondary);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  color: var(--semantic-fg-primary);
+}
+
+.split {
+  --detail-video-width: min(52vw, 760px);
+
+  display: grid;
+  grid-template:
+    "info hero" minmax(0, 1fr)
+    / minmax(0, 380px) var(--detail-video-width);
+  width: fit-content;
+  max-width: 100%;
+  height: calc(var(--detail-video-width) * 9 / 16);
+  min-height: 0;
+  overflow: hidden;
+  background: var(--semantic-bg-secondary);
+  color: var(--semantic-fg-primary);
+}
+
+.info {
+  grid-area: info;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  min-width: 0;
+  min-height: 0;
+  padding: var(--spacing-lg);
+  overflow-y: auto;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  color: var(--semantic-fg-secondary);
+}
+
+.avatar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--spacing-xl);
+  height: var(--spacing-xl);
+  overflow: hidden;
+  border: 1px solid var(--semantic-bg-separator-primary);
+  border-radius: var(--radius-round);
+  background: var(--semantic-bg-primary);
+}
+
+.avatarMark {
+  width: 70%;
+  height: 70%;
+}
+
+.disclaimer {
+  color: var(--semantic-fg-primary);
+}
+
+.blurb {
+  color: var(--semantic-fg-secondary);
+  line-height: 1.5;
+}
+
+.specBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  min-width: 0;
+  margin-top: auto;
+}
+
+.specList {
+  display: grid;
+  margin: 0;
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-primary);
+
+  > div {
+    display: grid;
+    grid-template-columns: minmax(48px, 1fr) minmax(160px, 2fr);
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--semantic-bg-separator-primary);
+
+    &:first-child {
+      padding-top: 0;
+    }
+
+    &:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+  }
+
+  dt {
+    color: var(--semantic-fg-primary);
+  }
+
+  dd {
+    margin: 0;
+    color: var(--semantic-fg-secondary);
+    text-align: end;
+  }
+
+  a {
+    color: inherit;
+  }
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--spacing-md);
+
+  > :only-child {
+    grid-column: 1 / -1;
+  }
+}
+
+.actionButton {
+  width: 100%;
+}
+
+.hero {
+  grid-area: hero;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--semantic-bg-black-primary);
+}
+
+.heroMedia {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.heroPlayer {
+  width: 100%;
+  height: 100%;
+}
+
+.close {
+  position: absolute;
+  top: var(--spacing-lg);
+  right: var(--spacing-lg);
+  // Above the compare slider, which covers the whole hero.
+  z-index: 6;
+}
+
+@media (max-width: 900px) {
+  .modalFrame {
+    max-width: calc(100vw - var(--spacing-lg));
+    // dvh tracks the visible viewport. 100vh includes browser chrome, so a
+    // sheet that "fits" 100vh still clips the copy under the example video.
+    max-height: calc(
+      100dvh - var(--spacing-lg) - env(safe-area-inset-top, 0px) -
+        env(safe-area-inset-bottom, 0px)
+    );
+  }
+
+  .split {
+    display: flex;
+    flex-direction: column;
+    width: min(100vw - var(--spacing-lg), 760px);
+    height: auto;
+    max-height: calc(
+      100dvh - var(--spacing-lg) - env(safe-area-inset-top, 0px) -
+        env(safe-area-inset-bottom, 0px)
+    );
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .hero {
+    // DOM order is copy then video, so the close button (inside the video)
+    // would sit mid-modal. Pull the video to the top on small screens.
+    order: -1;
+    flex: 0 0 auto;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    max-height: 46dvh;
+    min-height: 0;
+  }
+
+  .heroMedia,
+  .heroPlayer {
+    position: absolute;
+    inset: 0;
+  }
+
+  .info {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .specBlock {
+    margin-top: 0;
+  }
+
+  .specList > div {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-xs);
+  }
+
+  .specList dd {
+    text-align: start;
+  }
+}

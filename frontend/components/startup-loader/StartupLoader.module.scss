@@ -1,0 +1,112 @@
+@use "@/ds/styles/themes/animationsValues.scss" as *;
+
+.root {
+  --splash-wait-duration: #{$bounce-duration};
+  --splash-finish-duration: #{$duration-slow};
+  --splash-fade-duration: #{$duration-slow};
+  position: relative;
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  opacity: 1;
+  transition: opacity $duration-slow $easing-entrance-productive;
+}
+
+.rootExiting {
+  opacity: 0;
+}
+
+// Full-box theme scope for the light pin (see StartupLoader return). Absolute
+// so the `.ltx-io` base `height: 100%` resolves against the viewport-sized
+// root instead of collapsing it.
+.themeScope {
+  position: absolute;
+  inset: 0;
+}
+
+:global(html[data-platform="darwin"]) .dragRegion {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--window-chrome-top);
+  z-index: var(--z-dropdown);
+  pointer-events: auto;
+  -webkit-app-region: drag;
+}
+
+// The endpage artwork is its own full-bleed layer; the progress slot below
+// paints over it.
+.lockup {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.progressSlot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(var(--spacing-4xl) * 5);
+  transform: translate(-50%, calc(var(--spacing-4xl) + var(--spacing-sm)));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity $duration-moderate $easing-entrance-productive;
+}
+
+.progressSlotVisible {
+  opacity: 1;
+}
+
+// Download mode: same slot position, widened for status + detail lines.
+.progressSlotDownload {
+  width: min(100%, calc(var(--spacing-4xl) * 14));
+}
+
+.downloadActions {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--spacing-md);
+  pointer-events: auto;
+}
+
+.progressTrack {
+  width: 100%;
+  height: var(--spacing-xs);
+  background-color: var(--semantic-bg-tertiary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  width: 0;
+  background-color: var(--semantic-fg-primary);
+  border-radius: var(--radius-sm);
+}
+
+.progressFillFinish {
+  transition: width $duration-slow $easing-standard-productive;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root {
+    transition: none;
+  }
+
+  .progressFillFinish {
+    transition: none;
+  }
+}
+
+.copyright {
+  position: absolute;
+  right: 0;
+  bottom: var(--spacing-xl);
+  left: 0;
+  margin: 0;
+  color: var(--semantic-fg-tertiary);
+  text-align: center;
+  pointer-events: none;
+}

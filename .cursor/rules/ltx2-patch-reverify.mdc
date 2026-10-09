@@ -6,14 +6,25 @@ alwaysApply: false
 
 # LTX-2 bump → re-check `services.patches`
 
-If this change updates `ltx-core` or `ltx-pipelines` (version pin, git tag, or `tool.uv.dependency-metadata`), treat every module imported from `backend/services/patches/` in `backend/ltx2_server.py` as suspect.
+Delete-first. If this change updates `ltx-core` or `ltx-pipelines` (version pin, git tag, or `tool.uv.dependency-metadata`), treat every module imported from `backend/services/patches/` in `backend/ltx2_server.py` as suspect — plus any out-of-directory swaps such as `distilled_keyframe_guiding`.
 
-Those patches rebind private upstream symbols. A bump can rename the target (import-time assert should fail) or change the contract (assert still passes, behavior is wrong).
+Those patches rebind private upstream symbols. A bump can rename the target (import-time assert should fail) or change the contract (assert still passes, behavior is wrong). Default is **delete** the patch; keep only what still fails on the new revision.
 
 For each patch:
 
-1. Read the module's "Remove once ..." docstring. If upstream now includes the fix, delete the patch and its `ltx2_server.py` import.
-2. Otherwise diff the upstream function against the replacement and keep the contract identical.
-3. Run that patch's tests (`backend/tests/test_<patch>.py`).
+1. Read the module's "Remove once ..." docstring. If upstream now includes the fix, delete the patch, its `ltx2_server.py` import, and its tests.
+2. Cautionary example: `diffvae_mps_tiling_budget` asserted `DiffusionVideoDecoder.recommended_tiling_config`, which 1.3.0 removed. Keeping it made the backend unable to boot. `safetensors_metadata_fix` is the opposite kind of patch (Windows 1455 / never-`safe_open` the 46GB distilled-1.1 checkpoint) — keep until that contract is upstream.
+3. Otherwise diff the upstream function against the replacement and keep the contract identical. Re-earn; do not copy blindly.
+4. Run that patch's tests (`backend/tests/test_<patch>.py`) plus the patch import-smoke test.
+
+Forked pipeline classes copy upstream bodies, and a signature test does not catch body drift. On every bump diff these against the new upstream and re-run their tests:
+
+- `TiledICLoraPipeline._video_conditionings` (`ic_lora_pipeline/tiled_ic_lora_pipeline.py`) copies upstream `ICLoraPipeline._video_conditionings`; keep the `apply_ic_lora` gate and only change `encode_tiling`.
+- `DistilledPipelineWithSkipStage2._call_stage_1_only` mirrors stage 1 of `DistilledPipeline`.
+- `DistilledA2VPipeline` and `LTXRetakePipeline` call `DiffusionStage` directly.
+
+Size latents with `stage.video_scale_factors` (transformer geometry). `tiling_scale_factors_for_vae` is the decoder's tiling scale (2x8x8 on the 2.5 DiffVAE) and is only for `ensure_tiling_config`.
+
+Unit tests cannot prove a forked pipeline still generates correctly. After the patch review, run the live regression suite on each platform (`backend/performance_runner/README.md`, "Live regression suite"): `sanity.py --tags smoke` at minimum, `--tags smoke full bump` for a release, on both the deterministic (2.3) and ancestral (2.5) models.
 
 `safetensors_metadata_fix` is in this set (Windows 1455 / LTX-Desktop#158: do not `safe_open` the 46GB distilled-1.1 checkpoint in `_read_scales` or `_scan_checkpoint_keys`).

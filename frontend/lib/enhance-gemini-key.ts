@@ -11,9 +11,8 @@ export function isEnhanceBlockedByMissingGeminiKey(input: {
   isGenerationInProgressForEnhance: boolean
   isOtherGenerationRunning: boolean
 }): boolean {
-  // True when Enhance would run via Gemini but no key is configured — including when local
-  // Enhance is available and the user explicitly picked API. Clicking then opens Settings
-  // instead of hiding the API option.
+  // True when Enhance would run via Gemini but no key is configured (API-only path).
+  // When local Gemma is available, the provider hook falls back to local instead.
   return (
     input.enhanceAvailableForMode
     && input.enhanceProvider === 'api'

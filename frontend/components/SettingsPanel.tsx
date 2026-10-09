@@ -5,6 +5,8 @@ import {
   areVideoGenerationSettingsEquivalent,
   resolveVideoGenerationOptions,
   sanitizeVideoGenerationSettings,
+  untrainedAspectRatioWarning,
+  orderAspectRatiosForPicker,
   type VideoGenerationModelSpecItem,
   type VideoGenerationPipeline,
 } from '../lib/video-generation-model-specs'
@@ -141,7 +143,7 @@ export function SettingsPanel({
 
   if (!videoModelSpecs || videoModelSpecs.length === 0 || !resolvedVideoOptions || !resolvedVideoOptions.hasCompatibleOptions) {
     return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-500">
+      <div className="rounded-lg border border-separator bg-surface-tertiary px-3 py-2 text-xs text-fg-tertiary">
         {videoSettingsMessage || 'Loading generation settings...'}
       </div>
     )
@@ -224,12 +226,21 @@ export function SettingsPanel({
       {/* Aspect Ratio */}
       <Select
         label="Aspect Ratio"
-        value={settings.aspectRatio || '16:9'}
+        value={resolvedVideoOptions.selectedAspectRatio ?? settings.aspectRatio ?? '16:9'}
         onChange={(e) => handleChange('aspectRatio', e.target.value)}
         disabled={disabled}
       >
-        <option value="16:9">16:9 Landscape</option>
-        <option value="9:16">9:16 Portrait</option>
+        {orderAspectRatiosForPicker(resolvedVideoOptions.aspectRatioOptions).map(
+          (aspectRatio) => (
+          <option
+            key={aspectRatio}
+            value={aspectRatio}
+            title={untrainedAspectRatioWarning(aspectRatio)}
+          >
+            {aspectRatio}
+          </option>
+          ),
+        )}
       </Select>
 
       {/* Audio and Camera Motion Row */}

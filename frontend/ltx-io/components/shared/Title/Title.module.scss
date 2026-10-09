@@ -1,0 +1,37 @@
+@import "@ds/styles/themes/mixins.module.scss";
+
+.title {
+  color: var(--semantic-fg-primary);
+}
+
+.withButtonGroup {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1;
+}
+
+.xxs {
+  @include text_style_heading_xxs;
+}
+
+.xs {
+  @include text_style_heading_xs;
+}
+
+.sm {
+  @include text_style_heading_sm;
+}
+
+.md {
+  @include text_style_heading_md;
+}
+
+.lg {
+  @include text_style_heading_lg;
+}
+
+.xl {
+  @include text_style_heading_xl;
+}

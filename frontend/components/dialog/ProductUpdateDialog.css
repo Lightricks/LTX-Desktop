@@ -1,0 +1,24 @@
+.product-dialog-backdrop {
+  animation: product-dialog-backdrop-in 150ms ease-out;
+}
+
+.product-dialog-card {
+  animation: product-dialog-backdrop-in 150ms ease-out;
+}
+
+.product-dialog-highlight-body {
+  max-height: min(36vh, 220px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@keyframes product-dialog-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+

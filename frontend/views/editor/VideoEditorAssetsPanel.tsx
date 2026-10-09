@@ -11,6 +11,7 @@ import { createAssetBinId, type Asset } from '../../types/project-model'
 import { VideoThumbnailCard } from './VideoThumbnailCard'
 import { getColorLabel } from './video-editor-utils'
 import { Tooltip } from '../../components/ui/tooltip'
+import { Text } from '@ds/Text/Text'
 import { AssetContextMenu } from './AssetContextMenu'
 import { TakeContextMenu } from './TakeContextMenu'
 import { pathToFileUrl } from '../../lib/file-url'
@@ -408,17 +409,17 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
   }, [assetLassoActive, tickAssetLassoAutoScroll, updateAssetLassoSelection])
 
   return (
-    <div className="flex flex-col min-h-0 h-full border-r border-zinc-800">
+    <div className="flex flex-col min-h-0 h-full border-r border-separator">
       <div className="p-4 pb-2 space-y-2 flex-shrink-0">
         {!takesViewAssetId ? (
           <>
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-white">Assets</h3>
+              <h3 className="text-sm font-semibold text-fg-primary">Assets</h3>
               <div className="flex items-center gap-1">
                 <Tooltip content="Create bin" side="right">
                   <button
                     onClick={() => openCreateBinEditor()}
-                    className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+                    className="p-1.5 rounded-lg hover:bg-action text-fg-secondary hover:text-fg-primary transition-colors"
                   >
                     <FolderPlus className="h-4 w-4" />
                   </button>
@@ -426,7 +427,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                 <Tooltip content="Import media" side="right">
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+                    className="p-1.5 rounded-lg hover:bg-action text-fg-secondary hover:text-fg-primary transition-colors"
                   >
                     <Upload className="h-4 w-4" />
                   </button>
@@ -435,26 +436,26 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
             </div>
 
             <div className="flex items-center gap-1.5">
-              <div className="flex gap-1 bg-zinc-900 rounded-lg p-0.5 flex-1">
+              <div className="flex gap-1 bg-surface-primary rounded-lg p-0.5 flex-1">
                 {(['all', 'video', 'image', 'audio'] as const).map(filter => (
                   <button
                     key={filter}
                     onClick={() => setAssetFilter(filter)}
                     className={`flex-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
                       assetFilter === filter
-                        ? 'bg-zinc-800 text-white'
-                        : 'text-zinc-500 hover:text-zinc-300'
+                        ? 'bg-action text-fg-primary'
+                        : 'text-fg-tertiary hover:text-fg-secondary'
                     }`}
                   >
                     {filter.charAt(0).toUpperCase() + filter.slice(1)}
                   </button>
                 ))}
               </div>
-              <div className="flex bg-zinc-900 rounded-lg p-0.5">
+              <div className="flex bg-surface-primary rounded-lg p-0.5">
                 <Tooltip content="Grid view" side="right">
                   <button
                     onClick={() => setAssetViewMode('grid')}
-                    className={`p-1 rounded transition-colors ${assetViewMode === 'grid' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`p-1 rounded transition-colors ${assetViewMode === 'grid' ? 'bg-action text-fg-primary' : 'text-fg-tertiary hover:text-fg-secondary'}`}
                   >
                     <LayoutGrid className="h-3 w-3" />
                   </button>
@@ -462,7 +463,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                 <Tooltip content="List view" side="right">
                   <button
                     onClick={() => setAssetViewMode('list')}
-                    className={`p-1 rounded transition-colors ${assetViewMode === 'list' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`p-1 rounded transition-colors ${assetViewMode === 'list' ? 'bg-action text-fg-primary' : 'text-fg-tertiary hover:text-fg-secondary'}`}
                   >
                     <List className="h-3 w-3" />
                   </button>
@@ -477,7 +478,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                   className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors flex items-center gap-1 ${
                     selectedBinId === null
                       ? 'bg-blue-600/30 text-blue-300 border border-blue-500/40'
-                      : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300 border border-transparent'
+                      : 'bg-action text-fg-tertiary hover:text-fg-secondary border border-transparent'
                   }`}
                 >
                   All
@@ -518,12 +519,12 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                     className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors flex items-center gap-1 group/bin ${
                       selectedBinId === bin.id
                         ? 'bg-blue-600/30 text-blue-300 border border-blue-500/40'
-                        : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300 border border-transparent'
+                        : 'bg-action text-fg-tertiary hover:text-fg-secondary border border-transparent'
                     }`}
                   >
                     <Folder className="h-3 w-3" />
                     {bin.name}
-                    <span className="text-zinc-600 text-[9px]">
+                    <span className="text-fg-tertiary text-[9px]">
                       {bin.count}
                     </span>
                   </button>
@@ -545,7 +546,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                       }}
                       onBlur={commitBinEdit}
                       placeholder="Bin name..."
-                      className="w-20 px-1.5 py-0.5 rounded text-[10px] bg-zinc-800 border border-zinc-600 text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500"
+                      className="w-20 px-1.5 py-0.5 rounded text-[10px] bg-action border border-separator text-fg-primary placeholder-fg-tertiary focus:outline-none focus:border-blue-500"
                     />
                   </div>
                 )}
@@ -563,7 +564,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
           </>
         ) : (
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white">Takes</h3>
+            <h3 className="text-sm font-semibold text-fg-primary">Takes</h3>
           </div>
         )}
       </div>
@@ -579,16 +580,16 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                 <Tooltip content="Back to assets" side="right">
                   <button
                     onClick={() => setTakesViewAssetId(null)}
-                    className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+                    className="p-1 rounded-lg hover:bg-action text-fg-secondary hover:text-fg-primary transition-colors"
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </button>
                 </Tooltip>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-white truncate">
+                  <p className="text-xs font-medium text-fg-primary truncate">
                     {takesAsset.prompt?.slice(0, 40) || 'Asset'}{(takesAsset.prompt?.length ?? 0) > 40 ? '...' : ''}
                   </p>
-                  <p className="text-[10px] text-zinc-500">
+                  <p className="text-[10px] text-fg-tertiary">
                     {takes.length} takes
                   </p>
                 </div>
@@ -596,7 +597,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                   isRegenerating && regeneratingAssetId === takesAsset.id && canCancelInFlight ? (
                     <button
                       onClick={() => handleCancelRegeneration()}
-                      className="px-2 py-1 rounded-lg bg-red-900/20 text-red-400 hover:bg-red-900/40 transition-colors text-[10px] font-medium flex items-center gap-1 border border-red-500/30"
+                      className="px-2 py-1 rounded-lg bg-danger-soft text-fg-danger hover:bg-danger-soft transition-colors text-[10px] font-medium flex items-center gap-1 border border-danger/30"
                     >
                       <X className="h-3 w-3" />
                       Cancel
@@ -623,7 +624,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                       className={`relative group rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
                         isActive
                           ? 'border-blue-500 ring-2 ring-blue-500/40 shadow-lg shadow-blue-500/20'
-                          : 'border-zinc-800 hover:border-zinc-600'
+                          : 'border-separator hover:border-separator'
                       }`}
                       onClick={() => {
                         setAssetActiveTake(takesAsset.id, idx)
@@ -652,7 +653,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                         take.smallThumbnailPath ? (
                           <img src={pathToFileUrl(take.smallThumbnailPath)} alt="" className="w-full aspect-video object-cover" />
                         ) : (
-                          <div className="w-full aspect-video bg-zinc-800" />
+                          <div className="w-full aspect-video bg-action" />
                         )
                       )}
 
@@ -660,26 +661,26 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
 
                       <div className="absolute bottom-1 left-1 flex items-center gap-1.5">
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                          isActive ? 'bg-blue-500 text-white' : 'bg-black/70 text-zinc-300'
+                          isActive ? 'bg-blue-500 text-fg-white' : 'bg-black/70 text-fg-white'
                         }`}>
                           Take {idx + 1}
                         </span>
                       </div>
 
                       {isActive && (
-                        <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-blue-500 text-white text-[9px] font-semibold">
+                        <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-blue-500 text-fg-white text-[9px] font-semibold">
                           Active
                         </div>
                       )}
 
-                      <div className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/70 text-[9px] text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/70 text-[9px] text-fg-white opacity-0 group-hover:opacity-100 transition-opacity">
                         {new Date(take.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
 
                       {takes.length > 1 && (
                       <Tooltip content="Delete take" side="right">
                         <button
-                          className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/70 text-zinc-400 hover:text-red-400 hover:bg-red-900/60 opacity-0 group-hover:opacity-100 transition-all z-10"
+                          className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/70 text-fg-white hover:text-fg-danger hover:bg-danger-soft opacity-0 group-hover:opacity-100 transition-all z-10"
                           onClick={(e) => {
                             e.stopPropagation()
                             if (confirm(`Delete take ${idx + 1}?`)) {
@@ -700,7 +701,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                           {canCancelInFlight && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleCancelRegeneration() }}
-                            className="px-2 py-0.5 rounded bg-zinc-800/80 border border-zinc-600/60 text-[9px] text-zinc-300 hover:text-red-400 hover:border-red-500/50 hover:bg-red-900/30 transition-colors"
+                            className="px-2 py-0.5 rounded bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_80%,transparent)] border border-separator-secondary text-[9px] text-fg-secondary hover:text-fg-danger hover:border-danger/50 hover:bg-danger-soft transition-colors"
                           >
                             Cancel
                           </button>
@@ -750,13 +751,17 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
 
           {filteredAssets.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-sm text-zinc-500">No assets yet</p>
-              <p className="text-xs text-zinc-600 mt-1">Generate in Gen Space or import</p>
+              <Text as="p" variant="body" size="lg" align="center" className="text-fg-tertiary">
+                No assets yet
+              </Text>
+              <Text as="p" variant="body" size="sm" align="center" className="mt-1 text-fg-tertiary">
+                Generate in Gen Space or import
+              </Text>
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="mt-3 px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-300 text-xs hover:bg-zinc-700 transition-colors"
+                className="mt-3 px-3 py-1.5 rounded-lg bg-action text-fg-secondary hover:bg-action-hover transition-colors"
               >
-                Import Media
+                <Text as="span" variant="label" size="sm">Import Media</Text>
               </button>
             </div>
           ) : assetViewMode === 'grid' ? (
@@ -771,7 +776,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                     className={`relative group cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
                       selectedAssetIds.has(asset.id)
                         ? 'border-blue-500 ring-2 ring-blue-500/40 shadow-lg shadow-blue-500/20'
-                        : 'border-zinc-800 hover:border-zinc-600'
+                        : 'border-separator hover:border-separator'
                     }`}
                     draggable
                     onDragStart={(e) => {
@@ -834,23 +839,23 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                         thumbnailUrl={asset.smallThumbnailPath ? pathToFileUrl(asset.smallThumbnailPath) : undefined}
                       />
                     ) : asset.type === 'audio' ? (
-                      <div className="w-full aspect-video bg-gradient-to-br from-emerald-900/60 to-zinc-900 flex flex-col items-center justify-center gap-1.5">
-                        <Music className="h-6 w-6 text-emerald-400" />
+                      <div className="w-full aspect-video bg-gradient-to-br from-success/60 to-surface-primary flex flex-col items-center justify-center gap-1.5">
+                        <Music className="h-6 w-6 text-fg-success" />
                         <div className="flex items-center gap-0.5">
                           {[3, 5, 8, 6, 9, 4, 7, 5, 3, 6, 8, 4].map((h, i) => (
                             <div
                               key={i}
-                              className="w-0.5 rounded-full bg-emerald-500/60"
+                              className="w-0.5 rounded-full bg-success-soft"
                               style={{ height: `${h * 1.5}px` }}
                             />
                           ))}
                         </div>
-                        <p className="text-[9px] text-emerald-300/70 truncate max-w-[90%] px-1">
+                        <p className="text-[9px] text-fg-success truncate max-w-[90%] px-1">
                           {asset.path || 'Audio'}
                         </p>
                       </div>
                     ) : asset.type === 'adjustment' ? (
-                      <div className="w-full aspect-video bg-gradient-to-br from-blue-900/40 to-zinc-900 flex flex-col items-center justify-center gap-1.5 border border-dashed border-blue-500/30">
+                      <div className="w-full aspect-video bg-gradient-to-br from-blue-900/40 to-surface-primary flex flex-col items-center justify-center gap-1.5 border border-dashed border-blue-500/30">
                         <Layers className="h-6 w-6 text-blue-400" />
                         <p className="text-[9px] text-blue-300/70 font-medium">Adjustment Layer</p>
                       </div>
@@ -858,7 +863,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                       asset.smallThumbnailPath ? (
                         <img src={pathToFileUrl(asset.smallThumbnailPath)} alt="" className="w-full aspect-video object-cover" />
                       ) : (
-                        <div className="w-full aspect-video bg-zinc-800" />
+                        <div className="w-full aspect-video bg-action" />
                       )
                     )}
                     {selectedAssetIds.has(asset.id) && <div className="absolute inset-0 bg-blue-600/25 pointer-events-none z-[1]" />}
@@ -877,7 +882,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                             className={`p-1 rounded bg-black/70 transition-colors ${
                               isRegenerating && regeneratingAssetId === asset.id
                                 ? 'text-blue-400 animate-spin'
-                                : 'text-zinc-400 hover:text-blue-400 hover:bg-blue-900/50'
+                                : 'text-fg-white hover:text-blue-400 hover:bg-blue-900/50'
                             }`}
                           >
                             <RefreshCw className="h-3 w-3" />
@@ -890,7 +895,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                             e.stopPropagation()
                             deleteAsset(asset.id)
                           }}
-                          className="p-1 rounded bg-black/70 text-zinc-500 hover:text-red-400 hover:bg-red-900/50 transition-colors"
+                          className="p-1 rounded bg-black/70 text-fg-white hover:text-fg-danger hover:bg-danger-soft transition-colors"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -904,7 +909,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                         {canCancelInFlight && (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleCancelRegeneration() }}
-                          className="px-2 py-0.5 rounded bg-zinc-800/80 border border-zinc-600/60 text-[9px] text-zinc-300 hover:text-red-400 hover:border-red-500/50 hover:bg-red-900/30 transition-colors"
+                          className="px-2 py-0.5 rounded bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_80%,transparent)] border border-separator-secondary text-[9px] text-fg-secondary hover:text-fg-danger hover:border-danger/50 hover:bg-danger-soft transition-colors"
                         >
                           Cancel
                         </button>
@@ -921,7 +926,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                               setAssetActiveTake(asset.id, idx)
                             }}
                             disabled={(asset.activeTakeIndex ?? 0) === 0}
-                            className="p-0.5 text-blue-300 hover:text-white disabled:text-zinc-600 transition-colors"
+                            className="p-0.5 text-blue-300 hover:text-fg-white disabled:opacity-40 transition-colors"
                           >
                             <ChevronLeft className="h-3 w-3" />
                           </button>
@@ -932,7 +937,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                             setTakesViewAssetId(asset.id)
                             setSelectedAssetIds(new Set())
                           }}
-                          className="px-0.5 cursor-pointer hover:text-white transition-colors flex items-center gap-1"
+                          className="px-0.5 cursor-pointer hover:text-fg-white transition-colors flex items-center gap-1"
                           title="View all takes"
                         >
                           <Layers className="h-2.5 w-2.5 text-blue-400" />
@@ -950,7 +955,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                               }
                             }}
                             disabled={asset.takes && (asset.activeTakeIndex ?? 0) >= asset.takes.length - 1}
-                            className="p-0.5 text-blue-300 hover:text-white disabled:text-zinc-600 transition-colors"
+                            className="p-0.5 text-blue-300 hover:text-fg-white disabled:opacity-40 transition-colors"
                           >
                             <ChevronRight className="h-3 w-3" />
                           </button>
@@ -963,7 +968,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                         {binIdToName.get(asset.binId)}
                       </div>
                     )}
-                    <div className="absolute bottom-1 left-1 flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/70 text-[10px] text-white">
+                    <div className="absolute bottom-1 left-1 flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/70 text-[10px] text-fg-white">
                       {asset.type === 'video' ? <Video className="h-3 w-3" /> : asset.type === 'audio' ? <Music className="h-3 w-3" /> : asset.type === 'adjustment' ? <Layers className="h-3 w-3" /> : <Image className="h-3 w-3" />}
                       {asset.type === 'adjustment' ? 'Adj' : asset.duration ? `${asset.duration.toFixed(1)}s` : ''}
                     </div>
@@ -973,7 +978,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
             </div>
           ) : (
             <div className="flex flex-col">
-              <div className="flex items-center gap-1 px-2 py-1 border-b border-zinc-800 bg-zinc-900/80 sticky top-0 z-10">
+              <div className="flex items-center gap-1 px-2 py-1 border-b border-separator bg-[color-mix(in_srgb,var(--semantic-bg-primary)_80%,transparent)] sticky top-0 z-10">
                 <div className="w-2 flex-shrink-0" />
                 <div className="w-8 flex-shrink-0" />
                 {([
@@ -988,7 +993,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                     key={col}
                     onClick={() => toggleSort(col)}
                     className={`${flex} flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wider transition-colors cursor-pointer select-none ${
-                      listSortCol === col ? 'text-blue-400' : 'text-zinc-500 hover:text-zinc-300'
+                      listSortCol === col ? 'text-blue-400' : 'text-fg-tertiary hover:text-fg-secondary'
                     }`}
                   >
                     <span className="truncate">{label}</span>
@@ -1013,7 +1018,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                     className={`group flex items-center gap-1 px-2 py-1 cursor-pointer transition-all ${
                       selectedAssetIds.has(asset.id)
                         ? 'bg-blue-600/20 ring-1 ring-blue-500/50'
-                        : 'hover:bg-zinc-800/60'
+                        : 'hover:bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_60%,transparent)]'
                     }`}
                     draggable
                     onDragStart={(e) => {
@@ -1069,44 +1074,44 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                     ) : (
                       <div className="w-2 flex-shrink-0" />
                     )}
-                    <div className="w-8 h-6 flex-shrink-0 rounded overflow-hidden bg-zinc-800">
+                    <div className="w-8 h-6 flex-shrink-0 rounded overflow-hidden bg-action">
                       {asset.type === 'video' ? (
                         asset.smallThumbnailPath ? (
                           <img src={pathToFileUrl(asset.smallThumbnailPath)} alt="" className="w-full h-full object-cover" />
                         ) : (
-                          <div className="w-full h-full bg-zinc-800" />
+                          <div className="w-full h-full bg-action" />
                         )
                       ) : asset.type === 'audio' ? (
-                        <div className="w-full h-full flex items-center justify-center bg-emerald-900/40"><Music className="h-2.5 w-2.5 text-emerald-400" /></div>
+                        <div className="w-full h-full flex items-center justify-center bg-success-soft"><Music className="h-2.5 w-2.5 text-fg-success" /></div>
                       ) : asset.type === 'adjustment' ? (
                         <div className="w-full h-full flex items-center justify-center bg-blue-900/30"><Layers className="h-2.5 w-2.5 text-blue-400" /></div>
                       ) : (
                         asset.smallThumbnailPath ? (
                           <img src={pathToFileUrl(asset.smallThumbnailPath)} alt="" className="w-full h-full object-cover" />
                         ) : (
-                          <div className="w-full h-full bg-zinc-800" />
+                          <div className="w-full h-full bg-action" />
                         )
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[10px] text-zinc-200 truncate leading-tight">{name}</p>
+                      <p className="text-[10px] text-fg-primary truncate leading-tight">{name}</p>
                       {asset.takes && asset.takes.length > 1 && (
                         <span className="text-[8px] text-blue-400">{asset.takes.length} takes</span>
                       )}
                     </div>
-                    <span className="w-14 flex-shrink-0 text-center text-[9px] text-zinc-500 uppercase font-medium">{asset.type}</span>
-                    <span className="w-16 flex-shrink-0 text-right text-[9px] text-zinc-500 tabular-nums">
+                    <span className="w-14 flex-shrink-0 text-center text-[9px] text-fg-tertiary uppercase font-medium">{asset.type}</span>
+                    <span className="w-16 flex-shrink-0 text-right text-[9px] text-fg-tertiary tabular-nums">
                       {asset.duration != null ? `${asset.duration.toFixed(1)}s` : '—'}
                     </span>
-                    <span className="w-14 flex-shrink-0 text-right text-[9px] text-zinc-500">
+                    <span className="w-14 flex-shrink-0 text-right text-[9px] text-fg-tertiary">
                       {asset.resolution || '—'}
                     </span>
-                    <span className="w-16 flex-shrink-0 text-right text-[9px] text-zinc-500">{dateStr}</span>
+                    <span className="w-16 flex-shrink-0 text-right text-[9px] text-fg-tertiary">{dateStr}</span>
                     <div className="w-10 flex-shrink-0 flex items-center justify-center">
                       {cl ? (
                         <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: cl.color }} title={cl.label} />
                       ) : (
-                        <span className="text-[9px] text-zinc-600">—</span>
+                        <span className="text-[9px] text-fg-tertiary">—</span>
                       )}
                     </div>
                     <Tooltip content="Delete asset" side="right">
@@ -1115,7 +1120,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                           e.stopPropagation()
                           deleteAsset(asset.id)
                         }}
-                        className="w-6 flex-shrink-0 flex items-center justify-center p-0.5 rounded text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                        className="w-6 flex-shrink-0 flex items-center justify-center p-0.5 rounded text-fg-tertiary hover:text-fg-danger opacity-0 group-hover:opacity-100 transition-all"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -1173,7 +1178,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
       {binContextMenu && (
         <div
           ref={binContextMenuRef}
-          className="fixed bg-zinc-800 border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-[60] min-w-[160px] text-xs"
+          className="fixed bg-action border border-separator rounded-xl shadow-2xl py-1.5 z-[60] min-w-[160px] text-xs"
           style={{ left: binContextMenu.x, top: binContextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -1185,9 +1190,9 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
               setSelectedBinId(binContextMenu.binId)
               setBinContextMenu(null)
             }}
-            className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
+            className="w-full text-left px-3 py-1.5 text-fg-secondary hover:bg-action-hover flex items-center gap-3"
           >
-            <Pencil className="h-3.5 w-3.5 text-zinc-500" />
+            <Pencil className="h-3.5 w-3.5 text-fg-tertiary" />
             <span>Rename Bin</span>
           </button>
           <button
@@ -1196,7 +1201,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
               if (selectedBinId === binContextMenu.binId) setSelectedBinId(null)
               setBinContextMenu(null)
             }}
-            className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-zinc-700 flex items-center gap-3"
+            className="w-full text-left px-3 py-1.5 text-fg-danger hover:bg-action-hover flex items-center gap-3"
           >
             <Trash2 className="h-3.5 w-3.5" />
             <span>Delete Bin</span>

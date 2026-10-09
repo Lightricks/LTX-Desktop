@@ -4,9 +4,11 @@ import { ApiClient, type ApiRequestBodyOf, type ApiSuccessOf } from '../lib/api-
 import { createLocalGenerationError, type GenerationError } from '../lib/generation-errors'
 import { canCancelLocalJob, withGenerationActive } from '../lib/generation-active'
 import { useAppSettings } from '../contexts/AppSettingsContext'
-import { buildGenerateVideoImageInputs } from '../lib/build-generate-video-body'
+import { buildGenerateVideoBody } from '../lib/build-generate-video-body'
+import { displayPolledProgress } from '../lib/generation-display-progress'
 import type { GenSpaceMode } from '../lib/genspace-multi-keyframe'
 import type { KeyframeItem, PersistedKeyframe } from '../lib/multi-keyframe'
+import type { PromptProvenance } from '../lib/prompt-provenance'
 
 const POLLING_INTERVAL_MS = 2000
 
@@ -15,6 +17,9 @@ export const GENERATION_RECOVERY_KEY = 'ltx-generation-recovery'
 export interface GenerationRecoveryContext {
   projectId: string
   prompt: string
+  // Whether `prompt` was already enhanced when it was submitted. Absent on markers written
+  // before provenance existed — treated as typed, i.e. eligible for enhancement again.
+  promptProvenance?: PromptProvenance
   // Absent for ic-lora/retake: those recover as standalone video assets (Phase 1),
   // so there are no video/image settings to restore.
   settings?: GenerationSettings
@@ -82,6 +87,7 @@ interface UseGenerationReturn extends GenerationState {
     audioPath?: string | null,
     lastImagePath?: string | null,
     imageInputs?: { mode: GenSpaceMode; keyframes: KeyframeItem[] },
+    promptProvenance?: PromptProvenance,
   ) => Promise<void>
   generateImage: (prompt: string, settings: GenerationSettings, editSource?: string | null) => Promise<void>
   cancel: () => void
@@ -227,6 +233,7 @@ export function useGeneration(): UseGenerationReturn {
     audioPath?: string | null,
     lastImagePath?: string | null,
     imageInputs?: { mode: GenSpaceMode; keyframes: KeyframeItem[] },
+    promptProvenance: PromptProvenance = 'typed',
   ) => {
     const statusMsg = settings.model.startsWith('pro')
       ? 'Loading Pro model & generating...'
@@ -249,76 +256,74 @@ export function useGeneration(): UseGenerationReturn {
 
     await withGenerationActive(async () => {
       try {
-        // Prepare JSON body
-        const body: Record<string, unknown> = {
+        const body = buildGenerateVideoBody({
           prompt,
-          model: settings.model,
-          duration: settings.duration,
-          resolution: settings.videoResolution,
-          fps: settings.fps,
-          audio: settings.audio,
-          cameraMotion: settings.cameraMotion,
-          negativePrompt: (settings as { negativePrompt?: string }).negativePrompt ?? '',
-          aspectRatio: settings.aspectRatio || '16:9',
-          ...buildGenerateVideoImageInputs({
-            mode: imageInputs?.mode ?? 'video',
-            imagePath,
-            lastImagePath,
-            keyframes: imageInputs?.keyframes ?? [],
-          }),
-        }
-        if (audioPath) {
-          body.audioPath = audioPath
-        }
-        if (settings.loras?.length) {
-          body.loras = settings.loras.map(l => ({ ref: l.ref, scale: l.scale }))
-        }
+          promptProvenance,
+          settings,
+          imagePath,
+          lastImagePath,
+          audioPath,
+          imageInputs,
+        })
 
-        // Poll for real progress from backend with time-based interpolation
+        // Poll backend progress. Local jobs report real denoise totals; the bar
+        // uses that percentage. API jobs have no step total, so inference is
+        // still interpolated from elapsed time.
         let lastPhase = ''
         let inferenceStartTime = 0
-        // Estimated inference time in seconds based on model
+        let pollInFlight = false
         const estimatedInferenceTime = settings.model.startsWith('pro') ? 120 : 45
 
         const pollProgress = async () => {
-          if (!shouldApplyPollingUpdates) return
-          const result = await ApiClient.getGenerationProgress()
-          if (!result.ok || !shouldApplyPollingUpdates) return
+          // Same overlap guard as generation-progress-poll.ts: a slow GET plus the
+          // next 500ms tick must not let an older snapshot overwrite a newer one.
+          if (!shouldApplyPollingUpdates || pollInFlight) return
+          pollInFlight = true
+          try {
+            const result = await ApiClient.getGenerationProgress()
+            if (!result.ok || !shouldApplyPollingUpdates) return
 
-          const data = result.data
-          let displayProgress = data.progress
-          let statusMessage = getPhaseMessage(data.phase)
-
-          // Time-based interpolation during inference phase
-          if (data.phase === 'inference') {
-            if (lastPhase !== 'inference') {
+            const data = result.data
+            if (data.phase === 'inference' && lastPhase !== 'inference') {
               inferenceStartTime = Date.now()
             }
             const elapsed = (Date.now() - inferenceStartTime) / 1000
-            // Interpolate from 15% to 95% based on estimated time
-            const inferenceProgress = Math.min(elapsed / estimatedInferenceTime, 0.95)
-            displayProgress = 15 + Math.floor(inferenceProgress * 80)
-          }
+            const phase = data.phase === 'complete' || data.status === 'complete' ? 'complete' : data.phase
+            let displayProgress = displayPolledProgress({
+              phase,
+              progress: data.progress,
+              totalSteps: data.totalSteps,
+              elapsedInferenceS: elapsed,
+              estimatedInferenceS: estimatedInferenceTime,
+            })
+            let statusMessage = getPhaseMessage(data.phase)
 
-          // Keep API/local completion as a terminal response state, not polling state.
-          // Polling complete means backend state is finalized, but request can still be in-flight.
-          if (data.phase === 'complete' || data.status === 'complete') {
-            displayProgress = 95
-            statusMessage = 'Finalizing...'
-          }
-
-          lastPhase = data.phase
-
-          setState(prev => {
-            if (prev.isCancelling) {
-              return { ...prev, statusMessage: 'Cancelling…' }
+            // Keep API/local completion as a terminal response state, not polling state.
+            // Polling complete means backend state is finalized, but request can still be in-flight.
+            if (data.phase === 'complete' || data.status === 'complete') {
+              statusMessage = 'Finalizing...'
             }
-            return {
-              ...prev,
-              progress: displayProgress,
-              statusMessage,
-            }
-          })
+
+            lastPhase = data.phase
+
+            setState(prev => {
+              if (prev.isCancelling) {
+                return prev.statusMessage === 'Cancelling…'
+                  ? prev
+                  : { ...prev, statusMessage: 'Cancelling…' }
+              }
+              if (prev.progress === displayProgress && prev.statusMessage === statusMessage) {
+                return prev
+              }
+              return {
+                ...prev,
+                progress: displayProgress,
+                statusMessage,
+              }
+            })
+          } finally {
+            pollInFlight = false
+          }
         }
 
         progressInterval = setInterval(pollProgress, 500)

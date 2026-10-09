@@ -61,7 +61,7 @@ export function LoraInfoPopover({
         {...triggerAttrs}
         onClick={anchor}
         aria-label={`${name} instructions`}
-        className="rounded p-0.5 text-zinc-400 transition-colors hover:text-white"
+        className="rounded p-0.5 text-fg-secondary transition-colors hover:text-fg-primary"
       >
         <Info className="h-3.5 w-3.5" />
       </button>
@@ -71,25 +71,25 @@ export function LoraInfoPopover({
         {...popoverAttrs}
         aria-label={`${name} instructions`}
         style={{ maxHeight }}
-        className="w-72 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-left text-white shadow-xl"
+        className="w-72 overflow-y-auto rounded-lg border border-separator bg-surface-primary p-3 text-left text-fg-primary shadow-xl"
       >
-        <div className="mb-1.5 text-xs font-semibold text-white">{name}</div>
+        <div className="mb-1.5 text-xs font-semibold text-fg-primary">{name}</div>
         <div className="flex flex-col gap-2">
           {sections.map((s, i) => (
             <div key={i}>
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{s.title}</div>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-fg-tertiary">{s.title}</div>
               {Array.isArray(s.body) ? (
-                <ul className="mt-0.5 list-disc pl-4 text-[11px] text-zinc-300">
+                <ul className="mt-0.5 list-disc pl-4 text-[11px] text-fg-secondary">
                   {s.body.map((b, j) => <li key={j}>{b}</li>)}
                 </ul>
               ) : (
-                <p className="mt-0.5 text-[11px] text-zinc-300">{s.body}</p>
+                <p className="mt-0.5 text-[11px] text-fg-secondary">{s.body}</p>
               )}
             </div>
           ))}
         </div>
         {showCommunityDisclaimer && (
-          <p className="mt-2.5 border-t border-zinc-800 pt-2 text-[10px] leading-relaxed text-zinc-500">
+          <p className="mt-2.5 border-t border-separator-secondary pt-2 text-[10px] leading-relaxed text-fg-tertiary">
             {COMMUNITY_DISCLAIMER}
           </p>
         )}
@@ -97,7 +97,7 @@ export function LoraInfoPopover({
           <button
             type="button"
             onClick={() => { void window.electronAPI.openHuggingFaceRepo({ repoId }) }}
-            className="mt-2.5 inline-flex items-center gap-1 text-[11px] font-medium text-indigo-400 transition-colors hover:text-indigo-300"
+            className="mt-2.5 inline-flex items-center gap-1 text-[11px] font-medium text-fg-brand transition-colors hover:text-fg-brand-hover"
           >
             <ExternalLink className="h-3 w-3" /> View on HuggingFace
           </button>

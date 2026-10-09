@@ -1,0 +1,43 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xl);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: var(--spacing-xl);
+  text-align: center;
+}
+
+.icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--semantic-fg-tertiary);
+
+  > svg {
+    width: var(--spacing-xxl);
+    height: var(--spacing-xxl);
+  }
+
+  svg path[fill]:not([fill="none"]) {
+    fill: currentcolor;
+  }
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  max-width: 22rem;
+}
+
+.title {
+  color: var(--semantic-fg-primary);
+}
+
+.body {
+  color: var(--semantic-fg-primary);
+}

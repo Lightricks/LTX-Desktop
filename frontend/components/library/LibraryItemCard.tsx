@@ -130,12 +130,12 @@ export function LibraryItemCard({
   return (
     <div
       ref={cardRef}
-      className={`flex flex-col overflow-hidden rounded-xl border transition-colors ${isSelected ? 'border-amber-500/60 bg-amber-500/10' : 'border-zinc-700 bg-zinc-800/50'}`}
+      className={`flex flex-col overflow-hidden rounded-xl border transition-colors ${isSelected ? 'border-brand bg-surface-select' : 'border-separator-secondary bg-surface-secondary'}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       {/* Media */}
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-zinc-950">
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-surface-tertiary">
         {item.demoVideoUrl ? (
           <video
             ref={videoRef}
@@ -150,33 +150,33 @@ export function LibraryItemCard({
         ) : item.thumbnailUrl ? (
           <img src={item.thumbnailUrl} alt={item.title} className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900">
-            <Sparkles className="h-6 w-6 text-zinc-700" />
+          <div className="flex h-full w-full items-center justify-center bg-surface-secondary">
+            <Sparkles className="h-6 w-6 text-fg-tertiary" />
           </div>
         )}
         {size && (
-          <span className="absolute bottom-1.5 right-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-zinc-300">{size}</span>
+          <span className="absolute bottom-1.5 right-1.5 rounded bg-surface-overlay px-1.5 py-0.5 text-[10px] text-fg-white">{size}</span>
         )}
       </div>
 
       {/* Body */}
       <div className="flex flex-1 flex-col gap-1.5 p-2.5">
         <div className="flex items-center gap-1.5">
-          <span className="truncate text-sm font-medium text-white" title={item.title}>{item.title}</span>
+          <span className="truncate text-sm font-medium text-fg-primary" title={item.title}>{item.title}</span>
           {infoSlot}
         </div>
-        {item.description && <div className="line-clamp-2 text-[11px] text-zinc-500">{item.description}</div>}
+        {item.description && <div className="line-clamp-2 text-[11px] text-fg-secondary">{item.description}</div>}
         {(item.author || item.license) && (
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-zinc-500">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-fg-tertiary">
             {item.author && (
               item.author.url
-                ? <button onClick={() => openUrl(item.author!.url)} className="text-zinc-400 hover:text-white transition-colors">by {item.author.name}</button>
+                ? <button onClick={() => openUrl(item.author!.url)} className="text-fg-secondary hover:text-fg-primary transition-colors">by {item.author.name}</button>
                 : <span>by {item.author.name}</span>
             )}
             {item.license && (
               item.license.url
-                ? <button onClick={() => openUrl(item.license!.url)} className="rounded bg-zinc-700/60 px-1.5 py-0.5 text-zinc-300 hover:bg-zinc-700 transition-colors">{item.license.name}</button>
-                : <span className="rounded bg-zinc-700/60 px-1.5 py-0.5 text-zinc-300">{item.license.name}</span>
+                ? <button onClick={() => openUrl(item.license!.url)} className="rounded bg-action px-1.5 py-0.5 text-fg-secondary hover:bg-action-hover transition-colors">{item.license.name}</button>
+                : <span className="rounded bg-action px-1.5 py-0.5 text-fg-secondary">{item.license.name}</span>
             )}
           </div>
         )}
@@ -187,7 +187,7 @@ export function LibraryItemCard({
             <select
               value={variantId}
               onChange={(e) => setVariantId(e.target.value)}
-              className="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1 text-[11px] text-zinc-200"
+              className="w-full rounded bg-surface-primary border border-separator px-2 py-1 text-[11px] text-fg-primary"
               aria-label={`${item.title} variant`}
             >
               {item.variants!.map(v => (
@@ -199,31 +199,31 @@ export function LibraryItemCard({
           )}
           {status.kind === 'downloading' && (
             <div className="flex flex-col gap-1.5">
-              <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
+              <span className="inline-flex items-center gap-1 text-xs text-fg-secondary">
                 <Loader2 className="h-3 w-3 animate-spin" /> {Math.round(status.progress)}%
               </span>
-              <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
-                <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${status.progress}%` }} />
+              <div className="h-1.5 overflow-hidden rounded-full bg-action">
+                <div className="h-full bg-brand transition-all duration-300" style={{ width: `${status.progress}%` }} />
               </div>
             </div>
           )}
           {status.kind === 'error' && (
             <div className="flex flex-col gap-1.5">
-              <div className="text-[11px] text-red-400" title={status.message}>
+              <div className="text-[11px] text-fg-danger" title={status.message}>
                 {status.gated ? 'This model is gated — request access, then retry.' : status.message}
               </div>
               <div className="flex gap-2">
                 {status.gated && (
                   <button
                     onClick={() => onRequestAccess?.(item.id)}
-                    className="inline-flex items-center gap-1 rounded bg-amber-600 px-2 py-1 text-[11px] font-medium text-white transition-colors hover:bg-amber-500"
+                    className="inline-flex items-center gap-1 rounded bg-warning px-2 py-1 text-[11px] font-medium text-fg-white transition-colors hover:bg-warning-hover"
                   >
                     <ExternalLink className="h-3 w-3" /> Request access
                   </button>
                 )}
                 <button
                   onClick={() => onRetry?.(item.id, hasVariants ? variantId : undefined)}
-                  className="inline-flex items-center gap-1 rounded bg-zinc-700 px-2 py-1 text-[11px] font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
+                  className="inline-flex items-center gap-1 rounded bg-action px-2 py-1 text-[11px] font-medium text-fg-primary transition-colors hover:bg-action-hover"
                 >
                   <Download className="h-3 w-3" /> Retry
                 </button>
@@ -233,7 +233,7 @@ export function LibraryItemCard({
           {status.kind !== 'downloading' && status.kind !== 'error' && selectedVariantReady && (
             <button
               onClick={() => onUse?.(item.id, hasVariants ? variantId : undefined)}
-              className={`inline-flex w-full items-center justify-center gap-1 rounded px-3 py-1.5 text-xs font-medium transition-colors ${isSelected ? 'bg-amber-600 text-white' : 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'}`}
+              className={`inline-flex w-full items-center justify-center gap-1 rounded px-3 py-1.5 text-xs font-medium transition-colors ${isSelected ? 'bg-brand text-fg-white' : 'bg-action text-fg-primary hover:bg-action-hover'}`}
             >
               {isSelected ? <><Check className="h-3 w-3" /> Selected</> : 'Use'}
             </button>
@@ -241,7 +241,7 @@ export function LibraryItemCard({
           {status.kind !== 'downloading' && status.kind !== 'error' && !selectedVariantReady && (
             <button
               onClick={() => onDownload?.(item.id, hasVariants ? variantId : undefined)}
-              className="inline-flex w-full items-center justify-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500"
+              className="inline-flex w-full items-center justify-center gap-1 rounded bg-brand px-3 py-1.5 text-xs font-medium text-fg-white transition-colors hover:bg-brand-hover"
             >
               <Download className="h-3 w-3" /> Download
             </button>

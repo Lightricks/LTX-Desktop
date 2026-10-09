@@ -3,7 +3,9 @@ import { beforeEach, describe, it } from 'node:test'
 import {
   DEFAULT_PROMPT_BAR_HEIGHT,
   GENSPACE_LAYOUT_STORAGE_KEY,
+  LORA_CHIP_OVERLAY_HEIGHT,
   PROMPT_BAR_HEIGHT_LIMITS,
+  genspaceModePanelPaddingBottom,
   loadPromptBarHeight,
   savePromptBarHeight,
 } from './genspace-layout.ts'
@@ -46,16 +48,27 @@ describe('genspace prompt-bar layout', () => {
     assert.equal(loadPromptBarHeight(storage), PROMPT_BAR_HEIGHT_LIMITS.max)
   })
 
-  it('falls back to the default when stored JSON is invalid', () => {
+  it('falls back to the default when the stored height is missing, not a number, or invalid JSON', () => {
     storage.setItem(GENSPACE_LAYOUT_STORAGE_KEY, '{not-json')
     assert.equal(loadPromptBarHeight(storage), DEFAULT_PROMPT_BAR_HEIGHT)
-  })
 
-  it('falls back to the default when promptBarHeight is missing or not a number', () => {
     storage.setItem(GENSPACE_LAYOUT_STORAGE_KEY, JSON.stringify({}))
     assert.equal(loadPromptBarHeight(storage), DEFAULT_PROMPT_BAR_HEIGHT)
 
     storage.setItem(GENSPACE_LAYOUT_STORAGE_KEY, JSON.stringify({ promptBarHeight: 'tall' }))
     assert.equal(loadPromptBarHeight(storage), DEFAULT_PROMPT_BAR_HEIGHT)
+  })
+})
+
+describe('genspace LoRA-chip overlay clearance', () => {
+  it('reserves the measured overlay height and never less than one SelectedLoraInfo row', () => {
+    assert.equal(genspaceModePanelPaddingBottom(false, 80), 16)
+    assert.equal(genspaceModePanelPaddingBottom(true, 0), LORA_CHIP_OVERLAY_HEIGHT)
+    assert.equal(genspaceModePanelPaddingBottom(true, 80), 80)
+
+    // SelectedLoraInfo: py-2 (16) + 11px text at 1.5 leading (~17) + 2px border + mb-2 (8).
+    const selectedLoraInfoMinHeight = 16 + 17 + 2 + 8
+    assert.ok(LORA_CHIP_OVERLAY_HEIGHT >= selectedLoraInfoMinHeight)
+    assert.ok(genspaceModePanelPaddingBottom(true, 20) >= selectedLoraInfoMinHeight)
   })
 })

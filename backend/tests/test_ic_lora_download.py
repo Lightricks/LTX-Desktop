@@ -20,7 +20,8 @@ def test_ic_lora_id_cannot_traverse(tmp_path: Path):
         resolve_ic_lora_path(tmp_path, "../escape", "i.safetensors")
 
 
-def test_ic_lora_list_reports_downloaded_state(client: TestClient):
+def test_ic_lora_list_reports_downloaded_state(client: TestClient, create_fake_model_files):
+    create_fake_model_files()
     # FakeLoraCatalogProvider (wired in conftest) returns one IC-LoRA "ingredients-v1".
     resp = client.get("/api/ic-loras")
     assert resp.status_code == 200
@@ -28,6 +29,47 @@ def test_ic_lora_list_reports_downloaded_state(client: TestClient):
     assert items[0]["ic_lora"]["id"] == "ingredients-v1"
     assert items[0]["downloaded"] is False
     assert items[0]["downloaded_variant_ids"] == []
+
+
+def test_ic_lora_list_empty_when_no_ltx_family_installed(client: TestClient):
+    resp = client.get("/api/ic-loras")
+    assert resp.status_code == 200
+    assert resp.json()["ic_loras"] == []
+    assert client.get("/api/ic-loras", params={"fresh": False}).json()["ic_loras"] == []
+
+    fresh = client.get("/api/ic-loras", params={"fresh": True})
+    assert fresh.status_code == 200
+    ids = [item["ic_lora"]["id"] for item in fresh.json()["ic_loras"]]
+    assert "ingredients-v1" in ids
+    assert "colorize-v1" in ids
+
+
+def test_ic_lora_list_hides_when_required_family_missing(
+    client: TestClient, create_fake_model_files, fake_services
+):
+    create_fake_model_files(model_id="ltx-2.5-22b-distilled")
+    catalog = fake_services.lora_catalog_provider._catalog
+    fake_services.lora_catalog_provider._catalog = catalog.model_copy(
+        update={
+            "ic_loras": [
+                catalog.ic_loras[0].model_copy(update={"supported_models": ["LTX-2.3"]}),
+                *catalog.ic_loras[1:],
+            ]
+        }
+    )
+
+    resp = client.get("/api/ic-loras")
+    assert resp.status_code == 200
+    ids = [item["ic_lora"]["id"] for item in resp.json()["ic_loras"]]
+    assert "ingredients-v1" not in ids
+    assert "colorize-v1" in ids
+
+    fresh_ids = [
+        item["ic_lora"]["id"]
+        for item in client.get("/api/ic-loras", params={"fresh": True}).json()["ic_loras"]
+    ]
+    assert "ingredients-v1" in fresh_ids
+    assert "colorize-v1" in fresh_ids
 
 
 def test_ic_lora_download_then_progress_complete(client: TestClient):
@@ -83,3 +125,43 @@ def test_ic_lora_download_flag_requires_auth_and_leaves_no_session(client: TestC
     # Once signed in again, a subsequent download still starts (would 409 if the session had leaked).
     test_state.state.hf_auth_state = original_auth
     assert client.post("/api/ic-loras/download", json={"ic_lora_id": "ingredients-v1"}).status_code == 200
+
+
+def test_download_omits_variant_id_fetches_index_zero_when_a_later_variant_exists(
+    client: TestClient, fake_services
+):
+    start = client.post("/api/ic-loras/download", json={"ic_lora_id": "multi-v1"})
+    assert start.status_code == 200, start.text
+    call = fake_services.model_downloader.calls[-1]
+    assert call["filename"] == "strong.safetensors"
+    assert call["repo_id"] == "org/multi"
+
+
+def test_download_uses_the_variant_repo_when_the_checkpoint_names_one(
+    client: TestClient, fake_services
+):
+    catalog = fake_services.lora_catalog_provider._catalog
+    ic_loras = []
+    for item in catalog.ic_loras:
+        if item.id != "multi-v1":
+            ic_loras.append(item)
+            continue
+        newer = item.download.variants[0].model_copy(update={"repo_id": "org/newer"})
+        ic_loras.append(
+            item.model_copy(
+                update={
+                    "download": item.download.model_copy(
+                        update={"variants": [newer, *item.download.variants[1:]]}
+                    )
+                }
+            )
+        )
+    fake_services.lora_catalog_provider._catalog = catalog.model_copy(
+        update={"ic_loras": ic_loras}
+    )
+
+    start = client.post("/api/ic-loras/download", json={"ic_lora_id": "multi-v1"})
+    assert start.status_code == 200, start.text
+    call = fake_services.model_downloader.calls[-1]
+    assert call["filename"] == "strong.safetensors"
+    assert call["repo_id"] == "org/newer"

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import cast
 
+from server_utils.oriented_image import open_oriented_rgb
 from services.depth_processor_pipeline.depth_processor_pipeline import DepthProcessorPipeline
 from services.pose_processor_pipeline.pose_processor_pipeline import PoseProcessorPipeline
 from services.video_processor.video_processor import VideoInfoPayload
@@ -43,11 +44,14 @@ class VideoProcessorImpl:
 
     def read_image(self, path: str) -> FrameArray:
         import cv2
+        import numpy as np
+        from PIL import UnidentifiedImageError
 
-        img = cv2.imread(path)
-        if img is None:
-            raise ValueError(f"Could not read image: {path}")
-        return cast(FrameArray, img)
+        try:
+            rgb = np.asarray(open_oriented_rgb(path))
+        except (UnidentifiedImageError, OSError) as exc:
+            raise ValueError(f"Could not read image: {path}") from exc
+        return cast(FrameArray, cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
 
     def apply_canny(self, frame: FrameArray) -> FrameArray:
         import cv2

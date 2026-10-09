@@ -51,19 +51,19 @@ export function LoraLibraryModal({
       headerSlot={showConnectCta ? (
         <button
           onClick={handleConnect}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-indigo-500"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-fg-white transition-colors hover:bg-brand-hover"
         >
           Connect HuggingFace
         </button>
       ) : undefined}
     >
       {syncError && (
-        <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+        <div className="mb-3 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-fg-warning">
           {syncError}
         </div>
       )}
       {visibleItems.length === 0 ? (
-        <div className="px-2 py-8 text-center text-xs text-zinc-500">
+        <div className="px-2 py-8 text-center text-xs text-fg-tertiary">
           {kind === 'ic-lora' ? 'No IC-LoRAs available.' : 'No LoRAs found. Downloaded and installed LoRAs will appear here.'}
         </div>
       ) : (

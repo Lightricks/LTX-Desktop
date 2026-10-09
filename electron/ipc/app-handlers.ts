@@ -4,15 +4,18 @@ import fs from 'fs'
 import { checkGPU } from '../gpu'
 import { isPythonReady, downloadPythonEmbed } from '../python-setup'
 import { getBackendHealthStatus, getBackendUrl, getAuthToken, getAdminToken, startPythonBackend, setGenerationActive } from '../python-backend'
-import { getMainWindow } from '../window'
-import { getAnalyticsState, setAnalyticsEnabled, sendAnalyticsEvent } from '../analytics'
+import { getMainWindow, applyMainWindowMode, applyWindowAppearance } from '../window'
+import { getAnalyticsState, setAnalyticsEnabled } from '../analytics'
+import { setRemoteExposureActive } from '../remote-keep-awake'
 import {
   getUpdateState, checkForUpdatesNow, startUpdateDownload, installUpdateAndRestart,
   skipUpdateVersion, setAutoCheckUpdatesEnabled,
 } from '../updater'
-import { getAutoCheckUpdates } from '../app-state'
+import { getAutoCheckUpdates, setWindowTheme } from '../app-state'
 import { freeDiskBytes } from '../free-disk-space'
 import { handle } from './typed-handle'
+import { takePendingDeepLink } from '../deep-link-inbox'
+import { registerOptionalAppHandlers } from '@optional/app-handlers'
 
 function getModelsPath(): string {
   const modelsPath = path.join(app.getPath('userData'), 'models')
@@ -22,18 +25,17 @@ function getModelsPath(): string {
   return modelsPath
 }
 
-function getSetupStatus(settingsPath: string): { needsSetup: boolean; needsLicense: boolean } {
+function getSetupStatus(settingsPath: string): { needsSetup: boolean } {
   if (!fs.existsSync(settingsPath)) {
-    return { needsSetup: true, needsLicense: true }
+    return { needsSetup: true }
   }
   try {
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
     return {
       needsSetup: !settings.setupComplete,
-      needsLicense: !settings.licenseAccepted,
     }
   } catch {
-    return { needsSetup: true, needsLicense: true }
+    return { needsSetup: true }
   }
 }
 
@@ -49,31 +51,15 @@ function markSetupComplete(settingsPath: string): void {
   }
 
   settings.setupComplete = true
-  settings.licenseAccepted = true
-  settings.licenseAcceptedDate = new Date().toISOString()
   settings.setupDate = new Date().toISOString()
 
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2))
 }
 
-function markLicenseAccepted(settingsPath: string): void {
-  let settings: Record<string, unknown> = {}
-
-  try {
-    if (fs.existsSync(settingsPath)) {
-      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
-    }
-  } catch {
-    settings = {}
-  }
-
-  settings.licenseAccepted = true
-  settings.licenseAcceptedDate = new Date().toISOString()
-
-  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2))
-}
-
-export function registerAppHandlers(): void {
+export function registerAppHandlers(hooks?: {
+  onInstallationStarted?: () => void
+  onSetupCompleted?: () => void
+}): void {
   handle('getBackend', () => {
     return { url: getBackendUrl() ?? '', token: getAuthToken() ?? '' }
   })
@@ -113,15 +99,30 @@ export function registerAppHandlers(): void {
     return getSetupStatus(settingsPath)
   })
 
-  handle('acceptLicense', () => {
-    const settingsPath = path.join(app.getPath('userData'), 'app_state.json')
-    markLicenseAccepted(settingsPath)
-    return true
-  })
-
   handle('completeSetup', () => {
     const settingsPath = path.join(app.getPath('userData'), 'app_state.json')
     markSetupComplete(settingsPath)
+    // API-only first run never clicks Install. The once-per-process guard
+    // drops this when the Install click already sent `launched`.
+    hooks?.onSetupCompleted?.()
+    applyMainWindowMode('app')
+    return true
+  })
+
+  // First install only. The renderer calls this when Install is clicked, after
+  // the opt-out preference has been written. Returning opens send from main.
+  handle('notifyInstallStarted', () => {
+    hooks?.onInstallationStarted?.()
+  })
+
+  handle('setMainWindowMode', ({ mode }) => {
+    applyMainWindowMode(mode)
+    return true
+  })
+
+  handle('setWindowAppearance', ({ theme, persist }) => {
+    applyWindowAppearance(theme)
+    if (persist) setWindowTheme(theme)
     return true
   })
 
@@ -163,8 +164,14 @@ export function registerAppHandlers(): void {
     return getBackendHealthStatus()
   })
 
+  handle('takePendingDeepLink', () => takePendingDeepLink())
+
   handle('notifyGenerationActive', ({ active }) => {
     setGenerationActive(active)
+  })
+
+  handle('notifyRemoteExposure', ({ active }) => {
+    setRemoteExposureActive(active)
   })
 
   handle('getAnalyticsState', () => {
@@ -173,10 +180,6 @@ export function registerAppHandlers(): void {
 
   handle('setAnalyticsEnabled', ({ enabled }) => {
     setAnalyticsEnabled(enabled)
-  })
-
-  handle('sendAnalyticsEvent', async ({ eventName, extraDetails }) => {
-    await sendAnalyticsEvent(eventName, extraDetails)
   })
 
   handle('openModelsDirChangeDialog', async () => {
@@ -285,5 +288,7 @@ export function registerAppHandlers(): void {
       return { success: false, error: String(e) }
     }
   })
+
+  registerOptionalAppHandlers()
 
 }

@@ -1,0 +1,22 @@
+.closeButton {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-round);
+  background: var(--semantic-bg-overlay-secondary-inverse);
+  color: var(--semantic-fg-inverse-primary);
+
+  &:disabled {
+    cursor: default;
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+}

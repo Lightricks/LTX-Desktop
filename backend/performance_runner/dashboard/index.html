@@ -28,11 +28,17 @@
       <div class="mut">Copy it from the app's Logs footer (the •••••). Held in memory only.</div>
     </div>
 
-    <div class="panel cuda-only">
-      <h2>Toggles</h2>
-      <label class="tog"><input type="checkbox" id="tgCache"> cache patch</label>
-      <label class="tog"><input type="checkbox" id="tgCompile"> torch compile</label>
-      <div class="mut" id="tgMsg">reading live settings…</div>
+    <div class="panel">
+      <h2>Settings</h2>
+      <div id="modelList" class="mut">reading installed models…</div>
+      <label class="tog" id="fastDecodeRow" hidden>
+        <input type="checkbox" id="tgConvVae"> Fast decode
+      </label>
+      <div class="cuda-only">
+        <label class="tog"><input type="checkbox" id="tgCache"> cache patch</label>
+        <label class="tog"><input type="checkbox" id="tgCompile"> torch compile</label>
+      </div>
+      <div class="mut" id="tgMsg">same controls as the app Settings modal</div>
     </div>
 
     <div class="panel">
@@ -54,6 +60,10 @@
         <button class="runbtn" title="Smoke-test the wired scenarios end-to-end. Pass/fail matrix that the surface still generates." onclick="run('sanity',{})">sanity (wired)</button>
         <button class="runbtn" title="Same sweep including any scaffold scenarios not yet wired to a route — those are expected to fail." onclick="run('sanity',{include_unwired:true})">sanity (all)</button>
         <button class="runbtn" title="Quick surface check — forces 540p/5s on every scenario so each feature path runs in a fraction of the time. Not a quality or perf signal." onclick="run('sanity',{fast:true})">sanity (fast)</button>
+      </div>
+      <div class="row">
+        <button class="runbtn" title="Regression smoke: one small generation per flow and code path (t2v, keyframes, i2v, a2v, extend, every retake mode, IC-LoRA, cancel) with behavioural checks. Run after any big change." onclick="run('sanity',{tags:['smoke']})">regression: smoke</button>
+        <button class="runbtn" title="Smoke plus the slow scenarios (LoRAs, portrait, cancel on every route) and the full-size LTX bump gate. Long: hours on a Mac." onclick="run('sanity',{tags:['smoke','full','bump']})">regression: full</button>
       </div>
     </div>
 

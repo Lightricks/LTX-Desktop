@@ -4,6 +4,7 @@ import {
   FolderPlus, Folder, Trash2, FolderOpen,
 } from 'lucide-react'
 import type { Asset } from '../../types/project-model'
+import { revealInFolderLabel } from '../../lib/revealInFolderLabel'
 import { COLOR_LABELS } from './video-editor-utils'
 import { equalAssetBins, selectAssetBins, selectAssets, selectRegenerationState } from './editor-selectors'
 import { useEditorActions, useEditorStore } from './editor-store'
@@ -76,7 +77,7 @@ export function AssetContextMenu({
   return (
     <div
       ref={assetContextMenuRef}
-      className="fixed bg-zinc-800 border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-[60] min-w-[180px] text-xs"
+      className="fixed bg-action border border-separator rounded-xl shadow-2xl py-1.5 z-[60] min-w-[180px] text-xs"
       style={{ left: assetContextMenu.x, top: assetContextMenu.y }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -92,9 +93,9 @@ export function AssetContextMenu({
             addClipToTimeline(asset, 0)
             closeMenu()
           }}
-          className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
+          className="w-full text-left px-3 py-1.5 text-fg-secondary hover:bg-action-hover flex items-center gap-3"
         >
-          <Plus className="h-3.5 w-3.5 text-zinc-500" />
+          <Plus className="h-3.5 w-3.5 text-fg-tertiary" />
           <span>Add to Timeline</span>
         </button>
       )}
@@ -105,10 +106,10 @@ export function AssetContextMenu({
             window.electronAPI?.showItemInFolder({ filePath: asset.path! })
             closeMenu()
           }}
-          className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
+          className="w-full text-left px-3 py-1.5 text-fg-secondary hover:bg-action-hover flex items-center gap-3"
         >
-          <FolderOpen className="h-3.5 w-3.5 text-zinc-500" />
-          <span>Show in Explorer</span>
+          <FolderOpen className="h-3.5 w-3.5 text-fg-tertiary" />
+          <span>{revealInFolderLabel()}</span>
         </button>
       )}
 
@@ -120,7 +121,7 @@ export function AssetContextMenu({
                 handleCancelRegeneration()
                 closeMenu()
               }}
-              className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-zinc-700 flex items-center gap-3"
+              className="w-full text-left px-3 py-1.5 text-fg-danger hover:bg-action-hover flex items-center gap-3"
             >
               <X className="h-3.5 w-3.5" />
               <span>Cancel Regeneration</span>
@@ -132,9 +133,9 @@ export function AssetContextMenu({
                 closeMenu()
               }}
               disabled={isRegenerating}
-              className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3 disabled:opacity-50"
+              className="w-full text-left px-3 py-1.5 text-fg-secondary hover:bg-action-hover flex items-center gap-3 disabled:opacity-50"
             >
-              <RefreshCw className="h-3.5 w-3.5 text-zinc-500" />
+              <RefreshCw className="h-3.5 w-3.5 text-fg-tertiary" />
               <span>Regenerate</span>
             </button>
           )}
@@ -144,7 +145,7 @@ export function AssetContextMenu({
       {!isMulti && asset.takes && asset.takes.length > 1 && (
         <>
           <div className="px-3 py-1.5 flex items-center gap-2">
-            <span className="text-[10px] text-zinc-500">Take:</span>
+            <span className="text-[10px] text-fg-tertiary">Take:</span>
             <button
               onClick={(e) => {
                 e.stopPropagation()
@@ -152,11 +153,11 @@ export function AssetContextMenu({
                 setActiveTake(asset.id, idx)
               }}
               disabled={(asset.activeTakeIndex ?? 0) === 0}
-              className="p-0.5 rounded hover:bg-zinc-600 text-zinc-400 hover:text-white disabled:text-zinc-600 disabled:hover:bg-transparent"
+              className="p-0.5 rounded hover:bg-action-active text-fg-secondary hover:text-fg-primary disabled:text-fg-tertiary disabled:hover:bg-transparent"
             >
               <ChevronLeft className="h-3 w-3" />
             </button>
-            <span className="text-[10px] text-zinc-300 min-w-[28px] text-center">
+            <span className="text-[10px] text-fg-secondary min-w-[28px] text-center">
               {(asset.activeTakeIndex ?? 0) + 1}/{asset.takes.length}
             </span>
             <button
@@ -166,7 +167,7 @@ export function AssetContextMenu({
                 setActiveTake(asset.id, idx)
               }}
               disabled={(asset.activeTakeIndex ?? 0) >= asset.takes.length - 1}
-              className="p-0.5 rounded hover:bg-zinc-600 text-zinc-400 hover:text-white disabled:text-zinc-600 disabled:hover:bg-transparent"
+              className="p-0.5 rounded hover:bg-action-active text-fg-secondary hover:text-fg-primary disabled:text-fg-tertiary disabled:hover:bg-transparent"
             >
               <ChevronRight className="h-3 w-3" />
             </button>
@@ -177,9 +178,9 @@ export function AssetContextMenu({
               clearSelection()
               closeMenu()
             }}
-            className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
+            className="w-full text-left px-3 py-1.5 text-fg-secondary hover:bg-action-hover flex items-center gap-3"
           >
-            <Layers className="h-3.5 w-3.5 text-zinc-500" />
+            <Layers className="h-3.5 w-3.5 text-fg-tertiary" />
             <span>View All Takes</span>
           </button>
           <button
@@ -199,9 +200,9 @@ export function AssetContextMenu({
               })
               closeMenu()
             }}
-            className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
+            className="w-full text-left px-3 py-1.5 text-fg-secondary hover:bg-action-hover flex items-center gap-3"
           >
-            <GitMerge className="h-3.5 w-3.5 text-zinc-500 rotate-180" />
+            <GitMerge className="h-3.5 w-3.5 text-fg-tertiary rotate-180" />
             <span>Ungroup Takes</span>
           </button>
           <button
@@ -212,7 +213,7 @@ export function AssetContextMenu({
               }
               closeMenu()
             }}
-            className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-red-900/30 flex items-center gap-3"
+            className="w-full text-left px-3 py-1.5 text-fg-danger hover:bg-danger-soft flex items-center gap-3"
           >
             <Trash2 className="h-3.5 w-3.5" />
             <span>Delete Active Take</span>
@@ -220,25 +221,25 @@ export function AssetContextMenu({
         </>
       )}
 
-      <div className="h-px bg-zinc-700 my-1" />
+      <div className="h-px bg-action-hover my-1" />
 
-      <div className="px-3 py-1 text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">Label</div>
+      <div className="px-3 py-1 text-[10px] text-fg-tertiary font-semibold uppercase tracking-wider">Label</div>
       <div className="px-3 py-1.5 flex items-center gap-1 flex-wrap">
         <button
           onClick={() => setColor(undefined)}
           className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
-            !asset.colorLabel ? 'border-white scale-110' : 'border-zinc-600 hover:border-zinc-400'
+            !asset.colorLabel ? 'border-white scale-110' : 'border-separator hover:border-separator'
           }`}
           title="No label"
         >
-          <X className="h-2 w-2 text-zinc-400" />
+          <X className="h-2 w-2 text-fg-secondary" />
         </button>
         {COLOR_LABELS.map(cl => (
           <button
             key={cl.id}
             onClick={() => setColor(cl.id)}
             className={`w-4 h-4 rounded-full transition-all ${
-              asset.colorLabel === cl.id ? 'ring-2 ring-white ring-offset-1 ring-offset-zinc-800 scale-110' : 'hover:scale-125'
+              asset.colorLabel === cl.id ? 'ring-2 ring-fg-primary ring-offset-1 ring-offset-action scale-110' : 'hover:scale-125'
             }`}
             style={{ backgroundColor: cl.color }}
             title={cl.label}
@@ -246,15 +247,15 @@ export function AssetContextMenu({
         ))}
       </div>
 
-      <div className="h-px bg-zinc-700 my-1" />
+      <div className="h-px bg-action-hover my-1" />
 
-      <div className="px-3 py-1 text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">Move to Bin</div>
+      <div className="px-3 py-1 text-[10px] text-fg-tertiary font-semibold uppercase tracking-wider">Move to Bin</div>
 
       <button
         onClick={() => moveToBin(undefined)}
-        className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
+        className="w-full text-left px-3 py-1.5 text-fg-secondary hover:bg-action-hover flex items-center gap-3"
       >
-        <X className="h-3.5 w-3.5 text-zinc-500" />
+        <X className="h-3.5 w-3.5 text-fg-tertiary" />
         <span>Remove from Bin</span>
       </button>
 
@@ -262,9 +263,9 @@ export function AssetContextMenu({
         <button
           key={bin.id}
           onClick={() => moveToBin(bin.id)}
-          className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
+          className="w-full text-left px-3 py-1.5 text-fg-secondary hover:bg-action-hover flex items-center gap-3"
         >
-          <Folder className="h-3.5 w-3.5 text-zinc-500" />
+          <Folder className="h-3.5 w-3.5 text-fg-tertiary" />
           <span>{bin.name}</span>
         </button>
       ))}
@@ -274,15 +275,15 @@ export function AssetContextMenu({
           openCreateBinEditor(targetIds)
           closeMenu()
         }}
-        className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
+        className="w-full text-left px-3 py-1.5 text-fg-secondary hover:bg-action-hover flex items-center gap-3"
       >
-        <FolderPlus className="h-3.5 w-3.5 text-zinc-500" />
+        <FolderPlus className="h-3.5 w-3.5 text-fg-tertiary" />
         <span>New Bin...</span>
       </button>
 
       {isMulti && (
         <>
-          <div className="h-px bg-zinc-700 my-1" />
+          <div className="h-px bg-action-hover my-1" />
           <button
             onClick={() => {
               const selectedAssets = assets.filter(a => targetIds.includes(a.id))
@@ -309,7 +310,7 @@ export function AssetContextMenu({
               clearSelection()
               closeMenu()
             }}
-            className="w-full text-left px-3 py-1.5 text-blue-300 hover:bg-zinc-700 flex items-center gap-3"
+            className="w-full text-left px-3 py-1.5 text-blue-300 hover:bg-action-hover flex items-center gap-3"
           >
             <GitMerge className="h-3.5 w-3.5" />
             <span>Group as Takes</span>
@@ -319,19 +320,19 @@ export function AssetContextMenu({
               clearSelection()
               closeMenu()
             }}
-            className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
+            className="w-full text-left px-3 py-1.5 text-fg-secondary hover:bg-action-hover flex items-center gap-3"
           >
-            <X className="h-3.5 w-3.5 text-zinc-500" />
+            <X className="h-3.5 w-3.5 text-fg-tertiary" />
             <span>Clear Selection</span>
           </button>
         </>
       )}
 
-      <div className="h-px bg-zinc-700 my-1" />
+      <div className="h-px bg-action-hover my-1" />
 
       <button
         onClick={deleteTargetAssets}
-        className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-zinc-700 flex items-center gap-3"
+        className="w-full text-left px-3 py-1.5 text-fg-danger hover:bg-action-hover flex items-center gap-3"
       >
         <Trash2 className="h-3.5 w-3.5" />
         <span>{isMulti ? `Delete ${targetIds.length} Assets` : 'Delete Asset'}</span>

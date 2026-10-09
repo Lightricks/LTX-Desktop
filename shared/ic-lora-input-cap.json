@@ -1,0 +1,7 @@
+{
+  "maxInputVideoSeconds": 10,
+  "maxInputFrames": 240,
+  "durationToleranceSeconds": 0.1,
+  "fpsMatchTolerance": 0.5,
+  "supportedFps": [24, 25, 48, 50]
+}

@@ -6,7 +6,7 @@ import logging
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from threading import RLock
+from threading import Condition, Event, RLock
 from typing import TYPE_CHECKING, Literal
 
 from _routes._errors import HTTPError
@@ -19,6 +19,7 @@ from api_types import (
 from handlers.base import StateHandlerBase, with_state_lock
 from services import generation_interrupt
 from services.generation_interrupt import GenerationCancelledError
+from services.generation_queue.control import GenerationSlotWaitAborted
 from services.patches import diffusion_stage_cache
 from state.app_state_types import (
     ApiGeneration,
@@ -40,11 +41,41 @@ GenerationSlot = Literal["gpu", "api"]
 # Generous vs. any realistic pipeline load, but bounds how long a reservation can block future
 # generations if some path raises before ever reaching start_generation()/fail_generation().
 _RESERVATION_TIMEOUT_S = 180
+# shutdown is an Event, not the Condition; waiters must re-check it after a bounded wait.
+_SLOT_WAIT_POLL_S = 0.05
 
 
 class GenerationHandler(StateHandlerBase):
     def __init__(self, state: AppState, lock: RLock, config: RuntimeConfig) -> None:
         super().__init__(state, lock, config)
+        self._generation_slot = Condition(self._lock)
+        from services.denoising_progress import configure_sink
+
+        configure_sink(self._on_denoise_step)
+
+    def _on_denoise_step(self, current: int, total: int) -> None:
+        from services.denoising_progress import inference_percent
+
+        self.update_progress("inference", inference_percent(current, total), current, total)
+
+    def _generation_start_block_reason(self) -> str | None:
+        """Return why the shared slot cannot be claimed, or None if it is free.
+
+        Caller must hold the state lock. Same rules as try_reserve_generation_start().
+        """
+        since = self.state.generation_starting_since
+        if self.is_generation_running():
+            return "a generation is already running"
+        if self.state.generation_in_flight:
+            # After start_generation(), starting_since is None and in_flight stays True through
+            # generate() unwind — do not expire that. Only a pre-start reservation whose
+            # timestamp aged out (no finally) is reclaimable.
+            if since is None or time.monotonic() - since < _RESERVATION_TIMEOUT_S:
+                return "a generation is still in flight"
+            return None
+        if since is not None and time.monotonic() - since < _RESERVATION_TIMEOUT_S:
+            return "another reservation is still active"
+        return None
 
     @with_state_lock
     def try_reserve_generation_start(self) -> bool:
@@ -58,19 +89,9 @@ class GenerationHandler(StateHandlerBase):
         is a backstop for a reservation that never got a context finally (legacy try_reserve
         without the context manager).
         """
-        since = self.state.generation_starting_since
-        if self.is_generation_running():
-            logger.info("Generation start reservation denied: a generation is already running")
-            return False
-        if self.state.generation_in_flight:
-            # After start_generation(), starting_since is None and in_flight stays True through
-            # generate() unwind — do not expire that. Only a pre-start reservation whose
-            # timestamp aged out (no finally) is reclaimable.
-            if since is None or time.monotonic() - since < _RESERVATION_TIMEOUT_S:
-                logger.info("Generation start reservation denied: a generation is still in flight")
-                return False
-        elif since is not None and time.monotonic() - since < _RESERVATION_TIMEOUT_S:
-            logger.info("Generation start reservation denied: another reservation is still active")
+        reason = self._generation_start_block_reason()
+        if reason is not None:
+            logger.info("Generation start reservation denied: %s", reason)
             return False
         self.state.generation_in_flight = True
         self.state.generation_starting_since = time.monotonic()
@@ -81,6 +102,36 @@ class GenerationHandler(StateHandlerBase):
         self.state.generation_in_flight = False
         self.state.generation_starting_since = None
         generation_interrupt.clear()
+        self._generation_slot.notify_all()
+
+    @contextmanager
+    def wait_for_generation_slot(self, shutdown: Event) -> Iterator[None]:
+        """Block until the shared generation reservation is free, then hold it.
+
+        Unlike reserved_generation_start(), this waits instead of raising 409.
+        shutdown aborts the wait without claiming the slot (the with-body is
+        skipped) by raising GenerationSlotWaitAborted. Waiters are notified
+        from release_generation_start_reservation().
+        """
+        reserved = False
+        try:
+            with self._generation_slot:
+                while True:
+                    if shutdown.is_set():
+                        break
+                    if (
+                        self._generation_start_block_reason() is None
+                        and self.try_reserve_generation_start()
+                    ):
+                        reserved = True
+                        break
+                    self._generation_slot.wait(timeout=_SLOT_WAIT_POLL_S)
+            if not reserved:
+                raise GenerationSlotWaitAborted()
+            yield
+        finally:
+            if reserved:
+                self.release_generation_start_reservation()
 
     @contextmanager
     def reserved_generation_start(self) -> Iterator[None]:
@@ -126,6 +177,9 @@ class GenerationHandler(StateHandlerBase):
         diffusion_stage_cache.set_enabled(self.state.app_settings.diffusion_stage_cache_enabled)
         diffusion_stage_cache.evict()
         generation_interrupt.clear()
+        from services.denoising_progress import configure_sink
+
+        configure_sink(self._on_denoise_step)
 
         self.state.active_generation = GpuGeneration(
             state=GenerationRunning(

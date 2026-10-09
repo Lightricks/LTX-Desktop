@@ -8,11 +8,8 @@ from io import BytesIO
 
 from PIL import Image
 from api_types import (
-    IcLoraCatalogItem,
-    InputSpec,
     InstructionSection,
     LOCAL_MULTI_KEYFRAME_MAX_COUNT,
-    LoraCatalogItem,
     PromptTemplatePlaceholder,
     PromptTemplateSpec,
 )
@@ -21,6 +18,7 @@ from services.gemini_text_client import DEFAULT_GEMINI_MODEL
 from services.prompt_enhancement import build_audio_visual_caption_system_prompt
 from tests.fakes import FakeResponse
 from tests.http_error_assertions import assert_http_error
+from tests.lora_catalog_helpers import add_ic_lora, add_lora
 
 
 # 2.3's gemma3 encoder doubles as the local enhancer, so its plain bundle is enough to make the
@@ -62,36 +60,6 @@ _GEMINI_INVALID_API_KEY_BODY = {
         ],
     }
 }
-
-
-def _dl(filename: str = "x.safetensors"):
-    from api_types import DownloadSpec, DownloadVariant
-
-    return DownloadSpec(
-        repo_id="org/x",
-        variants=[DownloadVariant(id="default", label="Default", filename=filename, size_bytes=10)],
-    )
-
-
-def _add_lora(fake_services, **overrides: object) -> LoraCatalogItem:
-    defaults: dict[str, object] = dict(
-        id="test-lora", name="Test Lora", description="d", download=_dl(), requires_hf_login=False,
-    )
-    defaults.update(overrides)
-    lora = LoraCatalogItem(**defaults)
-    fake_services.lora_catalog_provider._catalog.loras.append(lora)
-    return lora
-
-
-def _add_ic_lora(fake_services, **overrides: object) -> IcLoraCatalogItem:
-    defaults: dict[str, object] = dict(
-        id="test-ic-lora", name="Test IC-LoRA", description="d", download=_dl(), requires_hf_login=False,
-        input=InputSpec(kind="video"),
-    )
-    defaults.update(overrides)
-    ic_lora = IcLoraCatalogItem(**defaults)
-    fake_services.lora_catalog_provider._catalog.ic_loras.append(ic_lora)
-    return ic_lora
 
 
 class TestNoSelection:
@@ -339,7 +307,7 @@ class TestNoSelection:
 class TestLoraSelection:
     def test_single_lora_system_prompt_and_trigger_enforced(self, client, fake_services, create_fake_model_files):
         create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
-        _add_lora(
+        add_lora(
             fake_services, id="cozy-felt", name="Cozy Felt", trigger="F3ltCut0u7", trigger_placement="anywhere",
             instructions=[InstructionSection(kind="summary", title="What it does", body="Felt look.")],
         )
@@ -355,8 +323,8 @@ class TestLoraSelection:
 
     def test_multi_lora_prompt_includes_both(self, client, fake_services, create_fake_model_files):
         create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
-        _add_lora(fake_services, id="a", name="Alpha")
-        _add_lora(fake_services, id="b", name="Beta")
+        add_lora(fake_services, id="a", name="Alpha")
+        add_lora(fake_services, id="b", name="Beta")
 
         r = client.post("/api/enhance-prompt", json={"prompt": "x", "loraCatalogIds": ["a", "b"]})
         assert r.status_code == 200
@@ -374,7 +342,7 @@ class TestIcLoraSelection:
         self, client, fake_services, create_fake_model_files
     ):
         create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
-        _add_ic_lora(
+        add_ic_lora(
             fake_services, id="day-to-night", name="Day to Night",
             instructions=[InstructionSection(kind="summary", title="What it does", body="Relights to night.")],
         )
@@ -390,7 +358,7 @@ class TestIcLoraSelection:
 
     def test_free_text_template_fill_stitches_deterministically(self, client, fake_services, create_fake_model_files):
         create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
-        _add_ic_lora(
+        add_ic_lora(
             fake_services, id="colorization", name="Colorization",
             prompt_template=PromptTemplateSpec(
                 template="Reference shows {reference}. COLORIZE {result}.",
@@ -407,7 +375,7 @@ class TestIcLoraSelection:
 
     def test_enum_template_fill_stitches_deterministically(self, client, fake_services, create_fake_model_files):
         create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
-        _add_ic_lora(
+        add_ic_lora(
             fake_services, id="crossview-prompt", name="CrossView",
             prompt_template=PromptTemplateSpec(
                 template="crossview. new camera angle: {azimuth}, {elevation}, {distance}.",
@@ -428,7 +396,7 @@ class TestIcLoraSelection:
 
     def test_template_fill_rejects_invalid_enum_choice(self, client, fake_services, create_fake_model_files):
         create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
-        _add_ic_lora(
+        add_ic_lora(
             fake_services, id="crossview-prompt", name="CrossView",
             prompt_template=PromptTemplateSpec(
                 template="crossview. new camera angle: {azimuth}.",
@@ -442,7 +410,7 @@ class TestIcLoraSelection:
 
     def test_template_fill_rejects_non_json_response(self, client, fake_services, create_fake_model_files):
         create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
-        _add_ic_lora(
+        add_ic_lora(
             fake_services, id="upscale", name="Upscale",
             prompt_template=PromptTemplateSpec(template="upscale", placeholders={}),
         )
@@ -949,7 +917,7 @@ class TestApiProvider:
 
     def test_catalog_lora_system_prompt_reused_for_api_provider(self, client, fake_services, test_state):
         test_state.state.app_settings.gemini_api_key = "key"
-        _add_lora(
+        add_lora(
             fake_services, id="cozy-felt", name="Cozy Felt", trigger="F3ltCut0u7", trigger_placement="anywhere",
         )
         test_state.http.queue("post", _gemini_ok("a felt fox"))
@@ -964,6 +932,11 @@ class TestApiProvider:
         assert "Cozy Felt" in system_instruction
 
     def test_missing_gemini_key_rejected(self, client):
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "provider": "api"})
+        assert_http_error(r, status_code=400, code="GEMINI_API_KEY_MISSING")
+
+    def test_whitespace_only_gemini_key_is_rejected(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "   "
         r = client.post("/api/enhance-prompt", json={"prompt": "x", "provider": "api"})
         assert_http_error(r, status_code=400, code="GEMINI_API_KEY_MISSING")
 

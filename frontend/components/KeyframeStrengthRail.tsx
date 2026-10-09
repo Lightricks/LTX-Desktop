@@ -70,13 +70,13 @@ export function KeyframeStrengthRail({
         onStrengthChange(nudgeKeyframeStrength(strength, event.key === 'ArrowUp' ? 1 : -1))
       }}
     >
-      <div className="relative mx-auto h-full w-0.5 rounded-full bg-zinc-700">
+      <div className="relative mx-auto h-full w-0.5 rounded-full bg-separator">
         <div
-          className="absolute bottom-0 w-full rounded-full bg-blue-400"
+          className="absolute bottom-0 w-full rounded-full bg-brand"
           style={{ height: `${clamped * 100}%` }}
         />
         <div
-          className="absolute left-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-200 shadow"
+          className="absolute left-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-fg-primary shadow"
           style={{ top: `${(1 - clamped) * 100}%` }}
         />
       </div>

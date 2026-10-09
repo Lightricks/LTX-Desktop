@@ -119,7 +119,7 @@ export function KeyframeTimeline({
     <div>
       <div
         ref={trackRef}
-        className="relative h-16 rounded-lg border border-zinc-700 bg-zinc-950/70"
+        className="relative h-16 rounded-lg border border-separator bg-surface-tertiary"
         onPointerMove={handlePointerMove}
         onPointerUp={finishDrag}
         onPointerCancel={() => updateDrag(null)}
@@ -134,7 +134,7 @@ export function KeyframeTimeline({
           onImagesDrop(event.dataTransfer, null)
         }}
       >
-        <div className="pointer-events-none absolute left-2 right-2 top-1/2 h-px bg-zinc-700" />
+        <div className="pointer-events-none absolute left-2 right-2 top-1/2 h-px bg-separator" />
         <div
           className="pointer-events-none absolute inset-y-1 w-px bg-blue-400"
           style={{ left: `${positionPercent(playheadFrame)}%` }}
@@ -160,7 +160,7 @@ export function KeyframeTimeline({
                 type="button"
                 title="Drag to move keyframe"
                 aria-label={`Keyframe at ${timecode}`}
-                className="relative block h-11 w-11 cursor-ew-resize overflow-hidden rounded-md border-2 border-blue-500 bg-zinc-900 shadow-lg"
+                className="relative block h-11 w-11 cursor-ew-resize overflow-hidden rounded-md border-2 border-blue-500 bg-surface-primary shadow-lg"
                 onPointerDown={(event) => {
                   event.preventDefault()
                   event.stopPropagation()
@@ -203,7 +203,7 @@ export function KeyframeTimeline({
                   draggable={false}
                   className="h-full w-full object-cover"
                 />
-                <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-zinc-950/70 py-px text-center text-[9px] font-medium text-blue-200">
+                <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-[color-mix(in_srgb,var(--semantic-bg-black-primary)_70%,transparent)] py-px text-center text-[9px] font-medium text-fg-white">
                   {formatKeyframeStrength(source.strength)}
                 </span>
               </button>
@@ -218,7 +218,7 @@ export function KeyframeTimeline({
                   data-keyframe-replace
                   title="Replace keyframe image"
                   aria-label={`Replace keyframe at ${timecode}`}
-                  className="rounded-full bg-zinc-800 p-1 text-zinc-400 hover:text-blue-300"
+                  className="rounded-full bg-action p-1 text-fg-secondary hover:text-blue-400"
                   onClick={(event) => {
                     event.stopPropagation()
                     onReplaceRequest(keyframe.id)
@@ -231,7 +231,7 @@ export function KeyframeTimeline({
                   data-keyframe-delete
                   title="Delete keyframe"
                   aria-label={`Delete keyframe at ${timecode}`}
-                  className="rounded-full bg-zinc-800 p-1 text-zinc-400 hover:text-red-300"
+                  className="rounded-full bg-action p-1 text-fg-secondary hover:text-fg-danger"
                   onClick={(event) => {
                     event.stopPropagation()
                     onDelete(keyframe.id)
@@ -243,7 +243,7 @@ export function KeyframeTimeline({
               <input
                 type="text"
                 aria-label={`Timecode for keyframe at frame ${markerFrame}`}
-                className="absolute left-1/2 top-full mt-0.5 h-4 w-[66px] -translate-x-1/2 rounded border border-transparent bg-zinc-950/90 px-1 text-center font-mono text-[9px] text-zinc-400 outline-none hover:border-zinc-700 focus:border-blue-500 focus:text-zinc-200"
+                className="absolute left-1/2 top-full mt-0.5 h-4 w-[66px] -translate-x-1/2 rounded border border-transparent bg-surface-primary px-1 text-center font-mono text-[9px] text-fg-secondary outline-none hover:border-separator focus:border-blue-500 focus:text-fg-primary"
                 value={timecodeDraft?.id === keyframe.id
                   ? timecodeDraft.value
                   : timecode}
@@ -267,7 +267,7 @@ export function KeyframeTimeline({
           )
         })}
       </div>
-      <div className="mt-1 flex justify-between font-mono text-[9px] text-zinc-600">
+      <div className="mt-1 flex justify-between font-mono text-[9px] text-fg-tertiary">
         <span>0</span>
         <span>{lastFrame}</span>
       </div>

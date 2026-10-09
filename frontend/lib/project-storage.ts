@@ -1,5 +1,5 @@
-import { migrateProjectData, projectSchema, type Project } from '../types/project-model'
-import { logger } from './logger'
+import { migrateProjectData, projectSchema, type Project } from '../types/project-model.ts'
+import { logger } from './logger.ts'
 
 export const PROJECT_IDS_STORAGE_KEY = 'ltx-project-ids'
 export const PROJECT_STORAGE_KEY_PREFIX = 'ltx-project-'

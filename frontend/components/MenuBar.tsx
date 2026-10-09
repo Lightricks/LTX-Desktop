@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { Search } from 'lucide-react'
-
-// --- Types ---
+import { Text } from '@ds/Text/Text'
 
 export interface MenuItem {
   id: string
@@ -9,7 +8,7 @@ export interface MenuItem {
   shortcut?: string
   action?: () => void
   disabled?: boolean
-  separator?: boolean  // renders a divider line
+  separator?: boolean
   submenu?: MenuItem[]
 }
 
@@ -24,8 +23,6 @@ interface MenuBarProps {
   rightContent?: React.ReactNode
 }
 
-// --- Component ---
-
 export function MenuBar({ menus, rightContent }: MenuBarProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [hoverMenuId, setHoverMenuId] = useState<string | null>(null)
@@ -34,10 +31,8 @@ export function MenuBar({ menus, rightContent }: MenuBarProps) {
   const menuBarRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  // The active open menu (follow hover once a menu is open)
   const activeMenuId = openMenuId ? (hoverMenuId || openMenuId) : null
 
-  // Close menus on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuBarRef.current && !menuBarRef.current.contains(e.target as Node)) {
@@ -51,7 +46,6 @@ export function MenuBar({ menus, rightContent }: MenuBarProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [openMenuId])
 
-  // Close on Escape
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -109,7 +103,6 @@ export function MenuBar({ menus, rightContent }: MenuBarProps) {
     setHoverMenuId(null)
   }
 
-  // Handle search keyboard navigation
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -125,7 +118,7 @@ export function MenuBar({ menus, rightContent }: MenuBarProps) {
 
   const renderMenuItem = (item: MenuItem, index: number) => {
     if (item.separator) {
-      return <div key={`sep-${index}`} className="h-px bg-zinc-700 my-1 mx-2" />
+      return <div key={`sep-${index}`} className="h-px bg-separator-secondary my-1 mx-2" />
     }
 
     return (
@@ -133,24 +126,29 @@ export function MenuBar({ menus, rightContent }: MenuBarProps) {
         key={item.id}
         onClick={() => handleItemClick(item)}
         disabled={item.disabled}
-        className={`w-full flex items-center justify-between px-3 py-1.5 text-left text-[13px] transition-colors ${
+        className={`w-full flex items-center justify-between px-3 py-1.5 text-left transition-colors ${
           item.disabled
-            ? 'text-zinc-600 cursor-not-allowed'
-            : 'text-zinc-200 hover:bg-blue-600 hover:text-white'
+            ? 'text-fg-tertiary cursor-not-allowed'
+            : 'text-fg-primary hover:bg-action-hover'
         }`}
       >
-        <span>{item.label}</span>
+        <Text as="span" variant="body" size="md">{item.label}</Text>
         {item.shortcut && (
-          <span className={`ml-8 text-[11px] ${item.disabled ? 'text-zinc-700' : 'text-zinc-500'}`}>
+          <Text
+            as="span"
+            variant="body"
+            size="sm"
+            className={`ml-8 ${item.disabled ? 'text-fg-tertiary' : 'text-fg-secondary'}`}
+          >
             {item.shortcut}
-          </span>
+          </Text>
         )}
       </button>
     )
   }
 
   return (
-    <div ref={menuBarRef} className="flex items-center bg-zinc-900 border-b border-zinc-800 select-none relative z-[60]">
+    <div ref={menuBarRef} className="flex items-center bg-surface-primary border-b border-separator-secondary select-none relative z-[60]">
       <div className="flex items-center flex-1">
       {menus.map(menu => {
         const isActive = activeMenuId === menu.id
@@ -174,23 +172,21 @@ export function MenuBar({ menus, rightContent }: MenuBarProps) {
               onMouseEnter={() => {
                 if (openMenuId) setHoverMenuId(menu.id)
               }}
-              className={`px-3 py-1.5 text-[13px] font-medium transition-colors ${
+              className={`px-3 py-1.5 transition-colors ${
                 isActive
-                  ? 'bg-zinc-800 text-white'
-                  : 'text-zinc-400 hover:text-zinc-200'
+                  ? 'bg-action text-fg-primary'
+                  : 'text-fg-secondary hover:text-fg-primary'
               }`}
             >
-              {menu.label}
+              <Text as="span" variant="label" size="md">{menu.label}</Text>
             </button>
 
-            {/* Dropdown */}
             {isActive && (
-              <div className="absolute top-full left-0 min-w-[240px] bg-zinc-900 border border-zinc-700 rounded-b-lg shadow-xl shadow-black/50 py-1 z-[60]">
-                {/* Help menu has search */}
+              <div className="absolute top-full left-0 min-w-[240px] bg-surface-primary border border-separator-secondary rounded-b-lg shadow-xl py-1 z-[60]">
                 {isHelpMenu && (
-                  <div className="px-2 py-1.5 border-b border-zinc-700">
-                    <div className="flex items-center gap-2 bg-zinc-800 rounded px-2 py-1">
-                      <Search className="h-3.5 w-3.5 text-zinc-500 flex-shrink-0" />
+                  <div className="px-2 py-1.5 border-b border-separator-secondary">
+                    <div className="flex items-center gap-2 bg-surface-secondary rounded px-2 py-1">
+                      <Search className="h-3.5 w-3.5 text-fg-tertiary flex-shrink-0" />
                       <input
                         ref={searchInputRef}
                         type="text"
@@ -198,32 +194,33 @@ export function MenuBar({ menus, rightContent }: MenuBarProps) {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onKeyDown={handleSearchKeyDown}
-                        className="flex-1 bg-transparent text-[13px] text-white placeholder-zinc-500 outline-none"
+                        className="flex-1 bg-transparent text-sm text-fg-primary placeholder-fg-tertiary outline-none"
                         autoFocus
                       />
                     </div>
-                    {/* Search results */}
                     {searchQuery && (
                       <div className="mt-1 max-h-48 overflow-y-auto">
                         {searchResults.length === 0 ? (
-                          <div className="text-[12px] text-zinc-500 px-2 py-2 text-center">No results</div>
+                          <Text as="div" variant="body" size="sm" align="center" className="px-2 py-2 text-fg-tertiary">
+                            No results
+                          </Text>
                         ) : (
                           searchResults.map((result, i) => (
                             <button
                               key={`${result.item.id}-${i}`}
                               onClick={() => handleSearchResultClick(result.item)}
-                              className={`w-full flex items-center justify-between px-2 py-1.5 text-left text-[12px] rounded transition-colors ${
+                              className={`w-full flex items-center justify-between px-2 py-1.5 text-left rounded transition-colors ${
                                 i === highlightedResult
-                                  ? 'bg-blue-600 text-white'
-                                  : 'text-zinc-300 hover:bg-zinc-800'
+                                  ? 'bg-brand text-fg-white'
+                                  : 'text-fg-secondary hover:bg-action'
                               }`}
                             >
                               <div>
-                                <span>{result.item.label}</span>
-                                <span className="text-[10px] text-zinc-500 ml-2">{result.menuLabel}</span>
+                                <Text as="span" variant="body" size="sm">{result.item.label}</Text>
+                                <Text as="span" variant="body" size="xs" className="ml-2 text-fg-tertiary">{result.menuLabel}</Text>
                               </div>
                               {result.item.shortcut && (
-                                <span className="text-[10px] text-zinc-500">{result.item.shortcut}</span>
+                                <Text as="span" variant="body" size="xs" className="text-fg-tertiary">{result.item.shortcut}</Text>
                               )}
                             </button>
                           ))
@@ -233,7 +230,6 @@ export function MenuBar({ menus, rightContent }: MenuBarProps) {
                   </div>
                 )}
 
-                {/* Regular menu items */}
                 {menu.items.map((item, i) => renderMenuItem(item, i))}
               </div>
             )}

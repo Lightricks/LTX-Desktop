@@ -57,25 +57,20 @@ _mps_prebuilt_ext.setup_prebuilt_mps_extension()
 
 # LLM: bumping ltx-core / ltx-pipelines (backend/pyproject.toml) MUST re-verify every
 # import below (and mps_sdpa_torch later in this file). These monkey-patch private
-# ltx-core / ltx-pipelines / safetensors symbols. For each module: confirm the
-# upstream symbol still exists, the replacement still matches the contract, drop it
-# if upstream now includes the fix (see that file's "Remove once ..." docstring),
-# and run tests/test_<patch>.py.
-import services.patches.record_stream_fix as _record_stream_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core includes the fix
-del _record_stream_fix
+# ltx-core / ltx-pipelines / safetensors symbols. Delete-first: drop a patch if
+# upstream now includes the fix (see that file's "Remove once ..." docstring).
+# Do not reorder this block relative to mps_prebuilt_ext / MPS_SDPA_SKIP_CALIBRATION.
 import services.patches.safetensors_loader_fix as _safetensors_loader_fix  # pyright: ignore[reportUnusedImport]  # Remove once safetensors/PyTorch fix the mmap issue
 del _safetensors_loader_fix
+import services.patches.disk_streaming_pread as _disk_streaming_pread  # Remove once ltx-core DiskTensorReader passes backend=pread on Darwin. No-op off Darwin.
+_disk_streaming_pread.install()
 import services.patches.safetensors_metadata_fix as _safetensors_metadata_fix  # pyright: ignore[reportUnusedImport]  # Remove once safetensors supports read-only mmap
 del _safetensors_metadata_fix
 import services.patches.pinned_pool_fix as _pinned_pool_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core alloc_buffer does not report pinned-host failure as CUDA VRAM OOM (LTX-Desktop#141)
 del _pinned_pool_fix
-import services.patches.ic_lora_stage2_lora as _ic_lora_stage2_lora  # pyright: ignore[reportUnusedImport]  # EXPERIMENTAL: remove once upstream ships PR #494 (use_lora_in_stage_2)
-del _ic_lora_stage2_lora
 import services.patches.diffusion_stage_cache as _diffusion_stage_cache  # pyright: ignore[reportUnusedImport]  # EXPERIMENTAL: remove once DiffusionStage caches/reuses identical builds upstream
 del _diffusion_stage_cache
-import services.patches.diffvae_mps_tiling_budget as _diffvae_mps_tiling_budget  # pyright: ignore[reportUnusedImport]  # Remove once ltx-pipelines queries MPS/unified free memory
-del _diffvae_mps_tiling_budget
-import services.patches.diffvae_decode_vram as _diffvae_decode_vram  # pyright: ignore[reportUnusedImport]  # Remove once ltx-pipelines offloads the transformer before DiffVAE decode
+import services.patches.diffvae_decode_vram as _diffvae_decode_vram  # pyright: ignore[reportUnusedImport]  # Remove once upstream decode tiling is confirmed sufficient (E1)
 del _diffvae_decode_vram
 import services.patches.natten_libnatten_gate as _natten_libnatten_gate  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core natten_available checks HAS_LIBNATTEN
 del _natten_libnatten_gate
@@ -112,6 +107,9 @@ logger = logging.getLogger(__name__)
 # Now that logging is configured, report which mps-sdpa attention backend is live
 # (the setup call at import time logs too early to be captured). No-op off Darwin.
 _mps_prebuilt_ext.log_mps_backend_status()
+# install() ran before basicConfig, so its status log would have been dropped.
+_disk_streaming_pread.log_status()
+del _disk_streaming_pread
 
 # ============================================================
 # SageAttention Integration
@@ -234,6 +232,7 @@ SETTINGS_FILE = SETTINGS_DIR / "settings.json"
 DEFAULT_APP_SETTINGS = AppSettings()
 
 from app_factory import DEFAULT_ALLOWED_ORIGINS, create_app
+from dataclasses import dataclass
 from state import RuntimeConfig, build_initial_state
 from runtime_config.runtime_policy import LocalGenerationMode, decide_local_generation_mode
 from server_utils.model_layout_migration import migrate_legacy_models_layout
@@ -244,7 +243,15 @@ migrate_legacy_models_layout(APP_DATA_DIR)
 LTX_API_BASE_URL = "https://api.ltx.video"
 
 
-def _resolve_local_generations_mode() -> LocalGenerationMode:
+@dataclass(frozen=True)
+class _LocalRuntime:
+    mode: LocalGenerationMode
+    vram_gb: int | None
+    available_ram_gb: int | None
+    darwin: bool
+
+
+def _resolve_local_runtime() -> _LocalRuntime:
     from runtime_config.accelerator import accelerator_backend
 
     gpu_info = GpuInfoImpl()
@@ -253,10 +260,10 @@ def _resolve_local_generations_mode() -> LocalGenerationMode:
     mps_available = gpu_info.get_mps_available()
     vram_gb = gpu_info.get_vram_total_gb()
     fp8_capable = accelerator_backend() == "cuda"
-    # On Darwin there's no discrete VRAM (unified memory), so gate on *available* RAM,
-    # not total — total overstates real headroom once the OS/Electron/app are running.
-    # See GpuInfoImpl.get_available_ram_gb.
+    # Darwin has no discrete VRAM (unified memory). Eligibility uses *total* RAM
+    # (``get_vram_total_gb`` / SKU). Job sizing still uses free RAM at launch.
     available_ram_gb = gpu_info.get_available_ram_gb() if system == "Darwin" else None
+    ram_gb = vram_gb if system == "Darwin" else None
 
     # Server-owned source of truth for mode selection.
     mode = decide_local_generation_mode(
@@ -264,7 +271,7 @@ def _resolve_local_generations_mode() -> LocalGenerationMode:
         cuda_available=cuda_available,
         vram_gb=vram_gb,
         mps_available=mps_available,
-        ram_gb=available_ram_gb,
+        ram_gb=ram_gb,
         fp8_capable=fp8_capable,
     )
     logger.info(
@@ -278,10 +285,36 @@ def _resolve_local_generations_mode() -> LocalGenerationMode:
         available_ram_gb,
         fp8_capable,
     )
+    return _LocalRuntime(
+        mode=mode,
+        vram_gb=vram_gb,
+        available_ram_gb=available_ram_gb,
+        darwin=system == "Darwin",
+    )
+
+
+_LOCAL_RUNTIME = _resolve_local_runtime()
+LOCAL_GENERATIONS_MODE = _LOCAL_RUNTIME.mode
+
+
+def _effective_local_generations_mode(mode: LocalGenerationMode) -> LocalGenerationMode:
+    """Dev-only: unlock Explore model specs when RAM check failed at launch."""
+    if (
+        os.environ.get("LTX_DEV_MODE") == "1"
+        and os.environ.get("LTX_DEV_FORCE_LOCAL_VIABLE") == "1"
+        and mode == "unsupported"
+    ):
+        logger.warning(
+            "Dev override LTX_DEV_FORCE_LOCAL_VIABLE: using streaming_models_loading "
+            "(detected mode was unsupported)"
+        )
+        return "streaming_models_loading"
     return mode
 
 
-LOCAL_GENERATIONS_MODE = _resolve_local_generations_mode()
+_EFFECTIVE_LOCAL_GENERATIONS_MODE = _effective_local_generations_mode(
+    LOCAL_GENERATIONS_MODE
+)
 
 CAMERA_MOTION_PROMPTS = {
     "none": "",
@@ -306,7 +339,10 @@ runtime_config = RuntimeConfig(
     outputs_dir=OUTPUTS_DIR,
     settings_file=SETTINGS_FILE,
     ltx_api_base_url=LTX_API_BASE_URL,
-    local_generations_mode=LOCAL_GENERATIONS_MODE,
+    local_generations_mode=_EFFECTIVE_LOCAL_GENERATIONS_MODE,
+    vram_gb=_LOCAL_RUNTIME.vram_gb,
+    available_ram_gb=_LOCAL_RUNTIME.available_ram_gb,
+    darwin_unified_memory=_LOCAL_RUNTIME.darwin,
     use_sage_attention=use_sage_attention,
     camera_motion_prompts=CAMERA_MOTION_PROMPTS,
     default_negative_prompt=DEFAULT_NEGATIVE_PROMPT,
@@ -351,9 +387,11 @@ def log_hardware_info() -> None:
     logger.info(f"Device: {DEVICE}  |  Dtype: {DTYPE}")
     gpu_line = f"GPU: {gpu_info['name']}  |  VRAM: {vram_gb} GB"
     # On Apple Silicon there's no discrete VRAM — the figure above is total unified
-    # memory. Local generation is gated on *available* RAM at startup, so surface it.
+    # memory, which is also the local-generation eligibility check.
     if gpu.get_mps_available():
+        total = gpu.get_vram_total_gb()
         avail = gpu.get_available_ram_gb()
+        gpu_line += f"  |  Total RAM: {total if total is not None else '?'} GB"
         gpu_line += f"  |  Available RAM: {avail if avail is not None else '?'} GB"
         logger.info(
             "LTX 2.5 decode uses eager SDPA on Mac (no Triton; slower than Linux/Windows)."

@@ -1,4 +1,5 @@
 import { Heart, Sparkles } from 'lucide-react'
+import { Text } from '@ds/Text/Text'
 import type { GenSpaceSortDir, GenSpaceSortKey, GenSpaceTypeFilter } from '../../lib/genspace-gallery'
 import { GenSpaceGallerySizeMenu, type GallerySize } from './GenSpaceGallerySizeMenu'
 import { GenSpaceSortMenu } from './GenSpaceSortMenu'
@@ -40,9 +41,10 @@ export function GenSpaceGalleryToolbar({
           <button
             type="button"
             onClick={onBrowseLoras}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-fg-secondary hover:text-fg-primary hover:bg-action transition-colors"
           >
-            <Sparkles className="h-4 w-4" /> Browse LoRAs
+            <Sparkles className="h-4 w-4" />
+            <Text as="span" variant="label" size="lg">Browse LoRAs</Text>
           </button>
         )}
       </div>
@@ -59,15 +61,15 @@ export function GenSpaceGalleryToolbar({
           onClick={onToggleFavorites}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
             showFavorites
-              ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              ? 'bg-danger-soft text-fg-danger border border-danger/30'
+              : 'text-fg-secondary hover:text-fg-primary hover:bg-action'
           }`}
         >
           <Heart className={`h-4 w-4 ${showFavorites ? 'fill-current' : ''}`} />
-          Favorites
+          <Text as="span" variant="label" size="lg">Favorites</Text>
           {favoriteCount > 0 && (
             <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-              showFavorites ? 'bg-red-500/30 text-red-300' : 'bg-zinc-800 text-zinc-500'
+              showFavorites ? 'bg-danger-soft text-fg-danger' : 'bg-action text-fg-tertiary'
             }`}>
               {favoriteCount}
             </span>

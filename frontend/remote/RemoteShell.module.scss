@@ -1,0 +1,47 @@
+.themeRoot {
+  height: 100%;
+  min-height: 100dvh;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.fillShell {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.home {
+  box-sizing: border-box;
+  height: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: auto;
+  overflow-x: hidden;
+  padding: var(--spacing-lg);
+  padding-bottom: calc(var(--spacing-lg) + env(safe-area-inset-bottom, 0px));
+}
+
+.homeTitle {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--semantic-fg-primary);
+}
+
+.homeCopy {
+  margin: var(--spacing-sm) 0 var(--spacing-lg);
+  line-height: 1.5;
+  color: var(--semantic-fg-secondary);
+}
+
+.homeLink {
+  color: var(--semantic-fg-primary);
+  text-decoration: underline;
+}

@@ -7,6 +7,10 @@ import uuid
 
 from services.gemini_text_client import DEFAULT_GEMINI_MODEL
 from services.interfaces import HttpTransportError
+from runtime_config.video_job_budget import (
+    LOCAL_GENERATION_UNSUPPORTED,
+    LOCAL_GENERATION_UNSUPPORTED_MESSAGE,
+)
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError, LTXRetakeResult
 from tests.http_error_assertions import assert_http_error
 from tests.fakes import FakeResponse
@@ -261,10 +265,16 @@ class TestRetake:
         assert r.status_code == 400
 
     def test_no_api_key(self, client, test_state):
+        """_force_api means unsupported hardware, which is reported as such, not as a key prompt."""
         self._force_api(test_state)
         video_path = self._make_video(test_state)
         r = client.post("/api/retake", json=self._base_payload(video_path))
-        assert r.status_code == 400
+        assert_http_error(
+            r,
+            status_code=422,
+            code=LOCAL_GENERATION_UNSUPPORTED,
+            message=LOCAL_GENERATION_UNSUPPORTED_MESSAGE,
+        )
 
     def test_rejects_fast_tier_model(self, client, test_state):
         # "fast" is not a RetakeExtendModel member, so pydantic rejects it (422)
@@ -282,7 +292,12 @@ class TestRetake:
         test_state.ltx_api_client.raise_on_retake = LTXAPIClientError(401, "Failed to get upload URL: Unauthorized")
 
         r = client.post("/api/retake", json=self._base_payload(video_path))
-        assert r.status_code == 401
+        assert_http_error(
+            r,
+            status_code=401,
+            code="LTX_INVALID_API_KEY",
+            message="This LTX API key isn’t valid.",
+        )
 
     def test_video_upload_failure(self, client, test_state):
         self._force_api(test_state)
@@ -338,19 +353,17 @@ class TestRetake:
         assert data["status"] == "complete"
         assert data["video_path"]
 
-    def test_local_retake_rejected_on_2_5(self, client, test_state, create_fake_model_files):
+    def test_local_retake_happy_path_on_2_5(self, client, test_state, create_fake_model_files):
         _install_local_2_5(test_state, create_fake_model_files, include_zit=False)
         test_state.state.app_settings.use_local_text_encoder = True
         test_state.config.local_generations_mode = "full_models_loading"
 
         video_path = self._make_valid_video(test_state)
         r = client.post("/api/retake", json=self._base_payload(video_path))
-        assert_http_error(
-            r,
-            status_code=409,
-            code="UNSUPPORTED_RETAKE",
-            message="Retake is not supported for the active LTX model.",
-        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "complete"
+        assert data["video_path"]
 
     def test_local_retake_mode_mapping(self, client, test_state, create_fake_model_files, fake_services):
         _install_local_2_3(test_state, create_fake_model_files, include_zit=False)
@@ -543,10 +556,16 @@ class TestExtend:
         assert r.status_code == 422
 
     def test_no_api_key(self, client, test_state):
+        """_force_api means unsupported hardware, which is reported as such, not as a key prompt."""
         self._force_api(test_state)
         video_path = self._make_video(test_state)
         r = client.post("/api/extend", json=self._base_payload(video_path))
-        assert r.status_code == 400
+        assert_http_error(
+            r,
+            status_code=422,
+            code=LOCAL_GENERATION_UNSUPPORTED,
+            message=LOCAL_GENERATION_UNSUPPORTED_MESSAGE,
+        )
 
     def test_extend_api_422_safety_filter(self, client, test_state):
         self._force_api(test_state)
@@ -588,19 +607,17 @@ class TestExtend:
         assert data["status"] == "complete"
         assert data["video_path"]
 
-    def test_local_extend_rejected_on_2_5(self, client, test_state, create_fake_model_files):
+    def test_local_extend_happy_path_on_2_5(self, client, test_state, create_fake_model_files):
         _install_local_2_5(test_state, create_fake_model_files, include_zit=False)
         test_state.state.app_settings.use_local_text_encoder = True
         test_state.config.local_generations_mode = "full_models_loading"
 
         video_path = self._make_valid_video(test_state)
         r = client.post("/api/extend", json=self._base_payload(video_path))
-        assert_http_error(
-            r,
-            status_code=409,
-            code="UNSUPPORTED_EXTEND",
-            message="Extend is not supported for the active LTX model.",
-        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "complete"
+        assert data["video_path"]
 
     def test_local_extend_snaps_frames_and_forwards_mode(self, client, test_state, create_fake_model_files, fake_services):
         _install_local_2_3(test_state, create_fake_model_files, include_zit=False)

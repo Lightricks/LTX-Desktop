@@ -26,6 +26,8 @@ interface ICLoraPanelProps {
   // Catalog IC-LoRA opt-in: when true the middle column offers an optional reference-image
   // picker (instead of the canny/depth conditioning preview, which catalog IC-LoRAs hide).
   allowsReferenceImage?: boolean
+  // The entry cannot run without the reference image, so the picker is marked required.
+  referenceImageRequired?: boolean
   // Outpainting (position_canvas control): when true the middle column shows the canvas editor.
   showOutpaintCanvas?: boolean
   outpaintPads?: OutpaintPads
@@ -70,6 +72,7 @@ export function ICLoraPanel({
   inputKind = 'video',
   selectedIcLoraId = null,
   allowsReferenceImage = false,
+  referenceImageRequired = false,
   showOutpaintCanvas = false,
   outpaintPads,
   onOutpaintPadsChange,
@@ -407,24 +410,24 @@ export function ICLoraPanel({
   })
 
   return (
-    <div className={`bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col ${fillHeight ? 'h-full min-h-0' : ''}`}>
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 flex-shrink-0">
+    <div className={`bg-surface-primary border border-separator rounded-2xl overflow-hidden flex flex-col ${fillHeight ? 'h-full min-h-0' : ''}`}>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-separator flex-shrink-0">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-amber-400" />
-          <span className="text-sm font-semibold text-white">IC-LoRA / Style Transfer</span>
+          <Sparkles className="h-4 w-4 text-fg-warning" />
+          <span className="text-sm font-semibold text-fg-primary">IC-LoRA / Style Transfer</span>
         </div>
         {inputVideoUrl && (
           <div className="flex items-center gap-2">
             <button
               onClick={handleClear}
-              className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+              className="p-1.5 rounded-md hover:bg-action text-fg-secondary hover:text-fg-primary transition-colors"
               title="Clear video"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
             <button
               onClick={handleBrowse}
-              className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+              className="p-1.5 rounded-md hover:bg-action text-fg-secondary hover:text-fg-primary transition-colors"
               title="Replace video"
             >
               <RefreshCw className="h-3.5 w-3.5" />
@@ -434,28 +437,28 @@ export function ICLoraPanel({
       </div>
 
       {isLocalMode && (
-        <div className="px-3 py-2 border-b border-zinc-800 flex-shrink-0">
+        <div className="px-3 py-2 border-b border-separator flex-shrink-0">
           <button
             onClick={onBrowseLibrary}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-action hover:bg-action-hover text-fg-primary text-xs font-medium transition-colors"
           >
-            <Sparkles className="h-3.5 w-3.5 text-amber-400" /> Browse IC-LoRAs
+            <Sparkles className="h-3.5 w-3.5 text-fg-warning" /> Browse IC-LoRAs
           </button>
         </div>
       )}
 
       {showUnsupportedGate ? (
         <div className="flex-1 flex items-center justify-center p-6 min-h-0 overflow-y-auto">
-          <div className="w-full max-w-xl rounded-xl border border-zinc-700 bg-zinc-800/60 p-6">
+          <div className="w-full max-w-xl rounded-xl border border-separator bg-surface-secondary p-6">
             <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-lg bg-amber-600/20 flex items-center justify-center mt-0.5">
-                <AlertCircle className="h-4 w-4 text-amber-400" />
+              <div className="w-9 h-9 rounded-lg bg-warning-soft flex items-center justify-center mt-0.5">
+                <AlertCircle className="h-4 w-4 text-fg-warning" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-semibold text-white">Built-in control needs LTX 2.3</h3>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Depth and canny Union Control are not available on the active LTX 2.5 model.
-                  Switch to an LTX 2.3 local model in Settings, or use a custom / catalog IC-LoRA.
+                <h3 className="text-sm font-semibold text-fg-primary">Built-in control is not available</h3>
+                <p className="text-xs text-fg-secondary mt-1">
+                  Depth and canny Union Control are not available on the active LTX model.
+                  Use a custom or catalog IC-LoRA, or switch models in Settings.
                 </p>
               </div>
             </div>
@@ -463,14 +466,14 @@ export function ICLoraPanel({
         </div>
       ) : showDownloadGate ? (
         <div className="flex-1 flex items-center justify-center p-6 min-h-0 overflow-y-auto">
-          <div className="w-full max-w-xl rounded-xl border border-zinc-700 bg-zinc-800/60 p-6">
+          <div className="w-full max-w-xl rounded-xl border border-separator bg-surface-secondary p-6">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-lg bg-blue-600/20 flex items-center justify-center mt-0.5">
                 <Download className="h-4 w-4 text-blue-400" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-semibold text-white">Download Required: IC-LoRA Resources</h3>
-                <p className="text-xs text-zinc-400 mt-1">
+                <h3 className="text-sm font-semibold text-fg-primary">Download Required: IC-LoRA Resources</h3>
+                <p className="text-xs text-fg-secondary mt-1">
                   Editing is locked until all IC-LoRA preprocessing models are available locally.
                 </p>
               </div>
@@ -478,7 +481,7 @@ export function ICLoraPanel({
 
             <div className="mt-5 space-y-3">
               {isCheckingIcLora ? (
-                <div className="flex items-center gap-2 text-xs text-zinc-300">
+                <div className="flex items-center gap-2 text-xs text-fg-secondary">
                   <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
                   Checking model availability...
                 </div>
@@ -486,31 +489,31 @@ export function ICLoraPanel({
                 <>
                   <div className="space-y-2">
                     {gateItems.map(item => (
-                      <div key={item.id} className="rounded-lg border border-zinc-700 bg-zinc-900/60 px-3 py-2">
+                      <div key={item.id} className="rounded-lg border border-separator bg-surface-primary px-3 py-2">
                         <div className="flex items-center justify-between text-[11px] mb-1.5">
-                          <span className="text-zinc-300">{item.label}</span>
-                          <span className={item.downloaded ? 'text-blue-400' : 'text-zinc-500'}>
+                          <span className="text-fg-primary">{item.label}</span>
+                          <span className={item.downloaded ? 'text-blue-400' : 'text-fg-tertiary'}>
                             {item.status}
                           </span>
                         </div>
-                        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                        <div className="h-1.5 bg-action rounded-full overflow-hidden">
                           <div
                             className="h-full transition-all duration-300 bg-blue-500"
                             style={{ width: `${item.progress}%` }}
                           />
                         </div>
-                        <div className="mt-1 text-[10px] text-zinc-500">{item.progress}%</div>
+                        <div className="mt-1 text-[10px] text-fg-tertiary">{item.progress}%</div>
                       </div>
                     ))}
                   </div>
                   {downloadError && (
-                    <div className="text-[11px] text-red-400">{downloadError}</div>
+                    <div className="text-[11px] text-fg-danger">{downloadError}</div>
                   )}
                   <div className="flex items-center gap-2 pt-1">
                     <button
                       onClick={handleDownloadIcLora}
                       disabled={isDownloadingIcLora}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-hover text-fg-white text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isDownloadingIcLora ? (
                         <>
@@ -527,7 +530,7 @@ export function ICLoraPanel({
                     <button
                       onClick={() => { void checkIcLoraAvailability() }}
                       disabled={isCheckingIcLora}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-600 text-zinc-300 hover:text-white hover:border-zinc-500 text-xs transition-colors disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-separator text-fg-secondary hover:text-fg-primary hover:border-separator text-xs transition-colors disabled:opacity-50"
                     >
                       <RefreshCw className={`h-3 w-3 ${isCheckingIcLora ? 'animate-spin' : ''}`} />
                       Refresh
@@ -540,24 +543,24 @@ export function ICLoraPanel({
         </div>
       ) : (
         <div className="flex-1 flex min-h-0 overflow-hidden">
-          <div className="flex-1 flex flex-col border-r border-zinc-800 min-w-0">
-            <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider shrink-0">Input</span>
+          <div className="flex-1 flex flex-col border-r border-separator min-w-0">
+            <div className="px-3 py-2 border-b border-separator flex items-center justify-between gap-2">
+              <span className="text-[11px] font-semibold text-fg-tertiary uppercase tracking-wider shrink-0">Input</span>
               {inputVideoPath && (
-                <span className="text-[10px] text-zinc-500 truncate min-w-0">
+                <span className="text-[10px] text-fg-tertiary truncate min-w-0">
                   {inputVideoPath.split(/[\\/]/).pop()}
                 </span>
               )}
               <button
                 onClick={handleBrowse}
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors shrink-0"
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-fg-secondary hover:text-fg-primary hover:bg-action transition-colors shrink-0"
               >
                 <Upload className="h-3 w-3" />
                 Import
               </button>
             </div>
             <div
-              className={`flex-1 min-h-0 bg-black flex items-center justify-center relative ${!inputVideoUrl ? 'border-2 border-dashed border-zinc-700 m-3 rounded-lg' : ''} ${isDragOver ? 'border-blue-500 bg-blue-500/10' : ''}`}
+              className={`flex-1 min-h-0 bg-surface-tertiary flex items-center justify-center relative ${!inputVideoUrl ? 'border-2 border-dashed border-separator m-3 rounded-lg' : ''} ${isDragOver ? 'border-blue-500 bg-blue-500/10' : ''}`}
               onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
               onDragLeave={() => setIsDragOver(false)}
               onDrop={handleDrop}
@@ -581,10 +584,10 @@ export function ICLoraPanel({
                 )
               ) : (
                 <div className="text-center p-4">
-                  <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center mx-auto mb-2">
-                    <Film className="h-6 w-6 text-zinc-600" />
+                  <div className="w-12 h-12 rounded-full bg-action flex items-center justify-center mx-auto mb-2">
+                    <Film className="h-6 w-6 text-fg-tertiary" />
                   </div>
-                  <p className="text-zinc-400 text-xs">{isImage ? 'Drop or import an image' : isCustom ? 'Drop or import a control video' : 'Drop or import a driving video'}</p>
+                  <p className="text-fg-secondary text-xs">{isImage ? 'Drop or import an image' : isCustom ? 'Drop or import a control video' : 'Drop or import a driving video'}</p>
                   <button
                     onClick={handleBrowse}
                     className="mt-2 px-3 py-1.5 text-[10px] text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-600/10 transition-colors"
@@ -598,17 +601,17 @@ export function ICLoraPanel({
 
           {showConditioningPreview && (
           <div className="flex-1 flex flex-col min-w-0">
-            <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Conditioning</span>
+            <div className="px-3 py-2 border-b border-separator flex items-center justify-between gap-2">
+              <span className="text-[11px] font-semibold text-fg-tertiary uppercase tracking-wider">Conditioning</span>
               <button
                 onClick={() => { void extractConditioning() }}
                 disabled={!inputVideoPath || isExtracting}
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-fg-secondary hover:text-fg-primary hover:bg-action transition-colors disabled:opacity-50"
               >
                 <RefreshCw className={`h-3 w-3 ${isExtracting ? 'animate-spin' : ''}`} />
               </button>
             </div>
-            <div className="flex-1 bg-black flex items-center justify-center min-h-0 relative">
+            <div className="flex-1 bg-surface-tertiary flex items-center justify-center min-h-0 relative">
               {isExtracting && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
                   <Loader2 className="h-5 w-5 text-blue-400 animate-spin" />
@@ -618,7 +621,7 @@ export function ICLoraPanel({
                 <img src={conditioningPreview} alt="Conditioning preview" className="w-full h-full object-contain" />
               ) : (
                 <div className="text-center p-4">
-                  <p className="text-zinc-600 text-xs">
+                  <p className="text-fg-tertiary text-xs">
                     {inputVideoUrl ? 'Scrub the input video to see conditioning preview' : 'Import a video to preview conditioning'}
                   </p>
                 </div>
@@ -630,10 +633,12 @@ export function ICLoraPanel({
           {/* Reference image column: takes the conditioning slot for catalog IC-LoRAs that opt in. */}
           {allowsReferenceImage && !showConditioningPreview && (
           <div className="flex-1 flex flex-col min-w-0">
-            <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider shrink-0">Reference</span>
+            <div className="px-3 py-2 border-b border-separator flex items-center justify-between gap-2">
+              <span className="text-[11px] font-semibold text-fg-tertiary uppercase tracking-wider shrink-0">
+                {referenceImageRequired ? 'Reference (required)' : 'Reference'}
+              </span>
               {referenceImagePath && (
-                <span className="text-[10px] text-zinc-500 truncate min-w-0">
+                <span className="text-[10px] text-fg-tertiary truncate min-w-0">
                   {referenceImagePath.split(/[\\/]/).pop()}
                 </span>
               )}
@@ -641,14 +646,14 @@ export function ICLoraPanel({
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={handleClearReference}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-fg-secondary hover:text-fg-primary hover:bg-action transition-colors"
                     title="Clear reference image"
                   >
                     <Trash2 className="h-3 w-3" />
                   </button>
                   <button
                     onClick={handleBrowseReference}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-fg-secondary hover:text-fg-primary hover:bg-action transition-colors"
                     title="Replace reference image"
                   >
                     <RefreshCw className="h-3 w-3" />
@@ -657,7 +662,7 @@ export function ICLoraPanel({
               ) : (
                 <button
                   onClick={handleBrowseReference}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors shrink-0"
+                  className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-fg-secondary hover:text-fg-primary hover:bg-action transition-colors shrink-0"
                 >
                   <Upload className="h-3 w-3" />
                   Import
@@ -665,7 +670,7 @@ export function ICLoraPanel({
               )}
             </div>
             <div
-              className={`flex-1 min-h-0 bg-black flex items-center justify-center relative ${!referenceImageUrl ? 'border-2 border-dashed border-zinc-700 m-3 rounded-lg' : ''} ${isReferenceDragOver ? 'border-blue-500 bg-blue-500/10' : ''}`}
+              className={`flex-1 min-h-0 bg-surface-tertiary flex items-center justify-center relative ${!referenceImageUrl ? 'border-2 border-dashed border-separator m-3 rounded-lg' : ''} ${isReferenceDragOver ? 'border-blue-500 bg-blue-500/10' : ''}`}
               onDragOver={(e) => { e.preventDefault(); setIsReferenceDragOver(true) }}
               onDragLeave={() => setIsReferenceDragOver(false)}
               onDrop={handleDropReference}
@@ -674,10 +679,10 @@ export function ICLoraPanel({
                 <img src={referenceImageUrl} alt="Reference" className="w-full h-full object-contain" />
               ) : (
                 <div className="text-center p-4">
-                  <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center mx-auto mb-2">
-                    <ImageIcon className="h-6 w-6 text-zinc-600" />
+                  <div className="w-12 h-12 rounded-full bg-action flex items-center justify-center mx-auto mb-2">
+                    <ImageIcon className="h-6 w-6 text-fg-tertiary" />
                   </div>
-                  <p className="text-zinc-400 text-xs">Drop or import a reference image</p>
+                  <p className="text-fg-secondary text-xs">Drop or import a reference image</p>
                   <button
                     onClick={handleBrowseReference}
                     className="mt-2 px-3 py-1.5 text-[10px] text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-600/10 transition-colors"
@@ -693,8 +698,8 @@ export function ICLoraPanel({
           {/* Canvas editor column: takes the middle slot for outpainting (position_canvas control). */}
           {showOutpaintCanvas && !showConditioningPreview && (
           <div className="flex-1 flex flex-col min-w-0">
-            <div className="px-3 py-2 border-b border-zinc-800 flex items-center">
-              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Canvas</span>
+            <div className="px-3 py-2 border-b border-separator flex items-center">
+              <span className="text-[11px] font-semibold text-fg-tertiary uppercase tracking-wider">Canvas</span>
             </div>
             {sourceDims && outpaintPads ? (
               <OutpaintCanvasEditor
@@ -704,19 +709,19 @@ export function ICLoraPanel({
                 onChange={(p) => onOutpaintPadsChange?.(p)}
               />
             ) : (
-              <div className="flex-1 bg-black flex items-center justify-center">
-                <p className="text-zinc-600 text-xs">Import a video to set the outpaint canvas</p>
+              <div className="flex-1 bg-surface-tertiary flex items-center justify-center">
+                <p className="text-fg-tertiary text-xs">Import a video to set the outpaint canvas</p>
               </div>
             )}
           </div>
           )}
 
           {/* Output column */}
-          <div className="flex-1 flex flex-col border-l border-zinc-800 min-w-0">
-            <div className="px-3 py-2 border-b border-zinc-800 flex items-center">
-              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Output</span>
+          <div className="flex-1 flex flex-col border-l border-separator min-w-0">
+            <div className="px-3 py-2 border-b border-separator flex items-center">
+              <span className="text-[11px] font-semibold text-fg-tertiary uppercase tracking-wider">Output</span>
             </div>
-            <div className="flex-1 bg-black flex items-center justify-center min-h-0 relative">
+            <div className="flex-1 bg-surface-tertiary flex items-center justify-center min-h-0 relative">
               {_outputVideoPath ? (
                 <video
                   src={pathToFileUrl(_outputVideoPath)}
@@ -726,11 +731,11 @@ export function ICLoraPanel({
               ) : isProcessing ? (
                 <div className="text-center p-4">
                   <Loader2 className="h-6 w-6 text-blue-400 animate-spin mx-auto mb-2" />
-                  <p className="text-zinc-400 text-xs">{processingStatus || 'Generating...'}</p>
+                  <p className="text-fg-secondary text-xs">{processingStatus || 'Generating...'}</p>
                 </div>
               ) : (
                 <div className="text-center p-4">
-                  <p className="text-zinc-600 text-xs">Output video will appear here</p>
+                  <p className="text-fg-tertiary text-xs">Output video will appear here</p>
                 </div>
               )}
             </div>
@@ -739,8 +744,8 @@ export function ICLoraPanel({
       )}
 
       {extractError && (
-        <div className="px-4 py-3 border-t border-zinc-800 flex-shrink-0">
-          <div className="flex items-center gap-2 text-xs text-red-400">
+        <div className="px-4 py-3 border-t border-separator flex-shrink-0">
+          <div className="flex items-center gap-2 text-xs text-fg-danger">
             <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
             <span>{extractError}</span>
           </div>

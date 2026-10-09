@@ -49,6 +49,113 @@
         "title": "ActiveDownloadResponse",
         "type": "object"
       },
+      "ActiveIcLoraDownloadResponse": {
+        "properties": {
+          "ic_lora_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ic Lora Id"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "required": [
+          "session_id",
+          "ic_lora_id"
+        ],
+        "title": "ActiveIcLoraDownloadResponse",
+        "type": "object"
+      },
+      "ActiveLoraDownloadResponse": {
+        "properties": {
+          "lora_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lora Id"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "required": [
+          "session_id",
+          "lora_id"
+        ],
+        "title": "ActiveLoraDownloadResponse",
+        "type": "object"
+      },
+      "ActivityDay": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "day": {
+            "title": "Day",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "counts"
+        ],
+        "title": "ActivityDay",
+        "type": "object"
+      },
       "AppSettingsPatch": {
         "additionalProperties": false,
         "properties": {
@@ -68,6 +175,16 @@
             ],
             "title": "Activeltxmodelid"
           },
+          "activityDashboardSelections": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DashboardSelectionPatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "diffusionStageCacheEnabled": {
             "anyOf": [
               {
@@ -78,6 +195,17 @@
               }
             ],
             "title": "Diffusionstagecacheenabled"
+          },
+          "exploreAutoEnhancePrompts": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exploreautoenhanceprompts"
           },
           "falApiKey": {
             "anyOf": [
@@ -156,7 +284,7 @@
             ],
             "title": "Promptcachesize"
           },
-          "promptEnhancerEnabledI2V": {
+          "promptEnhancerEnabled": {
             "anyOf": [
               {
                 "type": "boolean"
@@ -165,18 +293,7 @@
                 "type": "null"
               }
             ],
-            "title": "Promptenhancerenabledi2V"
-          },
-          "promptEnhancerEnabledT2V": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Promptenhancerenabledt2V"
+            "title": "Promptenhancerenabled"
           },
           "promptEnhancerProviderPreference": {
             "anyOf": [
@@ -192,6 +309,21 @@
               }
             ],
             "title": "Promptenhancerproviderpreference"
+          },
+          "remoteExposure": {
+            "anyOf": [
+              {
+                "enum": [
+                  "off",
+                  "lan"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remoteexposure"
           },
           "seedLocked": {
             "anyOf": [
@@ -261,6 +393,289 @@
           }
         },
         "title": "AppSettingsPatch",
+        "type": "object"
+      },
+      "Asset": {
+        "properties": {
+          "created_at": {
+            "minimum": 0.0,
+            "title": "Created At",
+            "type": "integer"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "media_kind": {
+            "enum": [
+              "image",
+              "video",
+              "audio"
+            ],
+            "title": "Media Kind",
+            "type": "string"
+          },
+          "metadata": {
+            "discriminator": {
+              "mapping": {
+                "audio": "#/components/schemas/AudioAssetMetadata",
+                "image": "#/components/schemas/ImageAssetMetadata",
+                "video": "#/components/schemas/VideoAssetMetadata"
+              },
+              "propertyName": "mediaType"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ImageAssetMetadata"
+              },
+              {
+                "$ref": "#/components/schemas/VideoAssetMetadata"
+              },
+              {
+                "$ref": "#/components/schemas/AudioAssetMetadata"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "mime_type": {
+            "minLength": 1,
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "uploaded",
+              "generated"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "thumbnail_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Path"
+          }
+        },
+        "required": [
+          "id",
+          "media_kind",
+          "origin",
+          "mime_type",
+          "name",
+          "metadata",
+          "created_at",
+          "path"
+        ],
+        "title": "Asset",
+        "type": "object"
+      },
+      "AssetListItem": {
+        "properties": {
+          "created_at": {
+            "minimum": 0.0,
+            "title": "Created At",
+            "type": "integer"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "in_use": {
+            "title": "In Use",
+            "type": "boolean"
+          },
+          "media_kind": {
+            "enum": [
+              "image",
+              "video",
+              "audio"
+            ],
+            "title": "Media Kind",
+            "type": "string"
+          },
+          "metadata": {
+            "discriminator": {
+              "mapping": {
+                "audio": "#/components/schemas/AudioAssetMetadata",
+                "image": "#/components/schemas/ImageAssetMetadata",
+                "video": "#/components/schemas/VideoAssetMetadata"
+              },
+              "propertyName": "mediaType"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ImageAssetMetadata"
+              },
+              {
+                "$ref": "#/components/schemas/VideoAssetMetadata"
+              },
+              {
+                "$ref": "#/components/schemas/AudioAssetMetadata"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "mime_type": {
+            "minLength": 1,
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "uploaded",
+              "generated"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "thumbnail_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Path"
+          }
+        },
+        "required": [
+          "id",
+          "media_kind",
+          "origin",
+          "mime_type",
+          "name",
+          "metadata",
+          "created_at",
+          "path",
+          "in_use"
+        ],
+        "title": "AssetListItem",
+        "type": "object"
+      },
+      "AssetListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AssetListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AssetListResponse",
+        "type": "object"
+      },
+      "AudioAssetMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "mediaType": {
+            "const": "audio",
+            "title": "Mediatype",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/AudioMeta"
+          }
+        },
+        "required": [
+          "mediaType",
+          "metadata"
+        ],
+        "title": "AudioAssetMetadata",
+        "type": "object"
+      },
+      "AudioMeta": {
+        "additionalProperties": true,
+        "properties": {
+          "bitrate": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bitrate"
+          },
+          "durationMs": {
+            "minimum": 1.0,
+            "title": "Durationms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "durationMs"
+        ],
+        "title": "AudioMeta",
+        "type": "object"
+      },
+      "AudioToVideoInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "audio": {
+            "$ref": "#/components/schemas/InputAssetRef"
+          },
+          "startFrame": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InputAssetRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "audio"
+        ],
+        "title": "AudioToVideoInputs",
         "type": "object"
       },
       "AuthorSpec": {
@@ -442,7 +857,8 @@
               "text_encoder",
               "vae",
               "image",
-              "support"
+              "support",
+              "prompt_enhancer"
             ],
             "title": "Role",
             "type": "string"
@@ -460,6 +876,566 @@
           "downloaded"
         ],
         "title": "CheckpointDescriptor",
+        "type": "object"
+      },
+      "CreateAudioToVideoParams": {
+        "additionalProperties": false,
+        "description": "Public non-media A2V inputs; the server derives inference frames from audio.",
+        "properties": {
+          "aspectRatio": {
+            "default": "16:9",
+            "enum": [
+              "auto",
+              "21:9",
+              "16:9",
+              "3:2",
+              "4:3",
+              "1:1",
+              "4:5",
+              "9:16"
+            ],
+            "title": "Aspectratio",
+            "type": "string"
+          },
+          "cameraMotion": {
+            "default": "none",
+            "enum": [
+              "none",
+              "dolly_in",
+              "dolly_out",
+              "dolly_left",
+              "dolly_right",
+              "jib_up",
+              "jib_down",
+              "static",
+              "focus_shift"
+            ],
+            "title": "Cameramotion",
+            "type": "string"
+          },
+          "fps": {
+            "default": 24,
+            "enum": [
+              24,
+              25,
+              48,
+              50
+            ],
+            "title": "Fps",
+            "type": "integer"
+          },
+          "model": {
+            "enum": [
+              "ltx-2.3-fast",
+              "ltx-2.5-fast"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "negativePrompt": {
+            "default": "",
+            "title": "Negativeprompt",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "promptProvenance": {
+            "default": "typed",
+            "enum": [
+              "typed",
+              "enhanced"
+            ],
+            "title": "Promptprovenance",
+            "type": "string"
+          },
+          "resolution": {
+            "default": "540p",
+            "enum": [
+              "270p",
+              "360p",
+              "540p",
+              "720p",
+              "1080p"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "required": [
+          "prompt",
+          "model"
+        ],
+        "title": "CreateAudioToVideoParams",
+        "type": "object"
+      },
+      "CreateAudioToVideoRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/AudioToVideoInputs"
+          },
+          "params": {
+            "$ref": "#/components/schemas/CreateAudioToVideoParams"
+          }
+        },
+        "required": [
+          "params",
+          "inputs"
+        ],
+        "title": "CreateAudioToVideoRequest",
+        "type": "object"
+      },
+      "CreateExtendRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/ExtendInputs"
+          },
+          "params": {
+            "$ref": "#/components/schemas/ExtendParams"
+          }
+        },
+        "required": [
+          "params",
+          "inputs"
+        ],
+        "title": "CreateExtendRequest",
+        "type": "object"
+      },
+      "CreateIcLoraRecipeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/IcLoraRecipeInputs"
+          },
+          "params": {
+            "$ref": "#/components/schemas/IcLoraRecipeParams"
+          }
+        },
+        "required": [
+          "params",
+          "inputs"
+        ],
+        "title": "CreateIcLoraRecipeRequest",
+        "type": "object"
+      },
+      "CreateImageToVideoRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/ImageToVideoInputs"
+          },
+          "params": {
+            "$ref": "#/components/schemas/ImageToVideoParams"
+          }
+        },
+        "required": [
+          "params",
+          "inputs"
+        ],
+        "title": "CreateImageToVideoRequest",
+        "type": "object"
+      },
+      "CreateLoraRecipeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "inputs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LoraRecipeInputs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "params": {
+            "$ref": "#/components/schemas/LoraRecipeParams"
+          }
+        },
+        "required": [
+          "params"
+        ],
+        "title": "CreateLoraRecipeRequest",
+        "type": "object"
+      },
+      "CreateRetakeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/RetakeInputs"
+          },
+          "params": {
+            "$ref": "#/components/schemas/RetakeRequestParams"
+          }
+        },
+        "required": [
+          "params",
+          "inputs"
+        ],
+        "title": "CreateRetakeRequest",
+        "type": "object"
+      },
+      "CreateTextToVideoRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "params": {
+            "$ref": "#/components/schemas/TextToVideoParams"
+          }
+        },
+        "required": [
+          "params"
+        ],
+        "title": "CreateTextToVideoRequest",
+        "type": "object"
+      },
+      "DashboardKpis": {
+        "properties": {
+          "cancelled": {
+            "minimum": 0.0,
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "content_count": {
+            "minimum": 0.0,
+            "title": "Content Count",
+            "type": "integer"
+          },
+          "failed": {
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "footage_s": {
+            "minimum": 0.0,
+            "title": "Footage S",
+            "type": "number"
+          },
+          "gpu_ms": {
+            "minimum": 0.0,
+            "title": "Gpu Ms",
+            "type": "integer"
+          },
+          "succeeded": {
+            "minimum": 0.0,
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "success_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Success Rate"
+          }
+        },
+        "required": [
+          "content_count",
+          "footage_s",
+          "gpu_ms",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "DashboardKpis",
+        "type": "object"
+      },
+      "DashboardSelection": {
+        "description": "Activity Dashboard view. An empty list means Any.",
+        "properties": {
+          "aspectRatios": {
+            "items": {
+              "maxLength": 64,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Aspectratios",
+            "type": "array"
+          },
+          "fps": {
+            "items": {
+              "maxLength": 64,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Fps",
+            "type": "array"
+          },
+          "models": {
+            "items": {
+              "maxLength": 64,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Models",
+            "type": "array"
+          },
+          "range": {
+            "default": "7d",
+            "enum": [
+              "7d",
+              "30d",
+              "all"
+            ],
+            "title": "Range",
+            "type": "string"
+          },
+          "resolutions": {
+            "items": {
+              "maxLength": 64,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Resolutions",
+            "type": "array"
+          }
+        },
+        "title": "DashboardSelection",
+        "type": "object"
+      },
+      "DashboardSelectionPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "aspectRatios": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aspectratios"
+          },
+          "fps": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps"
+          },
+          "models": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Models"
+          },
+          "range": {
+            "anyOf": [
+              {
+                "enum": [
+                  "7d",
+                  "30d",
+                  "all"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range"
+          },
+          "resolutions": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolutions"
+          }
+        },
+        "title": "DashboardSelectionPatch",
+        "type": "object"
+      },
+      "DashboardSnapshot": {
+        "properties": {
+          "activity": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityDay"
+            },
+            "title": "Activity",
+            "type": "array"
+          },
+          "aspect_ratios": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aspect Ratios",
+            "type": "array"
+          },
+          "empty": {
+            "title": "Empty",
+            "type": "boolean"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/FailureRow"
+            },
+            "title": "Failures",
+            "type": "array"
+          },
+          "fps_values": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Fps Values",
+            "type": "array"
+          },
+          "has_history": {
+            "title": "Has History",
+            "type": "boolean"
+          },
+          "keep_rate": {
+            "$ref": "#/components/schemas/KeepRate"
+          },
+          "kpis": {
+            "$ref": "#/components/schemas/DashboardKpis"
+          },
+          "loras": {
+            "$ref": "#/components/schemas/LoraPanel"
+          },
+          "range": {
+            "enum": [
+              "7d",
+              "30d",
+              "all"
+            ],
+            "title": "Range",
+            "type": "string"
+          },
+          "render": {
+            "items": {
+              "$ref": "#/components/schemas/RenderCell"
+            },
+            "title": "Render",
+            "type": "array"
+          },
+          "render_by_fps": {
+            "items": {
+              "$ref": "#/components/schemas/FpsRenderCell"
+            },
+            "title": "Render By Fps",
+            "type": "array"
+          },
+          "tz": {
+            "title": "Tz",
+            "type": "string"
+          },
+          "usual": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsualSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "empty",
+          "has_history",
+          "range",
+          "tz",
+          "kpis",
+          "activity",
+          "loras",
+          "render",
+          "render_by_fps",
+          "aspect_ratios",
+          "fps_values",
+          "failures",
+          "keep_rate"
+        ],
+        "title": "DashboardSnapshot",
         "type": "object"
       },
       "DescribeCheckpointsRequest": {
@@ -705,6 +1681,15 @@
       "DownloadVariant": {
         "description": "One downloadable weights file under a catalog item (e.g. strong vs light).",
         "properties": {
+          "base_model": {
+            "enum": [
+              "LTX-2",
+              "LTX-2.3",
+              "LTX-2.5"
+            ],
+            "title": "Base Model",
+            "type": "string"
+          },
           "filename": {
             "title": "Filename",
             "type": "string"
@@ -717,6 +1702,17 @@
             "title": "Label",
             "type": "string"
           },
+          "repo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Id"
+          },
           "size_bytes": {
             "title": "Size Bytes",
             "type": "integer"
@@ -726,9 +1722,43 @@
           "id",
           "label",
           "filename",
-          "size_bytes"
+          "size_bytes",
+          "base_model"
         ],
         "title": "DownloadVariant",
+        "type": "object"
+      },
+      "DownloadedLocalVideoGenerationModelSpecItem": {
+        "description": "One downloaded offering. `local_models` stays active-pipeline-shaped.",
+        "properties": {
+          "model": {
+            "enum": [
+              "ltx-2.3-fast",
+              "ltx-2.5-fast"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "pipeline": {
+            "enum": [
+              "fast",
+              "pro",
+              "fast-2.5",
+              "pro-2.5"
+            ],
+            "title": "Pipeline",
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/LTXVideoGenerationSpec"
+          }
+        },
+        "required": [
+          "model",
+          "pipeline",
+          "spec"
+        ],
+        "title": "DownloadedLocalVideoGenerationModelSpecItem",
         "type": "object"
       },
       "EnhancePromptRequest": {
@@ -784,6 +1814,17 @@
             ],
             "title": "Icloraid"
           },
+          "imageAssetId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imageassetid"
+          },
           "imagePath": {
             "anyOf": [
               {
@@ -801,6 +1842,17 @@
             },
             "title": "Keyframes",
             "type": "array"
+          },
+          "lastImageAssetId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastimageassetid"
           },
           "lastImagePath": {
             "anyOf": [
@@ -862,6 +1914,89 @@
         "title": "EnhancePromptResponse",
         "type": "object"
       },
+      "ExtendInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "video": {
+            "$ref": "#/components/schemas/InputAssetRef"
+          }
+        },
+        "required": [
+          "video"
+        ],
+        "title": "ExtendInputs",
+        "type": "object"
+      },
+      "ExtendParams": {
+        "additionalProperties": false,
+        "description": "Queued Home/Remote extend.\n\n``resolution`` omitted keeps the source size. Either way the picture is\ncapped at the local 1080p cell. The model encodes a black-bar letterbox\nup to the next multiple of 32, and the stitch crops back to this picture.",
+        "properties": {
+          "duration": {
+            "maximum": 20.0,
+            "minimum": 2.0,
+            "title": "Duration",
+            "type": "number"
+          },
+          "mode": {
+            "default": "end",
+            "enum": [
+              "start",
+              "end"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "model": {
+            "enum": [
+              "ltx-2.3-fast",
+              "ltx-2.5-fast"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "prompt": {
+            "default": "",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "promptProvenance": {
+            "default": "typed",
+            "enum": [
+              "typed",
+              "enhanced"
+            ],
+            "title": "Promptprovenance",
+            "type": "string"
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetResolution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "required": [
+          "model",
+          "duration"
+        ],
+        "title": "ExtendParams",
+        "type": "object"
+      },
       "ExtendRequest": {
         "properties": {
           "duration": {
@@ -889,6 +2024,15 @@
             "title": "Prompt",
             "type": "string"
           },
+          "prompt_provenance": {
+            "default": "typed",
+            "enum": [
+              "typed",
+              "enhanced"
+            ],
+            "title": "Prompt Provenance",
+            "type": "string"
+          },
           "resolution": {
             "anyOf": [
               {
@@ -909,6 +2053,122 @@
           "duration"
         ],
         "title": "ExtendRequest",
+        "type": "object"
+      },
+      "FailureRow": {
+        "properties": {
+          "count": {
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error_code",
+          "count"
+        ],
+        "title": "FailureRow",
+        "type": "object"
+      },
+      "FeatureFlags": {
+        "description": "Dev feature flags, persisted in feature_flags.json. Adding a flag = one field here.",
+        "properties": {
+          "advancedIcLoraControls": {
+            "default": false,
+            "title": "Advancedicloracontrols",
+            "type": "boolean"
+          },
+          "customIcLora": {
+            "default": false,
+            "title": "Customiclora",
+            "type": "boolean"
+          }
+        },
+        "title": "FeatureFlags",
+        "type": "object"
+      },
+      "FeatureFlagsPatch": {
+        "additionalProperties": false,
+        "description": "Partial update: only the fields present in the body are applied.",
+        "properties": {
+          "advancedIcLoraControls": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advancedicloracontrols"
+          },
+          "customIcLora": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customiclora"
+          }
+        },
+        "title": "FeatureFlagsPatch",
+        "type": "object"
+      },
+      "FpsRenderCell": {
+        "description": "One render cell limited to a single frame rate. The pooled `render` list has no fps.",
+        "properties": {
+          "aspect_ratio": {
+            "title": "Aspect Ratio",
+            "type": "string"
+          },
+          "count": {
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "duration_s": {
+            "title": "Duration S",
+            "type": "number"
+          },
+          "fps": {
+            "title": "Fps",
+            "type": "integer"
+          },
+          "median_ms": {
+            "title": "Median Ms",
+            "type": "number"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "p90_ms": {
+            "title": "P90 Ms",
+            "type": "number"
+          },
+          "resolution": {
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "resolution",
+          "aspect_ratio",
+          "duration_s",
+          "median_ms",
+          "p90_ms",
+          "count",
+          "fps"
+        ],
+        "title": "FpsRenderCell",
         "type": "object"
       },
       "GeminiModelOptionPayload": {
@@ -1082,11 +2342,33 @@
       },
       "GenerateVideoModelsSpecsResponse": {
         "properties": {
+          "active_offering": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ltx-2.3-fast",
+                  "ltx-2.5-fast"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Offering"
+          },
           "api_models": {
             "items": {
               "$ref": "#/components/schemas/LTXVideoGenerationModelSpecItem"
             },
             "title": "Api Models",
+            "type": "array"
+          },
+          "downloaded_local_models": {
+            "items": {
+              "$ref": "#/components/schemas/DownloadedLocalVideoGenerationModelSpecItem"
+            },
+            "title": "Downloaded Local Models",
             "type": "array"
           },
           "local_models": {
@@ -1095,6 +2377,11 @@
             },
             "title": "Local Models",
             "type": "array"
+          },
+          "low_performance_machine": {
+            "default": false,
+            "title": "Low Performance Machine",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1109,7 +2396,12 @@
           "aspectRatio": {
             "default": "16:9",
             "enum": [
+              "21:9",
               "16:9",
+              "3:2",
+              "4:3",
+              "1:1",
+              "4:5",
               "9:16"
             ],
             "title": "Aspectratio",
@@ -1237,13 +2529,23 @@
             "type": "string"
           },
           "prompt": {
-            "minLength": 1,
             "title": "Prompt",
+            "type": "string"
+          },
+          "promptProvenance": {
+            "default": "typed",
+            "enum": [
+              "typed",
+              "enhanced"
+            ],
+            "title": "Promptprovenance",
             "type": "string"
           },
           "resolution": {
             "default": "1080p",
             "enum": [
+              "270p",
+              "360p",
               "540p",
               "720p",
               "1080p",
@@ -1269,6 +2571,122 @@
           "prompt"
         ],
         "title": "GenerateVideoRequest",
+        "type": "object"
+      },
+      "Generation": {
+        "properties": {
+          "attempt_count": {
+            "minimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "contract_version": {
+            "minimum": 1.0,
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "created_at": {
+            "minimum": 0.0,
+            "title": "Created At",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "INTERRUPTED",
+                  "INPUT_MISSING",
+                  "OUTPUT_MISSING",
+                  "OUTPUT_UNREADABLE",
+                  "EXECUTOR_FAILED",
+                  "CAPABILITY_FAILED",
+                  "LTX_INVALID_API_KEY",
+                  "LTX_API_PROMPT_EMBEDDING_FAILED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "feature": {
+            "minLength": 1,
+            "title": "Feature",
+            "type": "string"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/Asset"
+            },
+            "title": "Outputs",
+            "type": "array"
+          },
+          "queued_at": {
+            "minimum": 0.0,
+            "title": "Queued At",
+            "type": "integer"
+          },
+          "spec": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Spec",
+            "type": "object"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "cancelling",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "feature",
+          "contract_version",
+          "status",
+          "created_at",
+          "queued_at",
+          "attempt_count",
+          "spec",
+          "outputs"
+        ],
+        "title": "Generation",
         "type": "object"
       },
       "GenerationProgressResponse": {
@@ -1356,6 +2774,58 @@
           "cancellable"
         ],
         "title": "GenerationProgressResponse",
+        "type": "object"
+      },
+      "GenerationSeed": {
+        "description": "The seed every generate surface shares. `seed` is the next seed to use.",
+        "properties": {
+          "locked": {
+            "title": "Locked",
+            "type": "boolean"
+          },
+          "seed": {
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seed",
+          "locked"
+        ],
+        "title": "GenerationSeed",
+        "type": "object"
+      },
+      "GenerationSeedUpdate": {
+        "description": "Partial update: a client can flip the lock without touching the seed.",
+        "properties": {
+          "locked": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locked"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "title": "GenerationSeedUpdate",
         "type": "object"
       },
       "GpuInfoResponse": {
@@ -1710,6 +3180,22 @@
             ],
             "title": "Recommended Strength"
           },
+          "reference_image_frame": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Image Frame"
+          },
+          "reference_image_required": {
+            "default": false,
+            "title": "Reference Image Required",
+            "type": "boolean"
+          },
           "requires_hf_login": {
             "title": "Requires Hf Login",
             "type": "boolean"
@@ -1854,6 +3340,30 @@
           "label"
         ],
         "title": "IcLoraControl",
+        "type": "object"
+      },
+      "IcLoraDeleteRequest": {
+        "properties": {
+          "ic_lora_id": {
+            "title": "Ic Lora Id",
+            "type": "string"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          }
+        },
+        "required": [
+          "ic_lora_id"
+        ],
+        "title": "IcLoraDeleteRequest",
         "type": "object"
       },
       "IcLoraDownloadProgressResponse": {
@@ -2194,6 +3704,15 @@
             "title": "Prompt",
             "type": "string"
           },
+          "prompt_provenance": {
+            "default": "typed",
+            "enum": [
+              "typed",
+              "enhanced"
+            ],
+            "title": "Prompt Provenance",
+            "type": "string"
+          },
           "resolution": {
             "anyOf": [
               {
@@ -2267,6 +3786,7 @@
         "properties": {
           "frame": {
             "default": 0,
+            "minimum": 0.0,
             "title": "Frame",
             "type": "integer"
           },
@@ -2326,6 +3846,137 @@
         "title": "IcLoraListResponse",
         "type": "object"
       },
+      "IcLoraRecipeInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InputAssetRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "video": {
+            "$ref": "#/components/schemas/InputAssetRef"
+          }
+        },
+        "required": [
+          "video"
+        ],
+        "title": "IcLoraRecipeInputs",
+        "type": "object"
+      },
+      "IcLoraRecipeParams": {
+        "additionalProperties": false,
+        "description": "Create-body params. Strength is ``scale``; the stored spec uses ``loras``.\n\nA ``loras`` array on the create body is rejected. The path id is the recipe,\nso the body does not carry a catalog id. The server writes the checkpoint\nit actually ran. Omitted audio and strength are filled from the catalog.",
+        "properties": {
+          "audioMode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "source",
+                  "generated",
+                  "off"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audiomode"
+          },
+          "fps": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps"
+          },
+          "model": {
+            "enum": [
+              "ltx-2.3-fast",
+              "ltx-2.5-fast"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "prompt": {
+            "default": "",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "promptProvenance": {
+            "default": "typed",
+            "enum": [
+              "typed",
+              "enhanced"
+            ],
+            "title": "Promptprovenance",
+            "type": "string"
+          },
+          "resolution": {
+            "default": "720p",
+            "enum": [
+              "270p",
+              "360p",
+              "540p",
+              "720p",
+              "1080p"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "variantId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variantid"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "title": "IcLoraRecipeParams",
+        "type": "object"
+      },
       "IcLoraSettings": {
         "properties": {
           "audio_mode": {
@@ -2362,6 +4013,21 @@
             "title": "Skip Stage 2",
             "type": "boolean"
           },
+          "stage_2_ic_lora": {
+            "default": false,
+            "title": "Stage 2 Ic Lora",
+            "type": "boolean"
+          },
+          "tiling": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IcLoraTiling"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "use_lora_in_stage_2": {
             "default": false,
             "title": "Use Lora In Stage 2",
@@ -2369,6 +4035,58 @@
           }
         },
         "title": "IcLoraSettings",
+        "type": "object"
+      },
+      "IcLoraTiling": {
+        "description": "Tile size of a catalog IC-LoRA, and an optional fixed temporal window.\n\n``long_side`` and ``short_side`` are given for a landscape canvas. A portrait canvas\nswaps them (Refine Details card: \"1024x576, or 576x1024 portrait\").\n\n``window_frames`` is set when the LoRA drifts over a longer clip (Restore: past 97\nframes detail is lost and colour drifts). A clip longer than the window always runs\nin windows of this length. None leaves the choice to the job budget.",
+        "properties": {
+          "long_side": {
+            "minimum": 64.0,
+            "title": "Long Side",
+            "type": "integer"
+          },
+          "short_side": {
+            "minimum": 64.0,
+            "title": "Short Side",
+            "type": "integer"
+          },
+          "window_frames": {
+            "anyOf": [
+              {
+                "minimum": 9.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Frames"
+          }
+        },
+        "required": [
+          "long_side",
+          "short_side"
+        ],
+        "title": "IcLoraTiling",
+        "type": "object"
+      },
+      "ImageAssetMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "mediaType": {
+            "const": "image",
+            "title": "Mediatype",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ImageMeta"
+          }
+        },
+        "required": [
+          "mediaType",
+          "metadata"
+        ],
+        "title": "ImageAssetMetadata",
         "type": "object"
       },
       "ImageGenRecommendationResponse": {
@@ -2409,6 +4127,210 @@
           "cp_to_download"
         ],
         "title": "ImageGenRecommendationResponse",
+        "type": "object"
+      },
+      "ImageMeta": {
+        "additionalProperties": true,
+        "properties": {
+          "height": {
+            "exclusiveMinimum": 0.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "width": {
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height"
+        ],
+        "title": "ImageMeta",
+        "type": "object"
+      },
+      "ImageToVideoInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "endFrame": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InputAssetRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startFrame": {
+            "$ref": "#/components/schemas/InputAssetRef"
+          }
+        },
+        "required": [
+          "startFrame"
+        ],
+        "title": "ImageToVideoInputs",
+        "type": "object"
+      },
+      "ImageToVideoParams": {
+        "additionalProperties": false,
+        "description": "Non-media image-to-video params stored on a generation row.",
+        "properties": {
+          "aspectRatio": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "21:9",
+              "16:9",
+              "3:2",
+              "4:3",
+              "1:1",
+              "4:5",
+              "9:16"
+            ],
+            "title": "Aspectratio",
+            "type": "string"
+          },
+          "cameraMotion": {
+            "default": "none",
+            "enum": [
+              "none",
+              "dolly_in",
+              "dolly_out",
+              "dolly_left",
+              "dolly_right",
+              "jib_up",
+              "jib_down",
+              "static",
+              "focus_shift"
+            ],
+            "title": "Cameramotion",
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "enum": [
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  8,
+                  10,
+                  12,
+                  14,
+                  16,
+                  18,
+                  20
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 5,
+            "title": "Duration"
+          },
+          "fps": {
+            "default": 24,
+            "enum": [
+              24,
+              25,
+              48,
+              50
+            ],
+            "title": "Fps",
+            "type": "integer"
+          },
+          "model": {
+            "enum": [
+              "ltx-2.3-fast",
+              "ltx-2.5-fast"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "negativePrompt": {
+            "default": "",
+            "title": "Negativeprompt",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "promptProvenance": {
+            "default": "typed",
+            "enum": [
+              "typed",
+              "enhanced"
+            ],
+            "title": "Promptprovenance",
+            "type": "string"
+          },
+          "resolution": {
+            "default": "1080p",
+            "enum": [
+              "270p",
+              "360p",
+              "540p",
+              "720p",
+              "1080p",
+              "1440p",
+              "2160p"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "title": "ImageToVideoParams",
+        "type": "object"
+      },
+      "IngestAssetRequest": {
+        "properties": {
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "IngestAssetRequest",
+        "type": "object"
+      },
+      "InputAssetRef": {
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "minLength": 1,
+            "title": "Assetid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId"
+        ],
+        "title": "InputAssetRef",
         "type": "object"
       },
       "InputSpec": {
@@ -2534,6 +4456,37 @@
         "type": "object"
       },
       "JsonValue": {},
+      "KeepRate": {
+        "properties": {
+          "kept": {
+            "minimum": 0.0,
+            "title": "Kept",
+            "type": "integer"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kept",
+          "total"
+        ],
+        "title": "KeepRate",
+        "type": "object"
+      },
       "KeyframeInput": {
         "description": "CamelCase of LTXV keyframe-edit `{image_uri, frame_index, strength}`.",
         "properties": {
@@ -2650,6 +4603,22 @@
       },
       "LTXVideoGenerationResolutionSpec": {
         "properties": {
+          "aspect_ratios": {
+            "items": {
+              "enum": [
+                "21:9",
+                "16:9",
+                "3:2",
+                "4:3",
+                "1:1",
+                "4:5",
+                "9:16"
+              ],
+              "type": "string"
+            },
+            "title": "Aspect Ratios",
+            "type": "array"
+          },
           "fps_to_durations": {
             "additionalProperties": {
               "items": {
@@ -2676,7 +4645,8 @@
           }
         },
         "required": [
-          "fps_to_durations"
+          "fps_to_durations",
+          "aspect_ratios"
         ],
         "title": "LTXVideoGenerationResolutionSpec",
         "type": "object"
@@ -2691,6 +4661,8 @@
                 },
                 "propertyNames": {
                   "enum": [
+                    "270p",
+                    "360p",
                     "540p",
                     "720p",
                     "1080p",
@@ -2726,6 +4698,8 @@
             },
             "propertyNames": {
               "enum": [
+                "270p",
+                "360p",
                 "540p",
                 "720p",
                 "1080p",
@@ -2947,6 +4921,30 @@
         "title": "LoraCatalogItem",
         "type": "object"
       },
+      "LoraDeleteRequest": {
+        "properties": {
+          "lora_id": {
+            "title": "Lora Id",
+            "type": "string"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          }
+        },
+        "required": [
+          "lora_id"
+        ],
+        "title": "LoraDeleteRequest",
+        "type": "object"
+      },
       "LoraDownloadProgressResponse": {
         "properties": {
           "downloaded_bytes": {
@@ -3038,6 +5036,28 @@
       },
       "LoraEntry": {
         "properties": {
+          "catalogId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalogid"
+          },
+          "displayName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displayname"
+          },
           "ref": {
             "title": "Ref",
             "type": "string"
@@ -3048,6 +5068,17 @@
             "minimum": 0.0,
             "title": "Scale",
             "type": "number"
+          },
+          "variantId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variantid"
           }
         },
         "required": [
@@ -3094,6 +5125,249 @@
           "loras"
         ],
         "title": "LoraListResponse",
+        "type": "object"
+      },
+      "LoraPanel": {
+        "properties": {
+          "share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share"
+          },
+          "top": {
+            "items": {
+              "$ref": "#/components/schemas/LoraUsage"
+            },
+            "title": "Top",
+            "type": "array"
+          }
+        },
+        "required": [
+          "top"
+        ],
+        "title": "LoraPanel",
+        "type": "object"
+      },
+      "LoraRecipeInputs": {
+        "additionalProperties": false,
+        "description": "Start frame for an i2v LoRA recipe. t2v recipes omit this object.\n\n``endFrame`` is only valid for recipes that require it (Transition).",
+        "properties": {
+          "endFrame": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InputAssetRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startFrame": {
+            "$ref": "#/components/schemas/InputAssetRef"
+          }
+        },
+        "required": [
+          "startFrame"
+        ],
+        "title": "LoraRecipeInputs",
+        "type": "object"
+      },
+      "LoraRecipeParams": {
+        "additionalProperties": false,
+        "description": "Create-body params for a LoRA recipe.\n\nThe client sends the catalog id + scale of the recipe's adapter, never a\nfilesystem ``ref``. Create stores ``loras: [{ ref: \"\", scale, catalogId }]``;\nexecute hydrates the installed path (see ``make_recipe_lora_resolver``).\n``prompt`` is the raw user scene; the recipe's prompt scaffold is applied at\nexecution time. ``aspectRatio`` includes ``auto`` for i2v recipes (resolved\nfrom the start frame at execute); t2v recipes reject ``auto``.",
+        "properties": {
+          "aspectRatio": {
+            "default": "16:9",
+            "enum": [
+              "auto",
+              "21:9",
+              "16:9",
+              "3:2",
+              "4:3",
+              "1:1",
+              "4:5",
+              "9:16"
+            ],
+            "title": "Aspectratio",
+            "type": "string"
+          },
+          "cameraMotion": {
+            "default": "none",
+            "enum": [
+              "none",
+              "dolly_in",
+              "dolly_out",
+              "dolly_left",
+              "dolly_right",
+              "jib_up",
+              "jib_down",
+              "static",
+              "focus_shift"
+            ],
+            "title": "Cameramotion",
+            "type": "string"
+          },
+          "catalogId": {
+            "maxLength": 64,
+            "pattern": "^[a-z0-9-]+$",
+            "title": "Catalogid",
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "enum": [
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  8,
+                  10,
+                  12,
+                  14,
+                  16,
+                  18,
+                  20
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 5,
+            "title": "Duration"
+          },
+          "fps": {
+            "default": 24,
+            "enum": [
+              24,
+              25,
+              48,
+              50
+            ],
+            "title": "Fps",
+            "type": "integer"
+          },
+          "model": {
+            "enum": [
+              "ltx-2.3-fast",
+              "ltx-2.5-fast"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "negativePrompt": {
+            "default": "",
+            "title": "Negativeprompt",
+            "type": "string"
+          },
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "promptProvenance": {
+            "default": "typed",
+            "enum": [
+              "typed",
+              "enhanced"
+            ],
+            "title": "Promptprovenance",
+            "type": "string"
+          },
+          "resolution": {
+            "default": "1080p",
+            "enum": [
+              "270p",
+              "360p",
+              "540p",
+              "720p",
+              "1080p",
+              "1440p",
+              "2160p"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          },
+          "scale": {
+            "default": 1.0,
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Scale",
+            "type": "number"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "variantId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variantid"
+          }
+        },
+        "required": [
+          "model",
+          "prompt",
+          "catalogId"
+        ],
+        "title": "LoraRecipeParams",
+        "type": "object"
+      },
+      "LoraUsage": {
+        "properties": {
+          "feature": {
+            "title": "Feature",
+            "type": "string"
+          },
+          "keep_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep Rate"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "runs": {
+            "minimum": 0.0,
+            "title": "Runs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "feature",
+          "name",
+          "runs"
+        ],
+        "title": "LoraUsage",
         "type": "object"
       },
       "LtxDownloadRecommendationResponse": {
@@ -3151,6 +5425,34 @@
               "type": "string"
             },
             "title": "Optional Cp Ids",
+            "type": "array"
+          },
+          "recommended_quality_cp_ids": {
+            "default": [],
+            "items": {
+              "enum": [
+                "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
+                "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
+                "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "ltx-2.5-22b-distilled",
+                "ltx-2.5-spatial-upscaler-x2-1.0",
+                "ltx-2.5-video-vae",
+                "ltx-2.5-video-vae-conv",
+                "ltx-2.5-audio-vae",
+                "ltx-2.5-duration-head",
+                "dpt-hybrid-midas",
+                "yolox-l-torchscript",
+                "dw-ll-ucoco-384-bs5",
+                "gemma-3-12b-it-qat-q4_0-unquantized",
+                "gemma4-12b-with-proj-ltx-2.5",
+                "gemma-4-e2b-it",
+                "z-image-turbo"
+              ],
+              "type": "string"
+            },
+            "title": "Recommended Quality Cp Ids",
             "type": "array"
           },
           "status": {
@@ -3422,6 +5724,34 @@
             "title": "Ltx Model Id",
             "type": "string"
           },
+          "recommended_quality_cp_ids": {
+            "default": [],
+            "items": {
+              "enum": [
+                "ltx-2.3-22b-distilled",
+                "ltx-2.3-22b-distilled-1.1",
+                "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-spatial-upscaler-x2-1.1",
+                "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "ltx-2.5-22b-distilled",
+                "ltx-2.5-spatial-upscaler-x2-1.0",
+                "ltx-2.5-video-vae",
+                "ltx-2.5-video-vae-conv",
+                "ltx-2.5-audio-vae",
+                "ltx-2.5-duration-head",
+                "dpt-hybrid-midas",
+                "yolox-l-torchscript",
+                "dw-ll-ucoco-384-bs5",
+                "gemma-3-12b-it-qat-q4_0-unquantized",
+                "gemma4-12b-with-proj-ltx-2.5",
+                "gemma-4-e2b-it",
+                "z-image-turbo"
+              ],
+              "type": "string"
+            },
+            "title": "Recommended Quality Cp Ids",
+            "type": "array"
+          },
           "status": {
             "const": "upgrade",
             "title": "Status",
@@ -3685,6 +6015,57 @@
         "title": "OutpaintPads",
         "type": "object"
       },
+      "PairedDevicePublic": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip"
+          },
+          "last_seen_at": {
+            "title": "Last Seen At",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "last_seen_at"
+        ],
+        "title": "PairedDevicePublic",
+        "type": "object"
+      },
       "PreprocessingStep": {
         "properties": {
           "params": {
@@ -3703,6 +6084,49 @@
           "utility"
         ],
         "title": "PreprocessingStep",
+        "type": "object"
+      },
+      "PromptEnhancerStatusResponse": {
+        "description": "Availability for the Explore Enhance control. Does not expose API keys or paths.",
+        "properties": {
+          "canToggleProvider": {
+            "title": "Cantoggleprovider",
+            "type": "boolean"
+          },
+          "defaultProvider": {
+            "enum": [
+              "local",
+              "api"
+            ],
+            "title": "Defaultprovider",
+            "type": "string"
+          },
+          "exploreAutoEnhancePrompts": {
+            "title": "Exploreautoenhanceprompts",
+            "type": "boolean"
+          },
+          "hasGeminiApiKey": {
+            "title": "Hasgeminiapikey",
+            "type": "boolean"
+          },
+          "localEnhancementSupported": {
+            "title": "Localenhancementsupported",
+            "type": "boolean"
+          },
+          "showManualEnhance": {
+            "title": "Showmanualenhance",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "exploreAutoEnhancePrompts",
+          "hasGeminiApiKey",
+          "localEnhancementSupported",
+          "defaultProvider",
+          "canToggleProvider",
+          "showManualEnhance"
+        ],
+        "title": "PromptEnhancerStatusResponse",
         "type": "object"
       },
       "PromptTemplatePlaceholder": {
@@ -3746,6 +6170,276 @@
         "title": "PromptTemplateSpec",
         "type": "object"
       },
+      "QueueEntry": {
+        "properties": {
+          "generation": {
+            "$ref": "#/components/schemas/Generation"
+          },
+          "input_assets": {
+            "items": {
+              "$ref": "#/components/schemas/Asset"
+            },
+            "title": "Input Assets",
+            "type": "array"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QueueProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "generation",
+          "input_assets"
+        ],
+        "title": "QueueEntry",
+        "type": "object"
+      },
+      "QueueProgress": {
+        "description": "Live progress for the persisted active queue entry.",
+        "properties": {
+          "currentStep": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentstep"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "integer"
+          },
+          "totalSteps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalsteps"
+          }
+        },
+        "required": [
+          "phase",
+          "progress",
+          "currentStep",
+          "totalSteps"
+        ],
+        "title": "QueueProgress",
+        "type": "object"
+      },
+      "QueueSnapshot": {
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QueueEntry"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "done": {
+            "items": {
+              "$ref": "#/components/schemas/QueueEntry"
+            },
+            "title": "Done",
+            "type": "array"
+          },
+          "failed": {
+            "items": {
+              "$ref": "#/components/schemas/QueueEntry"
+            },
+            "title": "Failed",
+            "type": "array"
+          },
+          "queued": {
+            "items": {
+              "$ref": "#/components/schemas/QueueEntry"
+            },
+            "title": "Queued",
+            "type": "array"
+          },
+          "unseen_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unseen Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "active",
+          "queued"
+        ],
+        "title": "QueueSnapshot",
+        "type": "object"
+      },
+      "RemoteStatusResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "lanUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lanurl"
+          },
+          "localUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Localurl"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "off",
+                  "lan"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "permitted": {
+            "title": "Permitted",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "serving": {
+            "title": "Serving",
+            "type": "boolean"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "permitted",
+          "serving"
+        ],
+        "title": "RemoteStatusResponse",
+        "type": "object"
+      },
+      "RenderCell": {
+        "properties": {
+          "aspect_ratio": {
+            "title": "Aspect Ratio",
+            "type": "string"
+          },
+          "count": {
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "duration_s": {
+            "title": "Duration S",
+            "type": "number"
+          },
+          "median_ms": {
+            "title": "Median Ms",
+            "type": "number"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "p90_ms": {
+            "title": "P90 Ms",
+            "type": "number"
+          },
+          "resolution": {
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "resolution",
+          "aspect_ratio",
+          "duration_s",
+          "median_ms",
+          "p90_ms",
+          "count"
+        ],
+        "title": "RenderCell",
+        "type": "object"
+      },
+      "ReorderGenerationQueueRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "before_generation_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Generation Id"
+          },
+          "generation_id": {
+            "minLength": 1,
+            "title": "Generation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "generation_id"
+        ],
+        "title": "ReorderGenerationQueueRequest",
+        "type": "object"
+      },
       "RetakeCancelledResponse": {
         "properties": {
           "status": {
@@ -3758,6 +6452,19 @@
           "status"
         ],
         "title": "RetakeCancelledResponse",
+        "type": "object"
+      },
+      "RetakeInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "video": {
+            "$ref": "#/components/schemas/InputAssetRef"
+          }
+        },
+        "required": [
+          "video"
+        ],
+        "title": "RetakeInputs",
         "type": "object"
       },
       "RetakePayloadResponse": {
@@ -3807,6 +6514,15 @@
             "title": "Prompt",
             "type": "string"
           },
+          "prompt_provenance": {
+            "default": "typed",
+            "enum": [
+              "typed",
+              "enhanced"
+            ],
+            "title": "Prompt Provenance",
+            "type": "string"
+          },
           "resolution": {
             "anyOf": [
               {
@@ -3834,6 +6550,83 @@
         "title": "RetakeRequest",
         "type": "object"
       },
+      "RetakeRequestParams": {
+        "additionalProperties": false,
+        "description": "New retakes only: specs queued before the cap still parse as ``RetakeParams``.",
+        "properties": {
+          "duration": {
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Duration",
+            "type": "number"
+          },
+          "mode": {
+            "default": "replace_audio_and_video",
+            "enum": [
+              "replace_audio_and_video",
+              "replace_video",
+              "replace_audio"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "model": {
+            "enum": [
+              "ltx-2.3-fast",
+              "ltx-2.5-fast"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "prompt": {
+            "default": "",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "promptProvenance": {
+            "default": "typed",
+            "enum": [
+              "typed",
+              "enhanced"
+            ],
+            "title": "Promptprovenance",
+            "type": "string"
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetResolution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "startTime": {
+            "minimum": 0.0,
+            "title": "Starttime",
+            "type": "number"
+          }
+        },
+        "required": [
+          "model",
+          "startTime",
+          "duration"
+        ],
+        "title": "RetakeRequestParams",
+        "type": "object"
+      },
       "RetakeVideoResponse": {
         "properties": {
           "status": {
@@ -3858,10 +6651,15 @@
           "force_api_generations": {
             "title": "Force Api Generations",
             "type": "boolean"
+          },
+          "local_viable": {
+            "title": "Local Viable",
+            "type": "boolean"
           }
         },
         "required": [
-          "force_api_generations"
+          "force_api_generations",
+          "local_viable"
         ],
         "title": "RuntimePolicyResponse",
         "type": "object"
@@ -3902,9 +6700,17 @@
             ],
             "title": "Activeltxmodelid"
           },
+          "activityDashboardSelections": {
+            "$ref": "#/components/schemas/DashboardSelection"
+          },
           "diffusionStageCacheEnabled": {
             "default": false,
             "title": "Diffusionstagecacheenabled",
+            "type": "boolean"
+          },
+          "exploreAutoEnhancePrompts": {
+            "default": true,
+            "title": "Exploreautoenhanceprompts",
             "type": "boolean"
           },
           "geminiModel": {
@@ -3942,14 +6748,9 @@
             "title": "Promptcachesize",
             "type": "integer"
           },
-          "promptEnhancerEnabledI2V": {
-            "default": false,
-            "title": "Promptenhancerenabledi2V",
-            "type": "boolean"
-          },
-          "promptEnhancerEnabledT2V": {
+          "promptEnhancerEnabled": {
             "default": true,
-            "title": "Promptenhancerenabledt2V",
+            "title": "Promptenhancerenabled",
             "type": "boolean"
           },
           "promptEnhancerProviderPreference": {
@@ -3966,6 +6767,15 @@
               }
             ],
             "title": "Promptenhancerproviderpreference"
+          },
+          "remoteExposure": {
+            "default": "off",
+            "enum": [
+              "off",
+              "lan"
+            ],
+            "title": "Remoteexposure",
+            "type": "string"
           },
           "seedLocked": {
             "default": false,
@@ -4151,6 +6961,37 @@
             ],
             "title": "Active Local Enhancer Cp"
           },
+          "active_local_text_encoder_cp": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ltx-2.3-22b-distilled",
+                  "ltx-2.3-22b-distilled-1.1",
+                  "ltx-2.3-spatial-upscaler-x2-1.0",
+                  "ltx-2.3-spatial-upscaler-x2-1.1",
+                  "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                  "ltx-2.5-22b-distilled",
+                  "ltx-2.5-spatial-upscaler-x2-1.0",
+                  "ltx-2.5-video-vae",
+                  "ltx-2.5-video-vae-conv",
+                  "ltx-2.5-audio-vae",
+                  "ltx-2.5-duration-head",
+                  "dpt-hybrid-midas",
+                  "yolox-l-torchscript",
+                  "dw-ll-ucoco-384-bs5",
+                  "gemma-3-12b-it-qat-q4_0-unquantized",
+                  "gemma4-12b-with-proj-ltx-2.5",
+                  "gemma-4-e2b-it",
+                  "z-image-turbo"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Local Text Encoder Cp"
+          },
           "api_encoding_supported": {
             "title": "Api Encoding Supported",
             "type": "boolean"
@@ -4240,6 +7081,11 @@
             ],
             "title": "Local Enhancer Expected Size Gb"
           },
+          "local_text_encoder_removable": {
+            "default": false,
+            "title": "Local Text Encoder Removable",
+            "type": "boolean"
+          },
           "ltx_version_label": {
             "title": "Ltx Version Label",
             "type": "string"
@@ -4258,6 +7104,263 @@
         ],
         "title": "TextEncoderRecommendationResponse",
         "type": "object"
+      },
+      "TextToVideoParams": {
+        "additionalProperties": false,
+        "description": "Non-media text-to-video params stored on a generation row.",
+        "properties": {
+          "aspectRatio": {
+            "default": "16:9",
+            "enum": [
+              "21:9",
+              "16:9",
+              "3:2",
+              "4:3",
+              "1:1",
+              "4:5",
+              "9:16"
+            ],
+            "title": "Aspectratio",
+            "type": "string"
+          },
+          "cameraMotion": {
+            "default": "none",
+            "enum": [
+              "none",
+              "dolly_in",
+              "dolly_out",
+              "dolly_left",
+              "dolly_right",
+              "jib_up",
+              "jib_down",
+              "static",
+              "focus_shift"
+            ],
+            "title": "Cameramotion",
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "enum": [
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  8,
+                  10,
+                  12,
+                  14,
+                  16,
+                  18,
+                  20
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 5,
+            "title": "Duration"
+          },
+          "fps": {
+            "default": 24,
+            "enum": [
+              24,
+              25,
+              48,
+              50
+            ],
+            "title": "Fps",
+            "type": "integer"
+          },
+          "loras": {
+            "items": {
+              "$ref": "#/components/schemas/LoraEntry"
+            },
+            "title": "Loras",
+            "type": "array"
+          },
+          "model": {
+            "enum": [
+              "ltx-2.3-fast",
+              "ltx-2.5-fast"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "negativePrompt": {
+            "default": "",
+            "title": "Negativeprompt",
+            "type": "string"
+          },
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "promptProvenance": {
+            "default": "typed",
+            "enum": [
+              "typed",
+              "enhanced"
+            ],
+            "title": "Promptprovenance",
+            "type": "string"
+          },
+          "resolution": {
+            "default": "1080p",
+            "enum": [
+              "270p",
+              "360p",
+              "540p",
+              "720p",
+              "1080p",
+              "1440p",
+              "2160p"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "title": "TextToVideoParams",
+        "type": "object"
+      },
+      "TrimMediaRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "endSec": {
+            "exclusiveMinimum": 0.0,
+            "title": "Endsec",
+            "type": "number"
+          },
+          "startSec": {
+            "minimum": 0.0,
+            "title": "Startsec",
+            "type": "number"
+          }
+        },
+        "required": [
+          "startSec",
+          "endSec"
+        ],
+        "title": "TrimMediaRequest",
+        "type": "object"
+      },
+      "UsualSettings": {
+        "properties": {
+          "aspect_ratio": {
+            "title": "Aspect Ratio",
+            "type": "string"
+          },
+          "duration_s": {
+            "title": "Duration S",
+            "type": "number"
+          },
+          "fps": {
+            "title": "Fps",
+            "type": "integer"
+          },
+          "resolution": {
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resolution",
+          "aspect_ratio",
+          "duration_s",
+          "fps"
+        ],
+        "title": "UsualSettings",
+        "type": "object"
+      },
+      "VideoAssetMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "mediaType": {
+            "const": "video",
+            "title": "Mediatype",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/VideoMeta"
+          }
+        },
+        "required": [
+          "mediaType",
+          "metadata"
+        ],
+        "title": "VideoAssetMetadata",
+        "type": "object"
+      },
+      "VideoMeta": {
+        "additionalProperties": true,
+        "properties": {
+          "audioStreamCount": {
+            "minimum": 0.0,
+            "title": "Audiostreamcount",
+            "type": "integer"
+          },
+          "durationMs": {
+            "minimum": 1.0,
+            "title": "Durationms",
+            "type": "integer"
+          },
+          "fps": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps"
+          },
+          "height": {
+            "exclusiveMinimum": 0.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "sizeBytes": {
+            "minimum": 0.0,
+            "title": "Sizebytes",
+            "type": "integer"
+          },
+          "width": {
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height",
+          "durationMs",
+          "sizeBytes",
+          "audioStreamCount"
+        ],
+        "title": "VideoMeta",
+        "type": "object"
       }
     }
   },
@@ -4267,6 +7370,651 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/assets": {
+      "get": {
+        "operationId": "route_list_assets",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "media_kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "image",
+                    "video",
+                    "audio"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Media Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "created_at-desc",
+              "enum": [
+                "created_at-desc",
+                "created_at-asc"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route List Assets",
+        "tags": [
+          "assets"
+        ]
+      },
+      "post": {
+        "operationId": "route_ingest_asset_api_assets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestAssetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Asset"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Ingest Asset",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/api/assets/{asset_id}": {
+      "delete": {
+        "operationId": "route_delete_asset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Delete Asset",
+        "tags": [
+          "assets"
+        ]
+      },
+      "get": {
+        "operationId": "route_get_asset_api_assets__asset_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Asset"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Get Asset",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/api/assets/{asset_id}/bytes": {
+      "get": {
+        "operationId": "route_desktop_asset_bytes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Desktop Asset Bytes",
+        "tags": [
+          "assets"
+        ]
+      },
+      "head": {
+        "operationId": "route_desktop_asset_bytes_api_assets__asset_id__bytes_head",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Desktop Asset Bytes",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/api/assets/{asset_id}/extract-audio": {
+      "post": {
+        "operationId": "route_extract_audio_api_assets__asset_id__extract_audio_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Asset"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Extract Audio",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/api/assets/{asset_id}/thumbnail/bytes": {
+      "get": {
+        "operationId": "route_desktop_asset_thumbnail_bytes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Desktop Asset Thumbnail Bytes",
+        "tags": [
+          "assets"
+        ]
+      },
+      "head": {
+        "operationId": "route_desktop_asset_thumbnail_bytes_api_assets__asset_id__thumbnail_bytes_head",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Desktop Asset Thumbnail Bytes",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/api/assets/{asset_id}/trim-audio": {
+      "post": {
+        "operationId": "route_trim_audio_api_assets__asset_id__trim_audio_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrimMediaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Asset"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Trim Audio",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/api/assets/{asset_id}/trim-video": {
+      "post": {
+        "operationId": "route_trim_video_api_assets__asset_id__trim_video_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrimMediaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Asset"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Trim Video",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
     "/api/auth/huggingface/callback": {
       "get": {
         "operationId": "route_hf_callback_api_auth_huggingface_callback_get",
@@ -4577,6 +8325,96 @@
         ]
       }
     },
+    "/api/feature-flags": {
+      "get": {
+        "operationId": "route_get_feature_flags_api_feature_flags_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeatureFlags"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Get Feature Flags",
+        "tags": [
+          "feature-flags"
+        ]
+      },
+      "patch": {
+        "operationId": "route_update_feature_flags_api_feature_flags_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeatureFlagsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeatureFlags"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Update Feature Flags",
+        "tags": [
+          "feature-flags"
+        ]
+      }
+    },
     "/api/generate": {
       "post": {
         "description": "POST /api/generate — video generation from JSON body.",
@@ -4799,6 +8637,376 @@
         ]
       }
     },
+    "/api/generation-queue": {
+      "get": {
+        "operationId": "route_get_generation_queue_api_generation_queue_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Get Generation Queue",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generation-queue/done/clear": {
+      "post": {
+        "operationId": "route_clear_generation_queue_done_api_generation_queue_done_clear_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Clear Generation Queue Done",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generation-queue/done/{generation_id}/dismiss": {
+      "post": {
+        "operationId": "route_dismiss_generation_queue_done_api_generation_queue_done__generation_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "generation_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Generation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Dismiss Generation Queue Done",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generation-queue/done/{generation_id}/seen": {
+      "post": {
+        "operationId": "route_mark_generation_queue_done_seen_api_generation_queue_done__generation_id__seen_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "generation_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Generation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Mark Generation Queue Done Seen",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generation-queue/failed/clear": {
+      "post": {
+        "operationId": "route_clear_generation_queue_failed_api_generation_queue_failed_clear_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Clear Generation Queue Failed",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generation-queue/reorder": {
+      "post": {
+        "operationId": "route_reorder_generation_queue_api_generation_queue_reorder_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderGenerationQueueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Reorder Generation Queue",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generation-seed": {
+      "get": {
+        "operationId": "route_get_generation_seed_api_generation_seed_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationSeed"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Get Generation Seed",
+        "tags": [
+          "generation-seed"
+        ]
+      },
+      "post": {
+        "operationId": "route_post_generation_seed_api_generation_seed_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerationSeedUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationSeed"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Post Generation Seed",
+        "tags": [
+          "generation-seed"
+        ]
+      }
+    },
     "/api/generation/progress": {
       "get": {
         "description": "GET /api/generation/progress.",
@@ -4838,6 +9046,710 @@
         "summary": "Route Generation Progress",
         "tags": [
           "generation"
+        ]
+      }
+    },
+    "/api/generations": {
+      "get": {
+        "operationId": "route_list_generations_api_generations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "feature",
+            "required": true,
+            "schema": {
+              "title": "Feature",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Generation"
+                  },
+                  "title": "Response Route List Generations Api Generations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route List Generations",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/audio-to-video": {
+      "post": {
+        "operationId": "route_create_audio_to_video_api_generations_audio_to_video_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAudioToVideoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Generation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Create Audio To Video",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/extend": {
+      "post": {
+        "operationId": "route_create_extend_api_generations_extend_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExtendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Generation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Create Extend",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/ic-lora-recipes/{recipe_id}": {
+      "post": {
+        "operationId": "route_create_ic_lora_recipe_api_generations_ic_lora_recipes__recipe_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recipe_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9-]+$",
+              "title": "Recipe Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIcLoraRecipeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Generation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Create Ic Lora Recipe",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/image-to-video": {
+      "post": {
+        "operationId": "route_create_image_to_video_api_generations_image_to_video_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateImageToVideoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Generation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Create Image To Video",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/recent-features": {
+      "get": {
+        "description": "Distinct Explore features, newest generation first. Same list as remote.",
+        "operationId": "route_list_recent_features_api_generations_recent_features_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 4,
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response Route List Recent Features Api Generations Recent Features Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route List Recent Features",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/recipes/{recipe_id}": {
+      "post": {
+        "operationId": "route_create_lora_recipe_api_generations_recipes__recipe_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recipe_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "pattern": "^[a-z0-9-]+$",
+              "title": "Recipe Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLoraRecipeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Generation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Create Lora Recipe",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/retake": {
+      "post": {
+        "operationId": "route_create_retake_api_generations_retake_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRetakeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Generation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Create Retake",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/text-to-video": {
+      "post": {
+        "operationId": "route_create_text_to_video_api_generations_text_to_video_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTextToVideoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Generation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Create Text To Video",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/{generation_id}": {
+      "delete": {
+        "operationId": "route_delete_generation_api_generations__generation_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "generation_id",
+            "required": true,
+            "schema": {
+              "title": "Generation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Delete Generation",
+        "tags": [
+          "generations"
+        ]
+      },
+      "get": {
+        "operationId": "route_get_generation_api_generations__generation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "generation_id",
+            "required": true,
+            "schema": {
+              "title": "Generation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Generation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Get Generation",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/{generation_id}/cancel": {
+      "post": {
+        "operationId": "route_cancel_generation_api_generations__generation_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "generation_id",
+            "required": true,
+            "schema": {
+              "title": "Generation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Generation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Cancel Generation",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/{generation_id}/retry": {
+      "post": {
+        "operationId": "route_retry_generation_api_generations__generation_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "generation_id",
+            "required": true,
+            "schema": {
+              "title": "Generation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Generation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Retry Generation",
+        "tags": [
+          "generations"
         ]
       }
     },
@@ -5036,6 +9948,18 @@
     "/api/ic-loras": {
       "get": {
         "operationId": "route_list_ic_loras_api_ic_loras_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "fresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Fresh",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5125,6 +10049,47 @@
         ]
       }
     },
+    "/api/ic-loras/download/active": {
+      "get": {
+        "operationId": "route_ic_lora_download_active_api_ic_loras_download_active_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveIcLoraDownloadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Ic Lora Download Active",
+        "tags": [
+          "ic-loras"
+        ]
+      }
+    },
     "/api/ic-loras/download/progress": {
       "get": {
         "operationId": "route_ic_lora_download_progress_api_ic_loras_download_progress_get",
@@ -5177,9 +10142,72 @@
         ]
       }
     },
+    "/api/ic-loras/installation": {
+      "delete": {
+        "operationId": "route_delete_ic_lora_installation_api_ic_loras_installation_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IcLoraDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Delete Ic Lora Installation",
+        "tags": [
+          "ic-loras"
+        ]
+      }
+    },
     "/api/loras": {
       "get": {
         "operationId": "route_list_loras_api_loras_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "fresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Fresh",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5269,6 +10297,47 @@
         ]
       }
     },
+    "/api/loras/download/active": {
+      "get": {
+        "operationId": "route_lora_download_active_api_loras_download_active_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveLoraDownloadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Lora Download Active",
+        "tags": [
+          "loras"
+        ]
+      }
+    },
     "/api/loras/download/progress": {
       "get": {
         "operationId": "route_lora_download_progress_api_loras_download_progress_get",
@@ -5316,6 +10385,57 @@
           }
         },
         "summary": "Route Lora Download Progress",
+        "tags": [
+          "loras"
+        ]
+      }
+    },
+    "/api/loras/installation": {
+      "delete": {
+        "operationId": "route_delete_lora_installation_api_loras_installation_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoraDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Delete Lora Installation",
         "tags": [
           "loras"
         ]
@@ -5743,6 +10863,18 @@
     "/api/models/img-gen-recommendation": {
       "get": {
         "operationId": "route_img_gen_recommendation_api_models_img_gen_recommendation_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "fresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Fresh",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5825,6 +10957,30 @@
     "/api/models/ltx-recommendation": {
       "get": {
         "operationId": "route_ltx_recommendation_api_models_ltx_recommendation_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "fresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Fresh",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Full checkpoint sets for the model the live recommendation would download, including files already on disk. Does not switch to the latest model. Ignored when fresh is set.",
+            "in": "query",
+            "name": "include_installed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Full checkpoint sets for the model the live recommendation would download, including files already on disk. Does not switch to the latest model. Ignored when fresh is set.",
+              "title": "Include Installed",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5953,6 +11109,186 @@
         "summary": "Route Text Encoder Recommendation",
         "tags": [
           "models"
+        ]
+      }
+    },
+    "/api/prompt-enhancer": {
+      "get": {
+        "description": "GET /api/prompt-enhancer.",
+        "operationId": "route_prompt_enhancer_api_prompt_enhancer_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptEnhancerStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Prompt Enhancer",
+        "tags": [
+          "prompt-enhancement"
+        ]
+      }
+    },
+    "/api/remote/devices": {
+      "get": {
+        "operationId": "route_list_remote_devices_api_remote_devices_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PairedDevicePublic"
+                  },
+                  "title": "Response Route List Remote Devices Api Remote Devices Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route List Remote Devices",
+        "tags": [
+          "remote"
+        ]
+      }
+    },
+    "/api/remote/devices/{device_id}/revoke": {
+      "post": {
+        "operationId": "route_revoke_remote_device_api_remote_devices__device_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Revoke Remote Device",
+        "tags": [
+          "remote"
+        ]
+      }
+    },
+    "/api/remote/status": {
+      "get": {
+        "operationId": "route_remote_status_api_remote_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Remote Status",
+        "tags": [
+          "remote"
         ]
       }
     },
@@ -6187,6 +11523,163 @@
         "summary": "Route List Gemini Models",
         "tags": [
           "settings"
+        ]
+      }
+    },
+    "/api/stats/activity-dashboard-selections": {
+      "get": {
+        "operationId": "route_get_dashboard_selection_api_stats_activity_dashboard_selections_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardSelection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Get Dashboard Selection",
+        "tags": [
+          "stats"
+        ]
+      },
+      "post": {
+        "operationId": "route_post_dashboard_selection_api_stats_activity_dashboard_selections_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardSelection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Post Dashboard Selection",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/stats/dashboard": {
+      "get": {
+        "operationId": "route_dashboard_api_stats_dashboard_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tz",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Tz",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "range",
+            "required": true,
+            "schema": {
+              "enum": [
+                "7d",
+                "30d",
+                "all"
+              ],
+              "title": "Range",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Dashboard",
+        "tags": [
+          "stats"
         ]
       }
     },

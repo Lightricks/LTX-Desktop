@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { ApiClient } from '../lib/api-client'
 import { canCancelLocalJob, withGenerationActive } from '../lib/generation-active'
+import type { ApiFailure } from '../lib/generation-errors'
 import { logger } from '../lib/logger'
 import { useAppSettings } from '../contexts/AppSettingsContext'
 import type { RetakeExtendModel } from './use-retake'
@@ -15,6 +16,7 @@ export interface ExtendSubmitParams {
   videoPath: string
   duration: number
   prompt: string
+  promptProvenance?: 'typed' | 'enhanced'
   mode: ExtendDirection
   resolution?: { width: number; height: number }
   model: RetakeExtendModel
@@ -28,7 +30,7 @@ interface UseExtendState {
   isExtending: boolean
   canCancel: boolean
   extendStatus: string
-  extendError: string | null
+  extendError: ApiFailure | null
   result: ExtendResult | null
 }
 
@@ -58,6 +60,7 @@ export function useExtend() {
         video_path: params.videoPath,
         duration: params.duration,
         prompt: params.prompt,
+        prompt_provenance: params.promptProvenance ?? 'typed',
         mode: params.mode,
         resolution: params.resolution,
         model: params.model,
@@ -65,7 +68,13 @@ export function useExtend() {
 
       if (!result.ok) {
         logger.error(`Extend error: ${result.error.message}`)
-        setState({ isExtending: false, canCancel: false, extendStatus: '', extendError: result.error.message, result: null })
+        setState({
+          isExtending: false,
+          canCancel: false,
+          extendStatus: '',
+          extendError: { code: result.error.code, message: result.error.message },
+          result: null,
+        })
         return
       }
 

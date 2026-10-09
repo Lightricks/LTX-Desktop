@@ -53,12 +53,12 @@ export function MultiKeyframePanel({
   }
 
   return (
-    <div className="border-b border-zinc-800/60 px-2 pb-2 pt-2">
+    <div className="border-b border-separator px-2 pb-2 pt-2">
       <div className="mb-1.5 flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-300">
-          <ImagePlus className="h-3.5 w-3.5 text-zinc-500" />
+        <div className="flex items-center gap-1.5 text-[11px] font-medium text-fg-secondary">
+          <ImagePlus className="h-3.5 w-3.5 text-fg-tertiary" />
           <span>Keyframes</span>
-          <span className="text-zinc-600">{keyframes.length}/{maxCount}</span>
+          <span className="text-fg-tertiary">{keyframes.length}/{maxCount}</span>
         </div>
         <button
           type="button"
@@ -68,7 +68,7 @@ export function MultiKeyframePanel({
             : lastFrame === null
               ? 'Choose a duration to place keyframes'
               : 'Add keyframes at the playhead'}
-          className="flex h-6 items-center gap-1 rounded-md border border-dashed border-zinc-700 px-2 text-[10px] text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-6 items-center gap-1 rounded-md border border-dashed border-separator px-2 text-[10px] text-fg-secondary hover:border-separator hover:text-fg-primary disabled:cursor-not-allowed disabled:opacity-40"
           onClick={() => openFilePicker(null)}
           onDragOver={(event) => {
             event.preventDefault()
@@ -87,7 +87,7 @@ export function MultiKeyframePanel({
       </div>
 
       {lastFrame === null ? (
-        <div className="flex h-12 items-center justify-center rounded-lg border border-dashed border-zinc-700 text-[10px] text-zinc-500">
+        <div className="flex h-12 items-center justify-center rounded-lg border border-dashed border-separator text-[10px] text-fg-tertiary">
           Choose a duration to place keyframes
         </div>
       ) : (

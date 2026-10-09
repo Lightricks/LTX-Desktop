@@ -1,13 +1,37 @@
-import { AlertCircle, Check, Download, Folder, HardDrive, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AlertCircle } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useAppSettings } from '../../contexts/AppSettingsContext'
 import { useHfAuth } from '../../hooks/use-hf-auth'
 import { useHfModelAccess } from '../../hooks/use-hf-model-access'
 import { ApiClient, type ApiRequestBodyOf, type ApiSuccessOf } from '../../lib/api-client'
-import { formatBytes } from '../../lib/format'
+import { formatBytes, formatLtxBaseModelLabel } from '../../lib/format'
 import { logger } from '../../lib/logger'
+import { Badge } from '@/ds/Badge/Badge'
+import { Button as DsButton } from '@/ds/Button/Button'
+import { Text } from '@/ds/Text/Text'
+import { Tooltip, TooltipProvider } from '@/ds/Tooltip/Tooltip'
+
 import { HfModelAccessGate } from '../HfModelAccessGate'
-import { Button } from '../ui/button'
+import {
+  ModelCatalogActionGroup,
+  ModelCatalogDetailRow,
+  ModelCatalogEmpty,
+  ModelCatalogCellText,
+  ModelCatalogNameCell,
+  ModelCatalogSizeCell,
+  ModelCatalogSizeText,
+  ModelCatalogInstalledCheck,
+  ModelCatalogTable,
+  confirmCatalogModelDelete,
+  modelCatalogActionButtonWideClassName,
+  modelCatalogDownloadButtonLabel,
+  modelCatalogRowClassNames,
+  modelCatalogSettingsTooltipPortal,
+  modelCatalogTableStyles,
+  LTX_CANNOT_DELETE_DEFAULT_MODEL_TOOLTIP,
+} from './ModelCatalogTable'
+import { SettingsStack, SettingsSubsection } from './SettingsContent'
+import contentStyles from './SettingsContent.module.scss'
 
 type LtxModelVersionItem = ApiSuccessOf<'getLtxVersions'>['versions'][number]
 type ModelCheckpointID = NonNullable<
@@ -17,7 +41,7 @@ type HfAuthStatus = ApiSuccessOf<'getHuggingFaceAuthStatus'>['status']
 
 const DOWNLOAD_POLL_INTERVAL_MS = 1000
 
-function VersionRow({
+function ModelVersionRows({
   version,
   onChanged,
   resumeSessionId,
@@ -32,7 +56,8 @@ function VersionRow({
   hfAuthPolling: boolean
   startHuggingFaceLogin: () => void
 }) {
-  const [busy, setBusy] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [downloadSessionId, setDownloadSessionId] = useState<string | null>(null)
   const [downloadPercent, setDownloadPercent] = useState(0)
@@ -48,13 +73,12 @@ function VersionRow({
     hfAuthStatus,
   )
   const canDownload = version.installed || (allAuthorized && !checkingAccess)
-
   const adoptedRef = useRef<string | null>(null)
   useEffect(() => {
     if (resumeSessionId && resumeSessionId !== adoptedRef.current && !downloadSessionId) {
       adoptedRef.current = resumeSessionId
       setDownloadSessionId(resumeSessionId)
-      setBusy(true)
+      setDownloading(true)
     }
   }, [resumeSessionId, downloadSessionId])
 
@@ -76,7 +100,7 @@ function VersionRow({
       }
       if (progress.status === 'error') {
         setDownloadSessionId(null)
-        setBusy(false)
+        setDownloading(false)
         setError(progress.error || 'Download failed.')
         return
       }
@@ -84,7 +108,7 @@ function VersionRow({
         setDownloadSessionId(null)
         setDownloadPercent(100)
         await onChanged()
-        if (!cancelled) setBusy(false)
+        if (!cancelled) setDownloading(false)
       }
     }
 
@@ -96,31 +120,18 @@ function VersionRow({
     }
   }, [downloadSessionId, onChanged])
 
-  const handleSetActive = useCallback(async () => {
-    setError(null)
-    setBusy(true)
-    const result = await ApiClient.setActiveLtxModel({ model_id: version.model_id })
-    if (!result.ok) {
-      setBusy(false)
-      setError(result.error.message || 'Failed to set active model.')
-      return
-    }
-    await onChanged()
-    if (mountedRef.current) setBusy(false)
-  }, [version.model_id, onChanged])
-
   const handleDownload = useCallback(async () => {
     setError(null)
-    setBusy(true)
+    setDownloading(true)
     setDownloadPercent(0)
     const result = await ApiClient.startModelDownload({ type: 'download', cp_ids: version.cps_to_download })
     if (!result.ok) {
-      setBusy(false)
+      setDownloading(false)
       setError(result.error.message || 'Failed to start download.')
       return
     }
     if (result.data.status !== 'started') {
-      setBusy(false)
+      setDownloading(false)
       setError('Unexpected response while starting download.')
       return
     }
@@ -128,98 +139,128 @@ function VersionRow({
   }, [version.cps_to_download])
 
   const handleDelete = useCallback(async () => {
+    if (!confirmCatalogModelDelete(formatLtxBaseModelLabel(version.label))) return
     setError(null)
-    setBusy(true)
+    setDeleting(true)
     const result = await ApiClient.deleteModels({ cp_ids: [version.model_cp] })
     if (!result.ok) {
-      setBusy(false)
+      setDeleting(false)
       setError(result.error.message || 'Failed to delete model.')
       return
     }
     await onChanged()
-    if (mountedRef.current) setBusy(false)
-  }, [version.model_cp, onChanged])
+    if (mountedRef.current) setDeleting(false)
+  }, [version.model_cp, version.label, onChanged])
 
-  const isDownloading = downloadSessionId !== null
+  const busy = downloading || deleting
+  const downloadButtonActive = !version.installed && downloading
+  const showHfGate =
+    !version.installed &&
+    !allAuthorized &&
+    (Boolean(checkError) ||
+      Object.values(accessMap).some((status) => status === 'not_authorized'))
+  const showDetails = showHfGate || Boolean(error)
+
+  const deleteControl = (
+    <span className={modelCatalogTableStyles.actionButtonTooltipWrap}>
+      <DsButton
+        appearance="neutral"
+        hierarchy="secondary"
+        size="md"
+        className={modelCatalogActionButtonWideClassName()}
+        label="Delete"
+        disabled={busy || version.active}
+        onClick={(event) => {
+          event.stopPropagation()
+          if (version.active) return
+          void handleDelete()
+        }}
+      />
+    </span>
+  )
 
   return (
-    <div className="bg-zinc-800/50 rounded-lg p-3 space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <input
-            type="radio"
-            name="active-ltx-model"
-            checked={version.active}
-            disabled={!version.installed || version.active || busy}
-            onChange={() => void handleSetActive()}
-            className="h-4 w-4 accent-blue-500 flex-shrink-0 disabled:cursor-not-allowed"
-          />
-          <span className="text-sm text-white truncate">{version.label}</span>
-          {version.active && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-400 inline-flex items-center gap-1 flex-shrink-0">
-              <Check className="h-3 w-3" />
-              Active
-            </span>
-          )}
-          {version.is_newest && !version.installed && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 flex-shrink-0">
-              New
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {!version.installed && (
-            <Button
-              size="sm"
-              onClick={() => void handleDownload()}
-              disabled={busy || !canDownload}
-              className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
-            >
-              <Download className="h-3.5 w-3.5" />
-              {isDownloading ? `Downloading… ${downloadPercent}%` : `Download ${formatBytes(version.size_bytes)}`}
-            </Button>
-          )}
-          {version.installed && !version.active && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void handleDelete()}
-              disabled={busy}
-              className="border-zinc-700 text-zinc-300 hover:text-red-400 text-xs"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Delete
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {!version.installed && (
-        <HfModelAccessGate
-          accessMap={accessMap}
-          allAuthorized={allAuthorized}
-          hfAuthStatus={hfAuthStatus}
-          hfAuthPolling={hfAuthPolling}
-          startHuggingFaceLogin={startHuggingFaceLogin}
-          checkError={checkError}
-          onRetryCheck={recheckAccess}
+    <Fragment>
+      <tr
+        className={modelCatalogRowClassNames()}
+      >
+        <ModelCatalogNameCell>
+          <ModelCatalogCellText>{formatLtxBaseModelLabel(version.label)}</ModelCatalogCellText>
+          {version.installed ? <ModelCatalogInstalledCheck /> : null}
+          {!version.active && version.is_newest && !version.installed ? (
+            <Badge appearance="brand" size="xs" text="Recommended" textVariant="label" />
+          ) : null}
+        </ModelCatalogNameCell>
+        <ModelCatalogSizeCell>
+          <ModelCatalogSizeText>{formatBytes(version.size_bytes)}</ModelCatalogSizeText>
+        </ModelCatalogSizeCell>
+        <ModelCatalogActionGroup
+          action={
+            !version.installed ? (
+              <DsButton
+                appearance="neutral"
+                hierarchy="secondary"
+                size="md"
+                className={modelCatalogActionButtonWideClassName()}
+                label={modelCatalogDownloadButtonLabel(downloadButtonActive, downloadPercent)}
+                isLoading={downloadButtonActive}
+                disabled={!downloadButtonActive && (!canDownload || deleting)}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void handleDownload()
+                }}
+              />
+            ) : version.active ? (
+              <Tooltip
+                content={LTX_CANNOT_DELETE_DEFAULT_MODEL_TOOLTIP}
+                side="top"
+                align="center"
+                maxWidth={280}
+                portalContainer={modelCatalogSettingsTooltipPortal}
+              >
+                {deleteControl}
+              </Tooltip>
+            ) : (
+              deleteControl
+            )
+          }
         />
-      )}
-
-      {error && (
-        <div className="text-xs text-red-400 inline-flex items-center gap-1.5">
-          <AlertCircle className="h-3 w-3 flex-shrink-0" />
-          {error}
-        </div>
-      )}
-    </div>
+      </tr>
+      {showDetails ? (
+        <ModelCatalogDetailRow>
+          <SettingsStack>
+            {showHfGate ? (
+              <HfModelAccessGate
+                accessMap={accessMap}
+                allAuthorized={allAuthorized}
+                hfAuthStatus={hfAuthStatus}
+                hfAuthPolling={hfAuthPolling}
+                startHuggingFaceLogin={startHuggingFaceLogin}
+                checkError={checkError}
+                onRetryCheck={recheckAccess}
+              />
+            ) : null}
+            {error ? (
+              <Text as="p" variant="body" size="xs" className="inline-flex items-center gap-1.5 text-fg-danger">
+                <AlertCircle className="h-3 w-3 flex-shrink-0" aria-hidden />
+                {error}
+              </Text>
+            ) : null}
+          </SettingsStack>
+        </ModelCatalogDetailRow>
+      ) : null}
+    </Fragment>
   )
 }
 
-export function BaseModelSection() {
+export function BaseModelSection({
+  searchQuery = '',
+  onSearchHasMatches,
+}: {
+  searchQuery?: string
+  onSearchHasMatches?: (hasMatches: boolean) => void
+}) {
   const [versions, setVersions] = useState<LtxModelVersionItem[]>([])
-  const [modelsDir, setModelsDir] = useState('')
   const [activeDownload, setActiveDownload] = useState<{ sessionId: string; cpIds: string[] } | null>(null)
   const { hfAuthStatus, hfAuthPolling, startHuggingFaceLogin } = useHfAuth(true)
   const { notifyModelsChanged } = useAppSettings()
@@ -235,7 +276,6 @@ export function BaseModelSection() {
       return
     }
     setVersions(versionsResult.data.versions)
-    // Signal only on a real change so mounting the panel doesn't refetch generation specs.
     const nextActive = versionsResult.data.versions.find((item) => item.active)?.model_id ?? null
     const nextKey = `${nextActive}|${versionsResult.data.versions.filter((item) => item.installed).map((item) => item.model_id).join(',')}`
     if (knownActiveRef.current !== null && knownActiveRef.current !== nextKey) {
@@ -253,88 +293,69 @@ export function BaseModelSection() {
 
   useEffect(() => {
     void refreshVersions()
-    void (async () => {
-      const result = await ApiClient.getSettings()
-      if (!result.ok) {
-        logger.error(`Failed to fetch settings: ${result.error.message}`)
-        return
-      }
-      setModelsDir(result.data.modelsDir ?? '')
-    })()
   }, [refreshVersions])
 
-  return (
-    <>
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Folder className="h-4 w-4 text-blue-400" />
-          <h3 className="text-sm font-semibold text-white">Models Folder</h3>
-        </div>
-        <p className="text-xs text-zinc-500 leading-relaxed">
-          Where model checkpoints are stored. Changing the location requires restarting the app.
-        </p>
-        <div className="flex gap-2">
-          <div className="flex-1 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-sm truncate select-text">
-            {modelsDir || <span className="text-zinc-600">Not set</span>}
-          </div>
-          <Button
-            variant="outline"
-            className="border-zinc-700 flex-shrink-0"
-            onClick={async () => {
-              const result = await window.electronAPI.openModelsDirChangeDialog()
-              if (result.success) {
-                setModelsDir(result.path)
-              }
-            }}
-          >
-            Change…
-          </Button>
-          <Button
-            variant="outline"
-            className="border-zinc-700 flex-shrink-0"
-            disabled={!modelsDir}
-            onClick={() => {
-              void window.electronAPI.openModelsFolder()
-            }}
-          >
-            Open folder
-          </Button>
-        </div>
-      </div>
+  const tableVersions = useMemo(() => {
+    const installed = versions.filter((version) => version.installed)
+    const notInstalled = versions.filter((version) => !version.installed)
+    let list = [...installed, ...notInstalled]
+    if (searchQuery) {
+      list = list.filter((version) =>
+        formatLtxBaseModelLabel(version.label).toLowerCase().includes(searchQuery),
+      )
+    }
+    return list
+  }, [versions, searchQuery])
 
-      <div className="space-y-3 pt-4 border-t border-zinc-800">
-        <div className="flex items-center gap-2">
-          <HardDrive className="h-4 w-4 text-blue-400" />
-          <h3 className="text-sm font-semibold text-white">Base Model</h3>
-        </div>
-        <p className="text-xs text-zinc-500 leading-relaxed">
-          The active version is used for new generations. Download a version to make it available,
-          then set it active. Newer versions may require a Hugging Face sign-in.
-        </p>
-        <div className="space-y-2">
-          {versions.length === 0 ? (
-            <div className="text-xs text-zinc-600">No versions available.</div>
-          ) : (
-            versions.map((version) => (
-              <VersionRow
-                key={version.model_id}
-                version={version}
-                onChanged={refreshVersions}
-                resumeSessionId={
-                  activeDownload && activeDownload.cpIds.includes(version.model_cp)
-                    ? activeDownload.sessionId
-                    : null
-                }
-                hfAuthStatus={hfAuthStatus}
-                hfAuthPolling={hfAuthPolling}
-                startHuggingFaceLogin={() => {
-                  void startHuggingFaceLogin()
-                }}
-              />
-            ))
-          )}
-        </div>
-      </div>
-    </>
+  useLayoutEffect(() => {
+    if (!onSearchHasMatches) return
+    onSearchHasMatches(!searchQuery || tableVersions.length > 0)
+  }, [onSearchHasMatches, searchQuery, tableVersions.length])
+
+  if (searchQuery && tableVersions.length === 0) {
+    return null
+  }
+
+  const rowProps = {
+    onChanged: refreshVersions,
+    hfAuthStatus,
+    hfAuthPolling,
+    startHuggingFaceLogin: () => {
+      void startHuggingFaceLogin()
+    },
+  }
+
+  const resumeFor = (version: LtxModelVersionItem) =>
+    activeDownload && activeDownload.cpIds.includes(version.model_cp)
+      ? activeDownload.sessionId
+      : null
+
+  return (
+    <SettingsSubsection title="Base models">
+      <SettingsStack>
+        {tableVersions.length === 0 ? (
+          <ModelCatalogEmpty message="No models available." />
+        ) : (
+          <TooltipProvider delay={300}>
+            <ModelCatalogTable>
+              {tableVersions.map((version) => (
+                <ModelVersionRows
+                  key={version.model_id}
+                  version={version}
+                  resumeSessionId={resumeFor(version)}
+                  {...rowProps}
+                />
+              ))}
+            </ModelCatalogTable>
+          </TooltipProvider>
+        )}
+
+        {versions.length === 0 ? (
+          <Text as="p" variant="body" size="xs" className={contentStyles.textTertiary}>
+            No versions available.
+          </Text>
+        ) : null}
+      </SettingsStack>
+    </SettingsSubsection>
   )
 }

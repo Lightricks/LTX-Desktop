@@ -22,6 +22,7 @@ const importVideo: RecoveryImporter = async (ctx, result, { addAsset, modelsDir 
     keyframes: ctx.keyframes,
     audioUrl: ctx.inputAudioUrl,
     imageUrl: ctx.inputImageUrl,
+    lastImageUrl: ctx.inputLastImageUrl,
   })
 
   addAsset(ctx.projectId, {

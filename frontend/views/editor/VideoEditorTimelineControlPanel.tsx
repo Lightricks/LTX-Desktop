@@ -92,21 +92,21 @@ export function VideoEditorTimelineControlPanel(props: VideoEditorTimelineContro
   return (
     <div className="flex flex-col min-h-0 h-full">
       <div className="p-3 pb-2 flex items-center justify-between flex-shrink-0">
-        <h3 className="text-sm font-semibold text-white">Timelines</h3>
+        <h3 className="text-sm font-semibold text-fg-primary">Timelines</h3>
         <div className="relative" ref={addMenuRef}>
           <Tooltip content="Add timeline" side="right">
             <button
               onClick={() => setTimelineAddMenuOpen(prev => !prev)}
-              className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+              className="p-1.5 rounded-lg hover:bg-action text-fg-secondary hover:text-fg-primary transition-colors"
             >
               <Plus className="h-4 w-4" />
             </button>
           </Tooltip>
           {timelineAddMenuOpen && (
-            <div className="absolute right-0 top-full mt-1 w-48 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 py-1 overflow-hidden">
+            <div className="absolute right-0 top-full mt-1 w-48 bg-action border border-separator rounded-lg shadow-xl z-50 py-1 overflow-hidden">
               <button
                 onClick={() => { handleAddTimeline(); setTimelineAddMenuOpen(false) }}
-                className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
+                className="w-full text-left px-3 py-2 text-xs text-fg-secondary hover:bg-action-hover flex items-center gap-2"
               >
                 <Plus className="h-3.5 w-3.5" />
                 New Timeline
@@ -116,7 +116,7 @@ export function VideoEditorTimelineControlPanel(props: VideoEditorTimelineContro
                   openImportTimelineModal()
                   setTimelineAddMenuOpen(false)
                 }}
-                className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
+                className="w-full text-left px-3 py-2 text-xs text-fg-secondary hover:bg-action-hover flex items-center gap-2"
               >
                 <FileUp className="h-3.5 w-3.5" />
                 Import from XML
@@ -144,7 +144,7 @@ export function VideoEditorTimelineControlPanel(props: VideoEditorTimelineContro
               className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
                 isActive
                   ? 'bg-blue-600/20 border border-blue-500/40'
-                  : 'hover:bg-zinc-800 border border-transparent'
+                  : 'hover:bg-action border border-transparent'
               }`}
               draggable={!isActive}
               onDragStart={(e) => {
@@ -156,7 +156,7 @@ export function VideoEditorTimelineControlPanel(props: VideoEditorTimelineContro
               onDoubleClick={() => handleStartRename(tl.id, tl.name, 'panel')}
               onContextMenu={(e) => handleTimelineTabContextMenu(e, tl.id)}
             >
-              <Film className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-blue-400' : 'text-zinc-500'}`} />
+              <Film className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-blue-400' : 'text-fg-tertiary'}`} />
               <div className="flex-1 min-w-0">
                 {item.isRenaming && renameSource === 'panel' ? (
                   <input
@@ -168,17 +168,17 @@ export function VideoEditorTimelineControlPanel(props: VideoEditorTimelineContro
                       if (e.key === 'Enter') handleFinishRename()
                       if (e.key === 'Escape') { setRenamingTimelineId(null); setRenameValue('') }
                     }}
-                    className="bg-zinc-900 border border-blue-500 rounded px-1 py-0.5 outline-none text-white text-xs w-full"
+                    className="bg-surface-primary border border-blue-500 rounded px-1 py-0.5 outline-none text-fg-primary text-xs w-full"
                     autoFocus
                     onClick={(e) => e.stopPropagation()}
                     onDoubleClick={(e) => e.stopPropagation()}
                   />
                 ) : (
-                  <p className={`text-xs font-medium truncate ${isActive ? 'text-white' : 'text-zinc-300'}`}>
+                  <p className={`text-xs font-medium truncate ${isActive ? 'text-fg-primary' : 'text-fg-secondary'}`}>
                     {tl.name}
                   </p>
                 )}
-                <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+                <div className="flex items-center gap-2 text-[10px] text-fg-tertiary">
                   <span>{clipCount} clip{clipCount !== 1 ? 's' : ''}</span>
                   {clipCount > 0 && (
                     <>
@@ -191,7 +191,7 @@ export function VideoEditorTimelineControlPanel(props: VideoEditorTimelineContro
               {isActive ? (
                 <span className="text-[9px] text-blue-400 font-medium uppercase tracking-wider flex-shrink-0">Active</span>
               ) : item.isOpen ? (
-                <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 flex-shrink-0" title="Open in tabs" />
+                <span className="w-1.5 h-1.5 rounded-full bg-action-active flex-shrink-0" title="Open in tabs" />
               ) : null}
               {timelineItems.length > 1 && (
                 <Tooltip content="Delete timeline" side="right">
@@ -200,7 +200,7 @@ export function VideoEditorTimelineControlPanel(props: VideoEditorTimelineContro
                       e.stopPropagation()
                       handleDeleteTimeline(tl.id)
                     }}
-                    className="p-1 rounded hover:bg-red-500/20 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+                    className="p-1 rounded hover:bg-danger-soft text-fg-tertiary hover:text-fg-danger opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
                   >
                     <Trash2 className="h-3 w-3" />
                   </button>

@@ -1,0 +1,86 @@
+@import "@ds/styles/themes/animationsValues.scss";
+
+.container {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--semantic-bg-separator-primary);
+  background-color: var(--semantic-bg-secondary);
+  color: var(--semantic-fg-action-primary-enabled);
+  cursor: pointer;
+
+  &.tight {
+    height: 32px;
+  }
+
+  &.compact {
+    height: 40px;
+  }
+
+  &.comfortable {
+    height: 56px;
+  }
+
+  // State
+  &.disabled {
+    color: var(--semantic-fg-disabled-primary);
+    background-color: transparent;
+    cursor: default;
+  }
+
+  &.readOnly {
+    color: var(--semantic-fg-secondary);
+    background-color: transparent;
+    cursor: default;
+  }
+
+  &.active:not(.disabled):not(.readOnly),
+  &:active:not(.disabled):not(.readOnly),
+  &[data-state="active"] {
+    color: var(--semantic-fg-action-primary-enabled);
+    background-color: var(--semantic-bg-action-secondary-active);
+  }
+
+  // Match TextField hover: keep the field fill, add a gentle brand stroke.
+  &:hover:not(.disabled):not(.readOnly):not(.active),
+  &:focus:not(.disabled):not(.readOnly):not(.active) {
+    border-color: var(--semantic-bg-brand-secondary-hover);
+  }
+
+  &.placeholder {
+    color: var(--semantic-fg-secondary);
+  }
+}
+
+.text {
+  padding: 0 var(--spacing-sm);
+}
+
+.arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  margin-left: auto;
+  transition: transform $duration-moderate $easing-standard-productive;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  &.rotated {
+    transform: rotate(180deg);
+  }
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}

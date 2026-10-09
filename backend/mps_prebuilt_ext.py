@@ -26,6 +26,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from collections.abc import Iterator
 from typing import Any, Callable, cast
 
 from server_utils.units import gib
@@ -127,9 +128,110 @@ def install_mps_sdpa_threshold_guard() -> None:
     logger.info("mps_prebuilt_ext: installed fused_min_bytes=None → defaults guard")
 
 
+def _torch_extensions_cache() -> Path:
+    override = os.environ.get("TORCH_EXTENSIONS_DIR")
+    if override:
+        return Path(override)
+    if sys.platform == "darwin":
+        return Path.home() / "Library/Caches/torch_extensions"
+    return Path.home() / ".cache" / "torch_extensions"
+
+
+def _unlink_lock(path: Path) -> bool:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        logger.warning("mps_prebuilt_ext: could not remove stale %s", path, exc_info=True)
+        return False
+    return True
+
+
+def _remove_uncontended_ninja_lock(path: Path) -> bool:
+    """Unlink ninja's ``.ninja_lock`` only if no process holds ``LOCK_EX``.
+
+    Ninja flocks this file for the compile. FileBaton's ``lock`` does not —
+    that path is unlinked separately.
+    """
+    if sys.platform == "win32":
+        return _unlink_lock(path)
+
+    import fcntl
+
+    try:
+        fd = os.open(path, os.O_RDWR)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        logger.warning("mps_prebuilt_ext: could not open %s", path, exc_info=True)
+        return False
+
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        path.unlink()
+        return True
+    except BlockingIOError:
+        return False
+    except FileNotFoundError:
+        return False
+    except OSError:
+        logger.warning("mps_prebuilt_ext: could not remove stale %s", path, exc_info=True)
+        return False
+    finally:
+        os.close(fd)
+
+
+def _iter_mps_sdpa_ext_dirs(root: Path) -> Iterator[Path]:
+    """Yield ``mps_sdpa_zc_ext`` dirs under both torch cache layouts.
+
+    Default cache: ``<root>/<pyXX_cpu>/mps_sdpa_zc_ext``.
+    ``TORCH_EXTENSIONS_DIR`` override: ``<root>/mps_sdpa_zc_ext`` (no version folder).
+    """
+    direct = root / _EXT_NAME
+    if direct.is_dir():
+        yield direct
+    yield from (path for path in root.glob(f"*/{_EXT_NAME}") if path.is_dir())
+
+
+def clear_stale_mps_extension_locks(cache_root: Path | None = None) -> list[Path]:
+    """Remove leftover JIT lock files from a killed mps-sdpa compile.
+
+    SIGTERM during ``cpp_extension.load`` / ninja leaves ``lock`` and
+    ``.ninja_lock`` behind. The next import then sleeps on those files and
+    never reaches ``/health``, so the desktop loader stays on backendLoading.
+
+    ``lock`` is torch FileBaton (O_CREAT|O_EXCL + exists-poll, no flock, no
+    pid). Live vs crash leftover is the same on disk; we unlink it at backend
+    start, before this process imports mps-sdpa.
+
+    ``.ninja_lock`` is flocked by ninja. Unlink only after a non-blocking
+    exclusive flock succeeds, so a live ninja is not interrupted.
+    """
+    root = cache_root if cache_root is not None else _torch_extensions_cache()
+    removed: list[Path] = []
+    if not root.is_dir():
+        return removed
+    for ext_dir in _iter_mps_sdpa_ext_dirs(root):
+        baton = ext_dir / "lock"
+        if _unlink_lock(baton):
+            removed.append(baton)
+        ninja_lock = ext_dir / ".ninja_lock"
+        if _remove_uncontended_ninja_lock(ninja_lock):
+            removed.append(ninja_lock)
+    return removed
+
+
 def setup_prebuilt_mps_extension() -> None:
     if sys.platform != "darwin":
         return
+
+    stale_locks = clear_stale_mps_extension_locks()
+    if stale_locks:
+        logger.warning(
+            "mps_prebuilt_ext: removed stale JIT lock(s) %s",
+            [str(path) for path in stale_locks],
+        )
 
     so = _prebuilt_so()
     if so is None:

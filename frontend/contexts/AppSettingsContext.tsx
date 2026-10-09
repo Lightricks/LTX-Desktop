@@ -1,7 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { resetBackendCredentials } from '../lib/backend'
 import { ApiClient, type ApiSuccessOf } from '../lib/api-client'
+import { useRemoteStatus } from '../hooks/use-remote-status'
+import { isRemoteExposureEnabled, type RemoteExposure } from '../lib/remote-exposure'
+import { shouldNotifyRemoteKeepAwake } from '../lib/remote-keep-awake-signal'
 
+// promptEnhancerEnabled gates LTX API enhance_prompt (remote video and API text encoding) for
+// every conditioning, including Gen Space. exploreAutoEnhancePrompts gates automatic rewrite on
+// Home/Remote local Generate; Gen Space still rewrites locally and ignores that setting.
 export interface AppSettings {
   useTorchCompile: boolean
   diffusionStageCacheEnabled: boolean
@@ -13,17 +19,20 @@ export interface AppSettings {
   geminiModel: string
   useLocalTextEncoder: boolean
   promptCacheSize: number
-  promptEnhancerEnabledT2V: boolean
-  promptEnhancerEnabledI2V: boolean
+  promptEnhancerEnabled: boolean
   // The user's explicit prompt-enhancer provider choice, persisted so it survives restarts.
   // null means no active choice yet — the enhancer defaults to whichever provider is available
   // without writing that default back here; only an explicit pick (never an automatic fallback
   // when the preferred provider is temporarily unavailable) sets this.
   promptEnhancerProviderPreference: 'local' | 'api' | null
-  seedLocked: boolean
-  lockedSeed: number
+  /** Home / Remote Explore: rewrite prompts automatically before Generate. */
+  exploreAutoEnhancePrompts: boolean
+  // The generation seed and its lock are deliberately not here: this state is re-POSTed to
+  // /api/settings whole, so a stale copy would overwrite a seed another client just set.
+  // They live behind useGenerationSeed (GET/POST /api/generation-seed).
   modelsDir: string
   useConvVae: boolean
+  remoteExposure: RemoteExposure
 }
 
 export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite'
@@ -39,13 +48,12 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   geminiModel: '',
   useLocalTextEncoder: false,
   promptCacheSize: 1,
-  promptEnhancerEnabledT2V: false,
-  promptEnhancerEnabledI2V: false,
+  promptEnhancerEnabled: true,
   promptEnhancerProviderPreference: null,
-  seedLocked: false,
-  lockedSeed: 42,
+  exploreAutoEnhancePrompts: true,
   modelsDir: '',
   useConvVae: false,
+  remoteExposure: 'off',
 }
 
 type BackendProcessStatus = 'alive' | 'restarting' | 'dead'
@@ -59,7 +67,11 @@ interface AppSettingsContextValue {
   saveLtxApiKey: (value: string) => Promise<void>
   saveFalApiKey: (value: string) => Promise<void>
   saveGeminiApiKey: (value: string) => Promise<void>
+  clearLtxApiKey: () => Promise<void>
+  clearFalApiKey: () => Promise<void>
+  clearGeminiApiKey: () => Promise<void>
   forceApiGenerations: boolean
+  localViable: boolean
   shouldVideoGenerateWithLtxApi: boolean
   shouldImageGenerateWithFalApi: boolean
   cudaAvailable: boolean
@@ -96,13 +108,13 @@ function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
     geminiModel: data.geminiModel ?? DEFAULT_APP_SETTINGS.geminiModel,
     useLocalTextEncoder: data.useLocalTextEncoder ?? DEFAULT_APP_SETTINGS.useLocalTextEncoder,
     promptCacheSize: data.promptCacheSize ?? DEFAULT_APP_SETTINGS.promptCacheSize,
-    promptEnhancerEnabledT2V: data.promptEnhancerEnabledT2V ?? DEFAULT_APP_SETTINGS.promptEnhancerEnabledT2V,
-    promptEnhancerEnabledI2V: data.promptEnhancerEnabledI2V ?? DEFAULT_APP_SETTINGS.promptEnhancerEnabledI2V,
+    promptEnhancerEnabled: data.promptEnhancerEnabled ?? DEFAULT_APP_SETTINGS.promptEnhancerEnabled,
     promptEnhancerProviderPreference: data.promptEnhancerProviderPreference ?? DEFAULT_APP_SETTINGS.promptEnhancerProviderPreference,
-    seedLocked: data.seedLocked ?? DEFAULT_APP_SETTINGS.seedLocked,
-    lockedSeed: data.lockedSeed ?? DEFAULT_APP_SETTINGS.lockedSeed,
+    exploreAutoEnhancePrompts:
+      data.exploreAutoEnhancePrompts ?? DEFAULT_APP_SETTINGS.exploreAutoEnhancePrompts,
     modelsDir: data.modelsDir ?? DEFAULT_APP_SETTINGS.modelsDir,
     useConvVae: data.useConvVae ?? DEFAULT_APP_SETTINGS.useConvVae,
+    remoteExposure: data.remoteExposure === 'lan' ? 'lan' : DEFAULT_APP_SETTINGS.remoteExposure,
   }
 }
 
@@ -114,6 +126,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [isLoaded, setIsLoaded] = useState(false)
   const [runtimePolicyLoaded, setRuntimePolicyLoaded] = useState(false)
   const [forceApiGenerations, setForceApiGenerations] = useState(true)
+  const [localViable, setLocalViable] = useState(false)
   const [cudaAvailable, setCudaAvailable] = useState(false)
   const [backendProcessStatus, setBackendProcessStatus] = useState<BackendProcessStatus | null>(null)
   const [modelsVersion, setModelsVersion] = useState(0)
@@ -132,8 +145,9 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       const result = await ApiClient.getRuntimePolicy()
       if (!result.ok) {
         if (!cancelled) {
-          // Fail closed until policy can be read.
+          // Fail closed until policy can be read. Do not send Explore to an LTX key.
           setForceApiGenerations(true)
+          setLocalViable(false)
           setRuntimePolicyLoaded(true)
         }
         return
@@ -149,6 +163,11 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       }
 
       if (!cancelled) {
+        setLocalViable(
+          typeof payload.local_viable === 'boolean'
+            ? payload.local_viable
+            : payload.force_api_generations === false,
+        )
         setRuntimePolicyLoaded(true)
       }
     }
@@ -246,9 +265,26 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [backendProcessStatus, isLoaded, refreshSettings])
 
+  const remoteEnabled = isRemoteExposureEnabled(settings.remoteExposure)
+  const backendAlive = backendProcessStatus === 'alive'
+  const { status: remoteStatus } = useRemoteStatus(isLoaded && backendAlive && remoteEnabled)
+
+  useEffect(() => {
+    if (!isLoaded) return
+    void window.electronAPI.notifyRemoteExposure({
+      active: shouldNotifyRemoteKeepAwake({
+        remoteEnabled,
+        backendAlive,
+        status: remoteStatus,
+      }),
+    })
+  }, [backendAlive, isLoaded, remoteEnabled, remoteStatus])
+
   useEffect(() => {
     if (!isLoaded || backendProcessStatus !== 'alive') return
     const syncTimer = setTimeout(async () => {
+      // Key fields are omitted: this sync must not write credentials. A key save
+      // goes through writeApiKey, which already persisted the trimmed value.
       const { hasLtxApiKey: _a, hasFalApiKey: _b, hasGeminiApiKey: _c, modelsDir: _d, ...syncPayload } = settings
       const result = await ApiClient.updateSettings(syncPayload)
       if (!result.ok) {
@@ -266,34 +302,40 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     setSettings((prev) => ({ ...prev, ...patch }))
   }, [])
 
-  const saveLtxApiKey = useCallback(async (value: string) => {
-    const result = await ApiClient.updateSettings({ ltxApiKey: value })
+  type ApiKeyField = 'ltxApiKey' | 'falApiKey' | 'geminiApiKey'
+
+  const writeApiKey = useCallback(async (field: ApiKeyField, value: string) => {
+    const patch =
+      field === 'ltxApiKey' ? { ltxApiKey: value }
+      : field === 'falApiKey' ? { falApiKey: value }
+      : { geminiApiKey: value }
+    const result = await ApiClient.updateSettings(patch)
     if (!result.ok) {
       throw new Error(result.error.message)
+    }
+    if (value === '') {
+      const flag =
+        field === 'ltxApiKey' ? 'hasLtxApiKey'
+        : field === 'falApiKey' ? 'hasFalApiKey'
+        : 'hasGeminiApiKey'
+      setSettings((prev) => ({ ...prev, [flag]: false }))
     }
     await refreshSettings()
   }, [refreshSettings])
 
-  const saveGeminiApiKey = useCallback(async (value: string) => {
-    const result = await ApiClient.updateSettings({ geminiApiKey: value })
-    if (!result.ok) {
-      throw new Error(result.error.message)
-    }
-    await refreshSettings()
-  }, [refreshSettings])
-
-  const saveFalApiKey = useCallback(async (value: string) => {
-    const result = await ApiClient.updateSettings({ falApiKey: value })
-    if (!result.ok) {
-      throw new Error(result.error.message)
-    }
-    await refreshSettings()
-  }, [refreshSettings])
+  const saveLtxApiKey = useCallback((value: string) => writeApiKey('ltxApiKey', value), [writeApiKey])
+  const saveFalApiKey = useCallback((value: string) => writeApiKey('falApiKey', value), [writeApiKey])
+  const saveGeminiApiKey = useCallback((value: string) => writeApiKey('geminiApiKey', value), [writeApiKey])
+  const clearLtxApiKey = useCallback(() => writeApiKey('ltxApiKey', ''), [writeApiKey])
+  const clearFalApiKey = useCallback(() => writeApiKey('falApiKey', ''), [writeApiKey])
+  const clearGeminiApiKey = useCallback(() => writeApiKey('geminiApiKey', ''), [writeApiKey])
 
   const shouldVideoGenerateWithLtxApi =
-    forceApiGenerations || (settings.userPrefersLtxApiVideoGenerations && settings.hasLtxApiKey)
+    settings.hasLtxApiKey &&
+    (forceApiGenerations || settings.userPrefersLtxApiVideoGenerations)
   const shouldImageGenerateWithFalApi =
-    forceApiGenerations || (settings.userPrefersFalApiImageGenerations && settings.hasFalApiKey)
+    settings.hasFalApiKey &&
+    (forceApiGenerations || settings.userPrefersFalApiImageGenerations)
 
   const contextValue = useMemo<AppSettingsContextValue>(
     () => ({
@@ -305,14 +347,18 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       saveLtxApiKey,
       saveFalApiKey,
       saveGeminiApiKey,
+      clearLtxApiKey,
+      clearFalApiKey,
+      clearGeminiApiKey,
       forceApiGenerations,
+      localViable,
       shouldVideoGenerateWithLtxApi,
       shouldImageGenerateWithFalApi,
       cudaAvailable,
       modelsVersion,
       notifyModelsChanged,
     }),
-    [cudaAvailable, forceApiGenerations, isLoaded, modelsVersion, notifyModelsChanged, refreshSettings, runtimePolicyLoaded, saveFalApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi, updateSettings],
+    [cudaAvailable, forceApiGenerations, isLoaded, localViable, modelsVersion, notifyModelsChanged, refreshSettings, runtimePolicyLoaded, clearFalApiKey, clearGeminiApiKey, clearLtxApiKey, saveFalApiKey, saveGeminiApiKey, saveLtxApiKey, settings, shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi, updateSettings],
   )
 
   return <AppSettingsContext.Provider value={contextValue}>{children}</AppSettingsContext.Provider>

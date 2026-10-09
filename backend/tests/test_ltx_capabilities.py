@@ -7,8 +7,12 @@ import pytest
 from api_types import LOCAL_MULTI_KEYFRAME_MAX_COUNT
 from runtime_config.ltx_capabilities import (
     LocalOfferingCapabilities,
+    a2v_pixels_for,
     api_caps,
+    budget_pixels,
+    budget_size,
     effective_local_caps,
+    local_canvas,
     local_caps,
     pixels_for,
     supports,
@@ -25,7 +29,7 @@ def test_local_models_share_one_two_stage_pixel_map():
         caps = local_caps(model_id)
         assert caps.resolution_pixels_16_9 == reference, model_id
         for resolution in reference:
-            for aspect in ("16:9", "9:16"):
+            for aspect in ("21:9", "16:9", "3:2", "4:3", "1:1", "4:5", "9:16"):
                 width, height = pixels_for(caps, resolution, aspect)
                 assert width % 64 == 0 and height % 64 == 0, (
                     f"{model_id} {resolution} {aspect}: {width}x{height}"
@@ -42,6 +46,61 @@ def test_local_2_3_v10_shares_2_3_pixel_map():
     assert pixels_for(local_caps("ltx-2.3-22b-distilled"), "540p", "16:9") == (1024, 576)
 
 
+def test_stage1_only_labels_use_the_parent_canvas():
+    caps = local_caps("ltx-2.5-22b-distilled")
+    video_270 = local_canvas("270p", mode="video")
+    parent_540 = local_canvas("540p", mode="video")
+    assert (video_270.width, video_270.height) == (parent_540.width, parent_540.height) == (1024, 576)
+    assert video_270.skip_stage_2 is True
+    assert parent_540.skip_stage_2 is False
+    assert budget_size(video_270) == (512, 288)
+    assert budget_size(local_canvas("360p", mode="video")) == (640, 352)
+    audio_270 = local_canvas("270p", mode="a2v")
+    assert (audio_270.width, audio_270.height) == (576, 320)
+    assert audio_270.skip_stage_2 is False
+    assert budget_size(audio_270) == (576, 320)
+    assert pixels_for(caps, "270p", "16:9") == (1024, 576)
+    assert pixels_for(caps, "360p", "16:9") == (1280, 704)
+    assert pixels_for(caps, "270p", "9:16") == (576, 1024)
+
+
+def test_a2v_small_labels_finish_on_their_own_canvas():
+    caps = local_caps("ltx-2.5-22b-distilled")
+    assert a2v_pixels_for(caps, "270p", "16:9") == (576, 320)
+    assert a2v_pixels_for(caps, "270p", "9:16") == (320, 576)
+    assert a2v_pixels_for(caps, "360p", "16:9") == (704, 384)
+    assert a2v_pixels_for(caps, "360p", "9:16") == (384, 704)
+    assert a2v_pixels_for(caps, "540p", "16:9") == (1024, 576)
+
+
+def test_budget_pixels_uses_the_selected_ratio_and_stage1_half():
+    caps = local_caps("ltx-2.5-22b-distilled")
+    assert budget_pixels(caps, "540p", "16:9", mode="video") == (1024, 576)
+    assert budget_pixels(caps, "540p", "21:9", mode="video") == (1344, 576)
+    assert budget_pixels(caps, "270p", "16:9", mode="video") == (512, 288)
+    assert budget_pixels(caps, "270p", "21:9", mode="video") == (672, 288)
+    assert budget_pixels(caps, "270p", "21:9", mode="a2v") == (768, 320)
+
+
+def test_short_side_formula_keeps_16_9_anchors_and_api_tiles():
+    local = local_caps("ltx-2.5-22b-distilled")
+    api = api_caps("fast-2.5")
+    assert pixels_for(local, "1080p", "16:9") == (1920, 1088)
+    assert pixels_for(local, "540p", "21:9") == (1344, 576)
+    assert pixels_for(local, "1080p", "21:9") == (2560, 1088)
+    assert pixels_for(local, "540p", "4:3") == (768, 576)
+    assert pixels_for(local, "540p", "1:1") == (576, 576)
+    # 720 is closer to 704 than to 768. Snapping up landed on portrait 4:3.
+    assert pixels_for(local, "540p", "4:5") == (576, 704)
+    # 1934 is closer to the 16:9 anchor's transpose (1920) than to 1984.
+    assert pixels_for(local, "1080p", "9:16") == (1088, 1920)
+    assert pixels_for(api, "1080p", "16:9") == (1920, 1080)
+    assert pixels_for(api, "1080p", "3:2") == (1620, 1080)
+    assert pixels_for(api, "1080p", "1:1") == (1080, 1080)
+    assert pixels_for(api, "1080p", "9:16") == (1080, 1920)
+    assert pixels_for(api, "720p", "3:2") == (1080, 720)
+
+
 def test_local_2_5_540p_is_legal_16_9():
     caps = local_caps("ltx-2.5-22b-distilled")
     width, height = pixels_for(caps, "540p", "16:9")
@@ -53,8 +112,8 @@ def test_local_2_5_allows_ic_lora_and_user_loras():
     caps = local_caps("ltx-2.5-22b-distilled")
     assert supports(caps, "ic_lora") is True
     assert supports(caps, "user_loras") is True
-    assert supports(caps, "retake") is False
-    assert supports(caps, "extend") is False
+    assert supports(caps, "retake") is True
+    assert supports(caps, "extend") is True
     assert supports(caps, "multi_keyframe") is True
     assert caps.multi_keyframe_max_count == LOCAL_MULTI_KEYFRAME_MAX_COUNT
 
@@ -140,6 +199,11 @@ def test_api_pro_2_5_has_a2v_and_auto_duration_not_retake():
 def test_pixels_for_unknown_resolution_raises():
     with pytest.raises(KeyError):
         pixels_for(api_caps("fast"), "540p", "16:9")
+
+
+def test_a2v_pixels_for_rejects_a_resolution_the_offering_does_not_list():
+    with pytest.raises(KeyError):
+        a2v_pixels_for(api_caps("fast"), "270p", "16:9")
 
 
 def test_ic_lora_flag_is_on_for_every_local_model():

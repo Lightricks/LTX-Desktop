@@ -1,0 +1,431 @@
+@use "@/ds/styles/themes/animationsValues.scss" as *;
+
+.pageShell {
+  width: 100%;
+}
+
+.pageTitle {
+  text-align: left;
+  color: var(--semantic-fg-primary);
+}
+
+.frame {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  gap: var(--spacing-xl);
+  align-items: flex-start;
+}
+
+.stickyRail {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 12.75rem;
+  gap: var(--spacing-lg);
+  box-sizing: border-box;
+  position: sticky;
+  top: var(--spacing-xl);
+  align-self: flex-start;
+  background: var(--semantic-bg-primary);
+  z-index: 1;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+}
+
+// Match DesktopHomeSidebar nav rows (Sznicer sidebar polish): 14px icons,
+// roomier icon-to-label gap, 150ms fades, selected row in secondary ink.
+.navButton.navButton {
+  justify-content: flex-start;
+  width: 100%;
+  height: 32px;
+  box-sizing: border-box;
+  text-decoration: none;
+  color: inherit;
+  gap: var(--gap-sm);
+  transition:
+    background-color $duration-moderate $easing-standard-productive,
+    color $duration-moderate $easing-standard-productive;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+
+  --btn-icon-size: var(--sm-icon-size);
+  padding-left: calc(var(--md-h-padding) + var(--spacing-xxs));
+  padding-right: calc(var(--md-h-padding) + var(--spacing-xxs));
+}
+
+.navButton.navButton[aria-current="page"] {
+  --btn-fg-active: var(--semantic-fg-secondary);
+}
+
+.navButton.navButton > span {
+  flex-grow: 1;
+  text-align: left;
+  font-weight: 400;
+}
+
+.main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  max-width: 40rem;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  min-height: 0;
+  padding-right: var(--spacing-xxs);
+}
+
+.pageSection {
+  /* Clear sticky title + section nav when jumping to anchors */
+  scroll-margin-top: calc(var(--spacing-xl) + 6.5rem);
+  padding: var(--spacing-xl);
+  border-radius: var(--radius-lg);
+  background: var(--semantic-bg-secondary);
+  border: 1px solid var(--semantic-bg-separator-primary);
+  box-sizing: border-box;
+}
+
+.pageSectionHeader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-lg);
+}
+
+.pageSectionLead {
+  color: var(--semantic-fg-secondary);
+}
+
+.pageSectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  --settings-subsection-bleed: var(--spacing-xl);
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg);
+  box-sizing: border-box;
+}
+
+.modalBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 55%);
+  backdrop-filter: blur(4px);
+}
+
+.modalPanel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(56rem, 100%);
+  height: min(40rem, calc(100vh - 2 * var(--spacing-lg)));
+  max-height: calc(100vh - 2 * var(--spacing-lg));
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--semantic-bg-separator-primary);
+  background: var(--semantic-bg-primary);
+  box-shadow: 0 24px 48px rgb(0 0 0 / 24%);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.modalFrame {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.modalRail {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 11.5rem;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-lg) var(--spacing-sm) var(--spacing-md);
+  border-right: 1px solid var(--semantic-bg-separator-primary);
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.modalSidebarTitle {
+  text-align: left;
+  color: var(--semantic-fg-primary);
+  padding-left: var(--spacing-xs);
+}
+
+$modal-content-inset: var(--spacing-lg);
+$modal-scroll-edge: 2px;
+
+.modalMain {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: $modal-content-inset $modal-scroll-edge 0 $modal-content-inset;
+  box-sizing: border-box;
+}
+
+.modalMainPane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  min-height: 0;
+  // 2px inset so 1px field borders are not clipped at the scroll edge.
+  padding-left: $modal-scroll-edge;
+  padding-right: $modal-content-inset;
+  padding-bottom: $modal-content-inset;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+// Out of document flow so section titles align with the sidebar "Settings" title.
+.modalContentHeader {
+  position: absolute;
+  top: $modal-content-inset;
+  right: calc($modal-scroll-edge + $modal-content-inset);
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+
+  > * {
+    pointer-events: auto;
+  }
+}
+
+.modalSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  width: 100%;
+  min-width: 0;
+}
+
+.modalSectionHeader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+}
+
+.modalSectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  width: 100%;
+  min-width: 0;
+  --settings-subsection-bleed: var(--spacing-lg);
+}
+
+.sectionHeaderTop {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  min-width: 0;
+  min-height: 2rem;
+  box-sizing: border-box;
+  // Leave room for the modal close control (absolute, top-right).
+  padding-right: calc(1.75rem + var(--spacing-xs));
+}
+
+.sectionHeaderTitle {
+  flex-shrink: 0;
+}
+
+.sectionHeaderTrailing {
+  flex: 0 0 auto;
+  width: 11rem;
+  max-width: 11rem;
+  margin-left: auto;
+}
+
+.modalCatalogSearch {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  min-width: 0;
+  height: 2rem;
+  padding: 0 var(--spacing-sm);
+  box-sizing: border-box;
+  border: 1px solid var(--semantic-bg-separator-primary);
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-secondary);
+}
+
+.modalCatalogSearchIcon {
+  flex-shrink: 0;
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--semantic-fg-tertiary);
+  pointer-events: none;
+}
+
+.modalCatalogSearchInput {
+  flex: 1;
+  min-width: 0;
+  width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--semantic-fg-primary);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+  outline: none;
+  box-shadow: none;
+  appearance: none;
+
+  &::placeholder {
+    color: var(--semantic-fg-tertiary);
+    font-size: inherit;
+    line-height: inherit;
+    opacity: 1;
+  }
+
+  &:focus,
+  &:focus-visible {
+    outline: none;
+    box-shadow: none;
+    border: 0;
+  }
+
+  :global(.ltx-io) &:focus,
+  :global(.ltx-io) &:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+}
+
+/**
+ * The Models tab is a run of sibling catalog blocks (base, LoRAs, image, encoding), each
+ * rendered by its own component. Letting each one carry its own top spacing left the rhythm
+ * to whichever section happened to pass `showDivider`, so blocks that didn't sat flush
+ * against the one above. The container owns the rhythm instead: one gap, one rule for the
+ * separator, and sections that filter themselves out on search simply drop out of it.
+ */
+.modelsCatalogStack {
+  display: flex;
+  flex-direction: column;
+  /* `lg` here plus `xl` below the rule is the same rhythm General and Legacy get from
+     SettingsStack `loose` + .subsectionWithDivider. */
+  gap: var(--spacing-lg);
+  width: 100%;
+  min-width: 0;
+
+  /* `display: flex` above would otherwise defeat the `hidden` attribute. */
+  &[hidden] {
+    display: none;
+  }
+
+  /* Full-bleed separator, matching .subsectionWithDivider in SettingsContent. */
+  > * + * {
+    margin-inline: calc(-1 * var(--settings-subsection-bleed, 0px));
+    padding-inline: var(--settings-subsection-bleed, 0px);
+    padding-top: var(--spacing-xl);
+    border-top: 1px solid var(--semantic-bg-separator-primary);
+  }
+}
+
+.modelsSearchEmptyHost {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 14rem;
+}
+
+.modelsSearchEmpty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-xl);
+  text-align: center;
+}
+
+.modelsSearchEmptyIcon {
+  width: 2.5rem;
+  height: 2.5rem;
+  color: var(--semantic-fg-tertiary);
+  flex-shrink: 0;
+}
+
+.modelsSearchEmptyCopy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  max-width: 18rem;
+}
+
+.modelsSearchEmptyHint {
+  color: var(--semantic-fg-secondary);
+  line-height: 1.375rem;
+}
+
+.modalSectionLead {
+  color: var(--semantic-fg-secondary);
+}
+
+@media (max-width: 720px) {
+  .modalFrame {
+    flex-direction: column;
+  }
+
+  .modalRail {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--semantic-bg-separator-primary);
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--spacing-xxs);
+  }
+
+  .frame {
+    flex-direction: column;
+  }
+
+  .stickyRail {
+    position: static;
+    width: 100%;
+  }
+
+  .nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .navButton.navButton {
+    width: auto;
+  }
+
+}

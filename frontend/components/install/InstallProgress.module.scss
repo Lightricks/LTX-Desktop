@@ -1,0 +1,91 @@
+@use "@/ds/styles/themes/animationsValues.scss" as *;
+
+.root {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  height: 100%;
+}
+
+// Full-screen use: the body sits below the centered lockup. Setup forces a
+// light theme, so text on the glass has to use the window color, not the
+// theme foreground. The lockup shell ignores pointer events; the error
+// actions opt back in.
+.bodyUnderLockup {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(100%, calc(var(--spacing-4xl) * 14));
+  transform: translate(-50%, calc(var(--spacing-4xl) + var(--spacing-sm)));
+  color: var(--window-fg, var(--semantic-fg-primary));
+
+  .status,
+  .detail,
+  .percent {
+    color: inherit;
+  }
+
+  .track {
+    background-color: color-mix(in srgb, currentColor 24%, transparent);
+  }
+
+  .fill {
+    background-color: currentColor;
+  }
+}
+
+.track {
+  width: calc(var(--spacing-4xl) * 5);
+  height: var(--spacing-xs);
+  margin-inline: auto;
+  overflow: hidden;
+  background-color: var(--semantic-bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.fill {
+  height: 100%;
+  background-color: var(--semantic-fg-primary);
+  border-radius: var(--radius-sm);
+  transition: width $duration-slow $easing-standard-productive;
+}
+
+.meta {
+  margin-top: var(--spacing-md);
+}
+
+.status,
+.detail {
+  margin: 0;
+  color: var(--semantic-fg-secondary);
+}
+
+.percent {
+  margin-left: var(--spacing-sm);
+  color: var(--semantic-fg-primary);
+}
+
+.detail {
+  margin-top: var(--spacing-xs);
+  color: var(--semantic-fg-tertiary);
+}
+
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 100%;
+  gap: var(--gap-lg);
+  color: var(--window-fg, var(--semantic-fg-primary));
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fill {
+    transition: none;
+  }
+}

@@ -1,0 +1,289 @@
+@use "sass:map";
+
+// Base configurations
+$font-style: normal;
+
+// Shared configurations map
+$text-styles: (
+  display: (
+    base: (
+      weight: 700,
+    ),
+    sizes: (
+      xxl: (
+        size: 92px,
+        line-height: 96px,
+        letter-spacing: -3px,
+      ),
+      xl: (
+        size: 64px,
+        line-height: 64px,
+        letter-spacing: -3px,
+      ),
+      lg: (
+        size: 56px,
+        line-height: 56px,
+        letter-spacing: -3px,
+      ),
+      md: (
+        size: 48px,
+        line-height: 48px,
+        letter-spacing: -0.04em,
+      ),
+      sm: (
+        size: 40px,
+        line-height: 40px,
+        letter-spacing: -2px,
+      ),
+    ),
+  ),
+  heading: (
+    base: (
+      weight: 700,
+    ),
+    sizes: (
+      xxl: (
+        size: 32px,
+        line-height: 40px,
+        letter-spacing: -1.25px,
+      ),
+      xl: (
+        size: 24px,
+        line-height: 30px,
+        letter-spacing: -1px,
+      ),
+      lg: (
+        size: 20px,
+        line-height: 24px,
+        letter-spacing: -0.75px,
+      ),
+      md: (
+        size: 18px,
+        line-height: 22px,
+        letter-spacing: -0.75px,
+      ),
+      sm: (
+        size: 16px,
+        line-height: 20px,
+        letter-spacing: -0.5px,
+      ),
+      xs: (
+        size: 14px,
+        line-height: 18px,
+        letter-spacing: -0.5px,
+      ),
+      xxs: (
+        size: 12px,
+        line-height: 16px,
+        letter-spacing: -0.25px,
+      ),
+    ),
+  ),
+  body: (
+    base: (
+      weight: 400,
+    ),
+    sizes: (
+      xl: (
+        size: 16px,
+        line-height: 20px,
+      ),
+      lg: (
+        size: 14px,
+        line-height: 18px,
+      ),
+      md: (
+        size: 12px,
+        line-height: 16px,
+      ),
+      sm: (
+        size: 10px,
+        line-height: 14px,
+      ),
+      xs: (
+        size: 9px,
+        line-height: 12px,
+        letter-spacing: 0.2px,
+      ),
+    ),
+  ),
+  label: (
+    base: (
+      weight: 600,
+    ),
+    sizes: (
+      xxl: (
+        size: 18px,
+        line-height: 22px,
+      ),
+      xl: (
+        size: 16px,
+        line-height: 20px,
+      ),
+      lg: (
+        size: 14px,
+        line-height: 18px,
+      ),
+      md: (
+        size: 12px,
+        line-height: 16px,
+      ),
+      sm: (
+        size: 10px,
+        line-height: 14px,
+      ),
+      xs: (
+        size: 9px,
+        line-height: 12px,
+        letter-spacing: 0.2px,
+      ),
+    ),
+  ),
+  labelCaps: (
+    base: (
+      weight: 600,
+    ),
+    sizes: (
+      xxl: (
+        size: 16px,
+        line-height: 20px,
+      ),
+      xl: (
+        size: 14px,
+        line-height: 18px,
+      ),
+      lg: (
+        size: 12px,
+        line-height: 16px,
+      ),
+      md: (
+        size: 10px,
+        line-height: 12px,
+      ),
+      sm: (
+        size: 9px,
+        line-height: 12px,
+      ),
+      xs: (
+        size: 8px,
+        line-height: 12px,
+      ),
+    ),
+  ),
+);
+
+// Private mixin for internal use
+@mixin _apply-text-style($variant, $size, $underline: false, $caps: false) {
+  $variant-config: map.get($text-styles, $variant);
+  $base-config: map.get($variant-config, "base");
+  $size-config: map.get(map.get($variant-config, "sizes"), $size);
+
+  font-size: map.get($size-config, size);
+  font-family: var(--app-font-family);
+  font-weight: map.get($base-config, weight);
+  font-style: $font-style;
+  line-height: map.get($size-config, line-height);
+
+  @if map.has-key($size-config, letter-spacing) {
+    letter-spacing: map.get($size-config, letter-spacing);
+  }
+
+  @if $underline == true {
+    text-decoration: underline;
+  }
+
+  @if $caps == true {
+    text-transform: uppercase;
+  }
+}
+
+.text {
+  min-height: fit-content;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.breakAllWords {
+  word-break: break-all;
+}
+
+.whiteSpacePreLine {
+  white-space: pre-line;
+}
+
+.capitalize {
+  text-transform: capitalize;
+}
+
+.display {
+  @each $size in (xxl, xl, lg, md, sm) {
+    &#{$size} {
+      @include _apply-text-style("display", $size);
+    }
+  }
+}
+
+.heading {
+  @each $size in (xxl, xl, lg, md, sm, xs, xxs) {
+    &#{$size} {
+      @include _apply-text-style("heading", $size);
+    }
+  }
+}
+
+.body {
+  @each $size in (xl, lg, md, sm, xs) {
+    &#{$size} {
+      @include _apply-text-style("body", $size);
+    }
+  }
+}
+
+.label {
+  @each $size in (xxl, xl, lg, md, sm, xs) {
+    &#{$size} {
+      @include _apply-text-style("label", $size);
+    }
+
+    &#{$size}Underline {
+      @include _apply-text-style("label", $size, true);
+    }
+  }
+}
+
+.labelCaps {
+  @each $size in (xxl, xl, lg, md, sm, xs) {
+    &#{$size} {
+      @include _apply-text-style("labelCaps", $size, false, true);
+    }
+  }
+}
+
+.labelCapsUnderline {
+  @each $size in (xxl, xl, lg, md, sm, xs) {
+    &#{$size} {
+      @include _apply-text-style("labelCaps", $size, true, true);
+    }
+  }
+}
+
+.align {
+  &Left {
+    text-align: left;
+  }
+
+  &Center {
+    text-align: center;
+  }
+
+  &Right {
+    text-align: right;
+  }
+}

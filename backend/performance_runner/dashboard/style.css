@@ -38,6 +38,8 @@ button.stop { background:#2a1416; border-color:#5a2a2a; color:#f0a0a0; padding:2
 button.ghost { background:transparent; border-color:var(--line); color:var(--mut); padding:2px 8px; font-size:12px; }
 button.ghost:hover { color:var(--fg); border-color:var(--acc); }
 #scenarios .unavail { opacity:.5; }                       /* scenario needs a weight downloaded from the app */
+#modelList .unavail { opacity:.5; }
+#fastDecodeRow[hidden] { display:none !important; }
 label.tog { display:flex; align-items:center; gap:8px; margin:6px 0; }
 input, select { background:var(--field); color:var(--fg); border:1px solid var(--line);
                 border-radius:5px; padding:4px 6px; font:inherit; }

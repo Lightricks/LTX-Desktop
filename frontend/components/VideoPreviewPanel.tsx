@@ -344,13 +344,13 @@ export function VideoPreviewPanel({
   const playheadFrac = videoDuration > 0 ? currentTime / videoDuration : 0
 
   return (
-    <div className={`bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col ${fillHeight ? 'h-full min-h-0' : ''}`}>
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 flex-shrink-0">
+    <div className={`bg-surface-primary border border-separator rounded-2xl overflow-hidden flex flex-col ${fillHeight ? 'h-full min-h-0' : ''}`}>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-separator flex-shrink-0">
         <div className="flex items-center gap-2">
           <Film className="h-4 w-4 text-blue-400" />
-          <span className="text-sm font-semibold text-white">{title}</span>
+          <span className="text-sm font-semibold text-fg-primary">{title}</span>
           {videoPath && (
-            <span className="text-xs text-zinc-500 truncate max-w-[240px]">
+            <span className="text-xs text-fg-tertiary truncate max-w-[240px]">
               {videoPath.split(/[/\\]/).pop()}
             </span>
           )}
@@ -359,14 +359,14 @@ export function VideoPreviewPanel({
           <div className="flex items-center gap-2">
             <button
               onClick={handleClear}
-              className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+              className="p-1.5 rounded-md hover:bg-action text-fg-secondary hover:text-fg-primary transition-colors"
               title="Clear video"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
             <button
               onClick={handleBrowse}
-              className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+              className="p-1.5 rounded-md hover:bg-action text-fg-secondary hover:text-fg-primary transition-colors"
               title="Replace video"
             >
               <RefreshCw className="h-3.5 w-3.5" />
@@ -378,22 +378,22 @@ export function VideoPreviewPanel({
       {!videoUrl ? (
         <div
           className={`p-8 flex flex-col items-center justify-center gap-3 border-2 border-dashed rounded-xl m-4 transition-colors ${
-            isDragOver ? 'border-blue-500 bg-blue-500/10' : 'border-zinc-700'
+            isDragOver ? 'border-blue-500 bg-blue-500/10' : 'border-separator'
           }`}
           onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
           onDragLeave={() => setIsDragOver(false)}
           onDrop={handleDrop}
         >
-          <div className="p-3 rounded-full bg-zinc-800">
-            <Upload className="h-5 w-5 text-zinc-400" />
+          <div className="p-3 rounded-full bg-action">
+            <Upload className="h-5 w-5 text-fg-secondary" />
           </div>
           <div className="text-center">
-            <p className="text-sm text-white">{emptyTitle}</p>
-            <p className="text-xs text-zinc-500">mp4, mov, avi, webm, mkv</p>
+            <p className="text-sm text-fg-primary">{emptyTitle}</p>
+            <p className="text-xs text-fg-tertiary">mp4, mov, avi, webm, mkv</p>
           </div>
           <button
             onClick={handleBrowse}
-            className="px-4 py-1.5 text-xs font-medium rounded-md bg-white text-black hover:bg-zinc-200 transition-colors"
+            className="px-4 py-1.5 text-xs font-medium rounded-md bg-brand text-fg-white hover:bg-brand-hover transition-colors"
           >
             Browse
           </button>
@@ -411,7 +411,7 @@ export function VideoPreviewPanel({
             <div className="absolute bottom-2 left-2 flex items-center gap-1.5">
               <button
                 onClick={toggleMute}
-                className="p-1.5 rounded bg-black/60 hover:bg-black/80 text-white/80 hover:text-white transition-colors"
+                className="p-1.5 rounded bg-black/60 hover:bg-black/80 text-fg-white hover:text-fg-white transition-colors"
               >
                 {isMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
               </button>
@@ -419,22 +419,22 @@ export function VideoPreviewPanel({
           </div>
 
           <div className="flex-shrink-0">
-            <div className="flex items-center justify-center gap-3 px-4 py-2 bg-zinc-900 border-b border-zinc-800">
+            <div className="flex items-center justify-center gap-3 px-4 py-2 bg-surface-primary border-b border-separator">
               <button
                 onClick={togglePlay}
-                className="p-1 rounded hover:bg-zinc-800 text-white transition-colors"
+                className="p-1 rounded hover:bg-action text-fg-primary transition-colors"
               >
                 {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               </button>
-              <span className="text-xs font-mono text-zinc-400">
+              <span className="text-xs font-mono text-fg-secondary">
                 {formatTimecode(currentTime)} / {formatTimecode(videoDuration)}
               </span>
             </div>
 
             {hint && (
               <div className="px-4 pt-3 pb-1">
-                <p className="text-xs font-semibold text-white">{hint.title}</p>
-                {hint.subtitle && <p className="text-[10px] text-zinc-500 mt-0.5">{hint.subtitle}</p>}
+                <p className="text-xs font-semibold text-fg-primary">{hint.title}</p>
+                {hint.subtitle && <p className="text-[10px] text-fg-tertiary mt-0.5">{hint.subtitle}</p>}
               </div>
             )}
 
@@ -467,8 +467,8 @@ export function VideoPreviewPanel({
                       />
                     ))
                   ) : (
-                    <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
-                      <Loader2 className="h-4 w-4 text-zinc-600 animate-spin" />
+                    <div className="w-full h-full bg-action flex items-center justify-center">
+                      <Loader2 className="h-4 w-4 text-fg-tertiary animate-spin" />
                     </div>
                   )}
                 </div>
@@ -476,7 +476,7 @@ export function VideoPreviewPanel({
                 {filmstripOverlay?.(ctx)}
 
                 <div
-                  className="absolute top-0 bottom-0 w-0.5 bg-zinc-800 pointer-events-none z-[15]"
+                  className="absolute top-0 bottom-0 w-0.5 bg-fg-white pointer-events-none z-[15]"
                   style={{ left: `${playheadFrac * 100}%` }}
                 />
               </div>
@@ -486,8 +486,8 @@ export function VideoPreviewPanel({
 
             {errorMessage ? (
               <div className="px-4 pb-4">
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-600/10 border border-red-500/20">
-                  <span className="text-xs text-red-300">{errorMessage}</span>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-danger-soft border border-danger/20">
+                  <span className="text-xs text-fg-danger">{errorMessage}</span>
                 </div>
               </div>
             ) : isProcessing ? (

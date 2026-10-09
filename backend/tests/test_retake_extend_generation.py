@@ -1,11 +1,12 @@
-"""Local Retake/Extend routing for LTX 2.3 (and rejection on 2.5).
+"""Local Retake/Extend routing for LTX 2.3 and 2.5.
 
-The fake pipeline never runs GPU code. These tests pin that 2.3 loads the
-matching checkpoint/VAE paths, and that local 2.5 rejects Retake/Extend.
+The fake pipeline never runs GPU code. These tests pin that each local model
+loads the matching checkpoint/VAE paths.
 """
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 import pytest
@@ -13,6 +14,10 @@ import pytest
 from api_types import LTXLocalModelId
 from runtime_config.ltx_runtime_paths import resolve_ltx_runtime_paths
 from runtime_config.model_download_specs import get_existing_cp_path, get_ltx_model_spec
+from runtime_config.video_job_budget import (
+    LOCAL_GENERATION_UNSUPPORTED,
+    LOCAL_GENERATION_UNSUPPORTED_MESSAGE,
+)
 from state.app_settings import resolved_use_conv_vae
 from state.app_state_types import GpuSlot, RetakePipelineState
 from tests.http_error_assertions import assert_http_error
@@ -94,6 +99,33 @@ def test_local_retake_routes_to_model_paths(
     _assert_retake_pipeline_model(test_state, _LOCAL_2_3)
 
 
+def test_local_retake_emits_heartbeat_done(
+    client, test_state, create_fake_model_files, fake_services, caplog
+) -> None:
+    _install_local(test_state, create_fake_model_files, _LOCAL_2_3)
+    video_path = _make_valid_video(test_state)
+    caplog.set_level(logging.INFO)
+
+    r = client.post(
+        "/api/retake",
+        json={"video_path": video_path, "start_time": 1.0, "duration": 3.0, "prompt": "make it dramatic"},
+    )
+    assert r.status_code == 200
+    start_records = [
+        record
+        for record in caplog.records
+        if "Retake " in record.getMessage() and " started (" in record.getMessage()
+    ]
+    assert len(start_records) == 1
+    done_records = [
+        record
+        for record in caplog.records
+        if record.name == "server_utils.heartbeat"
+        and "retake inference done" in record.getMessage()
+    ]
+    assert len(done_records) == 1
+
+
 @pytest.mark.parametrize("mode", ["start", "end"])
 def test_local_extend_routes_to_model_paths(
     client, test_state, create_fake_model_files, fake_services, mode: str
@@ -114,7 +146,34 @@ def test_local_extend_routes_to_model_paths(
     assert fake_services.retake_pipeline.extend_calls[-1]["mode"] == mode
 
 
-def test_local_retake_rejected_on_2_5(client, test_state, create_fake_model_files, fake_services) -> None:
+def test_local_extend_emits_heartbeat_done(
+    client, test_state, create_fake_model_files, fake_services, caplog
+) -> None:
+    _install_local(test_state, create_fake_model_files, _LOCAL_2_3)
+    video_path = _make_valid_video(test_state, frames=9)
+    caplog.set_level(logging.INFO)
+
+    r = client.post(
+        "/api/extend",
+        json={"video_path": video_path, "duration": 4.0, "prompt": "continue the motion", "mode": "end"},
+    )
+    assert r.status_code == 200
+    start_records = [
+        record
+        for record in caplog.records
+        if "Extend " in record.getMessage() and " started (" in record.getMessage()
+    ]
+    assert len(start_records) == 1
+    done_records = [
+        record
+        for record in caplog.records
+        if record.name == "server_utils.heartbeat"
+        and "extend inference done" in record.getMessage()
+    ]
+    assert len(done_records) == 1
+
+
+def test_local_retake_accepted_on_2_5(client, test_state, create_fake_model_files, fake_services) -> None:
     _install_local(test_state, create_fake_model_files, _LOCAL_2_5)
     video_path = _make_valid_video(test_state)
 
@@ -122,17 +181,16 @@ def test_local_retake_rejected_on_2_5(client, test_state, create_fake_model_file
         "/api/retake",
         json={"video_path": video_path, "start_time": 1.0, "duration": 3.0, "prompt": "make it dramatic"},
     )
-    assert_http_error(
-        r,
-        status_code=409,
-        code="UNSUPPORTED_RETAKE",
-        message="Retake is not supported for the active LTX model.",
-    )
-    assert fake_services.retake_pipeline.create_calls == []
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "complete"
+    assert data["video_path"]
+    _assert_create_paths(fake_services, test_state, _LOCAL_2_5)
+    _assert_retake_pipeline_model(test_state, _LOCAL_2_5)
 
 
 @pytest.mark.parametrize("mode", ["start", "end"])
-def test_local_extend_rejected_on_2_5(
+def test_local_extend_accepted_on_2_5(
     client, test_state, create_fake_model_files, fake_services, mode: str
 ) -> None:
     _install_local(test_state, create_fake_model_files, _LOCAL_2_5)
@@ -142,16 +200,84 @@ def test_local_extend_rejected_on_2_5(
         "/api/extend",
         json={"video_path": video_path, "duration": 4.0, "prompt": "continue the motion", "mode": mode},
     )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "complete"
+    assert data["video_path"]
+    _assert_create_paths(fake_services, test_state, _LOCAL_2_5)
+    _assert_retake_pipeline_model(test_state, _LOCAL_2_5)
+    assert fake_services.retake_pipeline.extend_calls[-1]["mode"] == mode
+
+
+def test_retake_unsupported_hardware_without_a_key_is_not_an_api_key_prompt(
+    client, test_state, create_fake_model_files, fake_services
+) -> None:
+    """Unsupported hardware must not be told to configure an API key."""
+    _install_local(test_state, create_fake_model_files, _LOCAL_2_3)
+    test_state.config.local_generations_mode = "unsupported"
+    test_state.state.app_settings.ltx_api_key = ""
+    video_path = _make_valid_video(test_state)
+
+    r = client.post(
+        "/api/retake",
+        json={"video_path": video_path, "start_time": 1.0, "duration": 3.0, "prompt": "make it dramatic"},
+    )
     assert_http_error(
         r,
-        status_code=409,
-        code="UNSUPPORTED_EXTEND",
-        message="Extend is not supported for the active LTX model.",
+        status_code=422,
+        code=LOCAL_GENERATION_UNSUPPORTED,
+        message=LOCAL_GENERATION_UNSUPPORTED_MESSAGE,
     )
+    body = r.json()["message"].lower()
+    assert "api" not in body
+    assert "key" not in body
+    assert "settings" not in body
     assert fake_services.retake_pipeline.create_calls == []
 
 
-def test_retake_on_2_5_does_not_rebuild_pipeline_after_2_3(
+def test_extend_unsupported_hardware_without_a_key_is_not_an_api_key_prompt(
+    client, test_state, create_fake_model_files, fake_services
+) -> None:
+    _install_local(test_state, create_fake_model_files, _LOCAL_2_3)
+    test_state.config.local_generations_mode = "unsupported"
+    test_state.state.app_settings.ltx_api_key = ""
+    video_path = _make_valid_video(test_state, frames=9)
+
+    r = client.post(
+        "/api/extend",
+        json={"video_path": video_path, "duration": 4.0, "prompt": "continue the motion", "mode": "end"},
+    )
+    assert_http_error(
+        r,
+        status_code=422,
+        code=LOCAL_GENERATION_UNSUPPORTED,
+        message=LOCAL_GENERATION_UNSUPPORTED_MESSAGE,
+    )
+    body = r.json()["message"].lower()
+    assert "api" not in body
+    assert "key" not in body
+    assert "settings" not in body
+    assert fake_services.retake_pipeline.create_calls == []
+
+
+def test_retake_unsupported_hardware_with_a_key_still_routes_to_the_api(
+    client, test_state, create_fake_model_files, fake_services
+) -> None:
+    """The guard only fires when no API route is left."""
+    _install_local(test_state, create_fake_model_files, _LOCAL_2_3)
+    test_state.config.local_generations_mode = "unsupported"
+    test_state.state.app_settings.ltx_api_key = "ltx-key"
+    video_path = _make_valid_video(test_state)
+
+    r = client.post(
+        "/api/retake",
+        json={"video_path": video_path, "start_time": 1.0, "duration": 3.0, "prompt": "make it dramatic"},
+    )
+    assert r.json().get("code") != LOCAL_GENERATION_UNSUPPORTED
+    assert fake_services.retake_pipeline.create_calls == []
+
+
+def test_retake_on_2_5_rebuilds_pipeline_after_2_3(
     client, test_state, create_fake_model_files, fake_services
 ) -> None:
     create_fake_model_files(model_id=_LOCAL_2_3)
@@ -169,10 +295,7 @@ def test_retake_on_2_5_does_not_rebuild_pipeline_after_2_3(
 
     test_state.state.app_settings.active_ltx_model_id = _LOCAL_2_5
     second = client.post("/api/retake", json=payload)
-    assert_http_error(
-        second,
-        status_code=409,
-        code="UNSUPPORTED_RETAKE",
-        message="Retake is not supported for the active LTX model.",
-    )
-    assert len(fake_services.retake_pipeline.create_calls) == 1
+    assert second.status_code == 200
+    _assert_create_paths(fake_services, test_state, _LOCAL_2_5)
+    _assert_retake_pipeline_model(test_state, _LOCAL_2_5)
+    assert len(fake_services.retake_pipeline.create_calls) == 2

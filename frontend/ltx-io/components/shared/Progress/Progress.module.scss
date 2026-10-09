@@ -1,0 +1,13 @@
+.track {
+  width: 100%;
+  height: 4px;
+  background-color: var(--semantic-bg-tertiary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.progress {
+  height: 100%;
+  background-color: var(--semantic-fg-primary);
+  border-radius: var(--radius-sm);
+}

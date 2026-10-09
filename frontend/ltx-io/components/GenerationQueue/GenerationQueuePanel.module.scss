@@ -1,0 +1,513 @@
+@use "@ds/styles/themes/mixins.module" as *;
+@use "@/components/home/shell-layout.scss" as shell;
+
+.root {
+  position: fixed;
+  // Clears the compact drawer bar (52px). The rail layout has no bar, so sit
+  // with the sidebar's top inset instead.
+  top: 72px;
+  right: 16px;
+  z-index: 55;
+
+  @media (min-width: shell.$shell-compact-breakpoint + 1px) {
+    top: var(--spacing-lg);
+  }
+}
+
+.root[data-placement="header"] {
+  position: relative;
+  top: auto;
+  right: auto;
+  // Stay in the header stacking context with Contact Sales so modals
+  // (--z-modal: 40) cover this control the same way.
+  z-index: auto;
+}
+
+.queueToggleCount {
+  color: var(--semantic-fg-secondary);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  z-index: var(--z-dropdown);
+  top: calc(100% + var(--spacing-sm));
+  right: 0;
+  width: min(460px, calc(100vw - 32px));
+  max-height: min(680px, calc(100dvh - 78px));
+  overflow: hidden;
+  border: 0;
+  border-radius: 8px;
+  background-color: var(--semantic-bg-primary);
+  transform-origin: top right;
+
+  @include effect_style_shadow_elevation_medium;
+  // Light theme's elevation mixin is a filter. filter makes this panel the
+  // containing block for the fixed drag overlay, so the preview is offset by
+  // the panel's position. Remote defaults to light. box-shadow does not.
+  filter: none;
+  box-shadow: 0 8px 12px 0 rgba(0, 0, 0, 12%);
+
+  &[data-empty] {
+    width: fit-content;
+    min-width: 240px;
+    max-width: min(320px, calc(100vw - 32px));
+  }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.feedback {
+  margin: 0;
+  padding: 16px;
+  color: var(--semantic-fg-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.emptyState {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  padding: var(--spacing-lg) var(--spacing-xl);
+  gap: var(--spacing-md);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.listScroller {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.queueSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 16px;
+  background: var(--semantic-bg-secondary);
+  color: var(--semantic-fg-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  list-style: none;
+}
+
+.sectionClear {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--semantic-fg-secondary);
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 16px;
+  text-transform: none;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--semantic-fg-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--semantic-border-focus);
+    outline-offset: 2px;
+  }
+}
+
+.skeletonRow {
+  padding: 16px 16px 8px;
+  border-bottom: 1px solid var(--semantic-bg-separator-primary);
+  list-style: none;
+}
+
+.skeletonBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row {
+  margin: 0;
+  padding: 16px 8px 16px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--semantic-bg-separator-primary);
+  background: transparent;
+  list-style: none;
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  &:has(+ .queueSectionHeader) {
+    border-bottom: 0;
+  }
+}
+
+
+.dragOverlay {
+  cursor: grabbing;
+  pointer-events: none;
+}
+
+.row[data-dragging] {
+  visibility: hidden;
+}
+
+.row[data-overlay] {
+  box-sizing: border-box;
+  width: 100%;
+  border-bottom: 0;
+  border-radius: 8px;
+  background: var(--semantic-bg-primary);
+  cursor: grabbing;
+
+  @include effect_style_shadow_elevation_medium;
+}
+
+/*
+  Queue row. Change the four numbers below to adjust the layout.
+
+  With an input asset (image / video):
+    [thumb]  title ——24px—— badges …… [x]  :
+             prompt text
+
+  Without an asset:
+    title ——24px—— badges …… [x]  :
+    prompt across the text
+
+  The cancel button is its own column and sits in the vertical middle
+  of the title + prompt. The drag icon is a small mark to its right.
+  The generating row keeps an empty slot of the same width so the
+  cancel buttons line up. Finished rows have no cancel column.
+
+  Done rows: remove (x) plus an empty grip slot so X aligns with queue rows.
+*/
+.rowLayout {
+  --queue-grip: 12px;
+  --queue-grip-gap: 4px;
+  --queue-title-prompt-gap: 0;
+  --queue-actions-gap: 4px;
+  --queue-cancel-gap: 8px;
+  --queue-cancel-size: 24px;
+  --queue-trailing-width: calc(
+    var(--queue-cancel-size) + var(--queue-grip-gap) + var(--queue-grip)
+  );
+  --queue-title-badges-gap: var(--spacing-xl);
+  --queue-asset-size: 40px;
+  --queue-asset-gap: 8px;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "header"
+    "prompt";
+  column-gap: var(--queue-grip-gap);
+  row-gap: var(--queue-title-prompt-gap);
+  align-items: start;
+  min-width: 0;
+}
+
+.rowLayout[data-has-trailing] {
+  grid-template-columns: minmax(0, 1fr) var(--queue-trailing-width);
+  grid-template-areas:
+    "header trailing"
+    "prompt trailing";
+}
+
+.rowLayout[data-has-asset] {
+  grid-template-columns: var(--queue-asset-size) minmax(0, 1fr);
+  column-gap: var(--queue-asset-gap);
+  grid-template-areas:
+    "asset header"
+    "asset prompt";
+}
+
+.rowLayout[data-has-asset]:not([data-has-prompt]) {
+  grid-template-areas: "asset header";
+}
+
+.rowLayout[data-has-asset][data-has-trailing] {
+  grid-template-columns:
+    var(--queue-asset-size)
+    minmax(0, 1fr)
+    var(--queue-trailing-width);
+  grid-template-areas:
+    "asset header trailing"
+    "asset prompt trailing";
+}
+
+.rowLayout[data-has-asset][data-has-trailing]:not([data-has-prompt]) {
+  grid-template-areas: "asset header trailing";
+}
+
+.rowAsset {
+  display: flex;
+  grid-area: asset;
+  align-self: start;
+}
+
+.rowHeader {
+  display: flex;
+  grid-area: header;
+  align-items: center;
+  gap: var(--queue-title-badges-gap);
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.rowOpenTarget {
+  display: grid;
+  grid-column: 1 / 2;
+  grid-row: 1 / -1;
+  min-width: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "header"
+    "prompt";
+  column-gap: var(--queue-grip-gap);
+  row-gap: var(--queue-title-prompt-gap);
+  align-items: start;
+
+  &:focus-visible {
+    outline: 2px solid var(--semantic-border-focus);
+    outline-offset: -2px;
+  }
+}
+
+.rowLayout[data-has-trailing] > .rowOpenTarget {
+  grid-column: 1 / 2;
+}
+
+.rowOpenTarget[data-has-asset] {
+  grid-template-columns: var(--queue-asset-size) minmax(0, 1fr);
+  column-gap: var(--queue-asset-gap);
+  grid-template-areas:
+    "asset header"
+    "asset prompt";
+}
+
+.rowOpenTarget[data-has-asset]:not([data-has-prompt]) {
+  grid-template-areas: "asset header";
+}
+
+.rowLayout[data-has-asset][data-has-trailing] > .rowOpenTarget {
+  grid-column: 1 / 3;
+}
+
+.rowLayout[data-has-asset]:not([data-has-trailing]) > .rowOpenTarget {
+  grid-column: 1 / -1;
+}
+
+.rowTrailing {
+  display: flex;
+  grid-area: trailing;
+  align-self: center;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--queue-grip-gap);
+  width: var(--queue-trailing-width);
+  min-width: var(--queue-trailing-width);
+  max-width: var(--queue-trailing-width);
+  margin-inline-start: calc(var(--queue-cancel-gap) - var(--queue-grip-gap));
+}
+
+.cancelSpacer {
+  flex: 0 0 var(--queue-cancel-size);
+  width: var(--queue-cancel-size);
+  height: var(--queue-cancel-size);
+}
+
+.dragHandle,
+.dragHandleButton,
+.dragSpacer {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--queue-grip);
+  min-height: 9px;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--semantic-fg-secondary);
+  line-height: 0;
+  overflow: visible;
+}
+
+.dragHandleButton {
+  position: relative;
+  cursor: grab;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--semantic-border-focus);
+    outline-offset: 2px;
+  }
+}
+
+.rowTitle {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  height: 20px;
+  margin: 0;
+  overflow: visible;
+  line-height: 20px;
+  color: var(--semantic-fg-primary);
+}
+
+.rowTitleLabel {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.rowTitleProgress {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.rowTitleStatus {
+  flex-shrink: 0;
+  white-space: nowrap;
+  color: var(--semantic-fg-secondary);
+}
+
+.doneUnreadDot {
+  width: 6px;
+  height: 6px;
+  min-width: 6px;
+  max-width: 6px;
+  min-height: 6px;
+  max-height: 6px;
+  margin-inline-start: 4px;
+}
+
+.rowBadges {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  > * {
+    flex-shrink: 0;
+  }
+}
+
+.gripIcon {
+  display: block;
+  flex-shrink: 0;
+  // Two columns × three rows at 3px — needs 6×9px or the right column clips.
+  width: 6px;
+  height: 9px;
+  background-image: radial-gradient(
+    circle,
+    currentcolor 0.8px,
+    transparent 0.8px
+  );
+  background-size: 3px 3px;
+}
+
+.promptRow {
+  display: block;
+  grid-area: prompt;
+  align-self: start;
+  min-width: 0;
+}
+
+.inputAssetThumb {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--semantic-bg-secondary);
+}
+
+.inputAssetImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.inputAssetPlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--semantic-fg-secondary);
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.prompt {
+  flex: 1 1 auto;
+  margin: 0;
+  min-width: 0;
+  display: -webkit-box;
+  max-height: 40px;
+  overflow: hidden;
+  color: var(--semantic-fg-tertiary);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+@media (max-width: shell.$shell-compact-breakpoint) {
+  .root {
+    top: 68px;
+    right: 12px;
+  }
+}

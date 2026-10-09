@@ -6,7 +6,7 @@ import {
   type GenSpaceSortKey,
 } from '../../lib/genspace-gallery'
 
-const toolbarTriggerClass = 'px-3 py-1.5 text-sm font-medium text-zinc-400 hover:text-white rounded-r-none'
+const toolbarTriggerClass = 'px-3 py-1.5 text-sm font-medium text-fg-secondary hover:text-fg-primary rounded-r-none'
 
 export function GenSpaceSortMenu({
   sortKey,
@@ -34,7 +34,7 @@ export function GenSpaceSortMenu({
         trigger={
           <>
             <span>{currentLabel}</span>
-            <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
+            <ChevronDown className="h-3.5 w-3.5 text-fg-tertiary" />
           </>
         }
         options={GENSPACE_SORT_OPTIONS}
@@ -44,7 +44,7 @@ export function GenSpaceSortMenu({
         onClick={onToggleSortDir}
         title={directionLabel}
         aria-label={`Sort ${directionLabel.toLowerCase()}`}
-        className="p-1.5 rounded-md rounded-l-none border-l border-zinc-700 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+        className="p-1.5 rounded-md rounded-l-none border-l border-separator text-fg-secondary hover:text-fg-primary hover:bg-action transition-colors"
       >
         <DirectionIcon className="h-3.5 w-3.5" />
       </button>

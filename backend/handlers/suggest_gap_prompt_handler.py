@@ -13,7 +13,8 @@ from api_types import (
 )
 from _routes._errors import HTTPError
 from handlers.base import StateHandlerBase
-from server_utils.media_validation import image_mime_type, normalize_optional_path, validate_image_file
+from server_utils.media_validation import normalize_optional_path, validate_image_file
+from server_utils.oriented_image import oriented_image_payload
 from services.gemini_text_client import (
     apply_gemini_thinking_config,
     call_gemini_generate_content,
@@ -41,8 +42,8 @@ def _read_image_file_as_base64(file_path: str | None) -> tuple[str, str] | None:
         logger.warning("Ignoring invalid image file for gap prompt: %s (%s)", normalized, exc.detail)
         return None
     try:
-        data = base64.b64encode(validated_path.read_bytes()).decode()
-        return data, image_mime_type(str(validated_path))
+        raw, mime = oriented_image_payload(validated_path)
+        return base64.b64encode(raw).decode(), mime
     except Exception:
         logger.warning("Failed to read image file for gap prompt: %s", normalized, exc_info=True)
         return None

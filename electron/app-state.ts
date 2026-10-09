@@ -8,6 +8,9 @@ export interface AppState {
   projectAssetsPath?: string
   skippedUpdateVersion?: string
   autoCheckUpdates?: boolean
+  setupComplete?: boolean
+  /** Mirrors the in-app theme preference so Mac glass can follow it on launch. */
+  windowTheme?: 'light' | 'dark' | 'system'
   [key: string]: unknown
 }
 
@@ -72,5 +75,17 @@ export function getAutoCheckUpdates(): boolean {
 export function setAutoCheckUpdates(enabled: boolean): void {
   const s = readAppState()
   s.autoCheckUpdates = enabled
+  writeAppState(s)
+}
+
+export function getWindowTheme(): 'light' | 'dark' | 'system' | undefined {
+  const theme = readAppState().windowTheme
+  if (theme === 'light' || theme === 'dark' || theme === 'system') return theme
+  return undefined
+}
+
+export function setWindowTheme(theme: 'light' | 'dark' | 'system'): void {
+  const s = readAppState()
+  s.windowTheme = theme
   writeAppState(s)
 }

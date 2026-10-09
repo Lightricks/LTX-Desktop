@@ -10,12 +10,14 @@ from typing import assert_never, cast, get_args
 
 from api_types import (
     LTXLocalModelId,
+    LTXVideoGenAspectRatio,
     LTXVideoGenDuration,
     LTXVideoGenFps,
     LTXVideoGenPipeline,
     LTXVideoGenResolution,
     LTXVideoGenerationResolutionSpec,
     LTXVideoGenerationSpec,
+    LtxCatalogModelFamily,
     ModelCheckpointID,
 )
 from runtime_config.ltx_api_text_encoder_ids import (
@@ -89,7 +91,9 @@ class LTXLocalModelSpec:
     # None for monolith 2.3 (DurationHead lives inside the fat checkpoint). Split 2.5
     # ships it as model_patches/ltx-2.5-duration-head-bf16.safetensors.
     duration_head_cp: ModelCheckpointID | None
-    # None when the model has no built-in Union Control IC-LoRA (LTX 2.5 today).
+    # None when the model has no built-in Union Control IC-LoRA. 2.3 and 2.5 share
+    # `_DISTILLED_IC_LORAS` (the 2.3 union-control adapter); leave this off first-run
+    # required CPs so a 2.5 install still prompts from the IC-LoRA panel.
     ic_loras_spec: LtxIcLorasSpec | None
     relevance: LTXLocalModelRelevance
     supported_pipelines: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], ...]
@@ -114,15 +118,29 @@ class LTXLocalModelSpec:
     is_latest: bool = False
 
 
+# Widest to tallest. Local text, image, and audio share this; the pipeline only requires /64.
+_LOCAL_ASPECT_RATIOS: tuple[LTXVideoGenAspectRatio, ...] = (
+    "21:9",
+    "16:9",
+    "3:2",
+    "4:3",
+    "1:1",
+    "4:5",
+    "9:16",
+)
+
+
 def _local_resolution_spec(
     *,
     fps_to_durations: dict[LTXVideoGenFps, tuple[LTXVideoGenDuration, ...]],
+    aspect_ratios: tuple[LTXVideoGenAspectRatio, ...] = _LOCAL_ASPECT_RATIOS,
 ) -> LTXVideoGenerationResolutionSpec:
     return LTXVideoGenerationResolutionSpec(
         fps_to_durations={
             fps: list(durations)
             for fps, durations in fps_to_durations.items()
         },
+        aspect_ratios=list(aspect_ratios),
     )
 
 
@@ -131,23 +149,63 @@ DEPTH_PROCESSOR_CP_ID: ModelCheckpointID = "dpt-hybrid-midas"
 PERSON_DETECTOR_CP_ID: ModelCheckpointID = "yolox-l-torchscript"
 POSE_PROCESSOR_CP_ID: ModelCheckpointID = "dw-ll-ucoco-384-bs5"
 
+# Static Fast ceiling. List-time hiding uses decide_video_job so CUDA 16 GB does
+# not advertise 720p/20s or 1080p/10s; a 5090 that streams those cells still sees
+# them. Darwin keeps this ceiling (no CUDA stream-curve compare). 1080p/20s is
+# never in this table. Every duration list is listed at 24, 25, 48, and 50.
+_LOCAL_FPS: tuple[LTXVideoGenFps, ...] = (24, 25, 48, 50)
+
+
+def _local_fps_durations(
+    durations: tuple[LTXVideoGenDuration, ...],
+) -> dict[LTXVideoGenFps, tuple[LTXVideoGenDuration, ...]]:
+    return {fps: durations for fps in _LOCAL_FPS}
+
+
+_FAST_540P_DURATIONS = _local_resolution_spec(
+    fps_to_durations=_local_fps_durations((2, 3, 4, 5, 6, 8, 10, 20)),
+)
 _FAST_LOCAL_RESOLUTIONS_DURATIONS: dict[LTXVideoGenResolution, LTXVideoGenerationResolutionSpec] = {
-    "540p": _local_resolution_spec(
-        fps_to_durations={
-            24: (5, 6, 8, 10, 20),
-        },
-    ),
+    # Same duration list as 540p. The pipeline runs the 540p/720p canvas and
+    # returns the first pass, so these cells are cheaper than that canvas.
+    "270p": _FAST_540P_DURATIONS,
+    "360p": _FAST_540P_DURATIONS,
+    "540p": _FAST_540P_DURATIONS,
     "720p": _local_resolution_spec(
-        fps_to_durations={
-            24: (5, 6, 8, 10),
-        },
+        fps_to_durations=_local_fps_durations((2, 3, 4, 5, 6, 8, 10, 20)),
     ),
     "1080p": _local_resolution_spec(
-        fps_to_durations={
-            24: (5,),
-        },
+        fps_to_durations=_local_fps_durations((2, 3, 4, 5, 10)),
     ),
 }
+# A2V keeps the previous durations. 270p/360p are smaller two-pass canvases,
+# not the text-to-video first pass, and they share the 540p duration list.
+_A2V_LOCAL_RESOLUTIONS_DURATIONS: dict[LTXVideoGenResolution, LTXVideoGenerationResolutionSpec] = {
+    "270p": _local_resolution_spec(
+        fps_to_durations=_local_fps_durations((5, 6, 8, 10, 20)),
+    ),
+    "360p": _local_resolution_spec(
+        fps_to_durations=_local_fps_durations((5, 6, 8, 10, 20)),
+    ),
+    "540p": _local_resolution_spec(
+        fps_to_durations=_local_fps_durations((5, 6, 8, 10, 20)),
+    ),
+    "720p": _local_resolution_spec(
+        fps_to_durations=_local_fps_durations((5, 6, 8, 10, 20)),
+    ),
+    "1080p": _local_resolution_spec(
+        fps_to_durations=_local_fps_durations((5, 10)),
+    ),
+}
+
+
+def local_aspect_ratios(resolution: str, *, is_a2v: bool) -> tuple[str, ...]:
+    """Aspects advertised for one local resolution cell. Closest-match reads this."""
+    table = _A2V_LOCAL_RESOLUTIONS_DURATIONS if is_a2v else _FAST_LOCAL_RESOLUTIONS_DURATIONS
+    spec = table.get(cast(LTXVideoGenResolution, resolution))
+    if spec is None:
+        raise KeyError(resolution)
+    return tuple(spec.aspect_ratios)
 
 _DISTILLED_PIPELINES_2_3: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], ...] = (
     (
@@ -155,8 +213,7 @@ _DISTILLED_PIPELINES_2_3: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpe
         LTXVideoGenerationSpec(
             display_name="LTX 2.3 Fast",
             supported_resolutions_durations=_FAST_LOCAL_RESOLUTIONS_DURATIONS,
-            # DistilledA2VPipeline supports A2V at the same envelope as t2v/i2v.
-            a2v_supported_resolutions_durations=_FAST_LOCAL_RESOLUTIONS_DURATIONS,
+            a2v_supported_resolutions_durations=_A2V_LOCAL_RESOLUTIONS_DURATIONS,
         ),
     ),
 )
@@ -167,7 +224,7 @@ _DISTILLED_PIPELINES_2_5: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpe
         LTXVideoGenerationSpec(
             display_name="LTX 2.5 Fast",
             supported_resolutions_durations=_FAST_LOCAL_RESOLUTIONS_DURATIONS,
-            a2v_supported_resolutions_durations=_FAST_LOCAL_RESOLUTIONS_DURATIONS,
+            a2v_supported_resolutions_durations=_A2V_LOCAL_RESOLUTIONS_DURATIONS,
         ),
     ),
 )
@@ -343,6 +400,7 @@ def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
             assert_never(cp_id)
 
 
+# 2.3 Union Control adapter. 2.5 reuses the same file — many 2.3 IC-LoRAs run on 2.5.
 _DISTILLED_IC_LORAS = LtxIcLorasSpec(
     depth_cp="ltx-2.3-22b-ic-lora-union-control-ref0.5",
     canny_cp="ltx-2.3-22b-ic-lora-union-control-ref0.5",
@@ -375,7 +433,7 @@ def get_ltx_model_spec(model_id: LTXLocalModelId) -> LTXLocalModelSpec:
                 video_vae_conv_cp="ltx-2.5-video-vae-conv",
                 audio_vae_cp="ltx-2.5-audio-vae",
                 duration_head_cp="ltx-2.5-duration-head",
-                ic_loras_spec=None,
+                ic_loras_spec=_DISTILLED_IC_LORAS,
                 relevance=LTXLocalModelRelevant(
                     upgrade_messages={
                         "ltx-2.3-22b-distilled": _DISTILLED_2_5_WHATS_NEW,
@@ -383,7 +441,7 @@ def get_ltx_model_spec(model_id: LTXLocalModelId) -> LTXLocalModelSpec:
                     },
                 ),
                 supported_pipelines=_DISTILLED_PIPELINES_2_5,
-                version_label="2.5",
+                version_label="LTX 2.5",
                 api_prompt_embedding_model=LTX_2_5_API_PROMPT_EMBEDDING_MODEL,
                 wants_audio_visual_captions=True,
                 prompt_enhancer_cp="gemma-4-e2b-it",
@@ -403,7 +461,7 @@ def get_ltx_model_spec(model_id: LTXLocalModelId) -> LTXLocalModelSpec:
                     upgrade_messages={"ltx-2.3-22b-distilled": _DISTILLED_1_1_WHATS_NEW},
                 ),
                 supported_pipelines=_DISTILLED_PIPELINES_2_3,
-                version_label="2.3",
+                version_label="LTX 2.3",
             )
         case "ltx-2.3-22b-distilled":
             return LTXLocalModelSpec(
@@ -417,7 +475,7 @@ def get_ltx_model_spec(model_id: LTXLocalModelId) -> LTXLocalModelSpec:
                 ic_loras_spec=_DISTILLED_IC_LORAS,
                 relevance=LTXLocalModelRelevant(upgrade_messages={}),
                 supported_pipelines=_DISTILLED_PIPELINES_2_3,
-                version_label="2.3 (1.0)",
+                version_label="LTX 2.3 (1.0)",
             )
         case _:
             assert_never(model_id)
@@ -634,7 +692,7 @@ def get_downloaded_ltx_model_id(models_dir: Path) -> LTXLocalModelId | None:
     return downloaded[0]
 
 
-def _ltx_generation_bundle_on_disk(models_dir: Path, model_id: LTXLocalModelId) -> bool:
+def ltx_generation_bundle_on_disk(models_dir: Path, model_id: LTXLocalModelId) -> bool:
     """True when the always-required generation checkpoints for ``model_id`` are present.
 
     Transformer + upscaler (+ split VAEs for 2.5) are required regardless of settings. The text
@@ -660,14 +718,37 @@ def resolve_active_ltx_model_id(
 ) -> LTXLocalModelId | None:
     # Only honour ``preferred`` if its full generation bundle is on disk — otherwise it would
     # be picked and then die in get_existing_cp_path on a missing companion (e.g. upscaler).
-    if preferred is not None and _ltx_generation_bundle_on_disk(models_dir, preferred):
+    if preferred is not None and ltx_generation_bundle_on_disk(models_dir, preferred):
         return preferred
     # Prefer a version that can actually generate (newest first); fall back to whatever
     # transformer is on disk as a last resort so a partial install still resolves to something.
     for model_id in ALL_LTX_LOCAL_MODEL_IDS:
-        if _ltx_generation_bundle_on_disk(models_dir, model_id):
+        if ltx_generation_bundle_on_disk(models_dir, model_id):
             return model_id
     return get_downloaded_ltx_model_id(models_dir)
+
+
+def ltx_catalog_family_for_model(model_id: LTXLocalModelId) -> LtxCatalogModelFamily:
+    if model_id.startswith("ltx-2.5"):
+        return "LTX-2.5"
+    return "LTX-2.3"
+
+
+def installed_ltx_catalog_families(models_dir: Path) -> frozenset[LtxCatalogModelFamily]:
+    """LTX families with a runnable generation bundle on disk — not the active model."""
+    return frozenset(
+        ltx_catalog_family_for_model(model_id)
+        for model_id in ALL_LTX_LOCAL_MODEL_IDS
+        if ltx_generation_bundle_on_disk(models_dir, model_id)
+    )
+
+
+def catalog_item_visible_for_installed_ltx(
+    supported_models: list[LtxCatalogModelFamily], models_dir: Path
+) -> bool:
+    """True when at least one of ``supported_models`` is installed (runnable on disk)."""
+    installed = installed_ltx_catalog_families(models_dir)
+    return any(family in installed for family in supported_models)
 
 
 def _validate_model_cp_specs() -> None:

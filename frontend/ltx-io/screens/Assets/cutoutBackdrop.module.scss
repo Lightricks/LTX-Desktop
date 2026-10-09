@@ -1,0 +1,17 @@
+@import "@ds/styles/common.module.scss";
+
+/* The saved thumbnail of a cutout is a JPEG with a light transparency grid baked in.
+   The playing video must sit on the same grid, in the light and the dark theme. */
+.cutoutBackdrop {
+  @extend .checkerboardBackground;
+
+  --checkerboard-base: #fff;
+  --checkerboard-square: #e8e8e8;
+  --checkerboard-size: 16px;
+}
+
+.cutoutBackdropLarge {
+  @extend .cutoutBackdrop;
+
+  --checkerboard-size: 32px;
+}

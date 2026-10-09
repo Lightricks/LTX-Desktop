@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useState } from 'react'
 import { hasLegacyProjectsEntry } from '../hooks/useProjectReferencesMigration'
 import { createDefaultTimeline, normalizeProject, type Project, type Asset, type AssetTake, type ProjectTab } from '../types/project-model'
+import { removeRecentProjectId } from '../lib/home-recent-projects-preference.ts'
 import {
   deleteProjectEntry,
   readProject,
@@ -160,6 +161,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     writeProjectIds(nextProjectIds)
     setProjectIds(nextProjectIds)
     deleteProjectEntry(id)
+    removeRecentProjectId(id)
     setActiveProject(prev => (prev?.id === id ? null : prev))
     bumpProjectRevision()
   }, [bumpProjectRevision])

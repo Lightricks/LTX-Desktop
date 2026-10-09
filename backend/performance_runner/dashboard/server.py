@@ -2,10 +2,10 @@
 """Perf dashboard control server (localhost-only).
 
 A thin FastAPI app that lets the HTML dashboard fully drive the perf suite — set
-the backend auth token, flip the cache + Torch Compile toggles, launch soak /
-A/B / decompose / sanity runs, poll their logs/status, stop them, view sanity
-results, and chart the soak trend. It reuses perf_config.py directly, so it
-inherits the same single-seam wiring.
+the backend auth token, flip the same Settings controls (active LTX version, Fast
+decode, cache, Torch Compile), launch soak / A/B / decompose / sanity runs, poll
+their logs/status, stop them, view sanity results, and chart the soak trend. It
+reuses perf_config.py directly, so it inherits the same single-seam wiring.
 
 All run artifacts (logs, soak CSVs, sanity results) live in one folder,
 `perf_config.RUNS_DIR`; run metadata is persisted alongside so the runs table
@@ -76,6 +76,10 @@ class ToggleReq(BaseModel):
 
 class TokenReq(BaseModel):
     token: str
+
+
+class ModelReq(BaseModel):
+    model_id: str
 
 
 # --------------------------------------------------------------------------- #
@@ -332,12 +336,16 @@ def set_token(req: TokenReq) -> dict:
 
 @app.get("/api/toggles")
 def toggles() -> dict:
-    """Live cache + Torch-Compile state read from the backend, so the UI reflects its
-    actual settings."""
+    """Live Settings state: cache, Torch Compile, Fast decode, and LTX versions.
+
+    Versions/installed/active are GET /api/models/ltx-versions (BaseModelSection).
+    Fast decode is useConvVae; VAE-on-disk comes from /api/models/describe.
+    """
     try:
         s = perf_config.get_settings()
     except Exception as exc:  # noqa: BLE001
-        return {"cache": None, "torch_compile": None, "error": str(exc)}
+        return {"cache": None, "torch_compile": None, "use_conv_vae": None,
+                "versions": [], "vaes": {"diff": False, "conv": False}, "error": str(exc)}
 
     def pick(*keys: str) -> bool | None:
         for k in keys:
@@ -345,9 +353,18 @@ def toggles() -> dict:
                 return bool(s[k])
         return None
 
+    try:
+        versions = perf_config.ltx_versions()
+        vaes = perf_config.described_vaes()
+    except Exception:  # noqa: BLE001
+        versions, vaes = [], {"diff": False, "conv": False}
+
     return {
         "cache": pick("diffusionStageCacheEnabled", "diffusion_stage_cache_enabled"),
         "torch_compile": pick("useTorchCompile", "use_torch_compile"),
+        "use_conv_vae": pick("useConvVae", "use_conv_vae"),
+        "versions": versions,
+        "vaes": vaes,
     }
 
 
@@ -363,19 +380,42 @@ def set_torch_compile(req: ToggleReq) -> dict:
     return {"torch_compile_enabled": req.enabled}
 
 
+@app.post("/api/fast-decode")
+def set_fast_decode(req: ToggleReq) -> JSONResponse:
+    try:
+        perf_config.set_use_conv_vae(req.enabled)
+        return JSONResponse({"use_conv_vae": req.enabled})
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+@app.post("/api/active-ltx-model")
+def set_active_ltx_model(req: ModelReq) -> JSONResponse:
+    try:
+        model_id = perf_config.activate_ltx_model(req.model_id)
+        return JSONResponse({"model_id": model_id})
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
 @app.get("/api/scenarios")
 def list_scenarios() -> list[dict]:
-    """Scenarios plus availability, crossed with the app's LoRA/IC-LoRA library (SSOT).
-    `available` is False when a required catalog weight isn't downloaded; the reason points
-    the user at the app's library. Availability uses the catalog cache — POST /api/catalog/
-    refresh after downloading a weight in the app to re-check without restarting."""
+    """Scenarios plus availability, crossed with the app's LoRA/IC-LoRA library (SSOT)
+    and the active model's local offerings (retake/extend/canny from models-specs)."""
+    caps = perf_config.scenario_caps()
     out: list[dict] = []
     for s in scn.all_scenarios():
         missing = s.unavailable()
-        reason = ("needs download (open the app → LoRA / IC-LoRA library): " + ", ".join(missing)
-                  if missing else "")
+        cap_reason = s.blocked_by_caps(caps)
+        if cap_reason:
+            reason = cap_reason
+        elif missing:
+            reason = "needs download (open the app → LoRA / IC-LoRA library): " + ", ".join(missing)
+        else:
+            reason = ""
         out.append({"key": s.key, "title": s.title, "needs_wiring": s.needs_wiring,
-                    "tags": s.tags, "available": not missing, "unavailable_reason": reason})
+                    "tags": s.tags, "available": not missing and not cap_reason,
+                    "unavailable_reason": reason})
     return out
 
 

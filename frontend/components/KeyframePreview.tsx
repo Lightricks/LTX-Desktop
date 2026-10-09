@@ -28,7 +28,7 @@ export function KeyframePreview({
       }}
     >
       <div
-        className="h-full max-w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950"
+        className="h-full max-w-full overflow-hidden rounded-xl border border-separator bg-surface-tertiary"
         style={{ aspectRatio: cssAspect }}
       >
         {keyframe ? (
@@ -39,7 +39,7 @@ export function KeyframePreview({
             className="h-full w-full object-contain"
           />
         ) : (
-          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-fg-tertiary">
             Add keyframes to preview your sequence
           </div>
         )}

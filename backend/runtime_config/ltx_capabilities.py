@@ -13,6 +13,7 @@ from typing import Literal, assert_never
 from api_types import (
     LOCAL_MULTI_KEYFRAME_MAX_COUNT,
     LTXLocalModelId,
+    LTXVideoGenAspectRatio,
     LTXVideoGenPipeline,
     LTXVideoGenResolution,
 )
@@ -29,7 +30,7 @@ LtxCapabilityFeature = Literal[
     "camera_motion",
     "auto_duration",
 ]
-LtxAspectRatio = Literal["16:9", "9:16"]
+LtxAspectRatio = LTXVideoGenAspectRatio
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,7 @@ class LtxOfferingCapabilities:
     camera_motion: bool
     # t2v/i2v only: send duration=null and the cloud worker picks length from the prompt.
     auto_duration: bool
-    # Label → (width, height) for 16:9; 9:16 is swapped at pixels_for().
+    # Label → (width, height) for 16:9. Other ratios are derived in pixels_for().
     resolution_pixels_16_9: dict[LTXVideoGenResolution, tuple[int, int]]
 
 
@@ -62,13 +63,46 @@ class ApiOfferingCapabilities(LtxOfferingCapabilities):
     type can't be confused with local_caps()'s at the type-checker level."""
 
 
-# Local Fast sizes: one /64 two-stage grid for 2.3 and 2.5. Splitting 540p
-# (2.3 960×544 vs 2.5 1024×576) made a model switch fail assert_resolution.
-_LOCAL_PIXELS_16_9: dict[LTXVideoGenResolution, tuple[int, int]] = {
+# Real two-pass canvases. Splitting 540p (2.3 960×544 vs 2.5 1024×576) made a
+# model switch fail assert_resolution, so 2.3 and 2.5 share this grid.
+_TWO_PASS_PIXELS_16_9: dict[LTXVideoGenResolution, tuple[int, int]] = {
     "540p": (1024, 576),
     "720p": (1280, 704),
     "1080p": (1920, 1088),
 }
+
+# Text and image labels that denoise the parent canvas and return the first pass.
+_STAGE1_PARENT: dict[LTXVideoGenResolution, LTXVideoGenResolution] = {
+    "270p": "540p",
+    "360p": "720p",
+}
+
+# A2V finishes both passes, so these are the picture, not the text-to-video parent.
+_A2V_TWO_PASS_PIXELS_16_9: dict[LTXVideoGenResolution, tuple[int, int]] = {
+    "270p": (576, 320),
+    "360p": (704, 384),
+}
+
+
+def _local_pixel_map() -> dict[LTXVideoGenResolution, tuple[int, int]]:
+    pixels = dict(_TWO_PASS_PIXELS_16_9)
+    for label, parent in _STAGE1_PARENT.items():
+        pixels[label] = _TWO_PASS_PIXELS_16_9[parent]
+    return pixels
+
+
+# 270p and 360p are the parent pair, not a second copy of those numbers.
+_LOCAL_PIXELS_16_9: dict[LTXVideoGenResolution, tuple[int, int]] = _local_pixel_map()
+
+CanvasMode = Literal["video", "a2v"]
+
+
+@dataclass(frozen=True)
+class LocalCanvas:
+    width: int
+    height: int
+    skip_stage_2: bool
+
 
 _API_PIXELS_16_9: dict[LTXVideoGenResolution, tuple[int, int]] = {
     "720p": (1280, 720),
@@ -95,14 +129,13 @@ _LOCAL_2_3 = LocalOfferingCapabilities(
 # DistilledA2V is wired for local 2.5. Auto duration is DurationHead on the
 # distilled checkpoint (t2v/i2v; A2V length comes from the audio). Advertised
 # only when those weights are on disk — see effective_local_caps().
-# Retake/Extend match API 2.5 (unsupported); local 2.3 still offers both.
 _LOCAL_2_5 = LocalOfferingCapabilities(
     t2v=True,
     i2v=True,
     a2v=True,
     ic_lora=True,
-    retake=False,
-    extend=False,
+    retake=True,
+    extend=True,
     multi_keyframe=True,
     multi_keyframe_max_count=LOCAL_MULTI_KEYFRAME_MAX_COUNT,
     user_loras=True,
@@ -241,15 +274,128 @@ def supports(caps: LtxOfferingCapabilities, feature: LtxCapabilityFeature) -> bo
             assert_never(feature)
 
 
+_ASPECT_PARTS: dict[LtxAspectRatio, tuple[int, int]] = {
+    "21:9": (21, 9),
+    "16:9": (16, 9),
+    "3:2": (3, 2),
+    "4:3": (4, 3),
+    "1:1": (1, 1),
+    "4:5": (4, 5),
+    "9:16": (9, 16),
+}
+
+
+def _snap_nearest_64(value: int) -> int:
+    """Nearest multiple of 64. An exact halfway rounds up.
+
+    Always rounding up turned a 4:5 long side of 720 into 768, which is 4:3.
+    Halfway still rounds up so a *.5 multiple cannot shrink the way Python's
+    half-to-even round did on the two-stage grid.
+    """
+    remainder = value % 64
+    if remainder == 0:
+        return value
+    if remainder < 32:
+        return value - remainder
+    return value + (64 - remainder)
+
+
+def _pixels_from_anchor(
+    anchor: tuple[int, int],
+    aspect: LtxAspectRatio,
+    *,
+    snap: bool,
+) -> tuple[int, int]:
+    """Short side is the 16:9 height. 16:9 itself stays the stored anchor."""
+    if aspect == "16:9":
+        return anchor
+    short = anchor[1]
+    width_part, height_part = _ASPECT_PARTS[aspect]
+    if width_part >= height_part:
+        height = short
+        width = round(short * width_part / height_part)
+    else:
+        width = short
+        height = round(short * height_part / width_part)
+    if snap:
+        return _snap_nearest_64(width), _snap_nearest_64(height)
+    return width, height
+
+
+def local_canvas(resolution: LTXVideoGenResolution, *, mode: CanvasMode) -> LocalCanvas:
+    """One record for a local label. Video 270p/360p skip stage 2 on the parent canvas."""
+    if resolution not in _LOCAL_PIXELS_16_9:
+        raise KeyError(resolution)
+    if mode == "a2v":
+        override = _A2V_TWO_PASS_PIXELS_16_9.get(resolution)
+        if override is not None:
+            width, height = override
+            return LocalCanvas(width, height, skip_stage_2=False)
+    width, height = _LOCAL_PIXELS_16_9[resolution]
+    return LocalCanvas(
+        width,
+        height,
+        skip_stage_2=mode == "video" and resolution in _STAGE1_PARENT,
+    )
+
+
+def budget_size(canvas: LocalCanvas) -> tuple[int, int]:
+    """Pixels the job denoises. Stage-1-only labels are half the stored canvas."""
+    if canvas.skip_stage_2:
+        return canvas.width // 2, canvas.height // 2
+    return canvas.width, canvas.height
+
+
+def budget_pixels(
+    caps: LtxOfferingCapabilities,
+    resolution: LTXVideoGenResolution,
+    aspect: LtxAspectRatio,
+    *,
+    mode: CanvasMode,
+) -> tuple[int, int]:
+    """Denoised size for one ratio. Video 270p/360p are half the parent frame."""
+    if mode == "a2v":
+        width, height = a2v_pixels_for(caps, resolution, aspect)
+    else:
+        width, height = pixels_for(caps, resolution, aspect)
+    if mode == "video" and resolution in _STAGE1_PARENT:
+        return width // 2, height // 2
+    return width, height
+
+
 def pixels_for(
     caps: LtxOfferingCapabilities,
     resolution: LTXVideoGenResolution,
     aspect: LtxAspectRatio,
 ) -> tuple[int, int]:
+    """Short side is the 16:9 height. 16:9 itself stays the stored anchor.
+
+    API sizes are the rounded short-side formula so they match ltxv-api tiles.
+    Local sizes then snap each edge to the nearest multiple of 64.
+    """
     size = caps.resolution_pixels_16_9.get(resolution)
     if size is None:
         raise KeyError(resolution)
-    width, height = size
-    if aspect == "9:16":
-        return height, width
-    return width, height
+    return _pixels_from_anchor(
+        size,
+        aspect,
+        snap=isinstance(caps, LocalOfferingCapabilities),
+    )
+
+
+def a2v_pixels_for(
+    caps: LtxOfferingCapabilities,
+    resolution: LTXVideoGenResolution,
+    aspect: LtxAspectRatio,
+) -> tuple[int, int]:
+    """A2V 270p/360p finish at their own canvas. Other labels use pixels_for."""
+    if resolution not in caps.resolution_pixels_16_9:
+        raise KeyError(resolution)
+    override = _A2V_TWO_PASS_PIXELS_16_9.get(resolution)
+    if override is None:
+        return pixels_for(caps, resolution, aspect)
+    return _pixels_from_anchor(
+        override,
+        aspect,
+        snap=isinstance(caps, LocalOfferingCapabilities),
+    )

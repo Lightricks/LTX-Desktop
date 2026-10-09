@@ -1,6 +1,7 @@
 """State handler exports."""
 
 from handlers.download_handler import DownloadHandler
+from handlers.feature_flags_handler import FeatureFlagsHandler
 from handlers.hf_auth_handler import HuggingFaceAuthHandler
 from handlers.generation_handler import GenerationHandler
 from handlers.health_handler import HealthHandler
@@ -17,6 +18,8 @@ from handlers.runtime_policy_handler import RuntimePolicyHandler
 from handlers.settings_handler import SettingsHandler
 from handlers.text_handler import TextHandler
 from handlers.video_generation_handler import VideoGenerationHandler
+from handlers.asset_handler import AssetHandler
+from handlers.queued_generation_handler import QueuedGenerationHandler
 
 __all__ = [
     "SettingsHandler",
@@ -32,8 +35,11 @@ __all__ = [
     "RetakeHandler",
     "ExtendHandler",
     "RuntimePolicyHandler",
+    "FeatureFlagsHandler",
     "IcLoraHandler",
     "HuggingFaceAuthHandler",
     "LoraCatalogHandler",
     "PromptEnhancementHandler",
+    "AssetHandler",
+    "QueuedGenerationHandler",
 ]

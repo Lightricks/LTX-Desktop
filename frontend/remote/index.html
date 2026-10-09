@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="referrer" content="no-referrer" />
+    <link rel="icon" href="/favicon.png" type="image/png" />
+    <title>LTX Remote</title>
+    <script>
+      try {
+        var href = window.location.href;
+        var parsed = new URL(href);
+        var fromSearch = parsed.searchParams.get("t");
+        var hashBody = parsed.hash.charAt(0) === "#" ? parsed.hash.slice(1) : parsed.hash;
+        var fromHash = new URLSearchParams(hashBody).get("t");
+        var grant = fromSearch || fromHash;
+        if (grant) {
+          sessionStorage.setItem("ltx-remote-pairing-grant", grant);
+        }
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/main.tsx"></script>
+  </body>
+</html>

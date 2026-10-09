@@ -7,6 +7,7 @@ import {
   Video, Camera,
 } from 'lucide-react'
 import type { Asset, TimelineClip, Track, TextOverlayStyle } from '../../types/project-model'
+import { revealInFolderLabel } from '../../lib/revealInFolderLabel'
 import { TEXT_PRESETS } from '../../types/project'
 import { COLOR_LABELS } from './video-editor-utils'
 
@@ -65,27 +66,27 @@ function MenuItem({ icon: Icon, iconClass, label, shortcut, badge, badgeClass, d
       disabled={disabled}
       title={title}
       className={`w-full text-left px-3 py-1.5 flex items-center gap-3 transition-colors ${
-        disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-zinc-700'
-      } ${danger ? 'text-red-400' : 'text-zinc-300'}`}
+        disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-action-hover'
+      } ${danger ? 'text-fg-danger' : 'text-fg-secondary'}`}
     >
-      <Icon className={`h-3.5 w-3.5 flex-shrink-0 ${iconClass || (danger ? '' : 'text-zinc-500')}`} />
+      <Icon className={`h-3.5 w-3.5 flex-shrink-0 ${iconClass || (danger ? '' : 'text-fg-tertiary')}`} />
       <span className="flex-1 truncate">{label}</span>
-      {badge && <span className={`text-[10px] font-medium flex-shrink-0 ${badgeClass || 'text-zinc-500'}`}>{badge}</span>}
-      {shortcut && <span className="text-zinc-600 text-[10px] flex-shrink-0">{shortcut}</span>}
+      {badge && <span className={`text-[10px] font-medium flex-shrink-0 ${badgeClass || 'text-fg-tertiary'}`}>{badge}</span>}
+      {shortcut && <span className="text-fg-tertiary text-[10px] flex-shrink-0">{shortcut}</span>}
     </button>
   )
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="px-3 pt-1.5 pb-0.5 text-[9px] text-zinc-500 font-semibold uppercase tracking-widest select-none">
+    <div className="px-3 pt-1.5 pb-0.5 text-[9px] text-fg-tertiary font-semibold uppercase tracking-widest select-none">
       {children}
     </div>
   )
 }
 
 function Divider() {
-  return <div className="h-px bg-zinc-700 my-1" />
+  return <div className="h-px bg-action-hover my-1" />
 }
 
 export function ClipContextMenu({
@@ -155,7 +156,7 @@ export function ClipContextMenu({
   return (
     <div
       ref={clipContextMenuRef}
-      className="fixed bg-zinc-800 border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-[60] min-w-[220px] max-w-[280px] text-xs"
+      className="fixed bg-action border border-separator rounded-xl shadow-2xl py-1.5 z-[60] min-w-[220px] max-w-[280px] text-xs"
       style={{ left: clipContextMenu.x, top: clipContextMenu.y }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -167,15 +168,15 @@ export function ClipContextMenu({
           <MenuItem icon={Clipboard} label="Paste" shortcut="Ctrl+V" disabled={!hasClipboard}
             onClick={() => { handlePaste(); close() }} />
           <Divider />
-          <MenuItem icon={Type} iconClass="text-cyan-400" label="Add Text"
+          <MenuItem icon={Type} iconClass="text-ext-teal" label="Add Text"
             onClick={() => { addTextClip(undefined, currentTime); close() }} />
           {TEXT_PRESETS.slice(0, 4).map(preset => (
             <button
               key={preset.id}
               onClick={() => { addTextClip(preset.style, currentTime); close() }}
-              className="w-full text-left px-3 py-1.5 text-zinc-400 hover:bg-zinc-700 flex items-center gap-3 pl-9"
+              className="w-full text-left px-3 py-1.5 text-fg-secondary hover:bg-action-hover flex items-center gap-3 pl-9"
             >
-              <span className="text-[10px] text-cyan-500/70 flex-shrink-0">T</span>
+              <span className="text-[10px] text-ext-teal flex-shrink-0">T</span>
               <span className="flex-1 truncate">{preset.name}</span>
             </button>
           ))}
@@ -339,8 +340,8 @@ function SingleClipMenu({
             }}
             className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
               contextClip.speed === speed
-                ? 'bg-blue-600 text-white'
-                : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600 hover:text-white'
+                ? 'bg-blue-600 text-fg-primary'
+                : 'bg-action-hover text-fg-secondary hover:bg-action-active hover:text-fg-primary'
             }`}
           >
             {speed}x
@@ -353,17 +354,17 @@ function SingleClipMenu({
       <MenuItem
         icon={contextClip.muted ? VolumeX : Volume2}
         label={contextClip.muted ? 'Unmute' : 'Mute'}
-        badge={contextClip.muted ? 'MUTED' : undefined} badgeClass="text-red-400"
+        badge={contextClip.muted ? 'MUTED' : undefined} badgeClass="text-fg-danger"
         onClick={() => { updateClip(contextClip.id, { muted: !contextClip.muted }); close() }} />
 
       <Divider />
 
       {/* ── 4. Transform ── */}
       <MenuItem icon={FlipHorizontal2} label="Flip Horizontal"
-        badge={contextClip.flipH ? 'ON' : undefined} badgeClass="text-cyan-400"
+        badge={contextClip.flipH ? 'ON' : undefined} badgeClass="text-ext-teal"
         onClick={() => { updateClip(contextClip.id, { flipH: !contextClip.flipH }); close() }} />
       <MenuItem icon={FlipVertical2} label="Flip Vertical"
-        badge={contextClip.flipV ? 'ON' : undefined} badgeClass="text-cyan-400"
+        badge={contextClip.flipV ? 'ON' : undefined} badgeClass="text-ext-teal"
         onClick={() => { updateClip(contextClip.id, { flipV: !contextClip.flipV }); close() }} />
 
       <Divider />
@@ -419,11 +420,11 @@ function SingleClipMenu({
             close()
           }}
           className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
-            !contextClip.colorLabel ? 'border-white scale-110' : 'border-zinc-600 hover:border-zinc-400'
+            !contextClip.colorLabel ? 'border-white scale-110' : 'border-separator hover:border-separator'
           }`}
           title="No label"
         >
-          <X className="h-2 w-2 text-zinc-400" />
+          <X className="h-2 w-2 text-fg-secondary" />
         </button>
         {COLOR_LABELS.map(cl => (
           <button
@@ -439,7 +440,7 @@ function SingleClipMenu({
               close()
             }}
             className={`w-4 h-4 rounded-full transition-all ${
-              contextClip.colorLabel === cl.id ? 'ring-2 ring-white ring-offset-1 ring-offset-zinc-800 scale-110' : 'hover:scale-125'
+              contextClip.colorLabel === cl.id ? 'ring-2 ring-fg-primary ring-offset-1 ring-offset-action scale-110' : 'hover:scale-125'
             }`}
             style={{ backgroundColor: cl.color }}
             title={cl.label}
@@ -455,7 +456,7 @@ function SingleClipMenu({
 
           {contextClip.isRegenerating ? (
             canCancelInFlight ? (
-            <MenuItem icon={X} iconClass="text-red-400" label="Cancel Regeneration" onClick={() => { handleCancelRegeneration(); close() }} />
+            <MenuItem icon={X} iconClass="text-fg-danger" label="Cancel Regeneration" onClick={() => { handleCancelRegeneration(); close() }} />
             ) : null
           ) : (
             <MenuItem icon={RefreshCw} iconClass="text-blue-400" label="Regenerate Shot"
@@ -465,16 +466,16 @@ function SingleClipMenu({
           {/* Take navigation */}
           {liveAsset!.takes && liveAsset!.takes.length > 1 && (
             <div className="px-3 py-1 flex items-center gap-2">
-              <span className="text-[10px] text-zinc-500 flex-shrink-0">Take:</span>
+              <span className="text-[10px] text-fg-tertiary flex-shrink-0">Take:</span>
               <button onClick={(e) => { e.stopPropagation(); handleClipTakeChange(contextClip.id, 'prev') }}
-                className="p-0.5 rounded hover:bg-zinc-600 text-zinc-400 hover:text-white">
+                className="p-0.5 rounded hover:bg-action-active text-fg-secondary hover:text-fg-primary">
                 <ChevronLeft className="h-3 w-3" />
               </button>
-              <span className="text-[10px] text-zinc-300 min-w-[28px] text-center tabular-nums">
+              <span className="text-[10px] text-fg-secondary min-w-[28px] text-center tabular-nums">
                 {(contextClip.takeIndex ?? (liveAsset!.activeTakeIndex ?? liveAsset!.takes!.length - 1)) + 1}/{liveAsset!.takes!.length}
               </span>
               <button onClick={(e) => { e.stopPropagation(); handleClipTakeChange(contextClip.id, 'next') }}
-                className="p-0.5 rounded hover:bg-zinc-600 text-zinc-400 hover:text-white">
+                className="p-0.5 rounded hover:bg-action-active text-fg-secondary hover:text-fg-primary">
                 <ChevronRight className="h-3 w-3" />
               </button>
               <button
@@ -484,7 +485,7 @@ function SingleClipMenu({
                     handleDeleteTake(contextClip.id)
                   }
                 }}
-                className="p-0.5 rounded hover:bg-red-900/50 text-zinc-500 hover:text-red-400 ml-auto"
+                className="p-0.5 rounded hover:bg-danger-soft text-fg-tertiary hover:text-fg-danger ml-auto"
                 title="Delete this take"
               >
                 <Trash2 className="h-3 w-3" />
@@ -493,7 +494,7 @@ function SingleClipMenu({
           )}
 
           {isVideo && contextClip.assetId && (
-            <MenuItem icon={ZoomIn} iconClass="text-zinc-500" label="Upscale (2x)"
+            <MenuItem icon={ZoomIn} iconClass="text-fg-tertiary" label="Upscale (2x)"
               disabled={true} title="Coming Soon!" onClick={() => {}} />
           )}
           {isImage && (
@@ -507,7 +508,7 @@ function SingleClipMenu({
                   onClick={() => { onRetakeClip(contextClip); close() }} />
               )}
               {canUseIcLora && (
-                <MenuItem icon={Sparkles} iconClass="text-amber-400" label="IC-LoRA / Style Transfer"
+                <MenuItem icon={Sparkles} iconClass="text-fg-warning" label="IC-LoRA / Style Transfer"
                   onClick={() => { onICLoraClip(contextClip); close() }} />
               )}
             </>
@@ -515,7 +516,7 @@ function SingleClipMenu({
           {contextClip.type === 'audio' && !contextClip.linkedClipIds?.length && (
             <MenuItem
               icon={Film}
-              iconClass="text-emerald-400"
+              iconClass="text-fg-success"
               label="Create Video (A2V)"
               onClick={() => { onCreateVideoFromAudio(contextClip); close() }}
             />
@@ -523,13 +524,13 @@ function SingleClipMenu({
           {(isVideo || isImage) && (
             <div className="relative group/capture">
               <button
-                className="w-full text-left px-3 py-1.5 flex items-center gap-3 transition-colors hover:bg-zinc-700 text-zinc-300"
+                className="w-full text-left px-3 py-1.5 flex items-center gap-3 transition-colors hover:bg-action-hover text-fg-secondary"
               >
-                <Camera className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
+                <Camera className="h-3.5 w-3.5 flex-shrink-0 text-fg-warning" />
                 <span className="flex-1 truncate">Use Frame As...</span>
-                <ChevronRight className="h-3 w-3 text-zinc-500" />
+                <ChevronRight className="h-3 w-3 text-fg-tertiary" />
               </button>
-              <div className="absolute left-full top-0 ml-0.5 min-w-[200px] bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-[70] hidden group-hover/capture:block">
+              <div className="absolute left-full top-0 ml-0.5 min-w-[200px] bg-action border border-separator rounded-lg shadow-xl py-1 z-[70] hidden group-hover/capture:block">
                 <MenuItem icon={Video} iconClass="text-blue-400" label="Generate Video in Gen Space"
                   onClick={() => { onCaptureFrameForVideo(contextClip); close() }} />
                 {isImage && (
@@ -560,10 +561,7 @@ function SingleClipMenu({
               filePath = liveAsset.takes[Math.max(0, Math.min(takeIdx, liveAsset.takes.length - 1))].path
             }
             if (!filePath) return null
-            const label = window.electronAPI?.platform === 'darwin' ? 'Reveal in Finder'
-              : window.electronAPI?.platform === 'linux' ? 'Show in Files'
-              : 'Show in Explorer'
-            return <MenuItem icon={FolderOpen} label={label} onClick={() => { window.electronAPI?.showItemInFolder({ filePath }); close() }} />
+            return <MenuItem icon={FolderOpen} label={revealInFolderLabel()} onClick={() => { window.electronAPI?.showItemInFolder({ filePath }); close() }} />
           })()}
         </>
       )}
@@ -648,14 +646,14 @@ function MultiClipMenu({
               }))
               close()
             }}
-            className="px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors bg-zinc-700 text-zinc-400 hover:bg-zinc-600 hover:text-white"
+            className="px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors bg-action-hover text-fg-secondary hover:bg-action-active hover:text-fg-primary"
           >
             {speed}x
           </button>
         ))}
       </div>
       <MenuItem icon={allMuted ? VolumeX : Volume2} label={allMuted ? 'Unmute All' : 'Mute All'}
-        badge={allMuted ? 'ALL MUTED' : undefined} badgeClass="text-red-400"
+        badge={allMuted ? 'ALL MUTED' : undefined} badgeClass="text-fg-danger"
         onClick={() => batchUpdate({ muted: !allMuted })} />
       <MenuItem icon={RotateCcw} label={allReversed ? 'Un-reverse All' : 'Reverse All'}
         badge={allReversed ? 'ALL ON' : undefined} badgeClass="text-blue-400"
@@ -665,10 +663,10 @@ function MultiClipMenu({
 
       {/* ── 3. Transform ── */}
       <MenuItem icon={FlipHorizontal2} label={allFlipH ? 'Un-flip All Horizontal' : 'Flip All Horizontal'}
-        badge={allFlipH ? 'ALL ON' : undefined} badgeClass="text-cyan-400"
+        badge={allFlipH ? 'ALL ON' : undefined} badgeClass="text-ext-teal"
         onClick={() => batchUpdate({ flipH: !allFlipH })} />
       <MenuItem icon={FlipVertical2} label={allFlipV ? 'Un-flip All Vertical' : 'Flip All Vertical'}
-        badge={allFlipV ? 'ALL ON' : undefined} badgeClass="text-cyan-400"
+        badge={allFlipV ? 'ALL ON' : undefined} badgeClass="text-ext-teal"
         onClick={() => batchUpdate({ flipV: !allFlipV })} />
 
       <Divider />
@@ -718,10 +716,10 @@ function MultiClipMenu({
             }
             close()
           }}
-          className="w-4 h-4 rounded-full border-2 border-zinc-600 hover:border-zinc-400 flex items-center justify-center transition-all"
+          className="w-4 h-4 rounded-full border-2 border-separator hover:border-separator flex items-center justify-center transition-all"
           title="No label"
         >
-          <X className="h-2 w-2 text-zinc-400" />
+          <X className="h-2 w-2 text-fg-secondary" />
         </button>
         {COLOR_LABELS.map(cl => (
           <button

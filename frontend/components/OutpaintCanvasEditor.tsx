@@ -138,12 +138,12 @@ export function OutpaintCanvasEditor({ sourceWidth, sourceHeight, value, onChang
         <div className="relative" style={{ width: stageW, height: stageH }}>
           {/* Output frame: the green-filled generate region around the source. */}
           <div
-            className="absolute border border-emerald-500/60 bg-emerald-500/10"
+            className="absolute border border-success/60 bg-success-soft"
             style={{ left: frameLeft, top: frameTop, width: frameW, height: frameH }}
           />
           {/* Source silhouette (kept region) — fixed size, centred. */}
           <div
-            className="absolute bg-zinc-400/80 border border-zinc-300"
+            className="absolute bg-action-active border border-separator"
             style={{ left: srcLeft, top: srcTop, width: sourceWidth * scale, height: sourceHeight * scale }}
           />
           {HANDLES.map((h) => {
@@ -152,14 +152,14 @@ export function OutpaintCanvasEditor({ sourceWidth, sourceHeight, value, onChang
               <div
                 key={h}
                 onPointerDown={(e) => startDrag(e, h)}
-                className="absolute w-2.5 h-2.5 -ml-1.5 -mt-1.5 rounded-sm bg-white border border-zinc-500 shadow"
+                className="absolute w-2.5 h-2.5 -ml-1.5 -mt-1.5 rounded-sm bg-surface-primary border border-separator shadow"
                 style={{ left: x, top: y, cursor: handleCursor[h], touchAction: 'none' }}
               />
             )
           })}
         </div>
       </div>
-      <div className="px-3 py-2 border-t border-zinc-800 flex items-center justify-between gap-2 flex-wrap">
+      <div className="px-3 py-2 border-t border-separator flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-1">
           {PRESETS.map((p) => {
             // Unreachable presets stay clickable but cap-to-closest (applyPreset clamps to the
@@ -170,15 +170,15 @@ export function OutpaintCanvasEditor({ sourceWidth, sourceHeight, value, onChang
                 key={p.id}
                 onClick={() => applyPreset(p.ratio)}
                 title={capped ? 'Limited by the +100% expand cap — lands at the closest ratio' : undefined}
-                className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-white hover:bg-zinc-800 border border-zinc-700 transition-colors"
+                className="px-2 py-0.5 rounded text-[10px] text-fg-secondary hover:text-fg-primary hover:bg-action border border-separator transition-colors"
               >
                 {p.label}
-                {capped && <span className="text-amber-500/80">·</span>}
+                {capped && <span className="text-fg-warning">·</span>}
               </button>
             )
           })}
         </div>
-        <span className="text-[10px] text-zinc-500 tabular-nums">
+        <span className="text-[10px] text-fg-tertiary tabular-nums">
           {sourceWidth}×{sourceHeight} → {outW}×{outH}
         </span>
       </div>

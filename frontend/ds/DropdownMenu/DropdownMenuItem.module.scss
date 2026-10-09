@@ -1,0 +1,45 @@
+@import "./DropdownMenu.module.scss";
+
+.item,
+.subMenuContainer {
+  width: 100%;
+}
+
+.menuContent {
+  @extend .menuContent;
+}
+
+.menuContentInner {
+  @extend .menuContentInner;
+}
+
+.itemWrapper {
+  width: 100%;
+  outline: none;
+}
+
+.separator {
+  height: 1px;
+  background-color: var(--semantic-bg-disabled-primary);
+}
+
+.subMenuContent {
+  overflow: visible;
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    width: var(--submenu-gap);
+    height: 100%;
+  }
+
+  &::before {
+    right: 100%;
+  }
+
+  &::after {
+    left: 100%;
+  }
+}

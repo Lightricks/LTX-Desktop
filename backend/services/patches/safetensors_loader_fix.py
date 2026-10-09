@@ -100,7 +100,11 @@ def _patched_load(
             expected_name = name if sd_ops is None else sd_ops.apply_to_key(name)
             if expected_name is None:
                 continue
-            value = value.to(device=device, non_blocking=True, copy=False)
+            # Async H2D is only ordered against later compute on CUDA
+            # (same-stream). ltx_core.devices.allow_async_transfer fences the rest.
+            # Pure transfers like this one happen to be safe on MPS today, but
+            # blocking costs nothing at load time.
+            value = value.to(device=device, non_blocking=(device.type == "cuda"), copy=False)
             key_value_pairs = ((expected_name, value),)
             if sd_ops is not None:
                 key_value_pairs = sd_ops.apply_to_key_value(expected_name, value)

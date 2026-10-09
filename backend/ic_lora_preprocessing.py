@@ -41,6 +41,7 @@ class PreprocessingContext:
     outputs_dir: Path
     video_processor: VideoProcessor
     outpaint: OutpaintParams | None = None
+    on_frame: Callable[[], None] | None = None
 
 
 PreprocessingUtility = Callable[[MediaArtifact, dict[str, object], PreprocessingContext], MediaArtifact]
@@ -62,10 +63,14 @@ def _image_to_frames(
     h, w = frame.shape[0], frame.shape[1]
     out_path = str(ctx.outputs_dir / f"_ic_lora_frames_{uuid.uuid4().hex[:8]}.mp4")
     writer = ctx.video_processor.create_writer(out_path, fourcc="mp4v", fps=fps, size=(int(w), int(h)))
-    for _ in range(count):
-        writer.write(frame)
-    ctx.video_processor.release(writer)
-    return MediaArtifact(path=out_path, kind="video", fps=fps, frame_count=count)
+    try:
+        for _ in range(count):
+            if ctx.on_frame is not None:
+                ctx.on_frame()
+            writer.write(frame)
+        return MediaArtifact(path=out_path, kind="video", fps=fps, frame_count=count)
+    finally:
+        ctx.video_processor.release(writer)
 
 
 def _outpaint_canvas(
@@ -124,6 +129,8 @@ def _outpaint_canvas(
 
         written = 0
         for _ in range(frame_count):
+            if ctx.on_frame is not None:
+                ctx.on_frame()
             frame = ctx.video_processor.read_frame(cap)
             if frame is None:
                 break

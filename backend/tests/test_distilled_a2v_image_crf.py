@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from ltx_pipelines.utils.args import ImageConditioningInput as LtxImageInput
+from ltx_pipelines.utils.types import ImageConditioningInput as LtxImageInput
 from services.a2v_pipeline.distilled_a2v_pipeline import resolve_image_conditionings
 
 _CHECKPOINT_CRF = 29

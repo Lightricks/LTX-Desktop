@@ -13,6 +13,8 @@ from uuid import uuid4
 
 from _routes._errors import HTTPError
 from api_types import (
+    ActiveIcLoraDownloadResponse,
+    ActiveLoraDownloadResponse,
     CatalogDownloadStartResponse,
     CatalogDownloadStatus,
     IcLoraDownloadProgressResponse,
@@ -25,12 +27,15 @@ from api_types import (
 )
 from handlers.base import StateHandlerBase, with_state_lock
 from handlers.hf_auth_utils import optional_hf_token, require_hf_token
+from runtime_config.ic_lora_job_budget import with_budgeted_duration_controls
 from runtime_config.model_download_specs import (
+    catalog_item_visible_for_installed_ltx,
     downloaded_ic_lora_variant_ids,
     downloaded_lora_variant_ids,
     resolve_lora_path,
     resolve_ic_lora_path,
 )
+from runtime_config.video_job_budget import memory_gb_for_job
 from services.interfaces import ModelDownloader, TaskRunner
 from services.lora_catalog import LoraCatalogProvider
 from services.lora_catalog.media_urls import with_resolved_media
@@ -71,6 +76,12 @@ def _lookup_ic_lora(catalog: LoraCatalogProvider, item_id: str) -> LoraCatalogIt
 
 def _lookup_lora(catalog: LoraCatalogProvider, item_id: str) -> LoraCatalogItem | None:
     return catalog.get_lora(item_id)
+
+
+def _session_progress_pct(session: CatalogDownloadSession) -> float:
+    if not session.expected_bytes:
+        return 0.0
+    return min(99.0, session.downloaded_bytes / session.expected_bytes * 100)
 
 
 def _ic_lora_progress(
@@ -172,26 +183,42 @@ class LoraCatalogHandler(StateHandlerBase):
     # Catalog download.variants is always non-empty; the first variant is the default
     # checkpoint (preferred when listing "downloaded", when generation omits variant_id,
     # and when a download request omits variant_id).
-    def list_ic_loras(self) -> IcLoraListResponse:
+    def list_ic_loras(self, fresh: bool = False) -> IcLoraListResponse:
         catalog = self._catalog.get_catalog()
+        darwin = self.config.darwin_unified_memory
+        memory_gb = memory_gb_for_job(
+            vram_gb=self.config.vram_gb,
+            available_ram_gb=self.config.available_ram_gb,
+            darwin=darwin,
+        )
         items: list[IcLoraListItem] = []
         for r in catalog.ic_loras:
+            if not fresh and not catalog_item_visible_for_installed_ltx(r.supported_models, self.models_dir):
+                continue
             variant_ids = downloaded_ic_lora_variant_ids(
                 self.models_dir, r.id, [(v.id, v.filename) for v in r.download.variants]
             )
+            item = with_budgeted_duration_controls(
+                with_resolved_media(r),
+                memory_gb=memory_gb,
+                process_mode=self.config.local_generations_mode,
+                darwin=darwin,
+            )
             items.append(
                 IcLoraListItem(
-                    ic_lora=with_resolved_media(r),
+                    ic_lora=item,
                     downloaded=bool(variant_ids),
                     downloaded_variant_ids=variant_ids,
                 )
             )
         return IcLoraListResponse(ic_loras=items)
 
-    def list_loras(self) -> LoraListResponse:
+    def list_loras(self, fresh: bool = False) -> LoraListResponse:
         catalog = self._catalog.get_catalog()
         items: list[LoraListItem] = []
         for item in catalog.loras:
+            if not fresh and not catalog_item_visible_for_installed_ltx(item.supported_models, self.models_dir):
+                continue
             variant_ids = downloaded_lora_variant_ids(
                 self.models_dir, item.id, [(v.id, v.filename) for v in item.download.variants]
             )
@@ -263,7 +290,7 @@ class LoraCatalogHandler(StateHandlerBase):
             staging_dir.mkdir(parents=True, exist_ok=True)
             try:
                 staged = self._model_downloader.download_file(
-                    repo_id=item.download.repo_id,
+                    repo_id=variant.resolved_repo_id(item.download.repo_id),
                     filename=variant.filename,
                     local_dir=str(staging_dir),
                     token=hf_token,
@@ -308,13 +335,12 @@ class LoraCatalogHandler(StateHandlerBase):
         sid = DownloadSessionId(session_id)
         s: CatalogDownloadSession | None = getattr(self.state, kind.session_attr)
         if s is not None and s.id == sid:
-            pct = min(99.0, s.downloaded_bytes / s.expected_bytes * 100) if s.expected_bytes else 0.0
             return kind.build_progress(
                 "downloading",
                 item_id=s.item_id,
                 downloaded_bytes=s.downloaded_bytes,
                 expected_bytes=s.expected_bytes,
-                progress=pct,
+                progress=_session_progress_pct(s),
                 speed_bytes_per_sec=s.speed_bytes_per_sec,
             )
         result = self._completed(kind).get(sid)
@@ -340,3 +366,69 @@ class LoraCatalogHandler(StateHandlerBase):
 
     def get_lora_download_progress(self, session_id: str) -> LoraDownloadProgressResponse:
         return self._get_progress(_PLAIN_LORA, session_id)
+
+    def _delete_installation(
+        self,
+        kind: _CatalogKind[ProgressResponseT],
+        item_id: str,
+        variant_id: str | None = None,
+    ) -> None:
+        if self.config.force_api_generations:
+            raise HTTPError(409, "LOCAL_MODEL_DOWNLOADS_DISABLED_IN_FORCE_API_MODE")
+        item = kind.lookup(self._catalog, item_id)
+        if item is None:
+            raise HTTPError(404, kind.not_found)
+        variant = item.download.resolve_variant(variant_id)
+        if variant is None:
+            raise HTTPError(404, "UNKNOWN_DOWNLOAD_VARIANT")
+        with self._lock:
+            session: CatalogDownloadSession | None = getattr(self.state, kind.session_attr)
+            if session is not None and session.item_id == item_id:
+                raise HTTPError(409, "DOWNLOAD_ALREADY_RUNNING")
+        path = kind.resolve_path(self.models_dir, item.id, variant.filename)
+        if not path.is_file():
+            raise HTTPError(404, "LORA_NOT_INSTALLED")
+        path.unlink()
+        parent = path.parent
+        if parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+
+    def delete_lora(self, lora_id: str, variant_id: str | None = None) -> None:
+        self._delete_installation(_PLAIN_LORA, lora_id, variant_id)
+
+    def delete_ic_lora(self, ic_lora_id: str, variant_id: str | None = None) -> None:
+        self._delete_installation(_IC_LORA, ic_lora_id, variant_id)
+
+    @with_state_lock
+    def get_active_lora_download(self) -> ActiveLoraDownloadResponse:
+        """The in-flight plain-LoRA download, if any, so a remounting screen can reattach.
+
+        Returns nulls when idle; otherwise the session id (to resume polling
+        ``get_lora_download_progress``) and the lora id being fetched.
+        """
+        session = self.state.lora_download_session
+        if session is None:
+            return ActiveLoraDownloadResponse(session_id=None, lora_id=None, progress=None)
+        return ActiveLoraDownloadResponse(
+            session_id=str(session.id),
+            lora_id=session.item_id,
+            progress=_session_progress_pct(session),
+        )
+
+    @with_state_lock
+    def get_active_ic_lora_download(self) -> ActiveIcLoraDownloadResponse:
+        """The in-flight IC-LoRA download, if any. Mirrors ``get_active_lora_download``.
+
+        IC-LoRA downloads keep their own state slot, so both kinds can run at once and each
+        needs its own reattach point after a remount or a renderer reload.
+        """
+        session = self.state.ic_lora_download_session
+        if session is None:
+            return ActiveIcLoraDownloadResponse(
+                session_id=None, ic_lora_id=None, progress=None
+            )
+        return ActiveIcLoraDownloadResponse(
+            session_id=str(session.id),
+            ic_lora_id=session.item_id,
+            progress=_session_progress_pct(session),
+        )

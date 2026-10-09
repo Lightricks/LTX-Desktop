@@ -1,3 +1,6 @@
+/* Applied DS styling is scoped to `.ltx-io` (Home layout only). */
+@import "./ds/styles/index.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -33,11 +36,63 @@
   padding: 0;
 }
 
+:focus {
+  outline: none;
+}
+
+/* NOTE: the canonical :focus-visible ring lives in the DS
+   (frontend/ds/styles/index.css, scoped to `.ltx-io`) — do not duplicate it here. */
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
+}
+
+/* Transparent viewport is a Mac-glass requirement only (the native
+   NSVisualEffectView shows through the webview). Windows/Linux keep the
+   default opaque painting. */
+html[data-platform="darwin"],
+html[data-platform="darwin"] body,
+html[data-platform="darwin"] #root {
+  background-color: transparent;
+}
+
+html {
+  /* Windows/Linux keep a native title bar above the page, so the webview starts at y=0. */
+  --window-chrome-top: 0px;
+  --window-chrome-start: 0px;
+  /* Unpinned sidebar pin button, including the gap before header content. */
+  --collapsed-sidebar-chrome-width: calc(
+    var(--window-chrome-start) + var(--spacing-lg) + var(--spacing-xxl) + var(--spacing-lg)
+  );
+}
+
+html[data-platform="darwin"] {
+  /* Mac hides the title bar and puts traffic lights in the page. Clear a --spacing-4xl strip.
+     Traffic-light x is 16px = --spacing-lg (see MACOS_TRAFFIC_LIGHT_POSITION). */
+  --window-chrome-top: var(--spacing-4xl);
+  /* Width of the traffic-light cluster from the window edge (Telegram-style header). */
+  --window-chrome-start: calc(var(--spacing-4xl) + var(--spacing-xl));
+}
+
+/* Drag contract (macOS only): apply `.window-drag` ONLY to a narrow,
+   non-interactive header strip. Electron treats everything as no-drag by
+   default, so interactive elements elsewhere need no carve-out — only
+   interactive descendants of the strip opt out, via the scoped rules below. */
+html[data-platform="darwin"] .window-drag {
+  -webkit-app-region: drag;
+}
+
+html[data-platform="darwin"] .window-no-drag,
+html[data-platform="darwin"] .window-drag button,
+html[data-platform="darwin"] .window-drag a,
+html[data-platform="darwin"] .window-drag input,
+html[data-platform="darwin"] .window-drag textarea,
+html[data-platform="darwin"] .window-drag select,
+html[data-platform="darwin"] .window-drag [role="button"] {
+  -webkit-app-region: no-drag;
 }
 
 /* Custom scrollbar */

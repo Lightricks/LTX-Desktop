@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/button'
 import { Tooltip } from '../../components/ui/tooltip'
 import { AudioWaveform } from '../../components/AudioWaveform'
 import { pathToFileUrl } from '../../lib/file-url'
+import { Text } from '@ds/Text/Text'
 import { DEFAULT_SUBTITLE_STYLE } from '../../types/project-model'
 import type { Asset, TimelineClip, Track, SubtitleClip } from '../../types/project-model'
 import { getClipEffectStyles, getTransitionBgColor, formatTime, getShortcutLabel, tooltipLabel, getMaskedEffectOverlays } from './video-editor-utils'
@@ -1148,8 +1149,12 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
         {/* Preview (existing) */}
         <div
           ref={previewContainerRef}
-          className={`flex-1 relative overflow-hidden min-h-0 min-w-0 ${isFullscreen ? 'bg-black' : ''}`}
-          style={{ backgroundColor: isFullscreen ? '#000' : '#333', ...(previewZoom !== 'fit' ? { cursor: 'grab' } : {}) }}
+          className={`flex-1 relative overflow-hidden min-h-0 min-w-0 ${
+            isFullscreen
+              ? 'bg-surface-black'
+              : 'bg-surface-tertiary'
+          }`}
+          style={previewZoom !== 'fit' ? { cursor: 'grab' } : undefined}
           onMouseDown={(e) => {
             if (previewZoom === 'fit') return
             if (e.button !== 0 && e.button !== 1) return
@@ -1168,11 +1173,15 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
           {clips.length === 0 ? (
             <div className="w-full h-full flex items-center justify-center">
               <div className="text-center">
-                <div className="w-48 h-28 border-2 border-dashed border-zinc-700 rounded-lg flex flex-col items-center justify-center mb-4 mx-auto">
-                  <Layers className="h-8 w-8 text-zinc-600 mb-2" />
-                  <p className="text-zinc-500 text-xs">Drop clips here</p>
+                <div className="w-48 h-28 border-2 border-dashed border-separator rounded-lg flex flex-col items-center justify-center mb-4 mx-auto">
+                  <Layers className="h-8 w-8 text-fg-tertiary mb-2" />
+                  <Text as="p" variant="body" size="sm" align="center" className="text-fg-tertiary">
+                    Drop clips here
+                  </Text>
                 </div>
-                <p className="text-zinc-600 text-xs">Click assets or drag them to the timeline</p>
+                <Text as="p" variant="body" size="sm" align="center" className="text-fg-tertiary">
+                  Click assets or drag them to the timeline
+                </Text>
               </div>
             </div>
           ) : (
@@ -1311,11 +1320,11 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                       </div>
                     ) : !isPlaying ? (
                       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                        <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center mx-auto mb-3">
-                          <Video className="h-8 w-8 text-zinc-600" />
+                        <div className="w-16 h-16 rounded-full bg-action flex items-center justify-center mx-auto mb-3">
+                          <Video className="h-8 w-8 text-fg-tertiary" />
                         </div>
-                        <p className="text-zinc-500 text-sm">No clip at playhead</p>
-                        <p className="text-zinc-600 text-xs mt-1">Move playhead over a clip to preview</p>
+                        <p className="text-fg-tertiary text-sm">No clip at playhead</p>
+                        <p className="text-fg-tertiary text-xs mt-1">Move playhead over a clip to preview</p>
                       </div>
                     ) : null
                   })()}
@@ -1375,7 +1384,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                 return (
                   <div
                     key={`text-${tc.id}`}
-                    className={`absolute z-[24] ${isSelected ? 'ring-2 ring-cyan-400/60 ring-offset-1 ring-offset-transparent' : ''}`}
+                    className={`absolute z-[24] ${isSelected ? 'ring-2 ring-ext-teal/60 ring-offset-1 ring-offset-transparent' : ''}`}
                     style={{
                       left: `${ts.positionX}%`,
                       top: `${ts.positionY}%`,
@@ -1534,7 +1543,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
 
         {/* Program monitor mini scrub bar with IN/OUT markers */}
         {clips.length > 0 && (
-          <div className="bg-zinc-900 border-t border-zinc-800 flex-shrink-0 relative px-2 py-1">
+          <div className="bg-surface-primary border-t border-separator flex-shrink-0 relative px-2 py-1">
             <div
               id="program-scrub-bar"
               className="relative h-5 cursor-pointer group"
@@ -1558,10 +1567,10 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
               }}
             >
               {/* Base track */}
-              <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 bg-zinc-700 rounded-full" />
+              <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 bg-action-hover rounded-full" />
               {/* Progress fill */}
               <div
-                className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-zinc-500 rounded-full"
+                className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-action-active rounded-full"
                 style={{ width: totalDuration > 0 ? `${(currentTime / totalDuration) * 100}%` : '0%' }}
               />
               {/* Dimmed region BEFORE In */}
@@ -1631,7 +1640,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                 <span className="text-[9px] font-mono text-blue-400/80">
                   {inPoint !== null ? `IN ${formatTime(inPoint)}` : ''}
                 </span>
-                <span className="text-[9px] font-mono text-zinc-500">
+                <span className="text-[9px] font-mono text-fg-tertiary">
                   {inPoint !== null && outPoint !== null ? `Duration: ${formatTime(outPoint - inPoint)}` : ''}
                 </span>
                 <span className="text-[9px] font-mono text-blue-400/80">
@@ -1643,11 +1652,11 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
         )}
 
         {/* Status bar: timecode | Fit | transport controls | resolution | duration */}
-        <div className="h-8 bg-zinc-950 border-t border-zinc-800 flex items-center px-3 flex-shrink-0 gap-2">
+        <div className="h-8 bg-surface-secondary border-t border-separator flex items-center px-3 flex-shrink-0 gap-2">
           {/* Left: current timecode */}
           <span
             ref={playbackTimecodeRef}
-            className="text-[12px] font-mono font-medium text-amber-400 tabular-nums tracking-tight select-none flex-shrink-0"
+            className="text-[12px] font-mono font-medium text-fg-primary tabular-nums tracking-tight select-none flex-shrink-0"
           >
             {formatTime(currentTime)}
           </span>
@@ -1658,15 +1667,15 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
               onClick={(e) => { e.stopPropagation(); setPreviewZoomOpen(prev => !prev) }}
               className={`h-6 px-2 rounded text-[11px] font-medium tabular-nums flex items-center gap-1 transition-colors border ${
                 previewZoomOpen
-                  ? 'bg-zinc-700 text-white border-zinc-600'
-                  : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border-zinc-700 hover:border-zinc-600'
+                  ? 'bg-action-hover text-fg-primary border-separator'
+                  : 'bg-surface-primary text-fg-secondary hover:text-fg-primary border-separator hover:border-separator'
               }`}
             >
               {previewZoom === 'fit' ? 'Fit' : `${previewZoom}%`}
               <ChevronDown className="h-3 w-3" />
             </button>
             {previewZoomOpen && (
-              <div className="absolute bottom-full left-0 mb-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl py-1 min-w-[100px] z-50">
+              <div className="absolute bottom-full left-0 mb-1 bg-surface-primary border border-separator rounded-lg shadow-2xl py-1 min-w-[100px] z-50">
                 {[
                   { label: 'Fit', value: 'fit' as const },
                   { label: '10%', value: 10 },
@@ -1685,7 +1694,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                     className={`w-full text-left px-3 py-1.5 text-[11px] flex items-center gap-2 transition-colors ${
                       previewZoom === opt.value
                         ? 'text-blue-300 bg-blue-600/20'
-                        : 'text-zinc-300 hover:bg-zinc-800'
+                        : 'text-fg-secondary hover:bg-action'
                     }`}
                   >
                     {previewZoom === opt.value && <span className="text-blue-400">&#10003;</span>}
@@ -1702,7 +1711,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
             <Tooltip content={`${inPoint !== null ? `In: ${formatTime(inPoint)} — ` : ''}${tooltipLabel('Set In point', getShortcutLabel(kbLayout, 'mark.setIn'))}`} side="top">
               <Button
                 variant="ghost" size="icon"
-                className={`h-6 w-6 ${inPoint !== null ? 'text-yellow-400' : 'text-zinc-500'}`}
+                className={`h-6 w-6 ${inPoint !== null ? 'text-fg-warning' : 'text-fg-tertiary'}`}
                 onClick={() => setTimelineInPoint(inPoint !== null && Math.abs(inPoint - currentTime) < 0.01 ? null : currentTime)}
               >
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1712,12 +1721,12 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                 </svg>
               </Button>
             </Tooltip>
-            <div className="w-px h-3 bg-zinc-700" />
+            <div className="w-px h-3 bg-action-hover" />
             {/* Go to In */}
             <Tooltip content={tooltipLabel('Go to In Point', getShortcutLabel(kbLayout, 'transport.goToIn'))} side="top">
               <Button
                 variant="ghost" size="icon"
-                className={`h-6 w-6 ${inPoint !== null ? 'text-zinc-400' : 'text-zinc-500'}`}
+                className={`h-6 w-6 ${inPoint !== null ? 'text-fg-secondary' : 'text-fg-tertiary'}`}
                 onClick={() => {
                   const target = inPoint ?? (clips.length > 0 ? Math.min(...clips.map(c => c.startTime)) : 0)
                   pause()
@@ -1736,7 +1745,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
             <Tooltip content={tooltipLabel('Step Back', getShortcutLabel(kbLayout, 'transport.stepBackward'))} side="top">
               <Button
                 variant="ghost" size="icon"
-                className="h-6 w-6 text-zinc-500"
+                className="h-6 w-6 text-fg-tertiary"
                 onClick={() => {
                   pause()
                   stopShuttle()
@@ -1755,7 +1764,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                   if (isPlaying) pause()
                   else play()
                 }}
-                className="h-6 w-6 text-zinc-400"
+                className="h-6 w-6 text-fg-secondary"
               >
                 {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3 ml-0.5" />}
               </Button>
@@ -1764,7 +1773,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
             <Tooltip content={tooltipLabel('Step Forward', getShortcutLabel(kbLayout, 'transport.stepForward'))} side="top">
               <Button
                 variant="ghost" size="icon"
-                className="h-6 w-6 text-zinc-500"
+                className="h-6 w-6 text-fg-tertiary"
                 onClick={() => {
                   pause()
                   stopShuttle()
@@ -1778,7 +1787,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
             <Tooltip content={tooltipLabel('Go to Out Point', getShortcutLabel(kbLayout, 'transport.goToOut'))} side="top">
               <Button
                 variant="ghost" size="icon"
-                className={`h-6 w-6 ${outPoint !== null ? 'text-zinc-400' : 'text-zinc-500'}`}
+                className={`h-6 w-6 ${outPoint !== null ? 'text-fg-secondary' : 'text-fg-tertiary'}`}
                 onClick={() => {
                   const target = outPoint ?? (clips.length > 0 ? Math.max(...clips.map(c => c.startTime + c.duration)) : totalDuration)
                   pause()
@@ -1793,12 +1802,12 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                 </svg>
               </Button>
             </Tooltip>
-            <div className="w-px h-3 bg-zinc-700" />
+            <div className="w-px h-3 bg-action-hover" />
             {/* Set Out */}
             <Tooltip content={`${outPoint !== null ? `Out: ${formatTime(outPoint)} — ` : ''}${tooltipLabel('Set Out point', getShortcutLabel(kbLayout, 'mark.setOut'))}`} side="top">
               <Button
                 variant="ghost" size="icon"
-                className={`h-6 w-6 ${outPoint !== null ? 'text-yellow-400' : 'text-zinc-500'}`}
+                className={`h-6 w-6 ${outPoint !== null ? 'text-fg-warning' : 'text-fg-tertiary'}`}
                 onClick={() => setTimelineOutPoint(outPoint !== null && Math.abs(outPoint - currentTime) < 0.01 ? null : currentTime)}
               >
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1812,7 +1821,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
             <Tooltip content="Loop In/Out" side="top">
               <Button
                 variant="ghost" size="icon"
-                className={`h-6 w-6 ${playingInOut ? 'text-yellow-400 bg-yellow-400/10' : 'text-zinc-500'} ${inPoint === null || outPoint === null ? 'opacity-30 cursor-not-allowed' : ''}`}
+                className={`h-6 w-6 ${playingInOut ? 'text-fg-warning bg-warning-soft' : 'text-fg-tertiary'} ${inPoint === null || outPoint === null ? 'opacity-30 cursor-not-allowed' : ''}`}
                 disabled={inPoint === null || outPoint === null}
                 onClick={() => {
                   if (inPoint === null || outPoint === null) return
@@ -1837,11 +1846,9 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
             <button
               onClick={(e) => { e.stopPropagation(); setPlaybackResOpen(prev => !prev) }}
               className={`h-6 px-2 rounded text-[11px] font-medium flex items-center gap-1 transition-colors border ${
-                playbackResolution === 1
-                  ? 'bg-zinc-900 text-green-400 border-zinc-700 hover:border-zinc-600'
-                  : playbackResolution === 0.5
-                  ? 'bg-zinc-900 text-yellow-400 border-zinc-700 hover:border-zinc-600'
-                  : 'bg-zinc-900 text-orange-400 border-zinc-700 hover:border-zinc-600'
+                playbackResOpen
+                  ? 'bg-action-hover text-fg-primary border-separator'
+                  : 'bg-surface-primary text-fg-secondary hover:text-fg-primary border-separator hover:border-separator'
               }`}
               title="Playback resolution"
             >
@@ -1849,7 +1856,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
               <ChevronDown className="h-3 w-3" />
             </button>
             {playbackResOpen && (
-              <div className="absolute bottom-full right-0 mb-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl py-1 min-w-[120px] z-50">
+              <div className="absolute bottom-full right-0 mb-1 bg-surface-primary border border-separator rounded-lg shadow-2xl py-1 min-w-[120px] z-50">
                 {([
                   { label: 'Full (1:1)', value: 1 as const, desc: 'Highest quality' },
                   { label: 'Half (1/2)', value: 0.5 as const, desc: 'Balanced' },
@@ -1861,14 +1868,14 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                     className={`w-full text-left px-3 py-1.5 text-[11px] flex flex-col gap-0 transition-colors ${
                       playbackResolution === opt.value
                         ? 'text-blue-300 bg-blue-600/20'
-                        : 'text-zinc-300 hover:bg-zinc-800'
+                        : 'text-fg-secondary hover:bg-action'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       {playbackResolution === opt.value && <span className="text-blue-400">&#10003;</span>}
                       <span className={playbackResolution === opt.value ? '' : 'ml-5'}>{opt.label}</span>
                     </div>
-                    <span className={`text-[10px] ${playbackResolution === opt.value ? 'text-blue-400/60' : 'text-zinc-500'} ml-5`}>{opt.desc}</span>
+                    <span className={`text-[10px] ${playbackResolution === opt.value ? 'text-blue-400/60' : 'text-fg-tertiary'} ml-5`}>{opt.desc}</span>
                   </button>
                 ))}
               </div>
@@ -1879,7 +1886,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
           <Tooltip content={isFullscreen ? tooltipLabel('Exit fullscreen', getShortcutLabel(kbLayout, 'view.fullscreen')) : tooltipLabel('Fullscreen', getShortcutLabel(kbLayout, 'view.fullscreen'))} side="top">
             <button
               onClick={toggleFullscreen}
-              className="p-1 rounded hover:bg-zinc-800 transition-colors text-zinc-500 hover:text-zinc-300"
+              className="p-1 rounded hover:bg-action transition-colors text-fg-tertiary hover:text-fg-secondary"
             >
               {isFullscreen
                 ? <Shrink className="h-3.5 w-3.5" />
@@ -1889,7 +1896,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
           </Tooltip>
 
           {/* Right: total duration */}
-          <span className="text-[12px] font-mono font-medium text-zinc-400 tabular-nums tracking-tight select-none flex-shrink-0 text-right">
+          <span className="text-[12px] font-mono font-medium text-fg-secondary tabular-nums tracking-tight select-none flex-shrink-0 text-right">
             {formatTime(totalDuration)}
           </span>
         </div>

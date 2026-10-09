@@ -1,34 +1,72 @@
-import { AlertCircle, Check, Download, Film, Folder, HardDrive, Info, KeyRound, Settings, Sparkles, X, Zap } from 'lucide-react'
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Button } from './ui/button'
-import { BaseModelSection } from './settings/BaseModelSection'
-import { useAppSettings, type AppSettings, DEFAULT_GEMINI_MODEL } from '../contexts/AppSettingsContext'
-import { ApiClient, type ApiSuccessOf } from '../lib/api-client'
-import { logger } from '../lib/logger'
-import { ApiKeyHelperRow, LtxApiKeyInput, LtxApiKeyHelperRow } from './LtxApiKeyInput'
-import { HfModelAccessGate } from './HfModelAccessGate'
-import { useHfAuth } from '../hooks/use-hf-auth'
-import { useHfModelAccess } from '../hooks/use-hf-model-access'
-import type { AppUpdate } from '../hooks/use-app-update'
-import type { UpdateStatePayload } from '../../shared/electron-api-schema'
+import {
+  Archive,
+  Boxes,
+  Info,
+  KeyRound,
+  Settings,
+  X,
+} from "lucide-react";
+import {
+  backdropAnimationProps,
+  modalAnimationProps,
+} from "@ds/lib/popoverAnimationOptions";
+import { motion, useReducedMotion } from "framer-motion";
+import React, { useEffect, useRef, useState } from "react";
 
-export type SettingsInitialReason = 'geminiKeyRequired'
+import {
+  type AppSettings,
+  DEFAULT_GEMINI_MODEL,
+  useAppSettings,
+} from "../contexts/AppSettingsContext";
+import type { AppUpdate } from "../hooks/use-app-update";
+import { ApiClient, type ApiSuccessOf } from "../lib/api-client";
+import { LtxApiKeyInput } from "./LtxApiKeyInput";
+import { ApiKeySettingsBlock } from "./settings/ApiKeySettingsBlock";
+import { AboutSettingsSection } from "./settings/AboutSettingsSection";
+import { CudaPerformanceSection } from "./settings/CudaPerformanceSection";
+import { EnhanceSettingsSection } from "./settings/EnhanceSettingsSection";
+import { LegacyTextEncodingSection } from "./settings/LegacyTextEncodingSection";
+import { LegacySettingsSection } from "./settings/LegacySettingsSection";
+import { ModelsSettingsSection } from "./settings/ModelsSettingsSection";
+import pageLayoutStyles from "./settings/SettingsPageLayout.module.scss";
+import { SettingsAnchorSection } from "./settings/SettingsAnchorSection";
+import { SettingToggle } from "./settings/SettingToggle";
+import { ThemePreferenceSetting } from "./settings/ThemePreferenceSetting";
+import { settingsSectionElementId } from "../lib/settings-sections";
+import { Button as DsButton } from "@/ds/Button/Button";
+import { Text } from "@/ds/Text/Text";
+import contentStyles from "./settings/SettingsContent.module.scss";
+import {
+  SettingsCallout,
+  SettingsHint,
+  SettingsKeyStatus,
+  SettingsSelect,
+  SettingsStack,
+  SettingsSubsection,
+} from "./settings/SettingsContent";
+import { isSettingsTabAvailable } from "../lib/settings-navigation";
+import type {
+  SettingsInitialReason,
+  SettingsLegacyScrollAnchor,
+  SettingsTabId,
+} from "../lib/settings-navigation";
 
-interface SettingsModalProps {
-  isOpen: boolean
-  onClose: () => void
-  initialTab?: TabId
-  initialReason?: SettingsInitialReason
-  update: AppUpdate
-  onOpenUpdate: () => void
-  onCheckForUpdates: () => void
+export type { SettingsInitialReason, SettingsTabId };
+
+interface SettingsScreenProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+  initialTab?: TabId;
+  initialScrollAnchor?: SettingsLegacyScrollAnchor;
+  initialReason?: SettingsInitialReason;
+  update: AppUpdate;
+  onOpenUpdate: () => void;
+  onCheckForUpdates: () => void;
 }
 
-type TabId = 'general' | 'models' | 'apiKeys' | 'promptEnhancer' | 'about'
+type TabId = SettingsTabId;
 
-/** A checkpoint this modal can download: the text encoder or the optional prompt enhancer. */
-type TextEncodingCp = NonNullable<ApiSuccessOf<'getTextEncoderRecommendation'>['cp_to_download']>
-type GeminiModelOption = ApiSuccessOf<'listGeminiModels'>['models'][number]
+type GeminiModelOption = ApiSuccessOf<"listGeminiModels">["models"][number];
 
 /** Focuses an API Keys tab input once the modal has switched to that tab.
  *  Shared by the LTX and FAL key inputs — each call gets its own ref/pending state.
@@ -42,90 +80,50 @@ function useApiKeyFocus(
   sectionRef?: React.RefObject<HTMLElement | null>,
   containerRef?: React.RefObject<HTMLElement | null>,
 ) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [pending, setPending] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    if (!pending) return
+    if (!pending) return;
     // Closing the modal or leaving API Keys cancels the timeout below; drop `pending` so a
     // later open can't replay scroll/focus that nobody requested this time.
-    if (!isOpen || activeTab !== 'apiKeys') {
-      setPending(false)
-      return
+    if (!isOpen || activeTab !== "apiKeys") {
+      setPending(false);
+      return;
     }
 
     // Wait for the API Keys tab to paint before scrolling. Clearing `pending` in this
     // effect body used to cancel the scheduled work on the very next render.
-    const timeoutId = window.setTimeout(() => {
-      const section = sectionRef?.current
-      const container = containerRef?.current
-      if (section && container) {
-        const top = container.scrollTop + section.getBoundingClientRect().top - container.getBoundingClientRect().top
-        container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
-      }
-      inputRef.current?.focus({ preventScroll: sectionRef != null })
-      setPending(false)
-    }, sectionRef ? 100 : 0)
+    const timeoutId = window.setTimeout(
+      () => {
+        // Bring the section (and its "Gemini key required" warning) on screen, not just
+        // the input — focus alone leaves the banner that explains the prompt off-screen.
+        const section = sectionRef?.current;
+        const container = containerRef?.current;
+        if (section && container) {
+          const top =
+            container.scrollTop +
+            section.getBoundingClientRect().top -
+            container.getBoundingClientRect().top;
+          container.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+        }
+        inputRef.current?.focus({ preventScroll: sectionRef != null });
+        setPending(false);
+      },
+      sectionRef ? 100 : 0,
+    );
 
     return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [activeTab, pending, isOpen, sectionRef, containerRef])
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeTab, pending, isOpen, sectionRef, containerRef]);
 
   const openAndFocus = () => {
-    setActiveTab('apiKeys')
-    setPending(true)
-  }
+    setActiveTab("apiKeys");
+    setPending(true);
+  };
 
-  return { inputRef, openAndFocus }
-}
-
-/** A labelled on/off setting row: bolt icon, title, description, switch, and a status pill.
- *  Shared by the CUDA-only Torch Compile + Diffusion Stage Cache toggles. */
-function SettingToggle({ title, description, enabled, onToggle, statusOn, statusOff }: {
-  title: string
-  description: React.ReactNode
-  enabled: boolean
-  onToggle: () => void
-  statusOn: string
-  statusOff: string
-}) {
-  return (
-    <div className="space-y-3 pt-4 border-t border-zinc-800">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <svg className="h-4 w-4 text-orange-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-            </svg>
-            <label className="text-sm font-medium text-white">{title}</label>
-          </div>
-          <p className="text-xs text-zinc-500 leading-relaxed">{description}</p>
-        </div>
-
-        <button
-          type="button"
-          onClick={onToggle}
-          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-            enabled ? 'bg-orange-500' : 'bg-zinc-700'
-          }`}
-        >
-          <span
-            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-              enabled ? 'translate-x-5' : 'translate-x-0'
-            }`}
-          />
-        </button>
-      </div>
-
-      <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
-        enabled ? 'bg-orange-500/10 text-orange-400' : 'bg-zinc-800 text-zinc-500'
-      }`}>
-        <div className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-orange-400' : 'bg-zinc-600'}`} />
-        {enabled ? statusOn : statusOff}
-      </div>
-    </div>
-  )
+  return { inputRef, openAndFocus };
 }
 
 function GeminiModelSelect({
@@ -133,1523 +131,724 @@ function GeminiModelSelect({
   models,
   value,
   onChange,
+  inline = false,
 }: {
-  disabled: boolean
-  models: GeminiModelOption[]
-  value: string
-  onChange: (id: string) => void
+  disabled: boolean;
+  models: GeminiModelOption[];
+  value: string;
+  onChange: (id: string) => void;
+  inline?: boolean;
 }) {
   const options = models.some((model) => model.id === value)
     ? models
-    : [...models, { id: value, displayName: value, description: '' }]
-  const selectedDescription = options.find((model) => model.id === value)?.description?.trim() ?? ''
+    : [...models, { id: value, displayName: value, description: "" }];
+  const selectedDescription =
+    options.find((model) => model.id === value)?.description?.trim() ?? "";
+
+  const select = (
+    <SettingsSelect
+      disabled={disabled}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => e.stopPropagation()}
+      aria-label="Gemini model"
+    >
+      {options.map((model) => (
+        <option key={model.id} title={model.description} value={model.id}>
+          {model.displayName}
+        </option>
+      ))}
+    </SettingsSelect>
+  );
+
+  if (inline) {
+    return select;
+  }
+
   return (
-    <div className="space-y-1.5">
-      <select
-        disabled={disabled}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => e.stopPropagation()}
-        className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {options.map((model) => (
-          <option key={model.id} title={model.description} value={model.id}>
-            {model.displayName}
-          </option>
-        ))}
-      </select>
-      <p className="text-xs text-zinc-500">
-        Gemini chat models only — used for Enhance (API) and timeline gap
-        suggestions. Local Enhance still uses Gemma on-device.
-      </p>
+    <SettingsStack>
+      {select}
+      <SettingsHint>
+        Gemini chat models only — powers the Gemini API enhance option and timeline gap
+        suggestions. Local Gemma enhance runs on-device and does not use this key.
+      </SettingsHint>
       {selectedDescription ? (
-        <p className="text-xs text-zinc-400 leading-relaxed">{selectedDescription}</p>
+        <Text as="p" variant="body" size="xs" className={contentStyles.textSecondary}>
+          {selectedDescription}
+        </Text>
       ) : null}
-    </div>
-  )
+    </SettingsStack>
+  );
 }
 
-const ABOUT_ACTION_CLASS = 'w-full bg-zinc-700 hover:bg-zinc-600 text-white text-xs'
+export function SettingsScreen({
+  isOpen = true,
+  onClose,
+  initialTab,
+  initialScrollAnchor,
+  initialReason,
+  update,
+  onOpenUpdate,
+  onCheckForUpdates,
+}: SettingsScreenProps) {
+  const active = isOpen;
+  const {
+    settings,
+    updateSettings,
+    saveLtxApiKey,
+    saveFalApiKey,
+    saveGeminiApiKey,
+    clearLtxApiKey,
+    clearFalApiKey,
+    clearGeminiApiKey,
+    refreshSettings,
+    forceApiGenerations,
+    cudaAvailable,
+  } = useAppSettings();
+  const onSettingsChange = (next: AppSettings) => updateSettings(next);
+  const [activeTab, setActiveTab] = useState<TabId>("general");
+  const tabBodyRef = useRef<HTMLDivElement>(null);
+  const geminiSectionRef = useRef<HTMLElement>(null);
+  const ltxApiKey = useApiKeyFocus(active, activeTab, setActiveTab);
+  const falApiKey = useApiKeyFocus(active, activeTab, setActiveTab);
+  const geminiApiKey = useApiKeyFocus(
+    active,
+    activeTab,
+    setActiveTab,
+    geminiSectionRef,
+    tabBodyRef,
+  );
+  const [ltxApiKeyInput, setLtxApiKeyInput] = useState("");
+  const [falApiKeyInput, setFalApiKeyInput] = useState("");
+  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState("");
+  type ApiKeyId = "ltx" | "fal" | "gemini";
+  // Ref so a second click cannot start before React re-renders the disabled buttons.
+  const pendingApiKeyRef = useRef<ApiKeyId | null>(null);
+  const [pendingApiKey, setPendingApiKey] = useState<ApiKeyId | null>(null);
+  const [ltxKeyError, setLtxKeyError] = useState<string | null>(null);
+  const [falKeyError, setFalKeyError] = useState<string | null>(null);
+  const [geminiKeyError, setGeminiKeyError] = useState<string | null>(null);
+  const showGeminiKeyBanner = initialReason === "geminiKeyRequired";
+  const [geminiModelOptions, setGeminiModelOptions] = useState<GeminiModelOption[]>([]);
+  const [resolvedGeminiModel, setResolvedGeminiModel] = useState(DEFAULT_GEMINI_MODEL);
+  const geminiModelSaveSeq = useRef(0);
+  const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
 
-function aboutUpdateAction(
-  state: UpdateStatePayload,
-  onOpenUpdate: () => void,
-  onCheckForUpdates: () => void,
-  isMac: boolean,
-  autoCheckOn: boolean,
-): { label: string; onClick?: () => void; disabled?: boolean } {
-  if (isMac) {
-    // No modal: Check only forces a lookup. Download/install still follow the toggle.
-    switch (state.status) {
-      case 'checking':
-        return { label: 'Checking…', disabled: true }
-      case 'downloading':
-        return { label: `Downloading… ${state.percent ?? 0}%`, disabled: true }
-      case 'downloaded':
-        return {
-          label: autoCheckOn ? 'Will install when you quit' : 'Will still install when you quit',
-          disabled: true,
-        }
-      default:
-        return {
-          label: 'Check for updates',
-          onClick: autoCheckOn ? onCheckForUpdates : undefined,
-          disabled: !autoCheckOn,
-        }
+  // Sync active tab with initialTab when the screen becomes active or the prop changes.
+  useEffect(() => {
+    if (active && initialTab) {
+      setActiveTab(initialTab);
     }
-  }
-  switch (state.status) {
-    case 'available':
-      return { label: `Update available — v${state.version}`, onClick: onOpenUpdate }
-    case 'downloaded':
-      return { label: 'Restart to update', onClick: onOpenUpdate }
-    case 'checking':
-      return { label: 'Checking…', disabled: true }
-    case 'downloading':
-      return { label: `Downloading… ${state.percent ?? 0}%`, disabled: true }
-    default:
-      return { label: 'Check for updates', onClick: onCheckForUpdates }
-  }
-}
+  }, [active, initialTab]);
 
-export function SettingsModal({ isOpen, onClose, initialTab, initialReason, update, onOpenUpdate, onCheckForUpdates }: SettingsModalProps) {
-  const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, refreshSettings, forceApiGenerations, cudaAvailable, notifyModelsChanged } = useAppSettings()
-  const onSettingsChange = (next: AppSettings) => updateSettings(next)
-  const [activeTab, setActiveTab] = useState<TabId>('general')
-  const tabBodyRef = useRef<HTMLDivElement>(null)
-  const geminiSectionRef = useRef<HTMLDivElement>(null)
-  const ltxApiKey = useApiKeyFocus(isOpen, activeTab, setActiveTab)
-  const falApiKey = useApiKeyFocus(isOpen, activeTab, setActiveTab)
-  const geminiApiKey = useApiKeyFocus(isOpen, activeTab, setActiveTab, geminiSectionRef, tabBodyRef)
-  const [ltxApiKeyInput, setLtxApiKeyInput] = useState('')
-  const [falApiKeyInput, setFalApiKeyInput] = useState('')
-  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('')
-  const showGeminiKeyBanner = initialReason === 'geminiKeyRequired'
-  const [geminiModelOptions, setGeminiModelOptions] = useState<GeminiModelOption[]>([])
-  const [resolvedGeminiModel, setResolvedGeminiModel] = useState(DEFAULT_GEMINI_MODEL)
-  const geminiModelSaveSeq = useRef(0)
-  const [textEncoderRecommendation, setTextEncoderRecommendation] = useState<ApiSuccessOf<'getTextEncoderRecommendation'> | null>(null)
-  // Which checkpoint is downloading, not just whether one is — the encoder and the optional
-  // prompt enhancer each have their own card and must show progress only on their own.
-  const [downloadingCp, setDownloadingCp] = useState<TextEncodingCp | null>(null)
-  const [downloadError, setDownloadError] = useState<string | null>(null)
-  const [downloadSessionId, setDownloadSessionId] = useState<string | null>(null)
-  const [downloadProgress, setDownloadProgress] = useState<ApiSuccessOf<'getModelDownloadProgress'> | null>(null)
-  const { hfAuthStatus, hfAuthPolling, startHuggingFaceLogin, handleHuggingFaceLogout } = useHfAuth(isOpen)
-  const textEncoderModelTypes = useMemo(
-    () => (forceApiGenerations || !textEncoderRecommendation?.cp_to_download
-      ? []
-      : [textEncoderRecommendation.cp_to_download]),
-    [forceApiGenerations, textEncoderRecommendation?.cp_to_download],
-  )
-  const { accessMap: teAccessMap, allAuthorized: teAllAuthorized, checkError: teCheckError, recheckAccess: recheckTeAccess } = useHfModelAccess(textEncoderModelTypes, hfAuthStatus)
-  const preferredEnhancerDownloaded = textEncoderRecommendation !== null
-    && textEncoderRecommendation.local_enhancer_cp !== null
-    && textEncoderRecommendation.active_local_enhancer_cp === textEncoderRecommendation.local_enhancer_cp
-  const enhancerCpToDownload = textEncoderRecommendation !== null
-    && textEncoderRecommendation.local_enhancer_cp !== null
-    && !preferredEnhancerDownloaded
-    ? textEncoderRecommendation.local_enhancer_cp
-    : null
-  const enhancerModelTypes = useMemo(
-    () => (enhancerCpToDownload === null ? [] : [enhancerCpToDownload]),
-    [enhancerCpToDownload],
-  )
-  const { accessMap: enhancerAccessMap, allAuthorized: enhancerAllAuthorized, checkError: enhancerCheckError, recheckAccess: recheckEnhancerAccess } = useHfModelAccess(enhancerModelTypes, hfAuthStatus)
-  const apiEncodingSupported = textEncoderRecommendation?.api_encoding_supported ?? true
-  const localEncoderSelected = settings.useLocalTextEncoder || !apiEncodingSupported
-  const [appVersion, setAppVersion] = useState('')
-  const [noticesText, setNoticesText] = useState<string | null>(null)
-  const [noticesLoading, setNoticesLoading] = useState(false)
-  const [showNotices, setShowNotices] = useState(false)
-  const [modelLicenseText, setModelLicenseText] = useState<string | null>(null)
-  const [modelLicenseLoading, setModelLicenseLoading] = useState(false)
-  const [showModelLicense, setShowModelLicense] = useState(false)
-  const [analyticsEnabled, setAnalyticsEnabled] = useState(false)
-  const [autoCheckUpdates, setAutoCheckUpdatesState] = useState(true)
-  const [projectAssetsPath, setProjectAssetsPath] = useState('')
-  const isMac = window.electronAPI.platform === 'darwin'
-  const updateAction = aboutUpdateAction(update.state, onOpenUpdate, onCheckForUpdates, isMac, autoCheckUpdates)
-
-  // Sync active tab with initialTab prop when modal opens
   useEffect(() => {
-    if (isOpen && initialTab) {
-      setActiveTab(initialTab)
+    if (!active) return;
+    if (initialReason === "geminiKeyRequired") {
+      setActiveTab("apiKeys");
+      geminiApiKey.openAndFocus();
+    } else if (initialReason === "ltxKeyRequired") {
+      setActiveTab("apiKeys");
+      ltxApiKey.openAndFocus();
     }
-  }, [isOpen, initialTab])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- openAndFocus is stable for this open
+  }, [active, initialReason]);
 
-  useEffect(() => {
-    if (isOpen && initialReason === 'geminiKeyRequired') {
-      geminiApiKey.openAndFocus()
-    }
-  }, [isOpen, initialReason])
-
-  // The Models tab is hidden in force-API mode; don't let the selection get stuck there
-  // (e.g. via initialTab or a stale value).
-  useEffect(() => {
-    if (forceApiGenerations && activeTab === 'models') {
-      setActiveTab('general')
-    }
-  }, [forceApiGenerations, activeTab])
-
-  // Fetch app version when About tab is shown
-  useEffect(() => {
-    if (activeTab !== 'about' || appVersion) return
-    window.electronAPI.getAppInfo().then(info => setAppVersion(info.version)).catch(() => {})
-  }, [activeTab, appVersion])
-
-  // Fetch analytics state when modal opens
-  useEffect(() => {
-    if (!isOpen) return
-    window.electronAPI.getAnalyticsState()
-      .then((state: { analyticsEnabled: boolean }) => setAnalyticsEnabled(state.analyticsEnabled))
-      .catch(() => {})
-    window.electronAPI.getProjectAssetsPath()
-      .then((p: string) => setProjectAssetsPath(p))
-      .catch(() => {})
-    window.electronAPI.getAutoCheckUpdates()
-      .then((s: { enabled: boolean }) => setAutoCheckUpdatesState(s.enabled))
-      .catch(() => {})
-  }, [isOpen])
-
-  useEffect(() => {
-    const fallbackId = settings.geminiModel.trim() || DEFAULT_GEMINI_MODEL
-    if (!isOpen) return
-    if (!settings.hasGeminiApiKey) {
-      setGeminiModelOptions([{ id: fallbackId, displayName: fallbackId, description: '' }])
-      setResolvedGeminiModel(fallbackId)
-      return
-    }
-
-    let cancelled = false
-    const loadGeminiModels = async () => {
-      const result = await ApiClient.listGeminiModels()
-      if (cancelled) return
-      if (!result.ok) {
-        setGeminiModelOptions([{ id: fallbackId, displayName: fallbackId, description: '' }])
-        setResolvedGeminiModel(fallbackId)
-        return
+  const runApiKeyMutation = (
+    id: ApiKeyId,
+    action: () => Promise<void>,
+    onError: (message: string) => void,
+    fallback: string,
+  ) => {
+    if (pendingApiKeyRef.current) return;
+    pendingApiKeyRef.current = id;
+    setPendingApiKey(id);
+    void (async () => {
+      try {
+        await action();
+      } catch (error) {
+        onError(error instanceof Error ? error.message : fallback);
+      } finally {
+        pendingApiKeyRef.current = null;
+        setPendingApiKey(null);
       }
-      setGeminiModelOptions(result.data.models)
-      setResolvedGeminiModel(result.data.resolvedModel)
+    })();
+  };
+
+  // Don't let the selection sit on a tab this runtime doesn't show (from initialTab, a deep
+  // link, or a stale value). Same availability rule the tab strip uses.
+  useEffect(() => {
+    if (!isSettingsTabAvailable(activeTab, { forceApiGenerations })) {
+      setActiveTab("general");
     }
-    void loadGeminiModels()
+  }, [forceApiGenerations, activeTab]);
+
+  // Fetch analytics state when the settings surface opens
+  useEffect(() => {
+    if (!active) return;
+    window.electronAPI
+      .getAnalyticsState()
+      .then((state: { analyticsEnabled: boolean }) =>
+        setAnalyticsEnabled(state.analyticsEnabled),
+      )
+      .catch(() => {});
+  }, [active]);
+
+  useEffect(() => {
+    const fallbackId = settings.geminiModel.trim() || DEFAULT_GEMINI_MODEL;
+    if (!active) return;
+    if (!settings.hasGeminiApiKey) {
+      setGeminiModelOptions([
+        { id: fallbackId, displayName: fallbackId, description: "" },
+      ]);
+      setResolvedGeminiModel(fallbackId);
+      return;
+    }
+
+    let cancelled = false;
+    const loadGeminiModels = async () => {
+      const result = await ApiClient.listGeminiModels();
+      if (cancelled) return;
+      if (!result.ok) {
+        setGeminiModelOptions([
+          { id: fallbackId, displayName: fallbackId, description: "" },
+        ]);
+        setResolvedGeminiModel(fallbackId);
+        return;
+      }
+      setGeminiModelOptions(result.data.models);
+      setResolvedGeminiModel(result.data.resolvedModel);
+    };
+    void loadGeminiModels();
     return () => {
-      cancelled = true
-    }
+      cancelled = true;
+    };
     // Selecting a model calls refreshSettings(), which updates settings.geminiModel. Relisting
     // on that change would hit the backend on every pick and wipe the dropdown if the GET failed.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fallbackId is only used when the key is missing or the list fails
-  }, [isOpen, settings.hasGeminiApiKey])
+  }, [active, settings.hasGeminiApiKey]);
 
-  // Fetch text encoder recommendation when modal opens
-  useEffect(() => {
-    if (!isOpen || forceApiGenerations) return
+  const reduceMotion = useReducedMotion();
 
-    const fetchRecommendation = async () => {
-      const result = await ApiClient.getTextEncoderRecommendation()
-      if (!result.ok) {
-        logger.error(`Failed to fetch text encoder recommendation: ${result.error.message}`)
-        return
-      }
-
-      const data = result.data
-      setTextEncoderRecommendation(data)
-      // A download that finished elsewhere (another surface, or before this modal opened) would
-      // otherwise leave its card stuck showing progress.
-      const stillPending = [
-        data.cp_to_download,
-        data.local_enhancer_cp !== null
-          && data.active_local_enhancer_cp !== data.local_enhancer_cp
-          ? data.local_enhancer_cp
-          : null,
-      ]
-      setDownloadingCp((cp) => (cp !== null && !stillPending.includes(cp) ? null : cp))
-    }
-
-    void fetchRecommendation()
-  }, [forceApiGenerations, isOpen])
-
-  // Poll download progress via session ID
-  useEffect(() => {
-    if (downloadingCp === null || !downloadSessionId) return
-
-    const poll = async () => {
-      const result = await ApiClient.getModelDownloadProgress({ sessionId: downloadSessionId })
-      if (!result.ok) return
-      setDownloadProgress(result.data)
-      if (result.data.status === 'complete') {
-        setDownloadingCp(null)
-        setDownloadSessionId(null)
-        const rec = await ApiClient.getTextEncoderRecommendation()
-        if (rec.ok) setTextEncoderRecommendation(rec.data)
-        // Enhance reads local availability outside this modal, so it has to be told the set of
-        // installed checkpoints changed.
-        notifyModelsChanged()
-      } else if (result.data.status === 'error') {
-        setDownloadError(result.data.error ?? 'Download failed')
-        setDownloadingCp(null)
-        setDownloadSessionId(null)
-      }
-    }
-
-    void poll()
-    const interval = setInterval(() => { void poll() }, 1000)
-    return () => clearInterval(interval)
-  }, [downloadingCp, downloadSessionId, notifyModelsChanged])
-
-  const handleDownloadCheckpoint = async (cpId: TextEncodingCp) => {
-    setDownloadingCp(cpId)
-    setDownloadError(null)
-    setDownloadProgress(null)
-    const result = await ApiClient.startModelDownload({ type: 'download', cp_ids: [cpId] })
-    if (!result.ok) {
-      setDownloadError(result.error.message)
-      setDownloadingCp(null)
-      return
-    }
-    if (result.data.status === 'started') {
-      setDownloadSessionId(result.data.sessionId)
-    }
-  }
-
-  if (!isOpen) return null
-
-  const handleToggleTorchCompile = () => {
-    onSettingsChange({
-      ...settings,
-      useTorchCompile: !settings.useTorchCompile,
-    })
-  }
-
-  const handleToggleDiffusionStageCache = () => {
-    onSettingsChange({
-      ...settings,
-      diffusionStageCacheEnabled: !settings.diffusionStageCacheEnabled,
-    })
-  }
-
-  const handleToggleFastDecode = () => {
-    onSettingsChange({
-      ...settings,
-      useConvVae: !settings.useConvVae,
-    })
-  }
-
-  const handleToggleLocalEncoder = () => {
-    onSettingsChange({
-      ...settings,
-      useLocalTextEncoder: !settings.useLocalTextEncoder,
-    })
-  }
-
-  const handlePromptCacheSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const size = Math.max(0, Math.min(1000, parseInt(e.target.value) || 100))
-    onSettingsChange({
-      ...settings,
-      promptCacheSize: size,
-    })
-  }
-
-  // Prompt Enhancer handlers
-  const handleTogglePromptEnhancer = (mode: 't2v' | 'i2v') => {
-    if (mode === 't2v') {
-      onSettingsChange({ ...settings, promptEnhancerEnabledT2V: !settings.promptEnhancerEnabledT2V })
-    } else {
-      onSettingsChange({ ...settings, promptEnhancerEnabledI2V: !settings.promptEnhancerEnabledI2V })
-    }
-  }
   // Analytics handler
   const handleToggleAnalytics = () => {
-    const next = !analyticsEnabled
-    setAnalyticsEnabled(next)
-    window.electronAPI.setAnalyticsEnabled({ enabled: next }).catch(() => {})
-  }
+    const next = !analyticsEnabled;
+    setAnalyticsEnabled(next);
+    window.electronAPI.setAnalyticsEnabled({ enabled: next }).catch(() => {});
+  };
 
-  const handleToggleAutoCheck = () => {
-    const next = !autoCheckUpdates
-    setAutoCheckUpdatesState(next)
-    window.electronAPI.setAutoCheckUpdates({ enabled: next }).catch(() => {})
-  }
-
-  // Seed handlers
-  const handleToggleSeedLock = () => {
-    onSettingsChange({
-      ...settings,
-      seedLocked: !settings.seedLocked,
-    })
-  }
-
-  const handleLockedSeedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value) || 0
-    onSettingsChange({
-      ...settings,
-      lockedSeed: Math.max(0, Math.min(2147483647, value)),
-    })
-  }
-
-  const handleRandomizeSeed = () => {
-    onSettingsChange({
-      ...settings,
-      lockedSeed: Math.floor(Math.random() * 2147483647),
-    })
-  }
-
-  const handleLoadModelLicense = async () => {
-    setModelLicenseLoading(true)
-    try {
-      const text = await window.electronAPI.fetchLicenseText()
-      setModelLicenseText(text)
-      setShowModelLicense(true)
-    } catch (e) {
-      logger.error(`Failed to load model license: ${e}`)
-    } finally {
-      setModelLicenseLoading(false)
-    }
-  }
-
-  const handleLoadNotices = async () => {
-    setNoticesLoading(true)
-    try {
-      const text = await window.electronAPI.getNoticesText()
-      setNoticesText(text)
-      setShowNotices(true)
-    } catch (e) {
-      logger.error(`Failed to load notices: ${e}`)
-    } finally {
-      setNoticesLoading(false)
-    }
-  }
+  const showSection = (tabId: TabId) => activeTab === tabId;
 
   const tabs = [
-    { id: 'general' as TabId, label: 'General', icon: Settings },
-    // The Models tab is local-model management — irrelevant (and non-functional) when all
-    // generation is forced through the API, so hide it in that mode.
-    ...(!forceApiGenerations ? [{ id: 'models' as TabId, label: 'Models', icon: HardDrive }] : []),
-    { id: 'apiKeys' as TabId, label: 'API Keys', icon: KeyRound },
-    { id: 'promptEnhancer' as TabId, label: 'Prompt Enhancer', icon: Sparkles },
-    { id: 'about' as TabId, label: 'About', icon: Info },
-  ]
+    { id: "general" as TabId, label: "General", icon: Settings },
+    { id: "models" as TabId, label: "Models", icon: Boxes },
+    { id: "apiKeys" as TabId, label: "API Keys", icon: KeyRound },
+    { id: "legacy" as TabId, label: "Legacy", icon: Archive },
+    { id: "about" as TabId, label: "About", icon: Info },
+  ].filter((tab) => isSettingsTabAvailable(tab.id, { forceApiGenerations }));
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      />
+  const panelClassName = pageLayoutStyles.modalPanel;
+  const tabBodyClassName = pageLayoutStyles.modalMainPane;
 
-      {/* Modal */}
-      <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-2xl mx-4">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-          <div className="flex items-center gap-2">
-            <Settings className="h-5 w-5 text-zinc-400" />
-            <h2 className="text-lg font-semibold text-white">Settings</h2>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+  useEffect(() => {
+    if (
+      !active ||
+      (initialScrollAnchor !== "promptEnhancer" &&
+        initialScrollAnchor !== "textEncoding")
+    ) {
+      return;
+    }
+    setActiveTab("general");
+    // Let General paint before measuring: the row's host div only exists once the tab
+    // renders, and a same-tick scroll would land on the previous tab's layout.
+    const timeoutId = window.setTimeout(() => {
+      const container = tabBodyRef.current;
+      const section = container?.querySelector(
+        `#${settingsSectionElementId(initialScrollAnchor)}`,
+      );
+      if (!container || !section) return;
+      const top =
+        container.scrollTop +
+        section.getBoundingClientRect().top -
+        container.getBoundingClientRect().top;
+      container.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    }, 100);
+    return () => window.clearTimeout(timeoutId);
+  }, [active, initialScrollAnchor]);
 
-        {/* Tabs */}
-        <div className="flex border-b border-zinc-800">
-          {tabs.map((tab) => {
-            const Icon = tab.icon
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors ${
-                  activeTab === tab.id
-                    ? 'text-white border-b-2 border-blue-500 -mb-px'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {tab.label}
-              </button>
-            )
-          })}
-        </div>
+  const selectSettingsSection = (tabId: TabId) => {
+    setActiveTab(tabId);
+    if (tabBodyRef.current) {
+      tabBodyRef.current.scrollTop = 0;
+    }
+  };
 
-        {/* Content */}
-        <div ref={tabBodyRef} className="px-6 py-5 space-y-6 h-[60vh] overflow-y-auto">
-          {activeTab === 'general' && (
+  useEffect(() => {
+    if (tabBodyRef.current) {
+      tabBodyRef.current.scrollTop = 0;
+    }
+  }, [activeTab]);
+
+  const highlightedSection = activeTab;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose?.();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, onClose]);
+
+  const settingsNav = (
+    <nav
+      className={pageLayoutStyles.nav}
+      aria-label="Settings sections"
+    >
+      {tabs.map((tab) => {
+        const Icon = tab.icon;
+        const isActive = highlightedSection === tab.id;
+        return (
+          <DsButton
+            key={tab.id}
+            hierarchy="plain"
+            label={tab.label}
+            leftIcon={<Icon />}
+            isActive={isActive}
+            aria-current={isActive ? "page" : undefined}
+            aria-label={tab.label}
+            onClick={() => selectSettingsSection(tab.id)}
+            className={pageLayoutStyles.navButton}
+          />
+        );
+      })}
+    </nav>
+  );
+
+  const tabBody = (
+    <div ref={tabBodyRef} className={tabBodyClassName}>
+          {showSection("general") && (
+            <SettingsAnchorSection
+              title="General"
+            >
             <>
-              {/* Project Assets Path */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Download className="h-4 w-4 text-blue-400" />
-                  <h3 className="text-sm font-semibold text-white">Project Assets Path</h3>
-                </div>
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Where generated video and image assets are saved. Each project gets a subfolder.
-                </p>
-                <div className="flex gap-2">
-                  <div className="flex-1 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-sm truncate select-text">
-                    {projectAssetsPath || <span className="text-zinc-600">Not set</span>}
-                  </div>
-                  <Button
-                    variant="outline"
-                    className="border-zinc-700 flex-shrink-0"
-                    onClick={async () => {
-                      const result = await window.electronAPI.openProjectAssetsPathChangeDialog()
-                      if (result.success) {
-                        setProjectAssetsPath(result.path)
+              <SettingsSubsection title="Appearance">
+                <ThemePreferenceSetting />
+              </SettingsSubsection>
+
+              <SettingsSubsection
+                showDivider
+                title="Generation"
+                description="Prompt rewriting and decode speed for local and API video generation."
+                descriptionClassName={contentStyles.apiKeysDescriptionLine}
+                descriptionSize="sm"
+              >
+                <SettingsStack loose>
+                  <div id={settingsSectionElementId("promptEnhancer")}>
+                    <EnhanceSettingsSection
+                      settings={settings}
+                      onToggleAutoEnhance={() =>
+                        updateSettings({
+                          exploreAutoEnhancePrompts: !settings.exploreAutoEnhancePrompts,
+                        })
                       }
-                    }}
-                  >
-                    <Folder className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              {!forceApiGenerations && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Film className="h-4 w-4 text-blue-400" />
-                    <h3 className="text-sm font-semibold text-white">Videos Generation</h3>
-                  </div>
-
-                  <div
-                    className={`bg-zinc-800/50 rounded-lg p-4 border-2 transition-colors cursor-pointer ${
-                      settings.userPrefersLtxApiVideoGenerations ? 'border-blue-500' : 'border-transparent hover:border-zinc-600'
-                    }`}
-                    onClick={() => {
-                      if (!settings.hasLtxApiKey) {
-                        ltxApiKey.openAndFocus()
-                        return
+                      onToggleApiEnhance={() =>
+                        updateSettings({
+                          promptEnhancerEnabled: !settings.promptEnhancerEnabled,
+                        })
                       }
-                      onSettingsChange({
-                        ...settings,
-                        userPrefersLtxApiVideoGenerations: !settings.userPrefersLtxApiVideoGenerations,
-                      })
-                    }}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <Zap className="h-4 w-4 text-blue-400" />
-                          <span className="text-sm font-medium text-white">Generate With API</span>
-                        </div>
-                        <p className="text-xs text-zinc-400 mt-1">
-                          Use LTX API for video generation when an LTX API key is configured.
-                        </p>
-                      </div>
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                        settings.userPrefersLtxApiVideoGenerations ? 'border-blue-500 bg-blue-500' : 'border-zinc-600'
-                      }`}>
-                        {settings.userPrefersLtxApiVideoGenerations && <Check className="h-3 w-3 text-white" />}
-                      </div>
-                    </div>
-
-                    {!settings.hasLtxApiKey && (
-                      <div className="mt-2 text-xs text-amber-400 flex items-center gap-1.5">
-                        <AlertCircle className="h-3 w-3" />
-                        API key required — configure it in the API Keys tab.
-                      </div>
-                    )}
+                    />
                   </div>
-                </div>
-              )}
-
-              {!forceApiGenerations && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-blue-400" />
-                    <h3 className="text-sm font-semibold text-white">Images Generation</h3>
-                  </div>
-
-                  <div
-                    className={`bg-zinc-800/50 rounded-lg p-4 border-2 transition-colors cursor-pointer ${
-                      settings.userPrefersFalApiImageGenerations ? 'border-blue-500' : 'border-transparent hover:border-zinc-600'
-                    }`}
-                    onClick={() => {
-                      if (!settings.hasFalApiKey) {
-                        falApiKey.openAndFocus()
-                        return
-                      }
-                      onSettingsChange({
-                        ...settings,
-                        userPrefersFalApiImageGenerations: !settings.userPrefersFalApiImageGenerations,
-                      })
-                    }}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <Zap className="h-4 w-4 text-blue-400" />
-                          <span className="text-sm font-medium text-white">Generate With API</span>
-                        </div>
-                        <p className="text-xs text-zinc-400 mt-1">
-                          Use the FAL API for image generation and editing when a FAL API key is configured.
-                        </p>
-                      </div>
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                        settings.userPrefersFalApiImageGenerations ? 'border-blue-500 bg-blue-500' : 'border-zinc-600'
-                      }`}>
-                        {settings.userPrefersFalApiImageGenerations && <Check className="h-3 w-3 text-white" />}
-                      </div>
-                    </div>
-
-                    {!settings.hasFalApiKey && (
-                      <div className="mt-2 text-xs text-amber-400 flex items-center gap-1.5">
-                        <AlertCircle className="h-3 w-3" />
-                        API key required — configure it in the API Keys tab.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Text Encoding Section */}
-              {!forceApiGenerations && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <svg className="h-4 w-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M15 7h3a5 5 0 0 1 5 5 5 5 0 0 1-5 5h-3m-6 0H6a5 5 0 0 1-5-5 5 5 0 0 1 5-5h3" />
-                    <line x1="8" y1="12" x2="16" y2="12" />
-                  </svg>
-                  <h3 className="text-sm font-semibold text-white">Text Encoding</h3>
-                </div>
-
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Text encoding converts your prompt into data the AI understands. Choose how to do this.
-                </p>
-
-                {/* LTX API Option (Default) */}
-                <div
-                  className={`bg-zinc-800/50 rounded-lg p-4 border-2 transition-colors ${
-                    apiEncodingSupported ? 'cursor-pointer' : 'opacity-60'
-                  } ${
-                    !localEncoderSelected ? 'border-blue-500' : 'border-transparent hover:border-zinc-600'
-                  }`}
-                  onClick={() => {
-                    if (!apiEncodingSupported) return
-                    if (!settings.useLocalTextEncoder) return
-                    if (!settings.hasLtxApiKey) {
-                      ltxApiKey.openAndFocus()
-                      return
+                  <SettingToggle
+                    rowLayout="preference"
+                    title="Fast decode"
+                    description="Decodes video faster with slightly lower visual fidelity."
+                    enabled={settings.useConvVae}
+                    onToggle={() =>
+                      updateSettings({ useConvVae: !settings.useConvVae })
                     }
-                    handleToggleLocalEncoder()
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Zap className="h-4 w-4 text-blue-400" />
-                        <span className="text-sm font-medium text-white">LTX API</span>
-                        {apiEncodingSupported ? (
-                          <span className="text-xs px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded">Recommended</span>
-                        ) : (
-                          <span className="text-xs px-1.5 py-0.5 bg-zinc-700 text-zinc-400 rounded">Unavailable</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-zinc-400 mt-1">
-                        Fast cloud-based text encoding (~1 second). Requires an LTX API key configured in the API Keys tab.
-                      </p>
-                    </div>
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                      !localEncoderSelected ? 'border-blue-500 bg-blue-500' : 'border-zinc-600'
-                    }`}>
-                      {!localEncoderSelected && <Check className="h-3 w-3 text-white" />}
-                    </div>
-                  </div>
+                  />
+                </SettingsStack>
+              </SettingsSubsection>
 
-                  {!apiEncodingSupported && (
-                    <div className="mt-2 text-xs text-amber-400 flex items-start gap-1.5">
-                      <AlertCircle className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                      <span>
-                        Not available for LTX {textEncoderRecommendation?.ltx_version_label ?? ''} — prompts for this
-                        version can only be encoded by the local encoder.
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Warning when selected but no key */}
-                  {apiEncodingSupported && !settings.useLocalTextEncoder && !settings.hasLtxApiKey && (
-                    <div className="mt-2 text-xs text-amber-400 flex items-center gap-1.5">
-                      <AlertCircle className="h-3 w-3" />
-                      API key required — configure it in the API Keys tab.
-                    </div>
-                  )}
-
-                  {/* Prompt Cache Size — only relevant for API text encoding */}
-                  {!localEncoderSelected && settings.hasLtxApiKey && (
-                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-700/50">
-                      <div>
-                        <label className="text-xs text-white">Prompt Cache</label>
-                        <p className="text-xs text-zinc-500">Skip repeat encoding calls</p>
-                      </div>
-                      <input
-                        type="number"
-                        min="0"
-                        max="1000"
-                        value={settings.promptCacheSize ?? 100}
-                        onChange={handlePromptCacheSizeChange}
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-16 px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-xs text-white text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Local Encoder Option */}
-                <div
-                  className={`bg-zinc-800/50 rounded-lg p-4 border-2 transition-colors cursor-pointer ${
-                    localEncoderSelected ? 'border-blue-500' : 'border-transparent hover:border-zinc-600'
-                  }`}
-                  onClick={() => !settings.useLocalTextEncoder && handleToggleLocalEncoder()}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <svg className="h-4 w-4 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="4" y="4" width="16" height="16" rx="2" />
-                          <path d="M9 9h6m-6 3h6m-6 3h4" />
-                        </svg>
-                        <span className="text-sm font-medium text-white">Local Encoder</span>
-                        {!apiEncodingSupported && (
-                          <span className="text-xs px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded">Required</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-zinc-400 mt-1">
-                        Run on your computer (slower than the API). Requires{' '}
-                        {textEncoderRecommendation?.expected_size_gb ?? '~25'} GB download.
-                      </p>
-                    </div>
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                      localEncoderSelected ? 'border-blue-500 bg-blue-500' : 'border-zinc-600'
-                    }`}>
-                      {localEncoderSelected && <Check className="h-3 w-3 text-white" />}
-                    </div>
-                  </div>
-
-                  {/* Download Status - show when this option is selected */}
-                  {localEncoderSelected && (
-                    <div className="mt-3 pt-3 border-t border-zinc-700/50">
-                      {textEncoderRecommendation?.cp_to_download === null ? (
-                        <div className="flex items-center gap-2 text-xs text-green-400">
-                          <Check className="h-4 w-4" />
-                          <span>Downloaded ({textEncoderRecommendation?.expected_size_gb ?? 0} GB)</span>
-                        </div>
-                      ) : downloadingCp === textEncoderRecommendation?.cp_to_download ? (
-                        <div className="space-y-1.5">
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="text-zinc-300">Downloading text encoder...</span>
-                            <span className="text-zinc-500">{downloadProgress?.status === 'downloading' ? Math.round(downloadProgress.current_file_progress) : 0}%</span>
-                          </div>
-                          <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                            <div className="h-full transition-all duration-300 bg-blue-500" style={{ width: `${downloadProgress?.status === 'downloading' ? downloadProgress.current_file_progress : 0}%` }} />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-xs text-amber-400">
-                            <AlertCircle className="h-4 w-4" />
-                            <span>Not downloaded ({textEncoderRecommendation?.expected_size_gb || 0} GB required)</span>
-                          </div>
-                          <HfModelAccessGate
-                            accessMap={teAccessMap}
-                            allAuthorized={teAllAuthorized}
-                            hfAuthStatus={hfAuthStatus}
-                            hfAuthPolling={hfAuthPolling}
-                            startHuggingFaceLogin={() => {
-                              void startHuggingFaceLogin()
-                            }}
-                            checkError={teCheckError}
-                            onRetryCheck={recheckTeAccess}
-                            className="space-y-1.5 mb-2"
-                          />
-                          <Button
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              const cpId = textEncoderRecommendation?.cp_to_download
-                              if (cpId) void handleDownloadCheckpoint(cpId)
-                            }}
-                            disabled={!textEncoderRecommendation?.cp_to_download || !teAllAuthorized}
-                            className="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs"
-                          >
-                            <Download className="h-3 w-3 mr-2" />
-                            Download Text Encoder
-                          </Button>
-                          {downloadError && (
-                            <p className="text-xs text-red-400">{downloadError}</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Optional local prompt enhancer — only for models whose encoder can't generate */}
-                {textEncoderRecommendation?.local_enhancer_cp && (
-                  <div className="bg-zinc-800/50 rounded-lg p-4">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-zinc-400" />
-                      <span className="text-sm font-medium text-white">Local Prompt Enhancer</span>
-                      <span className="text-xs px-1.5 py-0.5 bg-zinc-700 text-zinc-400 rounded">Optional</span>
-                    </div>
-                    <p className="text-xs text-zinc-400 mt-1">
-                      LTX {textEncoderRecommendation.ltx_version_label}&apos;s text encoder can only encode
-                      prompts, so enhancing them on your computer needs a separate instruct model.
-                      Gemma 3 already downloaded for 2.3 works; Gemma 4 E2B is the smaller optional
-                      upgrade. Without either, the Enhance button can still use Gemini if you have a
-                      key, and Generate uses the prompt as typed.
-                    </p>
-
-                    <div className="mt-3 pt-3 border-t border-zinc-700/50">
-                      {preferredEnhancerDownloaded ? (
-                        <div className="flex items-center gap-2 text-xs text-green-400">
-                          <Check className="h-4 w-4" />
-                          <span>Downloaded ({textEncoderRecommendation.local_enhancer_expected_size_gb ?? 0} GB)</span>
-                        </div>
-                      ) : downloadingCp === textEncoderRecommendation.local_enhancer_cp ? (
-                        <div className="space-y-1.5">
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="text-zinc-300">Downloading prompt enhancer...</span>
-                            <span className="text-zinc-500">{downloadProgress?.status === 'downloading' ? Math.round(downloadProgress.current_file_progress) : 0}%</span>
-                          </div>
-                          <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                            <div className="h-full transition-all duration-300 bg-blue-500" style={{ width: `${downloadProgress?.status === 'downloading' ? downloadProgress.current_file_progress : 0}%` }} />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {textEncoderRecommendation.local_enhancement_supported && (
-                            <div className="flex items-center gap-2 text-xs text-green-400">
-                              <Check className="h-4 w-4" />
-                              <span>Using Gemma 3 already on disk</span>
-                            </div>
-                          )}
-                          <HfModelAccessGate
-                            accessMap={enhancerAccessMap}
-                            allAuthorized={enhancerAllAuthorized}
-                            hfAuthStatus={hfAuthStatus}
-                            hfAuthPolling={hfAuthPolling}
-                            startHuggingFaceLogin={() => {
-                              void startHuggingFaceLogin()
-                            }}
-                            checkError={enhancerCheckError}
-                            onRetryCheck={recheckEnhancerAccess}
-                            className="space-y-1.5 mb-2"
-                          />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              if (enhancerCpToDownload) void handleDownloadCheckpoint(enhancerCpToDownload)
-                            }}
-                            disabled={!enhancerCpToDownload || !enhancerAllAuthorized}
-                            className="w-full text-xs"
-                          >
-                            <Download className="h-3 w-3 mr-2" />
-                            {textEncoderRecommendation.local_enhancement_supported
-                              ? `Upgrade to Gemma 4 E2B (${textEncoderRecommendation.local_enhancer_expected_size_gb ?? 0} GB)`
-                              : `Download Prompt Enhancer (${textEncoderRecommendation.local_enhancer_expected_size_gb ?? 0} GB)`}
-                          </Button>
-                          {downloadError && (
-                            <p className="text-xs text-red-400">{downloadError}</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              )}
-
-              {/* Fast decode — all platforms. Swaps the 2.5 video VAE; takes effect on next load. */}
-              <SettingToggle
-                title="Fast decode"
-                description="Decodes video faster with slightly lower visual fidelity."
-                enabled={settings.useConvVae}
-                onToggle={handleToggleFastDecode}
-                statusOn="Faster decode"
-                statusOff="Higher visual fidelity"
-              />
-
-              {/* Torch Compile + Diffusion Stage Cache -- CUDA only, no-op on MPS/CPU */}
-              {cudaAvailable && (
-                <SettingToggle
-                  title="Torch Compile"
-                  description={<>Compiles the model for optimized inference. <span className="text-orange-400">Experimental:</span> First
-                    generation can take 5-10+ minutes for compilation. Subsequent generations may be
-                    20-40% faster. Requires app restart to take effect.</>}
-                  enabled={settings.useTorchCompile}
-                  onToggle={handleToggleTorchCompile}
-                  statusOn="Optimized inference (recommended)"
-                  statusOff="Standard inference"
+              {cudaAvailable ? (
+                <CudaPerformanceSection
+                  settings={settings}
+                  onToggleTorchCompile={() =>
+                    updateSettings({ useTorchCompile: !settings.useTorchCompile })
+                  }
+                  onToggleDiffusionStageCache={() =>
+                    updateSettings({
+                      diffusionStageCacheEnabled: !settings.diffusionStageCacheEnabled,
+                    })
+                  }
                 />
-              )}
+              ) : null}
 
-              {cudaAvailable && (
-                <SettingToggle
-                  title="Diffusion Stage Cache"
-                  description={<>Reuses an already-built transformer across stage 1/stage 2 within one generation
-                    instead of reloading it from disk twice. <span className="text-orange-400">Experimental:</span> only
-                    applies on high-VRAM cards (32GB+); no effect otherwise.</>}
-                  enabled={settings.diffusionStageCacheEnabled}
-                  onToggle={handleToggleDiffusionStageCache}
-                  statusOn="Skipping redundant transformer reloads"
-                  statusOff="Standard behavior"
+              <div id={settingsSectionElementId("textEncoding")}>
+                <LegacyTextEncodingSection
+                  active={active}
+                  settings={settings}
+                  onOpenLtxApiKeys={() => ltxApiKey.openAndFocus()}
                 />
-              )}
-
-              {/* Seed Lock Setting */}
-              <div className="space-y-3 pt-4 border-t border-zinc-800">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <svg className="h-4 w-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                      </svg>
-                      <label className="text-sm font-medium text-white">
-                        Lock Seed
-                      </label>
-                    </div>
-                    <p className="text-xs text-zinc-500 leading-relaxed">
-                      Use the same seed for reproducible generations. When unlocked, a random seed is used each time.
-                    </p>
-                  </div>
-
-                  {/* Toggle Switch */}
-                  <button
-                    onClick={handleToggleSeedLock}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      settings.seedLocked ? 'bg-emerald-500' : 'bg-zinc-700'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        settings.seedLocked ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                {/* Seed input - only show when locked */}
-                {settings.seedLocked && (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="0"
-                      max="2147483647"
-                      value={settings.lockedSeed ?? 42}
-                      onChange={handleLockedSeedChange}
-                      className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                      placeholder="Enter seed..."
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleRandomizeSeed}
-                      className="h-9 px-3 text-xs text-zinc-400 hover:text-white hover:bg-zinc-800"
-                      title="Generate random seed"
-                    >
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16" />
-                      </svg>
-                    </Button>
-                  </div>
-                )}
-
-                {/* Status indicator */}
-                <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
-                  settings.seedLocked
-                    ? 'bg-emerald-500/10 text-emerald-400'
-                    : 'bg-zinc-800 text-zinc-500'
-                }`}>
-                  <div className={`w-1.5 h-1.5 rounded-full ${
-                    settings.seedLocked ? 'bg-emerald-400' : 'bg-zinc-600'
-                  }`} />
-                  {settings.seedLocked ? `Seed locked: ${settings.lockedSeed ?? 42}` : 'Random seed each generation'}
-                </div>
               </div>
 
-              {/* Anonymous Analytics Setting */}
-              <div className="space-y-3 pt-4 border-t border-zinc-800">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <svg className="h-4 w-4 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="18" y1="20" x2="18" y2="10" />
-                        <line x1="12" y1="20" x2="12" y2="4" />
-                        <line x1="6" y1="20" x2="6" y2="14" />
-                      </svg>
-                      <label className="text-sm font-medium text-white">
-                        Anonymous Analytics
-                      </label>
-                    </div>
-                    <p className="text-xs text-zinc-500 leading-relaxed">
-                      Share anonymous usage data to help improve LTX Desktop.
-                      Only basic technical information is collected — never personal data or generated content.
-                    </p>
-                  </div>
-
-                  {/* Toggle Switch */}
-                  <button
-                    onClick={handleToggleAnalytics}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      analyticsEnabled ? 'bg-violet-500' : 'bg-zinc-700'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        analyticsEnabled ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-              </div>
+              <SettingsSubsection showDivider title="Privacy">
+                <SettingToggle
+                  rowLayout="preference"
+                  title="Anonymous analytics"
+                  description="Share anonymous usage data to help improve LTX Desktop. Only basic technical information is collected. Never personal data or generated content."
+                  enabled={analyticsEnabled}
+                  onToggle={handleToggleAnalytics}
+                />
+              </SettingsSubsection>
             </>
+            </SettingsAnchorSection>
           )}
 
-          {activeTab === 'models' && !forceApiGenerations && <BaseModelSection />}
+          {showSection("models") && !forceApiGenerations && (
+            <ModelsSettingsSection sectionActive={active} />
+          )}
 
-          {activeTab === 'apiKeys' && (
-            <>
-              {/* LTX API Key Section */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-blue-400" />
-                  <h3 className="text-sm font-semibold text-white">LTX API</h3>
-                </div>
+          {showSection("legacy") && (
+            <SettingsAnchorSection
+              title="Legacy"
+            >
+            <LegacySettingsSection
+              settings={settings}
+              onSettingsChange={onSettingsChange}
+              onOpenLtxApiKeys={() => ltxApiKey.openAndFocus()}
+              onOpenFalApiKeys={() => falApiKey.openAndFocus()}
+            />
+            </SettingsAnchorSection>
+          )}
 
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Your LTX API key is used for cloud text encoding, prompt enhancement, and API video generation.
-                  Add your key below to unlock these features.
-                </p>
 
-                <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
-                  <div className="flex gap-2">
-                    <LtxApiKeyInput
-                      ref={ltxApiKey.inputRef}
-                      value={ltxApiKeyInput}
-                      onChange={(e) => setLtxApiKeyInput(e.target.value)}
-                      placeholder={settings.hasLtxApiKey ? 'Enter new key to replace...' : 'Enter your LTX API key...'}
-                      stopPropagation
-                      className="flex-1"
-                    />
-                    <button
-                      onClick={() => {
-                        const trimmed = ltxApiKeyInput.trim()
-                        if (!trimmed) return
-                        void saveLtxApiKey(trimmed)
-                        setLtxApiKeyInput('')
-                      }}
-                      disabled={!ltxApiKeyInput.trim()}
-                      className="px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                    >
-                      Save Key
-                    </button>
-                  </div>
-                  <LtxApiKeyHelperRow stopPropagation />
-                  <div className="flex items-center justify-between">
-                    <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
-                      settings.hasLtxApiKey
-                        ? 'bg-green-500/10 text-green-400'
-                        : 'bg-amber-500/10 text-amber-400'
-                    }`}>
-                      {settings.hasLtxApiKey ? (
-                        <>
-                          <Check className="h-3 w-3" />
-                          Key configured
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="h-3 w-3" />
-                          API key required
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
 
-              {/* FAL API Key Section */}
-              <div className="space-y-4 pt-4 border-t border-zinc-800">
-                <div className="flex items-center gap-2">
-                  <KeyRound className="h-4 w-4 text-cyan-400" />
-                  <h3 className="text-sm font-semibold text-white">FAL AI</h3>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">Optional</span>
-                </div>
-
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Your FAL AI key is used for generating or editing images with Z Image Turbo when API generations are enabled.
-                </p>
-
-                <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
-                  <div className="flex gap-2">
-                    <LtxApiKeyInput
-                      ref={falApiKey.inputRef}
-                      value={falApiKeyInput}
-                      onChange={(e) => setFalApiKeyInput(e.target.value)}
-                      placeholder={settings.hasFalApiKey ? 'Enter new key to replace...' : 'Enter your FAL AI API key...'}
-                      stopPropagation
-                      className="flex-1"
-                    />
-                    <button
-                      onClick={() => {
-                        const trimmed = falApiKeyInput.trim()
-                        if (!trimmed) return
-                        void saveFalApiKey(trimmed)
-                        setFalApiKeyInput('')
-                      }}
-                      disabled={!falApiKeyInput.trim()}
-                      className="px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                    >
-                      Save Key
-                    </button>
-                  </div>
-                  <ApiKeyHelperRow
-                    stopPropagation
-                    label="Get FAL API key"
-                    onOpenKey={() => window.electronAPI.openFalApiKeyPage()}
+          {showSection("apiKeys") && (
+            <SettingsAnchorSection
+              title="API Keys"
+            >
+            <div className={contentStyles.apiKeysSections}>
+              <ApiKeySettingsBlock
+                title="LTX API"
+                description="Cloud text encoding, prompt enhancement, and API video generation."
+                statusBadge={
+                  <SettingsKeyStatus
+                    configured={settings.hasLtxApiKey}
+                    required
                   />
-                  <div className="flex items-center justify-between">
-                    <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
+                }
+                input={
+                  <LtxApiKeyInput
+                    ref={ltxApiKey.inputRef}
+                    value={ltxApiKeyInput}
+                    onChange={(e) => setLtxApiKeyInput(e.target.value)}
+                    placeholder={
+                      settings.hasLtxApiKey
+                        ? "Enter a new key to replace"
+                        : "Enter your LTX API key"
+                    }
+                    stopPropagation
+                  />
+                }
+                replaceDisabled={!ltxApiKeyInput.trim()}
+                isSaving={pendingApiKey === "ltx"}
+                actionsLocked={pendingApiKey !== null}
+                saveError={ltxKeyError}
+                keyConfigured={settings.hasLtxApiKey}
+                onRemove={() => {
+                  runApiKeyMutation(
+                    "ltx",
+                    async () => {
+                      await clearLtxApiKey();
+                      setLtxApiKeyInput("");
+                    },
+                    (message) => window.alert(message),
+                    "Could not remove your LTX API key.",
+                  );
+                }}
+                onReplace={() => {
+                  const trimmed = ltxApiKeyInput.trim();
+                  if (!trimmed) return;
+                  setLtxKeyError(null);
+                  runApiKeyMutation(
+                    "ltx",
+                    async () => {
+                      await saveLtxApiKey(trimmed);
+                      setLtxApiKeyInput("");
+                    },
+                    setLtxKeyError,
+                    "This key isn’t valid.",
+                  );
+                }}
+                getKeyLink={
+                  <button
+                    type="button"
+                    className={contentStyles.apiKeyInlineLink}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.electronAPI.openLtxApiKeyPage();
+                    }}
+                  >
+                    Get API key
+                  </button>
+                }
+              />
+
+              <ApiKeySettingsBlock
+                title="Fal"
+                description="Generate or edit images with Z Image Turbo when API generations are on."
+                statusBadge={
+                  settings.hasFalApiKey ? <SettingsKeyStatus configured /> : null
+                }
+                input={
+                  <LtxApiKeyInput
+                    ref={falApiKey.inputRef}
+                    value={falApiKeyInput}
+                    onChange={(e) => setFalApiKeyInput(e.target.value)}
+                    placeholder={
                       settings.hasFalApiKey
-                        ? 'bg-green-500/10 text-green-400'
-                        : 'bg-zinc-800 text-zinc-500'
-                    }`}>
-                      {settings.hasFalApiKey ? (
-                        <>
-                          <Check className="h-3 w-3" />
-                          Key configured
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="h-3 w-3" />
-                          Optional
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
+                        ? "Enter a new key to replace"
+                        : "Enter your FAL AI API key"
+                    }
+                    stopPropagation
+                  />
+                }
+                replaceDisabled={!falApiKeyInput.trim()}
+                isSaving={pendingApiKey === "fal"}
+                actionsLocked={pendingApiKey !== null}
+                saveError={falKeyError}
+                keyConfigured={settings.hasFalApiKey}
+                onRemove={() => {
+                  runApiKeyMutation(
+                    "fal",
+                    async () => {
+                      await clearFalApiKey();
+                      setFalApiKeyInput("");
+                    },
+                    (message) => window.alert(message),
+                    "Could not remove your FAL API key.",
+                  );
+                }}
+                onReplace={() => {
+                  const trimmed = falApiKeyInput.trim();
+                  if (!trimmed) return;
+                  setFalKeyError(null);
+                  runApiKeyMutation(
+                    "fal",
+                    async () => {
+                      await saveFalApiKey(trimmed);
+                      setFalApiKeyInput("");
+                    },
+                    setFalKeyError,
+                    "This key isn’t valid.",
+                  );
+                }}
+                getKeyLink={
+                  <button
+                    type="button"
+                    className={contentStyles.apiKeyInlineLink}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.electronAPI.openFalApiKeyPage();
+                    }}
+                  >
+                    Get FAL API key
+                  </button>
+                }
+              />
 
-              {/* Gemini API Key Section */}
-              <div ref={geminiSectionRef} className="space-y-4 pt-4 border-t border-zinc-800 scroll-mt-2">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-purple-400" />
-                  <h3 className="text-sm font-semibold text-white">Gemini API</h3>
-                </div>
-
-                {showGeminiKeyBanner && (
-                  <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-                    <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                    <span>Add a Gemini API key to use Enhance (API).</span>
-                  </div>
-                )}
-
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Your Gemini API key is used for AI-powered prompt suggestions when filling timeline gaps, and for the Enhance (API) prompt enhancer.
-                </p>
-
-                <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
-                  <div className="flex gap-2">
-                    <input
-                      ref={geminiApiKey.inputRef}
-                      type="password"
-                      value={geminiApiKeyInput}
-                      onChange={(e) => setGeminiApiKeyInput(e.target.value)}
-                      placeholder={settings.hasGeminiApiKey ? 'Enter new key to replace...' : 'Enter your Gemini API key...'}
-                      onKeyDown={(e) => e.stopPropagation()}
-                      className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                    <button
-                      onClick={() => {
-                        const trimmed = geminiApiKeyInput.trim()
-                        if (!trimmed) return
-                        void saveGeminiApiKey(trimmed)
-                        setGeminiApiKeyInput('')
-                      }}
-                      disabled={!geminiApiKeyInput.trim()}
-                      className="px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                    >
-                      Save Key
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
+              <ApiKeySettingsBlock
+                sectionRef={geminiSectionRef}
+                className="scroll-mt-2"
+                title="Gemini"
+                description="Timeline gap suggestions and the Gemini enhance option."
+                statusBadge={
+                  <SettingsKeyStatus
+                    configured={settings.hasGeminiApiKey}
+                    missingLabel="Optional"
+                  />
+                }
+                input={
+                  <input
+                    ref={geminiApiKey.inputRef}
+                    type="password"
+                    value={geminiApiKeyInput}
+                    onChange={(e) => setGeminiApiKeyInput(e.target.value)}
+                    placeholder={
                       settings.hasGeminiApiKey
-                        ? 'bg-green-500/10 text-green-400'
-                        : 'bg-amber-500/10 text-amber-400'
-                    }`}>
-                      {settings.hasGeminiApiKey ? (
-                        <>
-                          <Check className="h-3 w-3" />
-                          Key configured
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="h-3 w-3" />
-                          API key required
-                        </>
-                      )}
-                    </div>
-                  </div>
+                        ? "Enter a new key to replace"
+                        : "Enter your Gemini API key"
+                    }
+                    onKeyDown={(e) => e.stopPropagation()}
+                    className={contentStyles.select}
+                  />
+                }
+                modelSelect={
                   <GeminiModelSelect
+                    inline
                     disabled={!settings.hasGeminiApiKey}
                     models={geminiModelOptions}
                     value={resolvedGeminiModel}
                     onChange={(geminiModel) => {
-                      const previous = resolvedGeminiModel
-                      const requestId = ++geminiModelSaveSeq.current
-                      setResolvedGeminiModel(geminiModel)
+                      const previous = resolvedGeminiModel;
+                      const requestId = ++geminiModelSaveSeq.current;
+                      setResolvedGeminiModel(geminiModel);
                       void (async () => {
-                        const result = await ApiClient.updateSettings({ geminiModel })
-                        if (requestId !== geminiModelSaveSeq.current) return
+                        const result = await ApiClient.updateSettings({ geminiModel });
+                        if (requestId !== geminiModelSaveSeq.current) return;
                         if (!result.ok) {
-                          setResolvedGeminiModel(previous)
-                          return
+                          setResolvedGeminiModel(previous);
+                          return;
                         }
-                        await refreshSettings()
-                      })()
+                        await refreshSettings();
+                      })();
                     }}
                   />
-                  <div className="flex items-center gap-2 text-xs">
-                    <a
-                      href="https://aistudio.google.com/app/apikey"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-400 hover:text-blue-300 transition-colors underline underline-offset-2"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      Get Gemini API key →
-                    </a>
-                  </div>
-                </div>
-              </div>
-
-              {/* HuggingFace Account */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Download className="h-4 w-4 text-orange-400" />
-                  <h3 className="text-sm font-semibold text-white">HuggingFace</h3>
-                </div>
-
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Sign in to download gated models (such as LTX 2.5) and accept Hugging Face licenses.
-                </p>
-
-                <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
-                  <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
-                    hfAuthStatus === 'authenticated'
-                      ? 'bg-green-500/10 text-green-400'
-                      : 'bg-amber-500/10 text-amber-400'
-                  }`}>
-                    {hfAuthStatus === 'authenticated' ? (
-                      <>
-                        <Check className="h-3 w-3" />
-                        Signed in
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="h-3 w-3" />
-                        Not signed in
-                      </>
-                    )}
-                  </div>
-
-                  {hfAuthStatus === 'authenticated' ? (
-                    <button
-                      onClick={handleHuggingFaceLogout}
-                      className="px-3 py-2 bg-zinc-700 text-white text-sm rounded-lg hover:bg-zinc-600 transition-colors"
-                    >
-                      Sign out
-                    </button>
-                  ) : (
-                    <button
-                      onClick={startHuggingFaceLogin}
-                      disabled={hfAuthPolling}
-                      className="px-3 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {hfAuthPolling ? 'Waiting for sign in...' : 'Sign in with HuggingFace'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </>
+                }
+                replaceDisabled={!geminiApiKeyInput.trim()}
+                isSaving={pendingApiKey === "gemini"}
+                actionsLocked={pendingApiKey !== null}
+                saveError={geminiKeyError}
+                keyConfigured={settings.hasGeminiApiKey}
+                onRemove={() => {
+                  runApiKeyMutation(
+                    "gemini",
+                    async () => {
+                      await clearGeminiApiKey();
+                      setGeminiApiKeyInput("");
+                    },
+                    (message) => window.alert(message),
+                    "Could not remove your Gemini API key.",
+                  );
+                }}
+                onReplace={() => {
+                  const trimmed = geminiApiKeyInput.trim();
+                  if (!trimmed) return;
+                  setGeminiKeyError(null);
+                  runApiKeyMutation(
+                    "gemini",
+                    async () => {
+                      await saveGeminiApiKey(trimmed);
+                      setGeminiApiKeyInput("");
+                    },
+                    setGeminiKeyError,
+                    "This key isn’t valid.",
+                  );
+                }}
+                getKeyLink={
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={contentStyles.apiKeyInlineLink}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Get Gemini API key
+                  </a>
+                }
+                notice={
+                  showGeminiKeyBanner ? (
+                    <SettingsCallout>
+                      <SettingsHint variant="warning">
+                        Add a Gemini API key to use the Gemini API enhance option.
+                      </SettingsHint>
+                    </SettingsCallout>
+                  ) : null
+                }
+              />
+            </div>
+            </SettingsAnchorSection>
           )}
 
-          {activeTab === 'promptEnhancer' && (
-            <>
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-blue-400" />
-                  <h3 className="text-sm font-semibold text-white">Prompt Enhancer</h3>
-                </div>
 
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  When enabled, Generate rewrites your prompt with visual detail, sound, and camera
-                  motion before the model sees it. Local generations use the on-device enhancer;
-                  LTX API text encoding enhances on the server. The Enhance button in Gen Space is
-                  separate — it rewrites the prompt box so you can edit it first. Control
-                  independently for each generation type.
-                </p>
-
-                {!settings.hasLtxApiKey && (
-                  <p className="text-xs text-zinc-500 leading-relaxed">
-                    An LTX API key is only needed when text encoding goes through the LTX API.
-                    Local generations use the local enhancer instead (download it under Models
-                    if this version ships one separately).
-                  </p>
-                )}
-
-                {/* T2V Toggle */}
-                <div
-                  className="flex items-center justify-between bg-zinc-800/50 rounded-lg px-4 py-3 border border-zinc-700/50 cursor-pointer"
-                  onClick={() => handleTogglePromptEnhancer('t2v')}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-semibold text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded">T2V</span>
-                    <div>
-                      <span className="text-sm text-zinc-200">Text-to-Video</span>
-                      <p className="text-[10px] text-zinc-500 mt-0.5">
-                        {settings.promptEnhancerEnabledT2V ? 'Prompts will be enhanced before T2V generation' : 'T2V prompts used as-is'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
-                    settings.promptEnhancerEnabledT2V ? 'bg-blue-500' : 'bg-zinc-700'
-                  }`}>
-                    <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform pointer-events-none ${
-                      settings.promptEnhancerEnabledT2V ? 'translate-x-5' : 'translate-x-0'
-                    }`} />
-                  </div>
-                </div>
-
-                {/* I2V Toggle */}
-                <div
-                  className="flex items-center justify-between bg-zinc-800/50 rounded-lg px-4 py-3 border border-zinc-700/50 cursor-pointer"
-                  onClick={() => handleTogglePromptEnhancer('i2v')}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-semibold text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded">I2V</span>
-                    <div>
-                      <span className="text-sm text-zinc-200">Image-to-Video</span>
-                      <p className="text-[10px] text-zinc-500 mt-0.5">
-                        {settings.promptEnhancerEnabledI2V ? 'Prompts will be enhanced before I2V generation' : 'I2V prompts used as-is'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
-                    settings.promptEnhancerEnabledI2V ? 'bg-blue-500' : 'bg-zinc-700'
-                  }`}>
-                    <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform pointer-events-none ${
-                      settings.promptEnhancerEnabledI2V ? 'translate-x-5' : 'translate-x-0'
-                    }`} />
-                  </div>
-                </div>
-              </div>
-            </>
+          {showSection("about") && (
+            <SettingsAnchorSection
+              title="About"
+            >
+              <AboutSettingsSection
+                update={update}
+                onOpenUpdate={onOpenUpdate}
+                onCheckForUpdates={onCheckForUpdates}
+              />
+            </SettingsAnchorSection>
           )}
+    </div>
 
-          {activeTab === 'about' && (
-            <>
-              {showModelLicense ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-white">LTX-2 Model License</h3>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowModelLicense(false)}
-                      className="h-7 px-2 text-xs text-zinc-400 hover:text-white hover:bg-zinc-800"
-                    >
-                      Back
-                    </Button>
-                  </div>
-                  <pre className="text-xs text-zinc-300 whitespace-pre-wrap font-mono bg-zinc-800/50 rounded-lg p-4 max-h-[50vh] overflow-y-auto border border-zinc-700/50">
-                    {modelLicenseText}
-                  </pre>
-                </div>
-              ) : showNotices ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-white">Third-Party Notices</h3>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowNotices(false)}
-                      className="h-7 px-2 text-xs text-zinc-400 hover:text-white hover:bg-zinc-800"
-                    >
-                      Back
-                    </Button>
-                  </div>
-                  <pre className="text-xs text-zinc-300 whitespace-pre-wrap font-mono bg-zinc-800/50 rounded-lg p-4 max-h-[50vh] overflow-y-auto border border-zinc-700/50">
-                    {noticesText}
-                  </pre>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {/* App Identity */}
-                  <div className="text-center space-y-2">
-                    <h3 className="text-lg font-bold text-white">LTX Desktop</h3>
-                    <p className="text-sm text-zinc-400">Version {appVersion || '...'}</p>
-                    <p className="text-xs text-zinc-500">AI-Powered Video Editor</p>
-                  </div>
+  );
 
-                  {/* Updates */}
-                  <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Download className="h-4 w-4 text-blue-400" />
-                      <span className="text-sm font-medium text-white">Updates</span>
-                    </div>
-                    <p className="text-xs text-zinc-400">
-                      {isMac ? (
-                        <>
-                          {update.state.status === 'downloading' && `Downloading… ${update.state.percent ?? 0}%`}
-                          {update.state.status === 'downloaded' && (
-                            autoCheckUpdates
-                              ? 'An update will install when you quit.'
-                              : 'This update is already queued and will still install when you quit.'
-                          )}
-                          {update.state.status === 'checking' && 'Checking for updates…'}
-                          {update.state.status === 'not-available' && "You're up to date."}
-                          {(update.state.status === 'idle' || update.state.status === 'available') && (
-                            autoCheckUpdates
-                              ? 'New versions download in the background and install when you quit.'
-                              : 'Automatic updates are off. Turn this on to install new versions when you quit.'
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          {update.state.status === 'available' && `Version ${update.state.version} is available.`}
-                          {update.state.status === 'downloading' && `Downloading… ${update.state.percent ?? 0}%`}
-                          {update.state.status === 'downloaded' && 'Download complete. Restart to apply the update.'}
-                          {update.state.status === 'checking' && 'Checking for updates…'}
-                          {update.state.status === 'not-available' && "You're up to date."}
-                          {update.state.status === 'idle' && 'Check for a newer version, or let the app check automatically.'}
-                        </>
-                      )}
-                    </p>
-                    {update.state.message && (
-                      <p className="text-xs text-red-400">{update.state.message}</p>
-                    )}
-                    <Button
-                      size="sm"
-                      onClick={updateAction.onClick}
-                      disabled={updateAction.disabled}
-                      className={ABOUT_ACTION_CLASS}
-                    >
-                      {updateAction.label}
-                    </Button>
-                    <div className="flex items-start justify-between gap-4 border-t border-zinc-700/50 pt-3">
-                      <div className="flex-1">
-                        <label className="text-sm font-medium text-white">
-                          {isMac ? 'Automatic updates' : 'Automatically check for updates'}
-                        </label>
-                        <p className="text-xs text-zinc-500 leading-relaxed">
-                          {isMac
-                            ? 'When on, new versions download in the background and install when you quit. Check above to look now.'
-                            : 'Periodically check for new versions. You can always check manually above.'}
-                        </p>
-                      </div>
-                      <button
-                        onClick={handleToggleAutoCheck}
-                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                          autoCheckUpdates ? 'bg-violet-500' : 'bg-zinc-700'
-                        }`}
-                      >
-                        <span
-                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                            autoCheckUpdates ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* License */}
-                  <div className="bg-zinc-800/50 rounded-lg p-4 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Info className="h-4 w-4 text-blue-400" />
-                      <span className="text-sm font-medium text-white">License</span>
-                    </div>
-                    <p className="text-xs text-zinc-400">
-                      Licensed under the Apache License, Version 2.0
-                    </p>
-                  </div>
-
-                  {/* LTX-2 Model License */}
-                  <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <svg className="h-4 w-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                      </svg>
-                      <span className="text-sm font-medium text-white">LTX-2 Model License</span>
-                    </div>
-                    <p className="text-xs text-zinc-400">
-                      The LTX-2 model is subject to the LTX-2 Community License Agreement, accepted during first-run setup.
-                    </p>
-                    <Button
-                      size="sm"
-                      onClick={handleLoadModelLicense}
-                      disabled={modelLicenseLoading}
-                      className="w-full bg-zinc-700 hover:bg-zinc-600 text-white text-xs"
-                    >
-                      {modelLicenseLoading ? 'Loading...' : 'View Model License'}
-                    </Button>
-                  </div>
-
-                  {/* Third-Party Notices */}
-                  <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <svg className="h-4 w-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <polyline points="14 2 14 8 20 8" />
-                        <line x1="16" y1="13" x2="8" y2="13" />
-                        <line x1="16" y1="17" x2="8" y2="17" />
-                      </svg>
-                      <span className="text-sm font-medium text-white">Third-Party Notices</span>
-                    </div>
-                    <p className="text-xs text-zinc-400">
-                      This application uses open-source software and AI models subject to their own license terms.
-                    </p>
-                    <Button
-                      size="sm"
-                      onClick={handleLoadNotices}
-                      disabled={noticesLoading}
-                      className="w-full bg-zinc-700 hover:bg-zinc-600 text-white text-xs"
-                    >
-                      {noticesLoading ? 'Loading...' : 'View Third-Party Notices'}
-                    </Button>
-                  </div>
-
-                  {/* Copyright */}
-                  <p className="text-center text-xs text-zinc-600">
-                    Copyright © 2026 Lightricks
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-zinc-800 flex justify-end">
-          <Button
+  const settingsFrame = (
+    <div className={pageLayoutStyles.modalFrame}>
+      <aside className={pageLayoutStyles.modalRail}>
+        <Text
+          as="h2"
+          variant="heading"
+          size="lg"
+          className={pageLayoutStyles.modalSidebarTitle}
+        >
+          Settings
+        </Text>
+        {settingsNav}
+      </aside>
+      <div className={pageLayoutStyles.modalMain}>
+        <div className={pageLayoutStyles.modalContentHeader}>
+          <DsButton
+            appearance="neutral"
+            hierarchy="plain"
+            size="sm"
+            isIconOnly
+            leftIcon={<X className="h-4 w-4" aria-hidden />}
+            aria-label="Close settings"
             onClick={onClose}
-            className="bg-zinc-700 hover:bg-zinc-600 text-white"
-          >
-            Done
-          </Button>
+          />
         </div>
+        {tabBody}
       </div>
     </div>
-  )
+  );
+
+  const instantMotion = reduceMotion
+    ? ({ initial: false, transition: { duration: 0 } } as const)
+    : null;
+  const backdropMotion = instantMotion
+    ? { ...instantMotion, animate: { opacity: 1 }, exit: { opacity: 0 } }
+    : backdropAnimationProps;
+  const panelMotion = instantMotion
+    ? {
+        ...instantMotion,
+        animate: { opacity: 1, scale: 1 },
+        exit: { opacity: 0, scale: 1 },
+      }
+    : modalAnimationProps;
+
+  return (
+    <motion.div
+      className={pageLayoutStyles.modalOverlay}
+      initial={false}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.15 }}
+    >
+      <motion.div
+        className={pageLayoutStyles.modalBackdrop}
+        onClick={onClose}
+        aria-hidden
+        {...backdropMotion}
+      />
+      <motion.div
+        className={panelClassName}
+        role="dialog"
+        aria-modal
+        aria-label="Settings"
+        {...panelMotion}
+      >
+        {settingsFrame}
+      </motion.div>
+    </motion.div>
+  );
 }
 
-export type { AppSettings, TabId as SettingsTabId }
+export type { AppSettings };

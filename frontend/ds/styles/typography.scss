@@ -1,0 +1,138 @@
+/* ============================================================
+   Typography overrides (scoped to `.ltx-io [data-variant]`)
+   ------------------------------------------------------------
+   1. Aeonik letter-spacing ramp
+   2. Mid-size bump 12→13 (heading.xxs, body.md, label.md, labelCaps.lg)
+   ============================================================ */
+
+/* The `.ltx-io` prefix beats the shared Text CSS-module class pairs on cascade order
+   and scopes these overrides so Desktop styling is untouched. */
+
+/* ── display ──────────────────────────────────────────────── */
+.ltx-io [data-variant="display"][data-size="xxl"] {
+  letter-spacing: -1.5px;
+}
+
+.ltx-io [data-variant="display"][data-size="xl"] {
+  letter-spacing: -1px;
+}
+
+.ltx-io [data-variant="display"][data-size="lg"] {
+  letter-spacing: -1px;
+}
+
+.ltx-io [data-variant="display"][data-size="md"] {
+  letter-spacing: -0.75px;
+}
+
+.ltx-io [data-variant="display"][data-size="sm"] {
+  letter-spacing: -0.5px;
+}
+
+/* ── heading ──────────────────────────────────────────────── */
+.ltx-io [data-variant="heading"][data-size="xxl"] {
+  letter-spacing: -0.5px;
+}
+
+.ltx-io [data-variant="heading"][data-size="xl"] {
+  letter-spacing: -0.4px;
+}
+
+.ltx-io [data-variant="heading"][data-size="lg"] {
+  letter-spacing: -0.25px;
+}
+
+.ltx-io [data-variant="heading"][data-size="md"] {
+  letter-spacing: -0.2px;
+}
+
+.ltx-io [data-variant="heading"][data-size="sm"] {
+  letter-spacing: 0;
+}
+
+.ltx-io [data-variant="heading"][data-size="xs"] {
+  letter-spacing: 0.05px;
+}
+
+.ltx-io [data-variant="heading"][data-size="xxs"] {
+  font-size: 13px;
+  line-height: 17px;
+  letter-spacing: 0.1px;
+}
+
+/* ── body ─────────────────────────────────────────────────── */
+.ltx-io [data-variant="body"][data-size="xl"] {
+  letter-spacing: 0;
+}
+
+.ltx-io [data-variant="body"][data-size="lg"] {
+  letter-spacing: 0;
+}
+
+.ltx-io [data-variant="body"][data-size="md"] {
+  font-size: 13px;
+  line-height: 17px;
+  letter-spacing: 0.08px;
+}
+
+.ltx-io [data-variant="body"][data-size="sm"] {
+  letter-spacing: 0.15px;
+}
+
+.ltx-io [data-variant="body"][data-size="xs"] {
+  letter-spacing: 0.25px;
+}
+
+/* ── label ────────────────────────────────────────────────── */
+.ltx-io [data-variant="label"][data-size="xxl"],
+.ltx-io [data-variant="label"][data-size="xl"],
+.ltx-io [data-variant="label"][data-size="lg"] {
+  letter-spacing: 0;
+}
+
+.ltx-io [data-variant="label"][data-size="md"] {
+  font-size: 13px;
+  line-height: 17px;
+  letter-spacing: 0.08px;
+}
+
+.ltx-io [data-variant="label"][data-size="sm"] {
+  letter-spacing: 0.15px;
+}
+
+.ltx-io [data-variant="label"][data-size="xs"] {
+  letter-spacing: 0.25px;
+}
+
+/* ── labelCaps (+ underline) ──────────────────────────────── */
+.ltx-io [data-variant="labelCaps"][data-size="xxl"],
+.ltx-io [data-variant="labelCapsUnderline"][data-size="xxl"] {
+  letter-spacing: 0.65px;
+}
+
+.ltx-io [data-variant="labelCaps"][data-size="xl"],
+.ltx-io [data-variant="labelCapsUnderline"][data-size="xl"] {
+  letter-spacing: 0.75px;
+}
+
+.ltx-io [data-variant="labelCaps"][data-size="lg"],
+.ltx-io [data-variant="labelCapsUnderline"][data-size="lg"] {
+  font-size: 13px;
+  line-height: 17px;
+  letter-spacing: 0.85px;
+}
+
+.ltx-io [data-variant="labelCaps"][data-size="md"],
+.ltx-io [data-variant="labelCapsUnderline"][data-size="md"] {
+  letter-spacing: 0.95px;
+}
+
+.ltx-io [data-variant="labelCaps"][data-size="sm"],
+.ltx-io [data-variant="labelCapsUnderline"][data-size="sm"] {
+  letter-spacing: 1.05px;
+}
+
+.ltx-io [data-variant="labelCaps"][data-size="xs"],
+.ltx-io [data-variant="labelCapsUnderline"][data-size="xs"] {
+  letter-spacing: 1.15px;
+}

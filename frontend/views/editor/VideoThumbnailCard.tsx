@@ -87,7 +87,7 @@ export function VideoThumbnailCard({ videoUrl, thumbnailUrl }: { videoUrl: strin
   return (
     <div
       ref={containerRef}
-      className="w-full aspect-video relative overflow-hidden bg-zinc-900"
+      className="w-full aspect-video relative overflow-hidden bg-surface-primary"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onMouseMove={isHovering ? handleMouseMove : undefined}
@@ -118,7 +118,7 @@ export function VideoThumbnailCard({ videoUrl, thumbnailUrl }: { videoUrl: strin
 
       {isHovering && videoReady && scrubTime && (
         <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur-sm">
-          <span className="text-[9px] text-white font-mono tabular-nums">{scrubTime}</span>
+          <span className="text-[9px] text-fg-white font-mono tabular-nums">{scrubTime}</span>
         </div>
       )}
     </div>

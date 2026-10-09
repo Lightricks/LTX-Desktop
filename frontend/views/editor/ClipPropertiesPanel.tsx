@@ -95,14 +95,14 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
   const hasColorCorrectionControls = selectedClip.type === 'video' || selectedClip.type === 'image'
 
   return (
-    <div className="h-full w-full flex-shrink-0 border-l border-zinc-800 bg-zinc-900 p-4 overflow-auto">
+    <div className="h-full w-full flex-shrink-0 border-l border-separator bg-surface-primary p-4 overflow-auto">
       {/* Tab header */}
-      <div className="flex items-center gap-0 mb-4 border-b border-zinc-700">
+      <div className="flex items-center gap-0 mb-4 border-b border-separator">
         <button
           className={`px-3 py-1.5 text-xs font-semibold transition-colors border-b-2 ${
             propertiesTab === 'properties'
-              ? 'text-white border-blue-500'
-              : 'text-zinc-500 border-transparent hover:text-zinc-300'
+              ? 'text-fg-primary border-blue-500'
+              : 'text-fg-tertiary border-transparent hover:text-fg-secondary'
           }`}
           onClick={() => setPropertiesTab('properties')}
         >
@@ -111,8 +111,8 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
         <button
           className={`px-3 py-1.5 text-xs font-semibold transition-colors border-b-2 ${
             propertiesTab === 'metadata'
-              ? 'text-white border-blue-500'
-              : 'text-zinc-500 border-transparent hover:text-zinc-300'
+              ? 'text-fg-primary border-blue-500'
+              : 'text-fg-tertiary border-transparent hover:text-fg-secondary'
           }`}
           onClick={() => setPropertiesTab('metadata')}
         >
@@ -147,12 +147,12 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
           <div className="space-y-3">
             {/* Currently Displayed */}
             <div className="space-y-2">
-              <h4 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Currently Displayed</h4>
-              <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1.5">
+              <h4 className="text-[11px] font-semibold text-fg-secondary uppercase tracking-wider">Currently Displayed</h4>
+              <div className="bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_60%,transparent)] rounded-lg p-3 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Take</span>
+                  <span className="text-xs text-fg-secondary">Take</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-white font-medium">{displayTakeNum} / {totalTakes}</span>
+                    <span className="text-xs text-fg-primary font-medium">{displayTakeNum} / {totalTakes}</span>
                     {totalTakes > 1 && (
                       <Tooltip content="Delete this take" side="left">
                         <button
@@ -161,7 +161,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                               handleDeleteDisplayedTake()
                             }
                           }}
-                          className="p-0.5 rounded hover:bg-red-900/50 text-zinc-500 hover:text-red-400 transition-colors"
+                          className="p-0.5 rounded hover:bg-danger-soft text-fg-tertiary hover:text-fg-danger transition-colors"
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>
@@ -172,26 +172,26 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                 {dims ? (
                   <>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-zinc-400">Quality</span>
-                      <span className="text-xs text-white">
+                      <span className="text-xs text-fg-secondary">Quality</span>
+                      <span className="text-xs text-fg-primary">
                         {qualityTier >= 2160 ? 'Ultra HD' : qualityTier >= 1080 ? 'Full HD' : qualityTier >= 720 ? 'HD' : 'SD'}
-                        {isUpscaled && <span className="ml-1.5 text-green-400">(Upscaled)</span>}
+                        {isUpscaled && <span className="ml-1.5 text-fg-success">(Upscaled)</span>}
                       </span>
                     </div>
                     {dims.width > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-zinc-400">Dimensions</span>
-                        <span className="text-xs text-white font-mono">{dims.width} × {dims.height}</span>
+                        <span className="text-xs text-fg-secondary">Dimensions</span>
+                        <span className="text-xs text-fg-primary font-mono">{dims.width} × {dims.height}</span>
                       </div>
                     )}
                   </>
                 ) : (
-                  <div className="text-xs text-zinc-500 italic">Dimension metadata unavailable.</div>
+                  <div className="text-xs text-fg-tertiary italic">Dimension metadata unavailable.</div>
                 )}
                 {originalRes && originalRes !== 'imported' && (
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-zinc-400">Original Gen</span>
-                    <span className="text-xs text-zinc-500">{originalRes}</span>
+                    <span className="text-xs text-fg-secondary">Original Gen</span>
+                    <span className="text-xs text-fg-tertiary">{originalRes}</span>
                   </div>
                 )}
               </div>
@@ -199,55 +199,55 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
 
             {/* Clip Info */}
             <div className="space-y-2">
-              <h4 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Clip Info</h4>
-              <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1.5">
+              <h4 className="text-[11px] font-semibold text-fg-secondary uppercase tracking-wider">Clip Info</h4>
+              <div className="bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_60%,transparent)] rounded-lg p-3 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Type</span>
+                  <span className="text-xs text-fg-secondary">Type</span>
                   <div className="flex items-center gap-1">
-                    {selectedClip.type === 'video' && <FileVideo className="h-3 w-3 text-zinc-400" />}
-                    {selectedClip.type === 'image' && <FileImage className="h-3 w-3 text-zinc-400" />}
-                    {selectedClip.type === 'audio' && <FileAudio className="h-3 w-3 text-zinc-400" />}
-                    {selectedClip.type === 'text' && <Type className="h-3 w-3 text-zinc-400" />}
-                    <span className="text-xs text-white capitalize">{selectedClip.type}</span>
+                    {selectedClip.type === 'video' && <FileVideo className="h-3 w-3 text-fg-secondary" />}
+                    {selectedClip.type === 'image' && <FileImage className="h-3 w-3 text-fg-secondary" />}
+                    {selectedClip.type === 'audio' && <FileAudio className="h-3 w-3 text-fg-secondary" />}
+                    {selectedClip.type === 'text' && <Type className="h-3 w-3 text-fg-secondary" />}
+                    <span className="text-xs text-fg-primary capitalize">{selectedClip.type}</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Duration</span>
-                  <span className="text-xs text-white">{selectedClip.duration.toFixed(2)}s</span>
+                  <span className="text-xs text-fg-secondary">Duration</span>
+                  <span className="text-xs text-fg-primary">{selectedClip.duration.toFixed(2)}s</span>
                 </div>
                 {liveAsset?.duration && (
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-zinc-400">Source Duration</span>
-                    <span className="text-xs text-white">{liveAsset.duration.toFixed(2)}s</span>
+                    <span className="text-xs text-fg-secondary">Source Duration</span>
+                    <span className="text-xs text-fg-primary">{liveAsset.duration.toFixed(2)}s</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Speed</span>
-                  <span className="text-xs text-white">{selectedClip.speed}x</span>
+                  <span className="text-xs text-fg-secondary">Speed</span>
+                  <span className="text-xs text-fg-primary">{selectedClip.speed}x</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Track</span>
-                  <span className="text-xs text-white">{tracks[selectedClip.trackIndex]?.name || `Track ${selectedClip.trackIndex + 1}`}</span>
+                  <span className="text-xs text-fg-secondary">Track</span>
+                  <span className="text-xs text-fg-primary">{tracks[selectedClip.trackIndex]?.name || `Track ${selectedClip.trackIndex + 1}`}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Start</span>
-                  <span className="text-xs text-white">{formatTime(selectedClip.startTime)}</span>
+                  <span className="text-xs text-fg-secondary">Start</span>
+                  <span className="text-xs text-fg-primary">{formatTime(selectedClip.startTime)}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">End</span>
-                  <span className="text-xs text-white">{formatTime(selectedClip.startTime + selectedClip.duration)}</span>
+                  <span className="text-xs text-fg-secondary">End</span>
+                  <span className="text-xs text-fg-primary">{formatTime(selectedClip.startTime + selectedClip.duration)}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Trim In</span>
-                  <span className="text-xs text-white">{selectedClip.trimStart.toFixed(2)}s</span>
+                  <span className="text-xs text-fg-secondary">Trim In</span>
+                  <span className="text-xs text-fg-primary">{selectedClip.trimStart.toFixed(2)}s</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Trim Out</span>
-                  <span className="text-xs text-white">{selectedClip.trimEnd.toFixed(2)}s</span>
+                  <span className="text-xs text-fg-secondary">Trim Out</span>
+                  <span className="text-xs text-fg-primary">{selectedClip.trimEnd.toFixed(2)}s</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Opacity</span>
-                  <span className="text-xs text-white">{selectedClip.opacity}%</span>
+                  <span className="text-xs text-fg-secondary">Opacity</span>
+                  <span className="text-xs text-fg-primary">{selectedClip.opacity}%</span>
                 </div>
               </div>
             </div>
@@ -255,15 +255,15 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
             {/* Takes */}
             {liveAsset?.takes && liveAsset.takes.length > 1 && (
               <div className="space-y-2">
-                <h4 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Takes</h4>
-                <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1.5">
+                <h4 className="text-[11px] font-semibold text-fg-secondary uppercase tracking-wider">Takes</h4>
+                <div className="bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_60%,transparent)] rounded-lg p-3 space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-zinc-400">Total Takes</span>
-                    <span className="text-xs text-white">{liveAsset.takes.length}</span>
+                    <span className="text-xs text-fg-secondary">Total Takes</span>
+                    <span className="text-xs text-fg-primary">{liveAsset.takes.length}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-zinc-400">Active Take</span>
-                    <span className="text-xs text-white">
+                    <span className="text-xs text-fg-secondary">Active Take</span>
+                    <span className="text-xs text-fg-primary">
                       #{(selectedClip.takeIndex ?? (liveAsset.activeTakeIndex ?? liveAsset.takes.length - 1)) + 1}
                     </span>
                   </div>
@@ -274,38 +274,38 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
             {/* Generation Parameters */}
             {genParams && (
               <div className="space-y-2">
-                <h4 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Generation</h4>
-                <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1.5">
+                <h4 className="text-[11px] font-semibold text-fg-secondary uppercase tracking-wider">Generation</h4>
+                <div className="bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_60%,transparent)] rounded-lg p-3 space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-zinc-400">Mode</span>
-                    <span className="text-xs text-white">{genParams.mode.replace(/-/g, ' ')}</span>
+                    <span className="text-xs text-fg-secondary">Mode</span>
+                    <span className="text-xs text-fg-primary">{genParams.mode.replace(/-/g, ' ')}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-zinc-400">Model</span>
-                    <span className="text-xs text-white">{genParams.model}</span>
+                    <span className="text-xs text-fg-secondary">Model</span>
+                    <span className="text-xs text-fg-primary">{genParams.model}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-zinc-400">Gen Resolution</span>
-                    <span className="text-xs text-white">{genParams.resolution}</span>
+                    <span className="text-xs text-fg-secondary">Gen Resolution</span>
+                    <span className="text-xs text-fg-primary">{genParams.resolution}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-zinc-400">FPS</span>
-                    <span className="text-xs text-white">{genParams.fps}</span>
+                    <span className="text-xs text-fg-secondary">FPS</span>
+                    <span className="text-xs text-fg-primary">{genParams.fps}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-zinc-400">Duration</span>
-                    <span className="text-xs text-white">{genParams.duration}s</span>
+                    <span className="text-xs text-fg-secondary">Duration</span>
+                    <span className="text-xs text-fg-primary">{genParams.duration}s</span>
                   </div>
                   {genParams.cameraMotion && genParams.cameraMotion !== 'none' && (
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-zinc-400">Camera</span>
-                      <span className="text-xs text-white">{genParams.cameraMotion}</span>
+                      <span className="text-xs text-fg-secondary">Camera</span>
+                      <span className="text-xs text-fg-primary">{genParams.cameraMotion}</span>
                     </div>
                   )}
                   {genParams.prompt && (
                     <div className="mt-2">
-                      <span className="text-xs text-zinc-400 block mb-1">Prompt</span>
-                      <p className="text-xs text-zinc-300 bg-zinc-900/50 rounded p-2 break-words leading-relaxed">{genParams.prompt}</p>
+                      <span className="text-xs text-fg-secondary block mb-1">Prompt</span>
+                      <p className="text-xs text-fg-secondary bg-[color-mix(in_srgb,var(--semantic-bg-primary)_50%,transparent)] rounded p-2 break-words leading-relaxed">{genParams.prompt}</p>
                     </div>
                   )}
                 </div>
@@ -315,9 +315,9 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
             {/* File Path */}
             {filePath && (
               <div className="space-y-2">
-                <h4 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">File</h4>
-                <div className="bg-zinc-800/60 rounded-lg p-3">
-                  <p className="text-[10px] text-zinc-400 break-all font-mono leading-relaxed">{filePath}</p>
+                <h4 className="text-[11px] font-semibold text-fg-secondary uppercase tracking-wider">File</h4>
+                <div className="bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_60%,transparent)] rounded-lg p-3">
+                  <p className="text-[10px] text-fg-secondary break-all font-mono leading-relaxed">{filePath}</p>
                 </div>
               </div>
             )}
@@ -325,9 +325,9 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
             {/* Asset Created At */}
             {liveAsset?.createdAt && (
               <div className="space-y-2">
-                <h4 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Created</h4>
-                <div className="bg-zinc-800/60 rounded-lg p-3">
-                  <span className="text-xs text-zinc-300">{new Date(liveAsset.createdAt).toLocaleString()}</span>
+                <h4 className="text-[11px] font-semibold text-fg-secondary uppercase tracking-wider">Created</h4>
+                <div className="bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_60%,transparent)] rounded-lg p-3">
+                  <span className="text-xs text-fg-secondary">{new Date(liveAsset.createdAt).toLocaleString()}</span>
                 </div>
               </div>
             )}
@@ -352,13 +352,13 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
 
               {/* Letterbox toggle */}
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-400">Letterbox</span>
+                <span className="text-[10px] text-fg-secondary">Letterbox</span>
                 <button
                   onClick={() => updateLetterbox({ enabled: !lb.enabled })}
                   className={`px-2.5 py-0.5 rounded text-[10px] border transition-colors ${
                     lb.enabled
                       ? 'bg-blue-600/30 text-blue-300 border-blue-500/40'
-                      : 'bg-zinc-800 text-zinc-500 border-zinc-700'
+                      : 'bg-action text-fg-tertiary border-separator'
                   }`}
                 >
                   {lb.enabled ? 'On' : 'Off'}
@@ -369,11 +369,11 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                 <>
                   {/* Aspect ratio */}
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-zinc-400">Aspect Ratio</span>
+                    <span className="text-[10px] text-fg-secondary">Aspect Ratio</span>
                     <select
                       value={lb.aspectRatio}
                       onChange={e => updateLetterbox({ aspectRatio: e.target.value as LetterboxSettings['aspectRatio'] })}
-                      className="bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 text-[10px] text-white focus:outline-none focus:border-blue-500/50"
+                      className="bg-action border border-separator rounded px-2 py-0.5 text-[10px] text-fg-primary focus:outline-none focus:border-blue-500/50"
                     >
                       <option value="2.39:1">2.39:1 (Anamorphic)</option>
                       <option value="2.35:1">2.35:1 (Cinemascope)</option>
@@ -387,7 +387,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                   {/* Custom ratio input */}
                   {lb.aspectRatio === 'custom' && (
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-zinc-400">Custom Ratio</span>
+                      <span className="text-[10px] text-fg-secondary">Custom Ratio</span>
                       <input
                         type="number"
                         step={0.01}
@@ -396,39 +396,39 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                         value={lb.customRatio || 2.35}
                         onChange={e => updateLetterbox({ customRatio: parseFloat(e.target.value) || 2.35 })}
                         onKeyDown={e => e.stopPropagation()}
-                        className="w-20 bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 text-[10px] text-white text-center focus:outline-none focus:border-blue-500/50"
+                        className="w-20 bg-action border border-separator rounded px-2 py-0.5 text-[10px] text-fg-primary text-center focus:outline-none focus:border-blue-500/50"
                       />
                     </div>
                   )}
 
                   {/* Bar color */}
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-zinc-400">Bar Color</span>
+                    <span className="text-[10px] text-fg-secondary">Bar Color</span>
                     <input
                       type="color"
                       value={lb.color}
                       onChange={e => updateLetterbox({ color: e.target.value })}
-                      className="w-7 h-6 rounded cursor-pointer border border-zinc-700"
+                      className="w-7 h-6 rounded cursor-pointer border border-separator"
                     />
                   </div>
 
                   {/* Bar opacity */}
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-zinc-400">Bar Opacity</span>
+                    <span className="text-[10px] text-fg-secondary">Bar Opacity</span>
                     <div className="flex items-center gap-2">
                       <input
                         type="range" min={0} max={100} value={lb.opacity}
                         onChange={e => updateLetterbox({ opacity: parseInt(e.target.value) })}
                         className="w-20 accent-blue-500"
                       />
-                      <span className="text-[10px] text-zinc-300 w-8 text-right tabular-nums">{lb.opacity}%</span>
+                      <span className="text-[10px] text-fg-secondary w-8 text-right tabular-nums">{lb.opacity}%</span>
                     </div>
                   </div>
                 </>
               )}
 
               {/* Color correction note */}
-              <p className="text-[9px] text-zinc-600 pt-1 border-t border-zinc-800">
+              <p className="text-[9px] text-fg-tertiary pt-1 border-t border-separator">
                 Color correction on this layer affects all tracks below.
               </p>
             </div>
@@ -442,31 +442,31 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
             updateClip(selectedClip.id, { textStyle: { ...ts, ...patch } })
           }
           return (
-            <div className="bg-cyan-950/30 border border-cyan-700/30 rounded-lg p-3 space-y-3">
+            <div className="bg-ext-teal/15 border border-ext-teal/30 rounded-lg p-3 space-y-3">
               <div className="flex items-center gap-2 mb-1">
-                <Type className="h-4 w-4 text-cyan-400" />
-                <h4 className="text-xs font-semibold text-cyan-300">Text Overlay</h4>
+                <Type className="h-4 w-4 text-ext-teal" />
+                <h4 className="text-xs font-semibold text-ext-teal">Text Overlay</h4>
               </div>
 
               {/* Text content */}
               <div className="space-y-1">
-                <span className="text-[10px] text-zinc-400">Content</span>
+                <span className="text-[10px] text-fg-secondary">Content</span>
                 <textarea
                   value={ts.text}
                   onChange={e => updateText({ text: e.target.value })}
                   rows={3}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs text-white resize-none focus:outline-none focus:border-cyan-500/50"
+                  className="w-full bg-action border border-separator rounded px-2 py-1.5 text-xs text-fg-primary resize-none focus:outline-none focus:border-ext-teal/50"
                   placeholder="Enter text..."
                 />
               </div>
 
               {/* Font family */}
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-400">Font</span>
+                <span className="text-[10px] text-fg-secondary">Font</span>
                 <select
                   value={ts.fontFamily.split(',')[0].trim()}
                   onChange={e => updateText({ fontFamily: `${e.target.value}, sans-serif` })}
-                  className="bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 text-[10px] text-white focus:outline-none focus:border-cyan-500/50 max-w-[120px]"
+                  className="bg-action border border-separator rounded px-2 py-0.5 text-[10px] text-fg-primary focus:outline-none focus:border-ext-teal/50 max-w-[120px]"
                 >
                   <option value="Inter">Inter</option>
                   <option value="Arial">Arial</option>
@@ -482,20 +482,20 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
 
               {/* Font size */}
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-400">Size</span>
+                <span className="text-[10px] text-fg-secondary">Size</span>
                 <div className="flex items-center gap-2">
-                  <input type="range" min={12} max={200} value={ts.fontSize} onChange={e => updateText({ fontSize: parseInt(e.target.value) })} className="w-20 accent-cyan-500" />
-                  <span className="text-[10px] text-zinc-300 w-8 text-right tabular-nums">{ts.fontSize}</span>
+                  <input type="range" min={12} max={200} value={ts.fontSize} onChange={e => updateText({ fontSize: parseInt(e.target.value) })} className="w-20 accent-ext-teal" />
+                  <span className="text-[10px] text-fg-secondary w-8 text-right tabular-nums">{ts.fontSize}</span>
                 </div>
               </div>
 
               {/* Font weight & style */}
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-400">Weight</span>
+                <span className="text-[10px] text-fg-secondary">Weight</span>
                 <select
                   value={ts.fontWeight}
                   onChange={e => updateText({ fontWeight: e.target.value as TextOverlayStyle['fontWeight'] })}
-                  className="bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 text-[10px] text-white focus:outline-none focus:border-cyan-500/50"
+                  className="bg-action border border-separator rounded px-2 py-0.5 text-[10px] text-fg-primary focus:outline-none focus:border-ext-teal/50"
                 >
                   <option value="100">Thin</option>
                   <option value="300">Light</option>
@@ -511,7 +511,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => updateText({ fontStyle: ts.fontStyle === 'italic' ? 'normal' : 'italic' })}
-                  className={`px-2 py-1 rounded text-[10px] border ${ts.fontStyle === 'italic' ? 'bg-cyan-600/30 text-cyan-300 border-cyan-500/40' : 'bg-zinc-800 text-zinc-500 border-zinc-700'}`}
+                  className={`px-2 py-1 rounded text-[10px] border ${ts.fontStyle === 'italic' ? 'bg-ext-teal/30 text-ext-teal border-ext-teal/40' : 'bg-action text-fg-tertiary border-separator'}`}
                 >
                   <em>Italic</em>
                 </button>
@@ -519,18 +519,18 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
 
               {/* Text color */}
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-400">Color</span>
-                <input type="color" value={ts.color} onChange={e => updateText({ color: e.target.value })} className="w-7 h-6 rounded cursor-pointer border border-zinc-700" />
+                <span className="text-[10px] text-fg-secondary">Color</span>
+                <input type="color" value={ts.color} onChange={e => updateText({ color: e.target.value })} className="w-7 h-6 rounded cursor-pointer border border-separator" />
               </div>
 
               {/* Background color */}
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-400">Background</span>
+                <span className="text-[10px] text-fg-secondary">Background</span>
                 <div className="flex items-center gap-1.5">
-                  <input type="color" value={ts.backgroundColor === 'transparent' ? '#000000' : ts.backgroundColor.slice(0, 7)} onChange={e => updateText({ backgroundColor: e.target.value + 'cc' })} className="w-7 h-6 rounded cursor-pointer border border-zinc-700" />
+                  <input type="color" value={ts.backgroundColor === 'transparent' ? '#000000' : ts.backgroundColor.slice(0, 7)} onChange={e => updateText({ backgroundColor: e.target.value + 'cc' })} className="w-7 h-6 rounded cursor-pointer border border-separator" />
                   <button
                     onClick={() => updateText({ backgroundColor: ts.backgroundColor === 'transparent' ? 'rgba(0,0,0,0.7)' : 'transparent' })}
-                    className={`px-1.5 py-0.5 rounded text-[9px] border ${ts.backgroundColor !== 'transparent' ? 'bg-cyan-600/20 text-cyan-300 border-cyan-500/30' : 'bg-zinc-800 text-zinc-500 border-zinc-700'}`}
+                    className={`px-1.5 py-0.5 rounded text-[9px] border ${ts.backgroundColor !== 'transparent' ? 'bg-ext-teal/20 text-ext-teal border-ext-teal/30' : 'bg-action text-fg-tertiary border-separator'}`}
                   >
                     {ts.backgroundColor !== 'transparent' ? 'On' : 'Off'}
                   </button>
@@ -539,13 +539,13 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
 
               {/* Text alignment */}
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-400">Align</span>
+                <span className="text-[10px] text-fg-secondary">Align</span>
                 <div className="flex gap-0.5">
                   {(['left', 'center', 'right'] as const).map(align => (
                     <button
                       key={align}
                       onClick={() => updateText({ textAlign: align })}
-                      className={`p-1.5 rounded ${ts.textAlign === align ? 'bg-cyan-600/30 text-cyan-300' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}
+                      className={`p-1.5 rounded ${ts.textAlign === align ? 'bg-ext-teal/30 text-ext-teal' : 'bg-action text-fg-tertiary hover:text-fg-secondary'}`}
                     >
                       {align === 'left' ? <AlignLeft className="h-3 w-3" /> : align === 'center' ? <AlignCenter className="h-3 w-3" /> : <AlignRight className="h-3 w-3" />}
                     </button>
@@ -555,55 +555,55 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
 
               {/* Position */}
               <div className="space-y-1.5">
-                <span className="text-[10px] text-zinc-400">Position</span>
+                <span className="text-[10px] text-fg-secondary">Position</span>
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <span className="text-[9px] text-zinc-500">X</span>
-                    <input type="range" min={0} max={100} value={ts.positionX} onChange={e => updateText({ positionX: parseFloat(e.target.value) })} className="w-full accent-cyan-500" />
+                    <span className="text-[9px] text-fg-tertiary">X</span>
+                    <input type="range" min={0} max={100} value={ts.positionX} onChange={e => updateText({ positionX: parseFloat(e.target.value) })} className="w-full accent-ext-teal" />
                   </div>
                   <div className="flex-1">
-                    <span className="text-[9px] text-zinc-500">Y</span>
-                    <input type="range" min={0} max={100} value={ts.positionY} onChange={e => updateText({ positionY: parseFloat(e.target.value) })} className="w-full accent-cyan-500" />
+                    <span className="text-[9px] text-fg-tertiary">Y</span>
+                    <input type="range" min={0} max={100} value={ts.positionY} onChange={e => updateText({ positionY: parseFloat(e.target.value) })} className="w-full accent-ext-teal" />
                   </div>
                 </div>
               </div>
 
               {/* Opacity */}
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-400">Opacity</span>
+                <span className="text-[10px] text-fg-secondary">Opacity</span>
                 <div className="flex items-center gap-2">
-                  <input type="range" min={0} max={100} value={ts.opacity} onChange={e => updateText({ opacity: parseInt(e.target.value) })} className="w-20 accent-cyan-500" />
-                  <span className="text-[10px] text-zinc-300 w-8 text-right tabular-nums">{ts.opacity}%</span>
+                  <input type="range" min={0} max={100} value={ts.opacity} onChange={e => updateText({ opacity: parseInt(e.target.value) })} className="w-20 accent-ext-teal" />
+                  <span className="text-[10px] text-fg-secondary w-8 text-right tabular-nums">{ts.opacity}%</span>
                 </div>
               </div>
 
               {/* Stroke */}
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-400">Outline</span>
+                <span className="text-[10px] text-fg-secondary">Outline</span>
                 <div className="flex items-center gap-1.5">
-                  <input type="range" min={0} max={10} step={0.5} value={ts.strokeWidth} onChange={e => updateText({ strokeWidth: parseFloat(e.target.value) })} className="w-16 accent-cyan-500" />
-                  <input type="color" value={ts.strokeColor === 'transparent' ? '#000000' : ts.strokeColor} onChange={e => updateText({ strokeColor: e.target.value, strokeWidth: Math.max(ts.strokeWidth, 1) })} className="w-5 h-5 rounded cursor-pointer border border-zinc-700" />
+                  <input type="range" min={0} max={10} step={0.5} value={ts.strokeWidth} onChange={e => updateText({ strokeWidth: parseFloat(e.target.value) })} className="w-16 accent-ext-teal" />
+                  <input type="color" value={ts.strokeColor === 'transparent' ? '#000000' : ts.strokeColor} onChange={e => updateText({ strokeColor: e.target.value, strokeWidth: Math.max(ts.strokeWidth, 1) })} className="w-5 h-5 rounded cursor-pointer border border-separator" />
                 </div>
               </div>
 
               {/* Shadow */}
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-400">Shadow</span>
+                <span className="text-[10px] text-fg-secondary">Shadow</span>
                 <div className="flex items-center gap-2">
-                  <input type="range" min={0} max={20} value={ts.shadowBlur} onChange={e => updateText({ shadowBlur: parseInt(e.target.value) })} className="w-16 accent-cyan-500" />
-                  <span className="text-[10px] text-zinc-300 w-4 text-right tabular-nums">{ts.shadowBlur}</span>
+                  <input type="range" min={0} max={20} value={ts.shadowBlur} onChange={e => updateText({ shadowBlur: parseInt(e.target.value) })} className="w-16 accent-ext-teal" />
+                  <span className="text-[10px] text-fg-secondary w-4 text-right tabular-nums">{ts.shadowBlur}</span>
                 </div>
               </div>
 
               {/* Presets */}
-              <div className="pt-2 border-t border-zinc-800">
-                <span className="text-[10px] text-zinc-400 block mb-1.5">Apply Preset</span>
+              <div className="pt-2 border-t border-separator">
+                <span className="text-[10px] text-fg-secondary block mb-1.5">Apply Preset</span>
                 <div className="grid grid-cols-2 gap-1">
                   {TEXT_PRESETS.map(preset => (
                     <button
                       key={preset.id}
                       onClick={() => updateText({ ...preset.style })}
-                      className="px-2 py-1.5 rounded bg-zinc-800 border border-zinc-700 text-[9px] text-zinc-300 hover:border-cyan-500/40 hover:bg-cyan-900/20 transition-colors truncate"
+                      className="px-2 py-1.5 rounded bg-action border border-separator text-[9px] text-fg-secondary hover:border-ext-teal/40 hover:bg-ext-teal/15 transition-colors truncate"
                       title={preset.name}
                     >
                       {preset.name}
@@ -626,7 +626,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
           </button>
         )}
         <div>
-          <label className="block text-xs text-zinc-500 mb-1">Start Time</label>
+          <label className="block text-xs text-fg-tertiary mb-1">Start Time</label>
           <div className="flex items-center gap-2">
             <input
               type="number"
@@ -634,14 +634,14 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
               onChange={(e) => updateClip(selectedClip.id, { startTime: Math.max(0, parseFloat(e.target.value) || 0) })}
               min={0}
               step={0.1}
-              className="flex-1 px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-white text-sm"
+              className="flex-1 px-2 py-1 rounded bg-action border border-separator text-fg-primary text-sm"
             />
-            <span className="text-xs text-zinc-500">sec</span>
+            <span className="text-xs text-fg-tertiary">sec</span>
           </div>
         </div>
 
         <div>
-          <label className="block text-xs text-zinc-500 mb-1">Duration</label>
+          <label className="block text-xs text-fg-tertiary mb-1">Duration</label>
           <div className="flex items-center gap-2">
             <input
               type="number"
@@ -655,18 +655,18 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
               min={0.1}
               max={getMaxClipDuration(selectedClip)}
               step={0.1}
-              className="flex-1 px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-white text-sm"
+              className="flex-1 px-2 py-1 rounded bg-action border border-separator text-fg-primary text-sm"
             />
-            <span className="text-xs text-zinc-500">sec</span>
+            <span className="text-xs text-fg-tertiary">sec</span>
             {selectedClip.type === 'video' && selectedClip.asset?.duration && (
-              <span className="text-[10px] text-zinc-600">max {getMaxClipDuration(selectedClip).toFixed(1)}s</span>
+              <span className="text-[10px] text-fg-tertiary">max {getMaxClipDuration(selectedClip).toFixed(1)}s</span>
             )}
           </div>
         </div>
 
         {hasPlaybackControls && (
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">Speed</label>
+            <label className="block text-xs text-fg-tertiary mb-1">Speed</label>
             <input
               type="range"
               min={0.25}
@@ -684,9 +684,9 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
               }}
               className="w-full"
             />
-            <div className="flex justify-between text-[10px] text-zinc-500 mt-1">
+            <div className="flex justify-between text-[10px] text-fg-tertiary mt-1">
               <span>0.25x</span>
-              <span className="text-white">{selectedClip.speed}x</span>
+              <span className="text-fg-primary">{selectedClip.speed}x</span>
               <span>4x</span>
             </div>
           </div>
@@ -694,7 +694,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
 
         {hasAudioControls && (
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">Volume</label>
+            <label className="block text-xs text-fg-tertiary mb-1">Volume</label>
             <input
               type="range"
               min={0}
@@ -704,9 +704,9 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
               onChange={(e) => setClipAudioLevel(selectedClip.id, parseFloat(e.target.value))}
               className="w-full"
             />
-            <div className="flex justify-between text-[10px] text-zinc-500 mt-1">
+            <div className="flex justify-between text-[10px] text-fg-tertiary mt-1">
               <span>0%</span>
-              <span className="text-white">{effectiveMuted ? '0' : Math.round(effectiveVolume * 100)}%</span>
+              <span className="text-fg-primary">{effectiveMuted ? '0' : Math.round(effectiveVolume * 100)}%</span>
               <span>100%</span>
             </div>
           </div>
@@ -719,28 +719,28 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                 type="checkbox"
                 checked={selectedClip.reversed}
                 onChange={(e) => updateClip(selectedClip.id, { reversed: e.target.checked })}
-                className="rounded bg-zinc-800 border-zinc-600"
+                className="rounded bg-action border-separator"
               />
-              <span className="text-sm text-zinc-300">Reverse playback</span>
+              <span className="text-sm text-fg-secondary">Reverse playback</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={effectiveMuted}
                 onChange={(e) => setClipAudioMuted(selectedClip.id, e.target.checked)}
-                className="rounded bg-zinc-800 border-zinc-600"
+                className="rounded bg-action border-separator"
               />
-              <span className="text-sm text-zinc-300">Mute audio</span>
+              <span className="text-sm text-fg-secondary">Mute audio</span>
             </label>
           </div>
         )}
 
         {/* --- Opacity --- */}
         {!isTextClip && (
-          <div className="pt-3 border-t border-zinc-800">
+          <div className="pt-3 border-t border-separator">
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-zinc-400">Opacity</label>
-              <span className="text-[10px] text-zinc-500 tabular-nums">{selectedClip.opacity ?? 100}%</span>
+              <label className="text-xs font-semibold text-fg-secondary">Opacity</label>
+              <span className="text-[10px] text-fg-tertiary tabular-nums">{selectedClip.opacity ?? 100}%</span>
             </div>
             <input
               type="range"
@@ -751,7 +751,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
               onChange={(e) => updateClip(selectedClip.id, { opacity: parseInt(e.target.value) })}
               className="w-full h-1.5 accent-blue-500"
             />
-            <div className="flex justify-between text-[9px] text-zinc-600 mt-0.5">
+            <div className="flex justify-between text-[9px] text-fg-tertiary mt-0.5">
               <span>0%</span>
               <span>100%</span>
             </div>
@@ -760,9 +760,9 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
 
         {/* --- Flip --- */}
         {hasVisualTransformControls && (
-          <div className="pt-3 border-t border-zinc-800">
+          <div className="pt-3 border-t border-separator">
             <button
-              className="flex items-center gap-2 w-full text-left text-xs font-semibold text-zinc-400 hover:text-white transition-colors mb-2"
+              className="flex items-center gap-2 w-full text-left text-xs font-semibold text-fg-secondary hover:text-fg-primary transition-colors mb-2"
               onClick={() => setShowFlip(!showFlip)}
             >
               {showFlip ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -776,20 +776,20 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                     type="checkbox"
                     checked={selectedClip.flipH}
                     onChange={(e) => updateClip(selectedClip.id, { flipH: e.target.checked })}
-                    className="rounded bg-zinc-800 border-zinc-600"
+                    className="rounded bg-action border-separator"
                   />
-                  <FlipHorizontal2 className="h-3.5 w-3.5 text-zinc-400" />
-                  <span className="text-sm text-zinc-300">Horizontal</span>
+                  <FlipHorizontal2 className="h-3.5 w-3.5 text-fg-secondary" />
+                  <span className="text-sm text-fg-secondary">Horizontal</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={selectedClip.flipV}
                     onChange={(e) => updateClip(selectedClip.id, { flipV: e.target.checked })}
-                    className="rounded bg-zinc-800 border-zinc-600"
+                    className="rounded bg-action border-separator"
                   />
-                  <FlipVertical2 className="h-3.5 w-3.5 text-zinc-400" />
-                  <span className="text-sm text-zinc-300">Vertical</span>
+                  <FlipVertical2 className="h-3.5 w-3.5 text-fg-secondary" />
+                  <span className="text-sm text-fg-secondary">Vertical</span>
                 </label>
               </div>
             )}
@@ -798,9 +798,9 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
 
         {/* --- Transitions --- */}
         {hasTransitionControls && (
-          <div className="pt-3 border-t border-zinc-800">
+          <div className="pt-3 border-t border-separator">
             <button
-              className="flex items-center gap-2 w-full text-left text-xs font-semibold text-zinc-400 hover:text-white transition-colors mb-2"
+              className="flex items-center gap-2 w-full text-left text-xs font-semibold text-fg-secondary hover:text-fg-primary transition-colors mb-2"
               onClick={() => setShowTransitions(!showTransitions)}
             >
               {showTransitions ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -811,13 +811,13 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
               <div className="space-y-3 pl-5">
                 {/* Transition In */}
                 <div>
-                  <label className="block text-[10px] text-zinc-500 mb-1 uppercase tracking-wider">Transition In</label>
+                  <label className="block text-[10px] text-fg-tertiary mb-1 uppercase tracking-wider">Transition In</label>
                   <select
                     value={selectedClip.transitionIn?.type || 'none'}
                     onChange={(e) => updateClip(selectedClip.id, {
                       transitionIn: { ...selectedClip.transitionIn, type: e.target.value as TransitionType }
                     })}
-                    className="w-full px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-white text-xs"
+                    className="w-full px-2 py-1 rounded bg-action border border-separator text-fg-primary text-xs"
                   >
                     <option value="none">None</option>
                     <option value="dissolve">Dissolve</option>
@@ -830,7 +830,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                   </select>
                   {selectedClip.transitionIn?.type !== 'none' && (
                     <div className="mt-1.5">
-                      <label className="block text-[10px] text-zinc-600 mb-0.5">Duration</label>
+                      <label className="block text-[10px] text-fg-tertiary mb-0.5">Duration</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="range"
@@ -843,20 +843,20 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                           })}
                           className="flex-1"
                         />
-                        <span className="text-[10px] text-zinc-400 w-6 text-right">{(selectedClip.transitionIn?.duration || 0.5).toFixed(1)}s</span>
+                        <span className="text-[10px] text-fg-secondary w-6 text-right">{(selectedClip.transitionIn?.duration || 0.5).toFixed(1)}s</span>
                       </div>
                     </div>
                   )}
                 </div>
                 {/* Transition Out */}
                 <div>
-                  <label className="block text-[10px] text-zinc-500 mb-1 uppercase tracking-wider">Transition Out</label>
+                  <label className="block text-[10px] text-fg-tertiary mb-1 uppercase tracking-wider">Transition Out</label>
                   <select
                     value={selectedClip.transitionOut?.type || 'none'}
                     onChange={(e) => updateClip(selectedClip.id, {
                       transitionOut: { ...selectedClip.transitionOut, type: e.target.value as TransitionType }
                     })}
-                    className="w-full px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-white text-xs"
+                    className="w-full px-2 py-1 rounded bg-action border border-separator text-fg-primary text-xs"
                   >
                     <option value="none">None</option>
                     <option value="dissolve">Dissolve</option>
@@ -869,7 +869,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                   </select>
                   {selectedClip.transitionOut?.type !== 'none' && (
                     <div className="mt-1.5">
-                      <label className="block text-[10px] text-zinc-600 mb-0.5">Duration</label>
+                      <label className="block text-[10px] text-fg-tertiary mb-0.5">Duration</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="range"
@@ -882,7 +882,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                           })}
                           className="flex-1"
                         />
-                        <span className="text-[10px] text-zinc-400 w-6 text-right">{(selectedClip.transitionOut?.duration || 0.5).toFixed(1)}s</span>
+                        <span className="text-[10px] text-fg-secondary w-6 text-right">{(selectedClip.transitionOut?.duration || 0.5).toFixed(1)}s</span>
                       </div>
                     </div>
                   )}
@@ -896,9 +896,9 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
 
         {/* --- Color Correction --- */}
         {hasColorCorrectionControls && (
-          <div className="pt-3 border-t border-zinc-800">
+          <div className="pt-3 border-t border-separator">
             <button
-              className="flex items-center gap-2 w-full text-left text-xs font-semibold text-zinc-400 hover:text-white transition-colors mb-2"
+              className="flex items-center gap-2 w-full text-left text-xs font-semibold text-fg-secondary hover:text-fg-primary transition-colors mb-2"
               onClick={() => setShowColorCorrection(!showColorCorrection)}
             >
               {showColorCorrection ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -911,7 +911,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
             {showColorCorrection && (
               <div className="space-y-2.5 pl-1">
               <button
-                className="flex items-center gap-1.5 text-[10px] text-zinc-500 hover:text-blue-400 transition-colors"
+                className="flex items-center gap-1.5 text-[10px] text-fg-tertiary hover:text-blue-400 transition-colors"
                 onClick={() => updateClip(selectedClip.id, { colorCorrection: { ...DEFAULT_COLOR_CORRECTION } })}
               >
                 <RotateCcw className="h-3 w-3" />
@@ -921,10 +921,10 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
               <div>
                 <div className="flex items-center justify-between mb-0.5">
                   <div className="flex items-center gap-1.5">
-                    <Eye className="h-3 w-3 text-zinc-500" />
-                    <span className="text-[11px] text-zinc-400">Exposure</span>
+                    <Eye className="h-3 w-3 text-fg-tertiary" />
+                    <span className="text-[11px] text-fg-secondary">Exposure</span>
                   </div>
-                  <span className="text-[10px] text-zinc-500 tabular-nums">{selectedClip.colorCorrection?.exposure || 0}</span>
+                  <span className="text-[10px] text-fg-tertiary tabular-nums">{selectedClip.colorCorrection?.exposure || 0}</span>
                 </div>
                 <input
                   type="range"
@@ -942,10 +942,10 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
               <div>
                 <div className="flex items-center justify-between mb-0.5">
                   <div className="flex items-center gap-1.5">
-                    <Sun className="h-3 w-3 text-zinc-500" />
-                    <span className="text-[11px] text-zinc-400">Brightness</span>
+                    <Sun className="h-3 w-3 text-fg-tertiary" />
+                    <span className="text-[11px] text-fg-secondary">Brightness</span>
                   </div>
-                  <span className="text-[10px] text-zinc-500 tabular-nums">{selectedClip.colorCorrection?.brightness || 0}</span>
+                  <span className="text-[10px] text-fg-tertiary tabular-nums">{selectedClip.colorCorrection?.brightness || 0}</span>
                 </div>
                 <input
                   type="range"
@@ -963,10 +963,10 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
               <div>
                 <div className="flex items-center justify-between mb-0.5">
                   <div className="flex items-center gap-1.5">
-                    <Contrast className="h-3 w-3 text-zinc-500" />
-                    <span className="text-[11px] text-zinc-400">Contrast</span>
+                    <Contrast className="h-3 w-3 text-fg-tertiary" />
+                    <span className="text-[11px] text-fg-secondary">Contrast</span>
                   </div>
-                  <span className="text-[10px] text-zinc-500 tabular-nums">{selectedClip.colorCorrection?.contrast || 0}</span>
+                  <span className="text-[10px] text-fg-tertiary tabular-nums">{selectedClip.colorCorrection?.contrast || 0}</span>
                 </div>
                 <input
                   type="range"
@@ -984,10 +984,10 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
               <div>
                 <div className="flex items-center justify-between mb-0.5">
                   <div className="flex items-center gap-1.5">
-                    <Droplets className="h-3 w-3 text-zinc-500" />
-                    <span className="text-[11px] text-zinc-400">Saturation</span>
+                    <Droplets className="h-3 w-3 text-fg-tertiary" />
+                    <span className="text-[11px] text-fg-secondary">Saturation</span>
                   </div>
-                  <span className="text-[10px] text-zinc-500 tabular-nums">{selectedClip.colorCorrection?.saturation || 0}</span>
+                  <span className="text-[10px] text-fg-tertiary tabular-nums">{selectedClip.colorCorrection?.saturation || 0}</span>
                 </div>
                 <input
                   type="range"
@@ -1005,10 +1005,10 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
               <div>
                 <div className="flex items-center justify-between mb-0.5">
                   <div className="flex items-center gap-1.5">
-                    <Thermometer className="h-3 w-3 text-zinc-500" />
-                    <span className="text-[11px] text-zinc-400">Temperature</span>
+                    <Thermometer className="h-3 w-3 text-fg-tertiary" />
+                    <span className="text-[11px] text-fg-secondary">Temperature</span>
                   </div>
-                  <span className="text-[10px] text-zinc-500 tabular-nums">{selectedClip.colorCorrection?.temperature || 0}</span>
+                  <span className="text-[10px] text-fg-tertiary tabular-nums">{selectedClip.colorCorrection?.temperature || 0}</span>
                 </div>
                 <input
                   type="range"
@@ -1021,7 +1021,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                   })}
                   className="w-full h-1.5 accent-blue-500"
                 />
-                <div className="flex justify-between text-[9px] text-zinc-600 mt-0.5">
+                <div className="flex justify-between text-[9px] text-fg-tertiary mt-0.5">
                   <span>Cool</span>
                   <span>Warm</span>
                 </div>
@@ -1030,10 +1030,10 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
               <div>
                 <div className="flex items-center justify-between mb-0.5">
                   <div className="flex items-center gap-1.5">
-                    <Palette className="h-3 w-3 text-zinc-500" />
-                    <span className="text-[11px] text-zinc-400">Tint</span>
+                    <Palette className="h-3 w-3 text-fg-tertiary" />
+                    <span className="text-[11px] text-fg-secondary">Tint</span>
                   </div>
-                  <span className="text-[10px] text-zinc-500 tabular-nums">{selectedClip.colorCorrection?.tint || 0}</span>
+                  <span className="text-[10px] text-fg-tertiary tabular-nums">{selectedClip.colorCorrection?.tint || 0}</span>
                 </div>
                 <input
                   type="range"
@@ -1046,7 +1046,7 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
                   })}
                   className="w-full h-1.5 accent-blue-500"
                 />
-                <div className="flex justify-between text-[9px] text-zinc-600 mt-0.5">
+                <div className="flex justify-between text-[9px] text-fg-tertiary mt-0.5">
                   <span>Green</span>
                   <span>Magenta</span>
                 </div>
@@ -1055,10 +1055,10 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
               <div>
                 <div className="flex items-center justify-between mb-0.5">
                   <div className="flex items-center gap-1.5">
-                    <SunDim className="h-3 w-3 text-zinc-500" />
-                    <span className="text-[11px] text-zinc-400">Highlights</span>
+                    <SunDim className="h-3 w-3 text-fg-tertiary" />
+                    <span className="text-[11px] text-fg-secondary">Highlights</span>
                   </div>
-                  <span className="text-[10px] text-zinc-500 tabular-nums">{selectedClip.colorCorrection?.highlights || 0}</span>
+                  <span className="text-[10px] text-fg-tertiary tabular-nums">{selectedClip.colorCorrection?.highlights || 0}</span>
                 </div>
                 <input
                   type="range"
@@ -1076,10 +1076,10 @@ export function ClipPropertiesPanel(props: ClipPropertiesPanelProps) {
               <div>
                 <div className="flex items-center justify-between mb-0.5">
                   <div className="flex items-center gap-1.5">
-                    <Moon className="h-3 w-3 text-zinc-500" />
-                    <span className="text-[11px] text-zinc-400">Shadows</span>
+                    <Moon className="h-3 w-3 text-fg-tertiary" />
+                    <span className="text-[11px] text-fg-secondary">Shadows</span>
                   </div>
-                  <span className="text-[10px] text-zinc-500 tabular-nums">{selectedClip.colorCorrection?.shadows || 0}</span>
+                  <span className="text-[10px] text-fg-tertiary tabular-nums">{selectedClip.colorCorrection?.shadows || 0}</span>
                 </div>
                 <input
                   type="range"

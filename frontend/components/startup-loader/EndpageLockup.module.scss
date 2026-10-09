@@ -1,0 +1,43 @@
+// Splash and install share this 90% box so the lockup, bar, and settled
+// frame all shrink together. Crop happens at the box, not the window.
+.shell {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 65%;
+  height: 65%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+  overflow: hidden;
+  pointer-events: none;
+  /* Setup pins a light theme. The wordmark sits on the window glass, so it
+     follows the outer theme instead of that pin. */
+  color: var(--window-fg, var(--semantic-fg-primary));
+}
+
+// The artwork is 16:9; cover the shell so the intro close-up is cropped by the
+// 90% box. The nudge cancels the master's optical offset (the lockup sits 27 of
+// 3840 units right of frame centre), which reads as a mistake against the
+// centred progress bar below.
+.frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100cqw, calc(100cqh * 16 / 9));
+  height: max(100cqh, calc(100cqw * 9 / 16));
+  transform: translate(calc(-50% - (100% * 27 / 3840)), -50%);
+
+  :global(svg) {
+    display: block;
+  }
+
+  :global(path) {
+    fill: currentColor;
+  }
+}

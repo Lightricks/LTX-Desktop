@@ -1,0 +1,5 @@
+@use "@ds/styles/common.module.scss" as common;
+
+.loadingMore {
+  @include common.loadingMore;
+}

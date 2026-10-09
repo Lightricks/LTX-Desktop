@@ -5,7 +5,7 @@ import {
   type GenSpaceTypeFilter,
 } from '../../lib/genspace-gallery'
 
-const toolbarTriggerClass = 'px-3 py-1.5 text-sm font-medium text-zinc-400 hover:text-white'
+const toolbarTriggerClass = 'px-3 py-1.5 text-sm font-medium text-fg-secondary hover:text-fg-primary'
 
 export function GenSpaceTypeFilter({
   value,
@@ -26,7 +26,7 @@ export function GenSpaceTypeFilter({
       trigger={
         <>
           <span>{currentLabel}</span>
-          <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
+          <ChevronDown className="h-3.5 w-3.5 text-fg-tertiary" />
         </>
       }
       options={GENSPACE_TYPE_FILTER_OPTIONS}

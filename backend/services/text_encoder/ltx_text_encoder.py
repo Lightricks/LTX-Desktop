@@ -11,8 +11,15 @@ from typing import TYPE_CHECKING, Any, TypeGuard
 
 import torch
 
+from _routes._errors import HTTPError
 from runtime_config.ltx_api_text_encoder_ids import LtxApiPromptEmbeddingModel
 from services.http_client.http_client import HTTPClient
+from services.ltx_api_client.ltx_api_errors import (
+    LTX_API_PROMPT_EMBEDDING_FAILED,
+    LTX_API_PROMPT_EMBEDDING_FAILED_MESSAGE,
+    LTX_INVALID_API_KEY,
+    LTX_INVALID_API_KEY_MESSAGE,
+)
 from services.services_utils import JSONValue
 from state.app_state_types import TextEncodingResult
 
@@ -279,9 +286,21 @@ class LTXTextEncoder:
                 timeout=60,
             )
 
+            # A rejected key opens the API key field. A timeout or other
+            # non-success opens Text encoding. Local encoding never reaches this method.
+            if response.status_code in (401, 403):
+                raise HTTPError(
+                    response.status_code,
+                    LTX_INVALID_API_KEY_MESSAGE,
+                    code=LTX_INVALID_API_KEY,
+                )
             if response.status_code != 200:
                 logger.warning("LTX API error %s: %s", response.status_code, response.text)
-                return None
+                raise HTTPError(
+                    response.status_code,
+                    LTX_API_PROMPT_EMBEDDING_FAILED_MESSAGE,
+                    code=LTX_API_PROMPT_EMBEDDING_FAILED,
+                )
 
             # Map CUDA storages to CPU during unpickling so this works on non-CUDA hosts
             # (Apple Silicon / CPU-only); the tensors are moved to self.device below.
@@ -298,9 +317,15 @@ class LTXTextEncoder:
             logger.info("Text encoded via API in %.1fs", time.time() - start)
             return TextEncodingResult(video_context=video_context, audio_context=audio_context)
 
+        except HTTPError:
+            raise
         except Exception as exc:
             logger.warning("LTX API encoding failed: %s", exc, exc_info=True)
-            return None
+            raise HTTPError(
+                504,
+                LTX_API_PROMPT_EMBEDDING_FAILED_MESSAGE,
+                code=LTX_API_PROMPT_EMBEDDING_FAILED,
+            ) from exc
 
 
 class DummyTextEncoder:

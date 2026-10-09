@@ -1,54 +1,82 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertCircle, Download, Loader2, Sparkles, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AlertCircle, X } from 'lucide-react'
 import { useHfAuth } from '../hooks/use-hf-auth'
 import { useHfModelAccess } from '../hooks/use-hf-model-access'
 import { ApiClient, type ApiRequestBodyOf, type ApiSuccessOf } from '../lib/api-client'
 import { logger } from '../lib/logger'
+import {
+  activeDownloadMatchesUpgrade,
+  clearUpgradeDeleteOld,
+  hasStoredUpgradeDeleteOld,
+  readUpgradeDeleteOld,
+  upgradePromptVisible,
+  writeUpgradeDeleteOld,
+} from '../lib/upgrade-prompt-download'
 import { HfModelAccessGate } from './HfModelAccessGate'
-import { Button } from './ui/button'
-import './LtxUpgradePrompt.css'
+import { Button } from '@ds/Button/Button'
+import {
+  AppProductDialogShell,
+  ProductDialogBlock,
+  ProductDialogCheckboxRow,
+  ProductDialogIconButton,
+} from './dialog/AppProductDialogShell'
 
 type UpgradeRecommendation = Extract<ApiSuccessOf<'getLtxRecommendation'>, { status: 'upgrade' }>
 type ModelCheckpointID = NonNullable<
   NonNullable<ApiRequestBodyOf<'checkModelAccess'>>['cp_ids']
 >[number]
 
+type UpgradePhase = 'idle' | 'starting' | 'downloading' | 'finishing'
+
+/** Frozen state for local UI previews. Production leaves this unset. */
+export type LtxUpgradePromptPreview = {
+  phase?: UpgradePhase
+  downloadProgress?: ApiSuccessOf<'getModelDownloadProgress'> | null
+  deleteOld?: boolean
+  assumeAuthorized?: boolean
+  frozen?: boolean
+}
+
 interface LtxUpgradePromptProps {
   recommendation: UpgradeRecommendation
   onClose: () => void
-  // Dismiss permanently for this model id (persisted), so the prompt doesn't return for it.
-  onDontShowAgain: () => void
   onComplete: () => Promise<void> | void
-}
-
-type UpgradePhase = 'idle' | 'starting' | 'downloading' | 'finishing'
-
-function formatCheckpointId(cpId: string): string {
-  return cpId.replace(/-/g, ' ')
+  preview?: LtxUpgradePromptPreview
 }
 
 export function LtxUpgradePrompt({
   recommendation,
   onClose,
-  onDontShowAgain,
   onComplete,
+  preview,
 }: LtxUpgradePromptProps) {
-  const [wantsUpgrade, setWantsUpgrade] = useState(false)
-  const [phase, setPhase] = useState<UpgradePhase>('idle')
+  // Vite replaces this with `false` in a production build, so the preview branches drop out.
+  const devPreview = import.meta.env.DEV ? preview : undefined
+  const frozen = devPreview?.frozen === true
+  const defaultDeleteOld = devPreview?.deleteOld ?? !recommendation.loses_built_in_control
+  const [phase, setPhase] = useState<UpgradePhase>(devPreview?.phase ?? 'idle')
+  const [checkingActiveDownload, setCheckingActiveDownload] = useState(
+    !frozen && (devPreview?.phase ?? 'idle') === 'idle',
+  )
+  // True only when this mount is a reload of a download the modal already started.
+  const resumedDownloadRef = useRef(!frozen && hasStoredUpgradeDeleteOld(recommendation.ltx_model_id))
+  const [background, setBackground] = useState(resumedDownloadRef.current)
   const [downloadSessionId, setDownloadSessionId] = useState<string | null>(null)
   const [downloadProgress, setDownloadProgress] = useState<ApiSuccessOf<'getModelDownloadProgress'> | null>(
-    null,
+    devPreview?.downloadProgress ?? null,
   )
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   // Default off when deleting the old bundle would also wipe built-in Union Control IC-LoRA
   // (2.3 → 2.5). Otherwise default on to reclaim the tens of GB the old transformer uses.
-  const [deleteOld, setDeleteOld] = useState(!recommendation.loses_built_in_control)
+  const [deleteOld, setDeleteOld] = useState(() =>
+    frozen ? defaultDeleteOld : readUpgradeDeleteOld(recommendation.ltx_model_id, defaultDeleteOld),
+  )
 
   const cpsToDownload = useMemo(
-    () => recommendation.cps_to_download as ModelCheckpointID[],
-    [recommendation.cps_to_download],
+    () => (frozen ? [] : recommendation.cps_to_download) as ModelCheckpointID[],
+    [frozen, recommendation.cps_to_download],
   )
-  const { hfAuthStatus, hfAuthPolling, startHuggingFaceLogin } = useHfAuth(true)
+  const { hfAuthStatus, hfAuthPolling, startHuggingFaceLogin } = useHfAuth(!frozen)
   const { accessMap, allAuthorized, checking: checkingAccess, checkError, recheckAccess } = useHfModelAccess(
     cpsToDownload,
     hfAuthStatus,
@@ -56,12 +84,11 @@ export function LtxUpgradePrompt({
 
   const hasOldToDelete = recommendation.cps_to_delete.length > 0
   const canClose = phase === 'idle'
-  const canStartUpgrade = wantsUpgrade && phase === 'idle' && allAuthorized && !checkingAccess
+  const modelAccessReady = devPreview?.assumeAuthorized === true || (allAuthorized && !checkingAccess)
+  const canStartUpgrade = phase === 'idle' && modelAccessReady && !frozen && !checkingActiveDownload
 
   const runningProgress = downloadProgress?.status === 'downloading' ? downloadProgress : null
   const totalProgress = runningProgress?.total_progress ?? (phase === 'finishing' ? 100 : 0)
-  const completedCount = runningProgress?.completed_files.length ?? 0
-  const totalCount = runningProgress?.all_files.length ?? recommendation.cps_to_download.length
 
   useEffect(() => {
     if (!canClose) return
@@ -77,16 +104,49 @@ export function LtxUpgradePrompt({
   }, [canClose, onClose])
 
   useEffect(() => {
+    if (frozen) return
+    let cancelled = false
+    const reattach = async () => {
+      const active = await ApiClient.getActiveDownload()
+      if (cancelled) return
+      if (!active.ok) {
+        logger.warn(`Failed to read the active model download: ${active.error.message}`)
+      }
+      const startedHere = hasStoredUpgradeDeleteOld(recommendation.ltx_model_id)
+      if (
+        startedHere
+        && active.ok
+        && active.data.session_id
+        && activeDownloadMatchesUpgrade(active.data.cp_ids ?? [], recommendation.cps_to_download)
+      ) {
+        setDownloadSessionId(active.data.session_id)
+        setPhase('downloading')
+        if (resumedDownloadRef.current) setBackground(true)
+      } else if (resumedDownloadRef.current) {
+        setBackground(false)
+      }
+      setCheckingActiveDownload(false)
+    }
+    void reattach()
+    return () => {
+      cancelled = true
+    }
+  }, [frozen, recommendation.cps_to_download, recommendation.ltx_model_id])
+
+  useEffect(() => {
+    if (frozen) return
     if (phase !== 'downloading' || !downloadSessionId) return
 
     let cancelled = false
+    let finalizing = false
     const pollProgress = async () => {
+      if (cancelled || finalizing) return
       const progressResult = await ApiClient.getModelDownloadProgress({ sessionId: downloadSessionId })
       if (!progressResult.ok) {
         logger.warn(`Failed polling LTX upgrade progress: ${progressResult.error.message}`)
         return
       }
-      if (cancelled) return
+      if (cancelled || finalizing) return
 
       const progress = progressResult.data
       setDownloadProgress(progress)
@@ -98,27 +158,34 @@ export function LtxUpgradePrompt({
       }
 
       if (progress.status === 'complete') {
+        // Overlapping polls both observe `complete`. Claim finalize before the
+        // next await so the second poll cannot delete the old checkpoint twice.
+        finalizing = true
         setPhase('finishing')
         if (deleteOld && recommendation.cps_to_delete.length > 0) {
           const deleteResult = await ApiClient.deleteModels({ cp_ids: recommendation.cps_to_delete })
           if (!deleteResult.ok) {
             logger.error(`Failed finalizing LTX upgrade: ${deleteResult.error.message}`)
-            if (cancelled) return
+            // `setPhase('finishing')` re-runs this effect and marks the in-flight
+            // poll cancelled. Still return to idle so the prompt is not stuck.
+            finalizing = false
             setPhase('idle')
             setErrorMessage(deleteResult.error.message)
             return
           }
         }
+        clearUpgradeDeleteOld(recommendation.ltx_model_id)
         try {
           await onComplete()
           if (cancelled) return
           // Reset to idle rather than waiting for the parent's refresh to flip away from 'upgrade'
           // — if the active model isn't flipped yet we'd otherwise be stuck on "Finishing up...".
+          // Do not call onClose: that persists a dismissal, and a later removal of this
+          // checkpoint should be allowed to show the prompt again.
           setPhase('idle')
-          onClose()
         } catch (e) {
           logger.error(`Failed finalizing LTX upgrade: ${e}`)
-          if (cancelled) return
+          finalizing = false
           setPhase('idle')
           setErrorMessage(e instanceof Error ? e.message : 'Upgrade downloaded, but cleanup failed.')
         }
@@ -134,13 +201,14 @@ export function LtxUpgradePrompt({
       cancelled = true
       clearInterval(interval)
     }
-  }, [deleteOld, downloadSessionId, onClose, onComplete, phase, recommendation.cps_to_delete])
+  }, [deleteOld, downloadSessionId, frozen, onComplete, phase, recommendation.cps_to_delete, recommendation.ltx_model_id])
 
   const handleStartUpgrade = useCallback(async () => {
-    if (!canStartUpgrade) return
+    if (!canStartUpgrade || frozen) return
 
     setErrorMessage(null)
     setDownloadProgress(null)
+    writeUpgradeDeleteOld(recommendation.ltx_model_id, deleteOld)
     setPhase('starting')
 
     const result = await ApiClient.startModelDownload({
@@ -149,6 +217,7 @@ export function LtxUpgradePrompt({
     })
     if (!result.ok) {
       logger.warn(`Failed to start LTX upgrade download: ${result.error.message}`)
+      clearUpgradeDeleteOld(recommendation.ltx_model_id)
       setPhase('idle')
       setErrorMessage(result.error.message)
       return
@@ -156,228 +225,119 @@ export function LtxUpgradePrompt({
 
     const response = result.data
     if (response.status !== 'started') {
+      clearUpgradeDeleteOld(recommendation.ltx_model_id)
       setPhase('idle')
       setErrorMessage('Unexpected response while starting the upgrade.')
       return
     }
     setDownloadSessionId(response.sessionId)
     setPhase('downloading')
-  }, [canStartUpgrade, recommendation.cps_to_download])
+  }, [canStartUpgrade, deleteOld, frozen, recommendation.cps_to_download, recommendation.ltx_model_id])
+
+  const upgradeReady = modelAccessReady
+
+  const loadingPercentLabel = `${Math.round(phase === 'starting' ? 0 : totalProgress)}%`
+
+  const handleContinueGenerating = () => {
+    if (frozen) {
+      onClose()
+      return
+    }
+    setBackground(true)
+  }
+
+  if (!upgradePromptVisible({ frozen, background })) {
+    return null
+  }
 
   return (
-    <div className="ltx-upgrade-backdrop fixed inset-0 z-[55] flex items-center justify-center bg-black/72 px-4 py-6 backdrop-blur-sm">
-      <div
-        className="absolute inset-0"
-        onClick={() => {
-          if (canClose) onClose()
-        }}
-      />
+    <AppProductDialogShell
+      aria-labelledby="ltx-upgrade-dialog-title"
+      title="New LTX model available"
+      subtitle={recommendation.ltx_model_id}
+      onBackdropClick={canClose ? onClose : undefined}
+      headerActions={
+        canClose ? (
+          <ProductDialogIconButton type="button" onClick={onClose} aria-label="Close LTX upgrade prompt">
+            <X className="h-4 w-4" />
+          </ProductDialogIconButton>
+        ) : undefined
+      }
+      footer={
+        phase === 'idle' ? (
+          <Button
+            appearance="brand"
+            hierarchy="primary"
+            size="xl"
+            className="w-fit"
+            label="Update model"
+            disabled={!upgradeReady || checkingActiveDownload}
+            onClick={() => {
+              void handleStartUpgrade()
+            }}
+          />
+        ) : (
+          <Button
+            appearance="brand"
+            hierarchy="primary"
+            size="xl"
+            className="w-fit"
+            label={`Generate while this downloads · ${loadingPercentLabel}`}
+            onClick={handleContinueGenerating}
+          />
+        )
+      }
+    >
+      {recommendation.upgrade_message ? (
+        <ProductDialogBlock title="What's new" tone="highlight">
+          <ul className="list-disc space-y-1 pl-4 text-sm leading-relaxed text-fg-secondary">
+            {recommendation.upgrade_message
+              .split('\n')
+              .map((line) => line.trim())
+              .filter(Boolean)
+              .map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+          </ul>
+        </ProductDialogBlock>
+      ) : phase === 'idle' ? (
+        <p className="text-sm text-fg-secondary">A better LTX checkpoint is ready for this install.</p>
+      ) : null}
 
-      <div className="ltx-upgrade-card relative w-full max-w-[640px] overflow-hidden rounded-[28px] border border-blue-500/20 bg-[#04070d] shadow-[0_24px_120px_rgba(0,0,0,0.72)]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.16),_transparent_44%),linear-gradient(180deg,rgba(15,23,42,0.68),rgba(2,6,23,0.16))]" />
-        <div className="relative px-6 pb-6 pt-6 sm:px-8">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-4">
-              <div className="mt-0.5 flex h-12 w-12 items-center justify-center rounded-2xl border border-blue-400/20 bg-blue-500/12">
-                <Sparkles className="h-5 w-5 text-blue-200" />
-              </div>
-              <div>
-                <div className="inline-flex items-center rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-200/85">
-                  Optional Upgrade
-                </div>
-                <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-[30px]">
-                  LTX Model Upgrade Detected!
-                </h2>
-                <p className="mt-2 text-sm text-blue-100/78">
-                  Upgrade target: <span className="font-medium text-blue-50">{recommendation.ltx_model_id}</span>
-                </p>
-              </div>
+      {phase === 'idle' ? (
+        <>
+          {hasOldToDelete ? (
+            <div>
+              <ProductDialogCheckboxRow checked={deleteOld} onChange={setDeleteOld} disabled={!canClose}>
+                {recommendation.loses_built_in_control
+                  ? 'Remove previous checkpoint and built-in control models'
+                  : 'Remove previous checkpoint to free disk space'}
+              </ProductDialogCheckboxRow>
             </div>
+          ) : null}
 
-            {canClose && (
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={onDontShowAgain}
-                  className="rounded-full px-3 py-1.5 text-xs text-blue-100/55 transition-colors hover:bg-white/5 hover:text-white"
-                >
-                  Don't show again
-                </button>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-full p-2 text-blue-100/55 transition-colors hover:bg-white/5 hover:text-white"
-                  aria-label="Close LTX upgrade prompt"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            )}
-          </div>
+          {devPreview?.assumeAuthorized !== true && !allAuthorized ? (
+            <HfModelAccessGate
+              accessMap={accessMap}
+              allAuthorized={allAuthorized}
+              hfAuthStatus={hfAuthStatus}
+              hfAuthPolling={hfAuthPolling}
+              startHuggingFaceLogin={() => {
+                void startHuggingFaceLogin()
+              }}
+              checkError={checkError}
+              onRetryCheck={recheckAccess}
+            />
+          ) : null}
+        </>
+      ) : null}
 
-          <div className="mt-6 rounded-[24px] border border-blue-400/16 bg-[linear-gradient(145deg,rgba(10,14,22,0.98),rgba(5,8,14,0.96))] p-5 sm:p-6">
-            {recommendation.upgrade_message ? (
-              <>
-                <p className="text-lg font-semibold leading-snug text-blue-50 sm:text-[22px]">What's new in this version</p>
-                <ul className="mt-3 space-y-1.5">
-                  {recommendation.upgrade_message.split('\n').map((line) => line.trim()).filter(Boolean).map((line, i) => (
-                    <li key={i} className="flex gap-2 text-sm leading-relaxed text-blue-100/82">
-                      <span className="mt-0.5 text-blue-300/70">•</span>
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <p className="text-lg font-semibold leading-snug text-blue-50 sm:text-[22px]">
-                A better LTX checkpoint is ready for this install.
-              </p>
-            )}
-            {hasOldToDelete && (
-              <p className="mt-3 max-w-[44ch] text-sm leading-relaxed text-blue-100/72">
-                {deleteOld
-                  ? recommendation.loses_built_in_control
-                    ? 'Your previous checkpoint and its built-in depth/canny/pose control models will be removed from disk.'
-                    : 'Your previous checkpoint will be removed from disk once the download completes.'
-                  : 'Your previous checkpoint will be kept — switch between versions anytime in Settings → Models.'}
-              </p>
-            )}
-
-            <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-2xl border border-blue-400/12 bg-black/35 px-4 py-3 text-sm text-blue-50/92 transition-colors hover:border-blue-300/22">
-              <input
-                type="checkbox"
-                checked={wantsUpgrade}
-                onChange={(event) => setWantsUpgrade(event.target.checked)}
-                disabled={!canClose}
-                className="h-4 w-4 rounded border-blue-300/40 bg-slate-950 text-blue-500 focus:ring-blue-400"
-              />
-              <span className="font-medium">I want this!</span>
-            </label>
-
-            {wantsUpgrade && hasOldToDelete && (
-              <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-2xl border border-blue-400/12 bg-black/35 px-4 py-3 text-sm text-blue-50/92 transition-colors hover:border-blue-300/22">
-                <input
-                  type="checkbox"
-                  checked={deleteOld}
-                  onChange={(event) => setDeleteOld(event.target.checked)}
-                  disabled={!canClose}
-                  className="h-4 w-4 rounded border-blue-300/40 bg-slate-950 text-blue-500 focus:ring-blue-400"
-                />
-                <span className="font-medium">
-                  {recommendation.loses_built_in_control
-                    ? 'Delete the previous checkpoint (also removes built-in control models)'
-                    : 'Delete the previous checkpoint to free up disk space'}
-                </span>
-              </label>
-            )}
-          </div>
-
-          {wantsUpgrade && (
-            <div className="mt-5 space-y-4">
-              {!allAuthorized && (
-                <div className="ltx-upgrade-reveal rounded-2xl border border-amber-400/16 bg-[#060b14] p-5">
-                  <HfModelAccessGate
-                    accessMap={accessMap}
-                    allAuthorized={allAuthorized}
-                    hfAuthStatus={hfAuthStatus}
-                    hfAuthPolling={hfAuthPolling}
-                    startHuggingFaceLogin={() => {
-                      void startHuggingFaceLogin()
-                    }}
-                    checkError={checkError}
-                    onRetryCheck={recheckAccess}
-                  />
-                </div>
-              )}
-              {canStartUpgrade && (
-                <div className="ltx-upgrade-reveal rounded-2xl border border-blue-400/12 bg-[#060b14] p-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-white">Ready when you are</p>
-                      <p className="mt-1 text-sm text-blue-100/72">
-                        This will download {recommendation.cps_to_download.length} checkpoint
-                        {recommendation.cps_to_download.length === 1 ? '' : 's'}
-                        {hasOldToDelete && deleteOld ? ' and remove the old one.' : '.'}
-                      </p>
-                    </div>
-                    <Button
-                      onClick={() => {
-                        void handleStartUpgrade()
-                      }}
-                      className="bg-blue-600 text-white hover:bg-blue-500"
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      Upgrade now
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {phase !== 'idle' && (
-            <div className="mt-5 rounded-2xl border border-blue-400/12 bg-[#060b14] p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">
-                    {phase === 'starting' ? 'Preparing your upgrade...' : phase === 'downloading' ? 'Downloading update...' : 'Finishing up...'}
-                  </h3>
-                  <p className="mt-1 text-sm text-blue-100/70">
-                    {phase === 'finishing'
-                      ? (deleteOld && hasOldToDelete ? 'Cleaning up the previous checkpoint files.' : 'Finalizing the upgrade.')
-                      : 'Keep this window open while the new checkpoint is downloaded.'}
-                  </p>
-                </div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-blue-400/14 bg-blue-500/10 px-3 py-1 text-xs text-blue-100/82">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Working
-                </div>
-              </div>
-
-              <div className="mt-5">
-                <div className="mb-2 flex items-center justify-between text-xs text-blue-100/72">
-                  <span>
-                    {phase === 'starting'
-                      ? 'Waiting for the download session to start'
-                      : `Checkpoint progress ${Math.min(completedCount + (runningProgress ? 1 : 0), totalCount)} / ${totalCount}`}
-                  </span>
-                  <span>{Math.round(totalProgress)}%</span>
-                </div>
-
-                <div className="h-2 overflow-hidden rounded-full bg-slate-950/60">
-                  {phase === 'starting' ? (
-                    <div className="ltx-upgrade-indeterminate h-full bg-blue-500/55" />
-                  ) : (
-                    <div
-                      className="h-full rounded-full bg-[linear-gradient(90deg,#60a5fa,#2563eb)] transition-all duration-300"
-                      style={{ width: `${Math.max(totalProgress, 4)}%` }}
-                    />
-                  )}
-                </div>
-
-                {runningProgress?.current_downloading_file && (
-                  <div className="mt-3 space-y-1">
-                    <div className="flex items-center justify-between text-xs text-blue-100/70">
-                      <span className="truncate">Current file</span>
-                      <span>{Math.round(runningProgress.current_file_progress)}%</span>
-                    </div>
-                    <div className="truncate text-sm text-blue-50/85">
-                      {formatCheckpointId(runningProgress.current_downloading_file)}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {errorMessage && (
-            <div className="mt-5 flex items-start gap-3 rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
-              <span>{errorMessage}</span>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+      {errorMessage ? (
+        <p className="flex items-start gap-2 text-sm text-red-600 dark:text-red-300">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{errorMessage}</span>
+        </p>
+      ) : null}
+    </AppProductDialogShell>
   )
 }

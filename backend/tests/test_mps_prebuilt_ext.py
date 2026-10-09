@@ -9,6 +9,7 @@ sys.platform) so these run deterministically on any CI OS.
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import sys
 import types
 
@@ -42,10 +43,67 @@ def test_setup_prebuilt_mps_extension_noop_off_darwin(monkeypatch) -> None:
     mps_prebuilt_ext.setup_prebuilt_mps_extension()  # must not raise
 
 
-def test_setup_prebuilt_mps_extension_noop_on_darwin_without_prebuilt(monkeypatch) -> None:
+def test_setup_prebuilt_mps_extension_noop_on_darwin_without_prebuilt(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(mps_prebuilt_ext.sys, "platform", "darwin")
     monkeypatch.delenv("LTX_MPS_EXT_PREBUILT_DIR", raising=False)
+    monkeypatch.setenv("TORCH_EXTENSIONS_DIR", str(tmp_path))
     mps_prebuilt_ext.setup_prebuilt_mps_extension()  # must not raise; no .so to load
+
+
+def test_clear_stale_mps_extension_locks_removes_jit_lock_files(tmp_path: Path) -> None:
+    ext_dir = tmp_path / "py313_cpu" / "mps_sdpa_zc_ext"
+    ext_dir.mkdir(parents=True)
+    lock = ext_dir / "lock"
+    ninja_lock = ext_dir / ".ninja_lock"
+    keep = ext_dir / "mps_sdpa_zc_ext.so"
+    lock.write_bytes(b"")
+    ninja_lock.write_bytes(b"")
+    keep.write_bytes(b"so")
+
+    removed = mps_prebuilt_ext.clear_stale_mps_extension_locks(tmp_path)
+
+    assert sorted(path.name for path in removed) == [".ninja_lock", "lock"]
+    assert not lock.exists()
+    assert not ninja_lock.exists()
+    assert keep.exists()
+
+
+def test_clear_stale_mps_extension_locks_removes_override_layout(tmp_path: Path) -> None:
+    ext_dir = tmp_path / "mps_sdpa_zc_ext"
+    ext_dir.mkdir()
+    lock = ext_dir / "lock"
+    ninja_lock = ext_dir / ".ninja_lock"
+    lock.write_bytes(b"")
+    ninja_lock.write_bytes(b"")
+
+    removed = mps_prebuilt_ext.clear_stale_mps_extension_locks(tmp_path)
+
+    assert sorted(path.name for path in removed) == [".ninja_lock", "lock"]
+    assert not lock.exists()
+    assert not ninja_lock.exists()
+
+
+def test_clear_stale_mps_extension_locks_skips_held_ninja_lock(tmp_path: Path) -> None:
+    if sys.platform == "win32":
+        return
+    import fcntl
+
+    ext_dir = tmp_path / "py313_cpu" / "mps_sdpa_zc_ext"
+    ext_dir.mkdir(parents=True)
+    ninja_lock = ext_dir / ".ninja_lock"
+    ninja_lock.write_bytes(b"")
+    fd = os.open(ninja_lock, os.O_RDWR)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        removed = mps_prebuilt_ext.clear_stale_mps_extension_locks(tmp_path)
+        assert removed == []
+        assert ninja_lock.exists()
+    finally:
+        os.close(fd)
+
+
+def test_clear_stale_mps_extension_locks_noop_when_cache_missing(tmp_path: Path) -> None:
+    assert mps_prebuilt_ext.clear_stale_mps_extension_locks(tmp_path / "missing") == []
 
 
 def test_mps_memory_sample_none_off_darwin(monkeypatch) -> None:

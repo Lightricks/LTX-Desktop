@@ -8,17 +8,19 @@ video-only denoising with frozen audio, returning original audio).
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import torch
 
+from services.audio_channels import stereo_waveform
 from services.ltx_pipeline_common import offload_mode_for_prefetch_count
 from services.services_utils import AudioOrNone, TilingConfigType
 
 if TYPE_CHECKING:
     from ltx_core.loader.primitives import LoraPathStrengthAndSDOps
-    from ltx_pipelines.utils.args import ImageConditioningInput as LtxImageInput
     from ltx_pipelines.utils.model_paths import ModelPaths
+    from ltx_pipelines.utils.types import ImageConditioningInput as LtxImageInput
 
 
 class _ImageCrfResolver(Protocol):
@@ -30,7 +32,7 @@ def resolve_image_conditionings(
     image_conditioner: _ImageCrfResolver,
 ) -> list[LtxImageInput]:
     """Build LTX image inputs and fill checkpoint CRF via ImageConditioner.resolve_crf."""
-    from ltx_pipelines.utils.args import ImageConditioningInput as LtxImageInput
+    from ltx_pipelines.utils.types import ImageConditioningInput as LtxImageInput
 
     ltx_images = [LtxImageInput(path, frame_idx, strength) for path, frame_idx, strength in images]
     return image_conditioner.resolve_crf(ltx_images)
@@ -144,9 +146,9 @@ class DistilledA2VPipeline:
         from ltx_core.types import Audio, AudioLatentShape
         from ltx_pipelines.utils.constants import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
         from ltx_pipelines.utils.denoisers import SimpleDenoiser
-        from ltx_pipelines.utils.helpers import assert_resolution
+        from ltx_pipelines.utils.helpers import assert_resolution, create_initial_video_latent
         from ltx_pipelines.utils.media_io import decode_audio_from_file
-        from ltx_pipelines.utils.types import ModalitySpec
+        from ltx_pipelines.utils.types import ModalitySpec, VideoAudio
 
         assert_resolution(height=height, width=width, is_two_stage=True)
 
@@ -164,6 +166,10 @@ class DistilledA2VPipeline:
         # Audio encode.
         decoded_audio = decode_audio_from_file(audio_path, self.device, audio_start_time, audio_max_duration)
         assert decoded_audio is not None, "Audio file contains no audio stream"
+        decoded_audio = replace(
+            decoded_audio,
+            waveform=stereo_waveform(decoded_audio.waveform),
+        )
         encoded_audio_latent = self.audio_conditioner(
             lambda enc: vae_encode_audio(decoded_audio, cast(Any, enc), None)
         )
@@ -174,6 +180,15 @@ class DistilledA2VPipeline:
             encoded_audio_latent = torch.nn.functional.pad(encoded_audio_latent, (0, 0, 0, pad_size))
         else:
             encoded_audio_latent = encoded_audio_latent[:, :, :target_frames]
+
+        # The same frozen, unnoised source audio drives both stages.
+        audio_spec = ModalitySpec(
+            latent=encoded_audio_latent,
+            conditioning_fps=frame_rate,
+            context=audio_context,
+            frozen=True,
+            noise_scale=0.0,
+        )
 
         # Stage 1: Half-resolution video generation with frozen audio.
         stage_1_sigmas = torch.Tensor(DISTILLED_SIGMA_VALUES).to(self.device)
@@ -188,24 +203,29 @@ class DistilledA2VPipeline:
                 device=self.device,
             )
         )
+        stage_1_video_latent = create_initial_video_latent(
+            width=stage_1_w,
+            height=stage_1_h,
+            frames=num_frames,
+            fps=frame_rate,
+            device=self.device,
+            dtype=dtype,
+            # Transformer latent geometry, not the decoder's tiling scale (2x8x8 on the 2.5 DiffVAE).
+            scale_factors=self.stage.video_scale_factors,
+        )
 
         video_state, _ = self.stage(
             denoiser=SimpleDenoiser(video_context, audio_context),
             sigmas=stage_1_sigmas,
             noiser=noiser,
-            width=stage_1_w,
-            height=stage_1_h,
-            frames=num_frames,
-            fps=frame_rate,
-            video=ModalitySpec(
-                context=video_context,
-                conditionings=stage_1_conditionings,
-            ),
-            audio=ModalitySpec(
-                context=audio_context,
-                frozen=True,
-                noise_scale=0.0,
-                initial_latent=encoded_audio_latent,
+            modalities=VideoAudio(
+                video=ModalitySpec(
+                    latent=stage_1_video_latent,
+                    conditioning_fps=frame_rate,
+                    context=video_context,
+                    conditionings=stage_1_conditionings,
+                ),
+                audio=audio_spec,
             ),
         )
 
@@ -230,21 +250,15 @@ class DistilledA2VPipeline:
             denoiser=SimpleDenoiser(video_context, audio_context),
             sigmas=stage_2_sigmas,
             noiser=noiser,
-            width=width,
-            height=height,
-            frames=num_frames,
-            fps=frame_rate,
-            video=ModalitySpec(
-                context=video_context,
-                conditionings=stage_2_conditionings,
-                noise_scale=stage_2_sigmas[0].item(),
-                initial_latent=upscaled_video_latent,
-            ),
-            audio=ModalitySpec(
-                context=audio_context,
-                frozen=True,
-                noise_scale=0.0,
-                initial_latent=encoded_audio_latent,
+            modalities=VideoAudio(
+                video=ModalitySpec(
+                    latent=upscaled_video_latent,
+                    conditioning_fps=frame_rate,
+                    context=video_context,
+                    conditionings=stage_2_conditionings,
+                    noise_scale=stage_2_sigmas[0].item(),
+                ),
+                audio=audio_spec,
             ),
         )
 
