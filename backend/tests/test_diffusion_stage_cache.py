@@ -52,6 +52,7 @@ class _FakeStage:
         self._compilation_config = compilation_config
         self._dtype = dtype
         self._device = device
+        self._model_wrapper = None
         self._alloc_trim_strategy = AllocatorTrimStrategy.TRIM
         self.build_count = 0
 
@@ -125,6 +126,12 @@ def test_cacheable_returns_false_for_a_streaming_stage() -> None:
     assert dsc._cacheable(streaming_stage) is False
 
 
+def test_cacheable_skips_when_model_wrapper_is_set() -> None:
+    stage = _FakeStage(_single_gpu_builder("ckpt.safetensors"))
+    stage._model_wrapper = object()
+    assert dsc._cacheable(stage) is False
+
+
 class _OtherBuilder:
     """Stand-in for a non-SingleGPUModelBuilder, non-streaming builder (e.g. a multi-GPU tiled builder)."""
 
@@ -192,6 +199,19 @@ def test_cache_key_self_check() -> None:
 
 
 # --- hardening: dead-reference gc pass + in-use concurrency guard ------------ #
+
+
+def test_evict_empty_cache_still_cleans_allocator(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A second Home job starts encode with the cache already empty after DiffVAE evict.
+
+    Skipping cleanup_memory in that case left Windows CUDA at reserved>>device
+    and free=0; the next tiled encode never reached 'Building transformer'.
+    """
+    cleaned: list[bool] = []
+    dsc.evict()
+    monkeypatch.setattr(dsc, "cleanup_memory", lambda: cleaned.append(True))
+    dsc.evict()
+    assert cleaned == [True]
 
 
 def test_evict_runs_gc_collect_before_meta_swap(monkeypatch: pytest.MonkeyPatch) -> None:

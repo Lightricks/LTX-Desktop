@@ -1,0 +1,153 @@
+@use "@ds/styles/themes/mixins.module" as *;
+@use "@ds/styles/themes/animationsValues.scss" as *;
+
+$spacing-values: (
+  "no": var(--spacing-no),
+  "3xs": var(--spacing-3xs),
+  "xxs": var(--spacing-xxs),
+  "xs": var(--spacing-xs),
+  "sm": var(--spacing-sm),
+  "md": var(--spacing-md),
+  "lg": var(--spacing-lg),
+  "xl": var(--spacing-xl),
+  "xxl": var(--spacing-xxl),
+  "3xl": var(--spacing-3xl),
+  "4xl": var(--spacing-4xl),
+);
+
+$dimension-values: (
+  "full": 100%,
+  "auto": auto,
+  "fit-content": fit-content,
+  "1\\/2": 50%,
+  "1\\/3": 33.3333%,
+  "2\\/3": 66.6667%,
+  "1\\/4": 25%,
+  "3\\/4": 75%,
+);
+
+// Create mixins for common utilities
+
+@mixin generate-spacing-utilities {
+  // Generate padding classes
+
+  @each $name, $value in $spacing-values {
+    .p#{$name} {
+      padding: $value;
+    }
+    .px#{$name} {
+      padding-left: $value;
+      padding-right: $value;
+    }
+    .py#{$name} {
+      padding-top: $value;
+      padding-bottom: $value;
+    }
+    .pt#{$name} {
+      padding-top: $value;
+    }
+    .pr#{$name} {
+      padding-right: $value;
+    }
+    .pb#{$name} {
+      padding-bottom: $value;
+    }
+    .pl#{$name} {
+      padding-left: $value;
+    }
+  }
+
+  // Generate margin classes
+
+  @each $name, $value in $spacing-values {
+    .m#{$name} {
+      margin: $value;
+    }
+    .mx#{$name} {
+      margin-left: $value;
+      margin-right: $value;
+    }
+    .my#{$name} {
+      margin-top: $value;
+      margin-bottom: $value;
+    }
+    .mt#{$name} {
+      margin-top: $value;
+    }
+    .mr#{$name} {
+      margin-right: $value;
+    }
+    .mb#{$name} {
+      margin-bottom: $value;
+    }
+    .ml#{$name} {
+      margin-left: $value;
+    }
+  }
+
+  // Add auto margin classes
+  .mAuto {
+    margin: auto;
+  }
+
+  .mxAuto {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .myAuto {
+    margin-top: auto;
+    margin-bottom: auto;
+  }
+
+  .mtAuto {
+    margin-top: auto;
+  }
+
+  .mrAuto {
+    margin-right: auto;
+  }
+
+  .mbAuto {
+    margin-bottom: auto;
+  }
+
+  .mlAuto {
+    margin-left: auto;
+  }
+}
+
+@mixin dropdown_menu_content_styles {
+  border-radius: var(--radius-md);
+  background-color: var(--semantic-bg-primary);
+  color: var(--semantic-fg-primary);
+  max-height: 80vh;
+  overflow: hidden;
+  z-index: var(--z-dropdown);
+
+  @include effect_style_shadow_elevation_medium;
+}
+
+@mixin popover_scale_transition {
+  transform-origin: var(--transform-origin);
+  transition:
+    transform $duration-moderate $easing-standard-productive,
+    opacity $duration-moderate $easing-standard-productive;
+
+  &[data-starting-style],
+  &[data-ending-style] {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+}
+
+@mixin generate-dimension-utilities {
+  @each $name, $value in $dimension-values {
+    .w#{$name} {
+      width: $value;
+    }
+    .h#{$name} {
+      height: $value;
+    }
+  }
+}

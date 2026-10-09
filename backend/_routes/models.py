@@ -41,13 +41,29 @@ def route_list_models(
 
 
 @router.get("/models/ltx-recommendation", response_model=LtxRecommendationResponse)
-def route_ltx_recommendation(handler: AppHandler = Depends(get_state_service)) -> LtxRecommendationResponse:
-    return handler.models.get_ltx_recommendation()
+def route_ltx_recommendation(
+    fresh: bool = Query(default=False),
+    include_installed: bool = Query(
+        default=False,
+        description=(
+            "Full checkpoint sets for the model the live recommendation would download, "
+            "including files already on disk. Does not switch to the latest model. "
+            "Ignored when fresh is set."
+        ),
+    ),
+    handler: AppHandler = Depends(get_state_service),
+) -> LtxRecommendationResponse:
+    return handler.models.get_ltx_recommendation(
+        fresh=fresh, include_installed=include_installed
+    )
 
 
 @router.get("/models/img-gen-recommendation", response_model=ImageGenRecommendationResponse)
-def route_img_gen_recommendation(handler: AppHandler = Depends(get_state_service)) -> ImageGenRecommendationResponse:
-    return handler.models.get_img_gen_recommendation()
+def route_img_gen_recommendation(
+    fresh: bool = Query(default=False),
+    handler: AppHandler = Depends(get_state_service),
+) -> ImageGenRecommendationResponse:
+    return handler.models.get_img_gen_recommendation(fresh=fresh)
 
 
 @router.get("/models/ltx-ic-lora-recommendation", response_model=LtxIcLoraRecommendationResponse)

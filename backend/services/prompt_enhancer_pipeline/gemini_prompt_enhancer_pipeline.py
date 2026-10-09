@@ -8,6 +8,7 @@ import io
 from PIL import Image
 
 from _routes._errors import HTTPError
+from server_utils.oriented_image import open_oriented_image
 from services.gemini_text_client import apply_gemini_thinking_config, call_gemini_generate_content
 from services.interfaces import HTTPClient, JSONValue
 from services.prompt_enhancement import (
@@ -102,16 +103,16 @@ class GeminiPromptEnhancerPipeline:
         # Our own validate_image_file() allows more (GIF/BMP/TIFF, up to 50MB) than Gemini's
         # inlineData accepts — without this, those pass our gate and only fail once they bounce
         # off Gemini as an opaque upstream error.
-        with Image.open(image_path) as img:
-            fmt = str(img.format or "").upper()
-            if fmt not in _GEMINI_SUPPORTED_IMAGE_FORMATS:
-                raise HTTPError(
-                    400,
-                    f"Image format {fmt or 'unknown'} isn't supported by the Gemini API provider "
-                    "(use Local, or convert the image to PNG/JPEG/WEBP)",
-                    code="GEMINI_UNSUPPORTED_IMAGE_FORMAT",
-                )
-            image = img.convert("RGB")
+        img = open_oriented_image(image_path)
+        fmt = str(img.format or "").upper()
+        if fmt not in _GEMINI_SUPPORTED_IMAGE_FORMATS:
+            raise HTTPError(
+                400,
+                f"Image format {fmt or 'unknown'} isn't supported by the Gemini API provider "
+                "(use Local, or convert the image to PNG/JPEG/WEBP)",
+                code="GEMINI_UNSUPPORTED_IMAGE_FORMAT",
+            )
+        image = img.convert("RGB")
         image.thumbnail(
             (_ENHANCE_IMAGE_LONG_EDGE, _ENHANCE_IMAGE_LONG_EDGE),
             Image.Resampling.LANCZOS,

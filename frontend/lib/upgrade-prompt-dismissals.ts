@@ -1,5 +1,6 @@
-// Persisted "don't show the LTX upgrade prompt again" set, keyed by target model id.
-// Best-effort: if localStorage is unavailable the prompt simply reappears next session.
+// Model ids whose upgrade prompt the user closed. Closing hides it for that
+// target; the checkpoint stays downloadable in Settings → Models.
+// Best-effort: if localStorage is unavailable the prompt returns next launch.
 const KEY = 'ltxDismissedUpgrades'
 
 function read(): string[] {

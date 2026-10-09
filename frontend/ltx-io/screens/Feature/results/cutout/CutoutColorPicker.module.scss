@@ -1,0 +1,97 @@
+$area-height: 140px;
+
+.popover {
+  position: fixed;
+  z-index: calc(var(--z-modal) + 1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  box-sizing: border-box;
+  width: 216px;
+  padding: var(--spacing-md);
+  font-size: 12px;
+  color: var(--semantic-fg-white-enabled);
+  background: var(--semantic-bg-black-secondary);
+  border-radius: var(--radius-md);
+}
+
+.area {
+  position: relative;
+  height: $area-height;
+  cursor: crosshair;
+  touch-action: none;
+  background-image:
+    linear-gradient(to top, #000, transparent),
+    linear-gradient(to right, #fff, transparent);
+  border-radius: var(--radius-xs);
+
+  &:focus-visible {
+    outline: 2px solid var(--semantic-border-focus);
+    outline-offset: 2px;
+  }
+}
+
+.areaThumb {
+  position: absolute;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 40%);
+  transform: translate(-50%, -50%);
+}
+
+.hue {
+  width: 100%;
+  height: 12px;
+  margin: 0;
+  appearance: none;
+  cursor: pointer;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  border-radius: var(--radius-xs);
+
+  &::-webkit-slider-thumb {
+    box-sizing: border-box;
+    width: 14px;
+    height: 14px;
+    appearance: none;
+    background: transparent;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 40%);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--semantic-border-focus);
+    outline-offset: 2px;
+  }
+}
+
+.hexRow {
+  display: flex;
+  gap: var(--spacing-xs);
+  align-items: center;
+}
+
+.hexLabel {
+  opacity: 0.6;
+}
+
+.hexInput {
+  flex: 1;
+  min-width: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font: inherit;
+  color: inherit;
+  text-transform: uppercase;
+  background: transparent;
+  border: 1px solid var(--semantic-border-secondary, rgb(255 255 255 / 24%));
+  border-radius: var(--radius-xs);
+
+  &:focus-visible {
+    border-color: var(--semantic-border-focus);
+    outline: none;
+  }
+}

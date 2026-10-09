@@ -10,6 +10,7 @@ import torch
 
 from app_factory import create_app
 from app_handler import ServiceBundle
+from api_types import AudioToVideoParams, GenerateVideoCompleteResponse, GenerateVideoRequest
 from runtime_config.model_download_specs import (
     DEPTH_PROCESSOR_CP_ID,
     IMG_GEN_MODEL_CP_ID,
@@ -22,8 +23,13 @@ from runtime_config.port_constant import PORT
 from state import RuntimeConfig, build_initial_state, set_state_service_for_tests
 from state.app_settings import AppSettings
 from state.app_state_types import HfAuthenticated
+from services.features.ic_lora_recipes import queued_ic_lora_recipes
+from services.features.lora_recipes import queued_lora_recipes
+from services.features.video import AudioToVideoExecutor
 from services.gemini_text_client import clear_gemini_models_cache
+from services.sqlite_store import SqliteStore
 from tests.fake_camera_motion_prompts import FAKE_CAMERA_MOTION_PROMPTS
+from tests.fakes.generation import FakeGenerationExecutor
 from tests.fakes.services import FakeServices
 
 DEFAULT_NEGATIVE_PROMPT = (
@@ -34,6 +40,34 @@ DEFAULT_NEGATIVE_PROMPT = (
 DEFAULT_APP_SETTINGS = AppSettings()
 
 
+class _UnusedReservedVideoGenerator:
+    @property
+    def models_dir(self) -> Path:
+        return Path("/unused-reserved-video-generator")
+
+    def validate_local_a2v_request(
+        self, params: AudioToVideoParams, audio_duration_ms: int
+    ) -> None:
+        del params, audio_duration_ms
+
+    def generate_local_reserved(
+        self,
+        req: GenerateVideoRequest,
+        *,
+        generation_id: str,
+        output_path: Path | None = None,
+        prompt_wrap=None,
+        a2v_num_frames: int | None = None,
+        a2v_audio_duration_seconds: float | None = None,
+        local_model_id=None,
+    ) -> GenerateVideoCompleteResponse:
+        del req, generation_id, prompt_wrap, a2v_num_frames, a2v_audio_duration_seconds, local_model_id
+        return GenerateVideoCompleteResponse(
+            status="complete",
+            video_path=str(output_path) if output_path is not None else "",
+        )
+
+
 @pytest.fixture(autouse=True)
 def _reset_generation_interrupt() -> None:
     from services.generation_interrupt import clear
@@ -41,6 +75,15 @@ def _reset_generation_interrupt() -> None:
     clear()
     yield
     clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_denoising_progress() -> None:
+    from services.denoising_progress import reset
+
+    reset()
+    yield
+    reset()
 
 
 @pytest.fixture
@@ -67,6 +110,7 @@ def test_state(tmp_path: Path, fake_services: FakeServices):
         settings_file=app_data / "settings.json",
         ltx_api_base_url="https://api.ltx.video",
         local_generations_mode="full_models_loading",
+        vram_gb=31,
         use_sage_attention=False,
         camera_motion_prompts=FAKE_CAMERA_MOTION_PROMPTS,
         default_negative_prompt=DEFAULT_NEGATIVE_PROMPT,
@@ -75,6 +119,7 @@ def test_state(tmp_path: Path, fake_services: FakeServices):
         backend_port=PORT,
     )
 
+    store = SqliteStore(config.app_data_dir)
     bundle = ServiceBundle(
         http=fake_services.http,
         gpu_cleaner=fake_services.gpu_cleaner,
@@ -94,6 +139,27 @@ def test_state(tmp_path: Path, fake_services: FakeServices):
         a2v_pipeline_class=type(fake_services.a2v_pipeline),
         retake_pipeline_class=type(fake_services.retake_pipeline),
         prompt_enhancer_pipeline_class=type(fake_services.prompt_enhancer_pipeline),
+        store=store,
+        generation_executors={
+            "text-to-video": FakeGenerationExecutor(),
+            "image-to-video": FakeGenerationExecutor(),
+            # Injecting generation_executors skips AppHandler's real per-recipe
+            # registration loop, so mirror it from the recipe table — a new recipe
+            # then can't 422 at validate_params for a missing executor.
+            **{
+                recipe.recipe_id: FakeGenerationExecutor()
+                for recipe in queued_lora_recipes()
+            },
+            **{
+                recipe.recipe_id: FakeGenerationExecutor(feature=recipe.recipe_id)
+                for recipe in queued_ic_lora_recipes()
+            },
+            "audio-to-video": AudioToVideoExecutor(
+                _UnusedReservedVideoGenerator(), store
+            ),
+            "retake": FakeGenerationExecutor(feature="retake"),
+            "extend": FakeGenerationExecutor(feature="extend"),
+        },
     )
 
     handler = build_initial_state(
@@ -197,7 +263,7 @@ def create_fake_lora(test_state):
     return _create
 
 
-# Built-in depth/canny Union Control IC-LoRA ships with LTX 2.3 only.
+# Union Control filenames come from the 2.3 spec; 2.5 reuses the same adapter on disk.
 _IC_LORA_MODEL_ID = "ltx-2.3-22b-distilled-1.1"
 
 

@@ -19,8 +19,8 @@ $ReleaseDir = Join-Path $ProjectDir "release"
 Set-Location $ProjectDir
 
 # Verify prerequisites
-if (-not (Test-Path "dist") -or -not (Test-Path "dist-electron")) {
-    Write-Host "ERROR: Frontend not built. Run local-build.ps1 or 'npm run build:frontend' first." -ForegroundColor Red
+if (-not (Test-Path "dist") -or -not (Test-Path "dist-electron") -or -not (Test-Path "dist-remote\index.html")) {
+    Write-Host "ERROR: Frontend not built. Run local-build.ps1 or 'pnpm run build:frontend' first." -ForegroundColor Red
     exit 1
 }
 

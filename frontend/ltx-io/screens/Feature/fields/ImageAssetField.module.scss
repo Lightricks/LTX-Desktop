@@ -1,0 +1,88 @@
+.dropzone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  min-height: 180px;
+  overflow: hidden;
+  border: 1px dashed var(--semantic-border-secondary);
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-primary);
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.dropzone:hover,
+.dragOver {
+  border-color: var(--semantic-bg-separator-primary);
+}
+
+.hiddenInput {
+  display: none;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-lg);
+  color: var(--semantic-fg-tertiary);
+}
+
+.emptyIcon {
+  width: 28px;
+  height: 28px;
+}
+
+.preview {
+  display: block;
+  width: 100%;
+  height: 180px;
+  object-fit: contain;
+  background: var(--semantic-bg-tertiary);
+}
+
+// The whole image at its own aspect ratio, centered, with no empty bars.
+.previewNatural {
+  align-self: center;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 320px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--semantic-bg-primary) 70%, transparent);
+}
+
+@media (max-width: 640px) {
+  .dropzone {
+    min-height: 140px;
+  }
+
+  .preview {
+    height: 140px;
+  }
+
+  // Same height reset as above: `.preview` sets a height again inside this query.
+  .previewNatural {
+    height: auto;
+    max-height: 240px;
+  }
+}

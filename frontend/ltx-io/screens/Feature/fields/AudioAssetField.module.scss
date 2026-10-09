@@ -1,0 +1,101 @@
+.dropzone,
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-primary);
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.dropzone {
+  appearance: none;
+  -webkit-appearance: none;
+  justify-content: center;
+  min-height: 96px;
+  width: 100%;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  border: 1px dashed var(--semantic-bg-separator-secondary);
+  outline: none;
+}
+
+.dropzone:focus-visible {
+  outline: 2px solid var(--semantic-border-focus);
+  outline-offset: 2px;
+}
+
+.dropzone:hover,
+.dragOver {
+  border-color: var(--semantic-bg-separator-primary);
+}
+
+.card {
+  border: 1px solid transparent;
+}
+
+.card.dragOver {
+  border-style: dashed;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-lg);
+  color: var(--semantic-fg-tertiary);
+}
+
+.emptyTitle {
+  color: var(--semantic-fg-primary);
+}
+
+.emptyIcon {
+  width: 28px;
+  height: 28px;
+}
+
+.preview {
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 0 var(--spacing-md) var(--spacing-sm);
+}
+
+.replaceAction {
+  color: var(--semantic-fg-secondary);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--semantic-bg-primary) 70%, transparent);
+}
+
+.hiddenInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  opacity: 0;
+}

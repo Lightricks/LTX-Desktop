@@ -1,0 +1,7 @@
+// Keep the toggle clickable even when it sits inside a `pointer-events: none`
+// hover overlay (e.g. the video thumbnail's controls layer). Without this the
+// button inherits the parent's disabled pointer events and clicks never land.
+.root {
+  display: inline-flex;
+  pointer-events: auto;
+}

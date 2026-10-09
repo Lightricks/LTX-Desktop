@@ -8,6 +8,10 @@ decode crashes instead of taking the Triton/eager remap in ``apply.py``.
 Our Windows GCS wheel has ``HAS_LIBNATTEN=True``. This gate keeps that path
 and fails closed for Flex-only installs.
 
+1.3.0 through 1.4.1 ``resolve_attention_for_host`` read ``natten_available()`` (this
+module's ``_NATTEN_AVAILABLE``). Clearing the flag is the input to that
+remap, not a second remap of the same recipe.
+
 Remove once ltx-core's ``natten_available()`` checks ``natten.HAS_LIBNATTEN``.
 
 Usage:

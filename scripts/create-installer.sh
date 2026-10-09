@@ -62,8 +62,8 @@ cd "$PROJECT_DIR"
 # ============================================================
 # Verify prerequisites
 # ============================================================
-if [ ! -d "dist" ] || [ ! -d "dist-electron" ]; then
-  echo "ERROR: Frontend not built. Run local-build.sh or 'npm run build:frontend' first."
+if [ ! -d "dist" ] || [ ! -d "dist-electron" ] || [ ! -f "dist-remote/index.html" ]; then
+  echo "ERROR: Frontend not built. Run local-build.sh or 'pnpm run build:frontend' first."
   exit 1
 fi
 

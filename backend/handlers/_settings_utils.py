@@ -75,14 +75,16 @@ def collect_changed_paths(before: JSONValue, after: JSONValue, prefix: str = "")
 
 
 def migrate_legacy_settings(raw: Mapping[str, JSONValue]) -> JSONObject:
-    migrated: JSONObject = dict(raw)
-    if (
-        "prompt_enhancer_enabled" in migrated
-        and "prompt_enhancer_enabled_t2v" not in migrated
-    ):
-        legacy_value = bool(migrated["prompt_enhancer_enabled"])
-        migrated.setdefault("prompt_enhancer_enabled_t2v", legacy_value)
-        migrated.setdefault("prompt_enhancer_enabled_i2v", legacy_value)
+    """Fold the per-conditioning API enhance gates back into one flag.
 
-    migrated.pop("prompt_enhancer_enabled", None)
+    The setting was split into T2V/I2V and is now a single control again. A saved file can
+    hold either shape, and the split pair can disagree: OR keeps enhancement on for anyone
+    who had it on for at least one conditioning, so nobody silently loses it on upgrade.
+    """
+    migrated: JSONObject = dict(raw)
+    t2v = migrated.pop("prompt_enhancer_enabled_t2v", None)
+    i2v = migrated.pop("prompt_enhancer_enabled_i2v", None)
+    if (t2v is not None or i2v is not None) and "prompt_enhancer_enabled" not in migrated:
+        migrated["prompt_enhancer_enabled"] = bool(t2v) or bool(i2v)
+
     return migrated

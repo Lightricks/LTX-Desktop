@@ -1,0 +1,112 @@
+.picker.settingsPicker {
+  width: 100%;
+  height: 40px;
+  min-height: 40px;
+  box-sizing: border-box;
+  gap: var(--spacing-md);
+  border: 1px solid transparent;
+  background-color: var(--semantic-bg-primary);
+  color: var(--semantic-fg-primary);
+  transition: border-color 150ms ease;
+
+  &[data-state="readOnly"] {
+    transition: none;
+    color: var(--semantic-fg-secondary);
+    border-color: transparent;
+    background-color: var(--semantic-bg-primary);
+    box-shadow: none;
+    cursor: default;
+  }
+
+  &[data-state="readOnly"]:hover,
+  &[data-state="readOnly"]:focus,
+  &[data-state="readOnly"]:active {
+    border-color: transparent;
+    background-color: var(--semantic-bg-primary);
+    box-shadow: none;
+    cursor: default;
+  }
+
+  &:hover:not([data-state="disabled"], [data-state="readOnly"], [data-state="active"]),
+  &:active:not([data-state="disabled"], [data-state="readOnly"]),
+  &:focus:not([data-state="readOnly"]),
+  &[data-state="active"]:not([data-state="disabled"], [data-state="readOnly"]) {
+    border-color: var(--semantic-bg-separator-primary);
+    background-color: var(--semantic-bg-primary);
+    box-shadow: none;
+    color: var(--semantic-fg-primary);
+  }
+
+  > div:first-child:not(:last-child) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: auto;
+    height: auto;
+    min-width: calc(16px + 2 * var(--spacing-xs));
+    min-height: calc(16px + 2 * var(--spacing-xs));
+    padding: var(--spacing-xs);
+    flex-shrink: 0;
+
+    svg {
+      display: block;
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+  }
+}
+
+.pickerValue {
+  min-width: 0;
+  padding: 0;
+}
+
+.pickerTrigger {
+  display: block;
+  width: 100%;
+  cursor: pointer;
+
+  .picker:not([data-state="readOnly"]) {
+    cursor: pointer;
+  }
+}
+
+.formOptionSegment.formOptionSegment {
+  --segment-label-color: var(--semantic-fg-tertiary);
+  --segment-label-weight: 400;
+  --label-size: 14px;
+  --label-line: 18px;
+  --item-pad-y: 8px;
+  --track-height: 40px;
+}
+
+.formOptionSegmentLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-height: var(--label-line, 18px);
+
+  svg {
+    display: block;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.optionListIcon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+
+  svg {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+  }
+}

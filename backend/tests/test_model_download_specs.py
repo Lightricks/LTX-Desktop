@@ -11,6 +11,9 @@ from runtime_config.model_download_specs import (
     ALL_MODEL_CP_IDS,
     ALL_LTX_LOCAL_MODEL_IDS,
     LTX_2_5_FAMILY_DIR,
+    catalog_item_visible_for_installed_ltx,
+    installed_ltx_catalog_families,
+    ltx_catalog_family_for_model,
     ModelCheckpointSpec,
     delete_cp_path,
     get_existing_cp_path,
@@ -59,7 +62,8 @@ def test_latest_ltx_model_is_relevant():
     assert spec.model_cp in get_ltx_cps()
     assert spec.video_vae_cp is not None
     assert spec.audio_vae_cp is not None
-    assert spec.ic_loras_spec is None
+    assert spec.ic_loras_spec is not None
+    assert get_ic_loras_cp_ids(spec.ic_loras_spec) == ("ltx-2.3-22b-ic-lora-union-control-ref0.5",)
 
 
 def test_ic_lora_cp_ids_are_deduped_for_2_3():
@@ -77,6 +81,7 @@ def test_ltx_2_5_model_cp_ids_include_split_vaes():
         spec.video_vae_conv_cp,
         spec.audio_vae_cp,
         spec.duration_head_cp,
+        "ltx-2.3-22b-ic-lora-union-control-ref0.5",
     )
     assert spec.video_vae_conv_cp == "ltx-2.5-video-vae-conv"
     assert spec.duration_head_cp == "ltx-2.5-duration-head"
@@ -278,3 +283,41 @@ def test_2_5_prefers_e2b_over_gemma3(tmp_path: Path):
     _write_folder_cp(tmp_path, "gemma-3-12b-it-qat-q4_0-unquantized")
     _write_folder_cp(tmp_path, "gemma-4-e2b-it")
     assert resolve_downloaded_prompt_enhancer_cp(tmp_path, spec) == "gemma-4-e2b-it"
+
+
+def _install_generation_bundle(models_dir: Path, model_id: str) -> None:
+    spec = get_ltx_model_spec(model_id)
+    for cp_id in (
+        spec.model_cp,
+        spec.upscale_cp,
+        spec.video_vae_cp,
+        spec.video_vae_conv_cp,
+        spec.audio_vae_cp,
+        spec.text_encoder_cp,
+    ):
+        if cp_id is None:
+            continue
+        if get_model_cp_spec(cp_id).is_folder:
+            _write_folder_cp(models_dir, cp_id)
+            continue
+        path = resolve_model_path(models_dir, cp_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+
+
+def test_ltx_catalog_family_for_model():
+    assert ltx_catalog_family_for_model("ltx-2.5-22b-distilled") == "LTX-2.5"
+    assert ltx_catalog_family_for_model("ltx-2.3-22b-distilled-1.1") == "LTX-2.3"
+
+
+def test_installed_ltx_catalog_families_empty_without_bundles(tmp_path: Path):
+    assert installed_ltx_catalog_families(tmp_path) == set()
+    assert not catalog_item_visible_for_installed_ltx(["LTX-2.3"], tmp_path)
+
+
+def test_catalog_item_visible_when_matching_family_installed(tmp_path: Path):
+    _install_generation_bundle(tmp_path, "ltx-2.5-22b-distilled")
+    assert installed_ltx_catalog_families(tmp_path) == {"LTX-2.5"}
+    assert catalog_item_visible_for_installed_ltx(["LTX-2.5"], tmp_path)
+    assert not catalog_item_visible_for_installed_ltx(["LTX-2.3"], tmp_path)
+    assert catalog_item_visible_for_installed_ltx(["LTX-2.3", "LTX-2.5"], tmp_path)

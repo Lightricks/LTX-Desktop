@@ -17,10 +17,12 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["frontend/*"]
+      "@ds/*": ["frontend/ds/*"],
+      "@/*": ["frontend/*"],
+      "@optional/app-wrap": ["frontend/lib/optional-app-wrap.tsx"]
     }
   },
-  "include": ["frontend", "shared"],
-  "exclude": ["**/*.test.ts"],
+  "include": ["frontend", "shared", "frontend/**/*.type-test.ts", "internal"],
+  "exclude": ["**/*.test.ts", "internal/**/main", "internal/tsconfig.json"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

@@ -10,5 +10,5 @@ export function handle<K extends keyof Schemas>(
     input: z.infer<Schemas[K]['input']>,
   ) => Promise<z.infer<Schemas[K]['output']>> | z.infer<Schemas[K]['output']>,
 ): void {
-  ipcMain.handle(key, (_event, input) => handler(input ?? {}))
+  ipcMain.handle(key, (_event, input) => handler(electronAPISchemas[key].input.parse(input ?? {})))
 }

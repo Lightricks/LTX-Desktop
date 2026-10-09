@@ -33,7 +33,7 @@ from services.prompt_enhancement import (
 def _dl(filename: str = "x.safetensors") -> DownloadSpec:
     return DownloadSpec(
         repo_id="org/x",
-        variants=[DownloadVariant(id="default", label="Default", filename=filename, size_bytes=10)],
+        variants=[DownloadVariant(id="default", label="Default", filename=filename, size_bytes=10, base_model="LTX-2.3")],
     )
 
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Text } from '@ds/Text/Text'
 
 export type GallerySize = 'small' | 'medium' | 'large'
 
@@ -8,50 +9,31 @@ export const gallerySizeClasses: Record<GallerySize, string> = {
   large: 'grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3',
 }
 
-function GridSmallIcon({ className }: { className?: string }) {
+// All three glyphs sit on the same 18×18 content box (3→21) that Lucide uses,
+// so a filled grid reads at the same optical size as the stroked Heart and
+// Sparkles beside it. Whole cells only — partial cells blur at 16px.
+function GridCells({ className, cells, gap, radius }: { className?: string; cells: number; gap: number; radius: number }) {
+  const size = (18 - gap * (cells - 1)) / cells
+  const offsets = Array.from({ length: cells }, (_, i) => 3 + i * (size + gap))
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <rect x="2" y="2" width="4" height="4" rx="0.5" />
-      <rect x="8" y="2" width="4" height="4" rx="0.5" />
-      <rect x="14" y="2" width="4" height="4" rx="0.5" />
-      <rect x="20" y="2" width="2" height="4" rx="0.5" />
-      <rect x="2" y="8" width="4" height="4" rx="0.5" />
-      <rect x="8" y="8" width="4" height="4" rx="0.5" />
-      <rect x="14" y="8" width="4" height="4" rx="0.5" />
-      <rect x="20" y="8" width="2" height="4" rx="0.5" />
-      <rect x="2" y="14" width="4" height="4" rx="0.5" />
-      <rect x="8" y="14" width="4" height="4" rx="0.5" />
-      <rect x="14" y="14" width="4" height="4" rx="0.5" />
-      <rect x="20" y="14" width="2" height="4" rx="0.5" />
+      {offsets.map(y => offsets.map(x => (
+        <rect key={`${x}-${y}`} x={x} y={y} width={size} height={size} rx={radius} />
+      )))}
     </svg>
   )
+}
+
+function GridSmallIcon({ className }: { className?: string }) {
+  return <GridCells className={className} cells={4} gap={2} radius={0.5} />
 }
 
 function GridMediumIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <rect x="2" y="2" width="6" height="6" rx="1" />
-      <rect x="10" y="2" width="6" height="6" rx="1" />
-      <rect x="18" y="2" width="4" height="6" rx="1" />
-      <rect x="2" y="10" width="6" height="6" rx="1" />
-      <rect x="10" y="10" width="6" height="6" rx="1" />
-      <rect x="18" y="10" width="4" height="6" rx="1" />
-      <rect x="2" y="18" width="6" height="4" rx="1" />
-      <rect x="10" y="18" width="6" height="4" rx="1" />
-      <rect x="18" y="18" width="4" height="4" rx="1" />
-    </svg>
-  )
+  return <GridCells className={className} cells={3} gap={2} radius={1} />
 }
 
 function GridLargeIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <rect x="2" y="2" width="9" height="9" rx="1.5" />
-      <rect x="13" y="2" width="9" height="9" rx="1.5" />
-      <rect x="2" y="13" width="9" height="9" rx="1.5" />
-      <rect x="13" y="13" width="9" height="9" rx="1.5" />
-    </svg>
-  )
+  return <GridCells className={className} cells={2} gap={2} radius={1.5} />
 }
 
 export function GenSpaceGallerySizeMenu({
@@ -91,14 +73,14 @@ export function GenSpaceGallerySizeMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         className={`p-2 rounded-md transition-colors ${
-          open ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+          open ? 'bg-action text-fg-primary' : 'text-fg-secondary hover:text-fg-primary hover:bg-action'
         }`}
       >
         <CurrentIcon className="h-4 w-4" />
       </button>
 
       {open && (
-        <div className="absolute top-full mt-2 right-0 bg-zinc-800 border border-zinc-700 rounded-md p-2 min-w-[160px] shadow-xl z-50">
+        <div className="absolute top-full mt-2 right-0 bg-action border border-separator rounded-md p-2 min-w-[160px] shadow-xl z-50">
           {([
             { value: 'small' as const, label: 'Small', icon: GridSmallIcon },
             { value: 'medium' as const, label: 'Medium', icon: GridMediumIcon },
@@ -108,16 +90,21 @@ export function GenSpaceGallerySizeMenu({
               key={option.value}
               type="button"
               onClick={() => { onGallerySizeChange(option.value); setOpen(false) }}
-              className={`w-full flex items-center justify-between px-2 py-2.5 rounded-md transition-colors text-left ${gallerySize === option.value ? 'bg-white/20 hover:bg-white/25' : 'hover:bg-zinc-700'}`}
+              className={`w-full flex items-center justify-between px-2 py-2.5 rounded-md transition-colors text-left ${gallerySize === option.value ? 'bg-[color-mix(in_srgb,var(--semantic-fg-primary)_20%,transparent)] hover:bg-[color-mix(in_srgb,var(--semantic-fg-primary)_25%,transparent)]' : 'hover:bg-action-hover'}`}
             >
               <div className="flex items-center gap-3">
-                <option.icon className={`h-4 w-4 ${gallerySize === option.value ? 'text-white' : 'text-zinc-500'}`} />
-                <span className={`text-sm ${gallerySize === option.value ? 'text-white font-medium' : 'text-zinc-400'}`}>
+                <option.icon className={`h-4 w-4 ${gallerySize === option.value ? 'text-fg-primary' : 'text-fg-tertiary'}`} />
+                <Text
+                  as="span"
+                  variant={gallerySize === option.value ? 'label' : 'body'}
+                  size="lg"
+                  className={gallerySize === option.value ? 'text-fg-primary' : 'text-fg-secondary'}
+                >
                   {option.label}
-                </span>
+                </Text>
               </div>
               {gallerySize === option.value && (
-                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-4 h-4 text-fg-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               )}

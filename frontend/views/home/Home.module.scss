@@ -1,0 +1,40 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: var(--shell-page-inset, var(--spacing-lg));
+  gap: var(--spacing-xxl);
+  color: var(--semantic-fg-primary);
+  box-sizing: border-box;
+}
+
+// Home reads lighter than the DS default: headings at medium weight.
+.page :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: 500;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  align-items: center;
+  width: 100%;
+}
+
+.headline {
+  margin: 0;
+  padding: 0;
+}
+
+.page .headline {
+  font-weight: 700;
+}
+
+.searchBarSlot {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding-inline: var(--spacing-3xl);
+  // Extra breath between the launch field and the gallery below.
+  margin-bottom: var(--spacing-xl);
+}

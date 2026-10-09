@@ -10,12 +10,26 @@ from _routes._errors import HTTPError
 from api_types import LTXLocalModelId
 from handlers.base import StateHandlerBase
 from handlers.text_handler import TextHandler
+from runtime_config.ic_lora_tiling import IcLoraTiling
 from runtime_config.model_download_specs import (
     IMG_GEN_MODEL_CP_ID,
+    ltx_generation_bundle_on_disk,
     get_existing_cp_path,
     resolve_active_ltx_model_id,
 )
-from runtime_config.runtime_policy import streaming_prefetch_count_for_mode
+from runtime_config.runtime_policy import LocalGenerationMode, streaming_prefetch_count_for_mode
+from runtime_config.video_job_budget import (
+    EDIT_JOB_TOO_LARGE_MESSAGE,
+    LOCAL_GENERATION_UNSUPPORTED,
+    LOCAL_GENERATION_UNSUPPORTED_MESSAGE,
+    VIDEO_JOB_TOO_LARGE,
+    VIDEO_JOB_TOO_LARGE_MESSAGE,
+    VideoJobReject,
+    decide_edit_job,
+    max_edit_frames_that_load,
+    memory_gb_for_job,
+)
+from services.retake_pipeline.window import MAX_INPUT_FRAMES
 from services.interfaces import (
     A2VPipeline,
     DepthProcessorPipeline,
@@ -116,13 +130,19 @@ class PipelinesHandler(StateHandlerBase):
             return
         te.service.install_patches(lambda: self.state)
 
-    def _require_downloaded_ltx_model_id(self) -> LTXLocalModelId:
-        model_id = resolve_active_ltx_model_id(
+    def _require_downloaded_ltx_model_id(
+        self, model_id: LTXLocalModelId | None = None
+    ) -> LTXLocalModelId:
+        if model_id is not None:
+            if not ltx_generation_bundle_on_disk(self.models_dir, model_id):
+                raise HTTPError(409, "LTX_MODEL_NOT_INSTALLED")
+            return model_id
+        resolved = resolve_active_ltx_model_id(
             self.models_dir, self.state.app_settings.active_ltx_model_id
         )
-        if model_id is None:
+        if resolved is None:
             raise HTTPError(409, "NO_DOWNLOADED_LTX_MODEL")
-        return model_id
+        return resolved
 
     def _compile_if_enabled(self, state: VideoPipelineState) -> VideoPipelineState:
         if not self.state.app_settings.use_torch_compile:
@@ -155,10 +175,15 @@ class PipelinesHandler(StateHandlerBase):
         return state
 
     def _create_video_pipeline(
-        self, model_type: VideoPipelineModelType, loras: list[tuple[str, float]] | None = None
+        self,
+        model_type: VideoPipelineModelType,
+        loras: list[tuple[str, float]] | None = None,
+        *,
+        load_mode: LocalGenerationMode,
+        ltx_model_id: LTXLocalModelId | None = None,
     ) -> VideoPipelineState:
-        gemma_root = self._text_handler.resolve_gemma_root()
-        model_id = self._require_downloaded_ltx_model_id()
+        model_id = self._require_downloaded_ltx_model_id(ltx_model_id)
+        gemma_root = self._text_handler.resolve_gemma_root(model_id=model_id)
         paths = self._resolve_ltx_paths(model_id, gemma_root)
 
         pipeline = self._fast_video_pipeline_class.create(
@@ -166,7 +191,7 @@ class PipelinesHandler(StateHandlerBase):
             paths.gemma_root,
             paths.upsampler_path,
             self.config.device,
-            streaming_prefetch_count_for_mode(self.config.local_generations_mode),
+            streaming_prefetch_count_for_mode(load_mode),
             loras=loras or [],
             video_vae_path=paths.video_vae_path,
             audio_vae_path=paths.audio_vae_path,
@@ -177,6 +202,7 @@ class PipelinesHandler(StateHandlerBase):
             pipeline=pipeline,
             is_compiled=False,
             ltx_model_id=model_id,
+            loading_mode=load_mode,
             loras=tuple(loras) if loras else (),
             gemma_root=gemma_root,
             video_vae_path=paths.video_vae_path,
@@ -284,12 +310,16 @@ class PipelinesHandler(StateHandlerBase):
         self,
         model_type: VideoPipelineModelType,
         loras: list[tuple[str, float]] | None = None,
+        mode: LocalGenerationMode | None = None,
+        *,
+        ltx_model_id: LTXLocalModelId | None = None,
     ) -> VideoPipelineState:
         self._install_text_patches_if_needed()
 
+        load_mode = mode or self.config.local_generations_mode
         requested_loras = tuple(loras) if loras else ()
-        requested_gemma_root = self._text_handler.resolve_gemma_root()
-        requested_model_id = self._require_downloaded_ltx_model_id()
+        requested_model_id = self._require_downloaded_ltx_model_id(ltx_model_id)
+        requested_gemma_root = self._text_handler.resolve_gemma_root(model_id=requested_model_id)
         requested_video_vae_path = self._resolve_ltx_paths(
             requested_model_id, requested_gemma_root
         ).video_vae_path
@@ -301,6 +331,7 @@ class PipelinesHandler(StateHandlerBase):
                         active_pipeline=VideoPipelineState() as existing_state
                     ) if (
                         existing_state.ltx_model_id == requested_model_id
+                        and existing_state.loading_mode == load_mode
                         and existing_state.loras == requested_loras
                         and existing_state.gemma_root == requested_gemma_root
                         and existing_state.video_vae_path == requested_video_vae_path
@@ -311,7 +342,9 @@ class PipelinesHandler(StateHandlerBase):
 
         if state is None:
             self._evict_gpu_pipeline_for_swap()
-            state = self._create_video_pipeline(model_type, loras=loras)
+            state = self._create_video_pipeline(
+                model_type, loras=loras, load_mode=load_mode, ltx_model_id=requested_model_id
+            )
             with self._lock:
                 self.state.gpu_slot = GpuSlot(active_pipeline=state)
                 self._assert_invariants()
@@ -323,11 +356,21 @@ class PipelinesHandler(StateHandlerBase):
         lora_path: str,
         depth_model_path: str | None = None,
         lora_strength: float = 1.0,
+        mode: LocalGenerationMode | None = None,
+        *,
+        ltx_model_id: LTXLocalModelId | None = None,
+        stage_2_ic_lora: bool = False,
+        tiling: IcLoraTiling | None = None,
     ) -> ICLoraState:
         self._install_text_patches_if_needed()
 
-        gemma_root = self._text_handler.resolve_gemma_root()
-        model_id = self._require_downloaded_ltx_model_id()
+        load_mode = mode or self.config.local_generations_mode
+        prefetch = streaming_prefetch_count_for_mode(load_mode)
+        # GenSpace omits ltx_model_id and follows Settings. A queued Home job passes
+        # the offering's local checkpoint so Settings stays put. The text encoder
+        # follows that same checkpoint: 2.3 and 2.5 do not share one.
+        model_id = self._require_downloaded_ltx_model_id(ltx_model_id)
+        gemma_root = self._text_handler.resolve_gemma_root(model_id=model_id)
         paths = self._resolve_ltx_paths(model_id, gemma_root)
         with self._lock:
             match self.state.gpu_slot:
@@ -336,14 +379,20 @@ class PipelinesHandler(StateHandlerBase):
                         lora_path=current_lora_path,
                         depth_model_path=current_depth_model_path,
                         lora_strength=current_lora_strength,
+                        loading_mode=current_loading_mode,
                         gemma_root=current_gemma_root,
                         ltx_model_id=current_model_id,
                         video_vae_path=current_video_vae_path,
+                        stage_2_ic_lora=current_stage_2_ic_lora,
+                        tiling=current_tiling,
                     ) as state
                 ) if (
                     current_lora_path == lora_path
+                    and current_stage_2_ic_lora == stage_2_ic_lora
+                    and current_tiling == tiling
                     and current_depth_model_path == depth_model_path
                     and current_lora_strength == lora_strength
+                    and current_loading_mode == load_mode
                     and current_gemma_root == gemma_root
                     and current_model_id == model_id
                     and current_video_vae_path == paths.video_vae_path
@@ -360,11 +409,13 @@ class PipelinesHandler(StateHandlerBase):
             paths.upsampler_path,
             lora_path,
             self.config.device,
-            streaming_prefetch_count_for_mode(self.config.local_generations_mode),
+            prefetch,
             lora_strength,
             video_vae_path=paths.video_vae_path,
             audio_vae_path=paths.audio_vae_path,
             duration_head_path=paths.duration_head_path,
+            stage_2_ic_lora=stage_2_ic_lora,
+            tiling=tiling,
         )
         depth_pipeline = (
             self._depth_processor_pipeline_class.create(depth_model_path, self.config.device)
@@ -377,9 +428,12 @@ class PipelinesHandler(StateHandlerBase):
             depth_pipeline=depth_pipeline,
             depth_model_path=depth_model_path,
             ltx_model_id=model_id,
+            loading_mode=load_mode,
             lora_strength=lora_strength,
             gemma_root=gemma_root,
             video_vae_path=paths.video_vae_path,
+            stage_2_ic_lora=stage_2_ic_lora,
+            tiling=tiling,
         )
 
         with self._lock:
@@ -387,17 +441,25 @@ class PipelinesHandler(StateHandlerBase):
             self._assert_invariants()
         return state
 
-    def load_a2v_pipeline(self, loras: list[tuple[str, float]] | None = None) -> A2VPipelineState:
+    def load_a2v_pipeline(
+        self,
+        loras: list[tuple[str, float]] | None = None,
+        mode: LocalGenerationMode | None = None,
+        *,
+        ltx_model_id: LTXLocalModelId | None = None,
+    ) -> A2VPipelineState:
         self._install_text_patches_if_needed()
 
+        load_mode = mode or self.config.local_generations_mode
         requested_loras = tuple(loras) if loras else ()
-        gemma_root = self._text_handler.resolve_gemma_root()
-        model_id = self._require_downloaded_ltx_model_id()
+        model_id = self._require_downloaded_ltx_model_id(ltx_model_id)
+        gemma_root = self._text_handler.resolve_gemma_root(model_id=model_id)
         paths = self._resolve_ltx_paths(model_id, gemma_root)
         with self._lock:
             match self.state.gpu_slot:
                 case GpuSlot(active_pipeline=A2VPipelineState() as state) if (
                     state.ltx_model_id == model_id
+                    and state.loading_mode == load_mode
                     and state.loras == requested_loras
                     and state.gemma_root == gemma_root
                     and state.video_vae_path == paths.video_vae_path
@@ -413,7 +475,7 @@ class PipelinesHandler(StateHandlerBase):
             paths.gemma_root,
             paths.upsampler_path,
             self.config.device,
-            streaming_prefetch_count_for_mode(self.config.local_generations_mode),
+            streaming_prefetch_count_for_mode(load_mode),
             loras=loras or [],
             video_vae_path=paths.video_vae_path,
             audio_vae_path=paths.audio_vae_path,
@@ -422,6 +484,7 @@ class PipelinesHandler(StateHandlerBase):
         state = A2VPipelineState(
             pipeline=pipeline,
             ltx_model_id=model_id,
+            loading_mode=load_mode,
             loras=requested_loras,
             gemma_root=gemma_root,
             video_vae_path=paths.video_vae_path,
@@ -432,13 +495,100 @@ class PipelinesHandler(StateHandlerBase):
             self._assert_invariants()
         return state
 
-    def load_retake_pipeline(self, *, distilled: bool = True) -> RetakePipelineState:
+    def _edit_load_mode(
+        self,
+        width: int | None,
+        height: int | None,
+        frames: int | None,
+        *,
+        queued_home: bool = False,
+    ) -> LocalGenerationMode:
+        """Per-job full vs stream. Missing shape keeps the process mode.
+
+        Does not change ``local_generations_mode``. Uses the edit headroom, so a
+        31 GB card streams a long 720p retake/extend as well as 1080p.
+        """
+        if width is None or height is None or frames is None:
+            return self.config.local_generations_mode
+        darwin = self.config.darwin_unified_memory
+        memory_gb = memory_gb_for_job(
+            vram_gb=self.config.vram_gb,
+            available_ram_gb=self.config.available_ram_gb,
+            darwin=darwin,
+        )
+        decision = decide_edit_job(
+            width,
+            height,
+            frames,
+            memory_gb=memory_gb,
+            process_mode=self.config.local_generations_mode,
+            darwin=darwin,
+        )
+        outcome = "reject" if isinstance(decision, VideoJobReject) else decision.mode
+        logger.info(
+            "[video-edit] job budget seq=%.0f full=%.1fGiB stream=%.1fGiB -> %s",
+            decision.seq,
+            decision.full_gib,
+            decision.stream_gib,
+            outcome,
+        )
+        if isinstance(decision, VideoJobReject):
+            if decision.reason == "unsupported":
+                raise HTTPError(
+                    422,
+                    LOCAL_GENERATION_UNSUPPORTED_MESSAGE,
+                    code=LOCAL_GENERATION_UNSUPPORTED,
+                )
+            # GenSpace still encodes the whole source, so a shorter duration
+            # shrinks that job. Queued Home pads context back up to the cap.
+            message = (
+                EDIT_JOB_TOO_LARGE_MESSAGE
+                if queued_home
+                else VIDEO_JOB_TOO_LARGE_MESSAGE
+            )
+            raise HTTPError(422, message, code=VIDEO_JOB_TOO_LARGE)
+        return decision.mode
+
+    def edit_encode_frame_cap(self, width: int, height: int) -> int:
+        """Longest Home encode window this machine will load at ``width``×``height``.
+
+        Does not change GenSpace, which never asks for this cap. A 31 GB card
+        keeps a long 720p window and shortens 1080p below 505 frames.
+        """
+        darwin = self.config.darwin_unified_memory
+        memory_gb = memory_gb_for_job(
+            vram_gb=self.config.vram_gb,
+            available_ram_gb=self.config.available_ram_gb,
+            darwin=darwin,
+        )
+        return max_edit_frames_that_load(
+            width,
+            height,
+            frame_cap=MAX_INPUT_FRAMES,
+            memory_gb=memory_gb,
+            process_mode=self.config.local_generations_mode,
+            darwin=darwin,
+        )
+
+    def load_retake_pipeline(
+        self,
+        *,
+        distilled: bool = True,
+        ltx_model_id: LTXLocalModelId | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        frames: int | None = None,
+        queued_home: bool = False,
+    ) -> RetakePipelineState:
         self._install_text_patches_if_needed()
 
         quantized = device_supports_fp8(self.config.device)
         gemma_root = self._text_handler.resolve_gemma_root()
-        model_id = self._require_downloaded_ltx_model_id()
+        model_id = self._require_downloaded_ltx_model_id(ltx_model_id)
         paths = self._resolve_ltx_paths(model_id, gemma_root)
+        load_mode = self._edit_load_mode(
+            width, height, frames, queued_home=queued_home
+        )
 
         with self._lock:
             match self.state.gpu_slot:
@@ -449,6 +599,7 @@ class PipelinesHandler(StateHandlerBase):
                         gemma_root=current_gemma_root,
                         ltx_model_id=current_model_id,
                         video_vae_path=current_video_vae_path,
+                        loading_mode=current_loading_mode,
                     ) as state
                 ) if (
                     current_distilled == distilled
@@ -456,6 +607,7 @@ class PipelinesHandler(StateHandlerBase):
                     and current_gemma_root == gemma_root
                     and current_model_id == model_id
                     and current_video_vae_path == paths.video_vae_path
+                    and current_loading_mode == load_mode
                 ):
                     return state
                 case _:
@@ -470,7 +622,7 @@ class PipelinesHandler(StateHandlerBase):
             checkpoint_path=paths.checkpoint_path,
             gemma_root=paths.gemma_root,
             device=self.config.device,
-            streaming_prefetch_count=streaming_prefetch_count_for_mode(self.config.local_generations_mode),
+            streaming_prefetch_count=streaming_prefetch_count_for_mode(load_mode),
             loras=[],
             quantization=quantization,
             video_vae_path=paths.video_vae_path,
@@ -482,6 +634,7 @@ class PipelinesHandler(StateHandlerBase):
             distilled=distilled,
             quantized=quantized,
             ltx_model_id=model_id,
+            loading_mode=load_mode,
             gemma_root=gemma_root,
             video_vae_path=paths.video_vae_path,
         )

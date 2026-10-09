@@ -44,19 +44,19 @@ at all). Fix: ``handlers.generation_handler.GenerationHandler.start_generation``
 running, so the cache never survives past the generation it was built for.
 
 NON-CACHEABLE TRANSITIONS also evict (found live on the same RTX 5090, IC-LoRA
-this time): IC-LoRA's ``use_lora_in_stage_2`` forces stage_2 onto the streaming
-path (``LTXIcLoraPipeline._ensure_stage_2_streams_for_lora``, a deliberate
-existing VRAM-safety mechanism -- streaming halves stage_2's resident
-footprint since it conditions on the full-res reference video). That stage_2
-call correctly skips the cache (``_is_streaming`` is True), but skipping the
-cache branch also means the cache-key-mismatch eviction below never fires --
-so stage_1's cached transformer stayed resident while stage_2 built its own
-streaming transformer AND did its tiled conditioning VAE encode on top of it.
-Observed: reserved VRAM climbed to 41.68 GB on the 31.82 GB card and hung
-there for 150+ seconds with no progress (denoising loop never started).
-Fix: the non-cacheable bypass branch (streaming stages, disabled setting)
-evicts unconditionally before delegating to the original method, not just the
-cache-hit/miss branch.
+this time): a streaming stage_2 correctly skips the cache (``_is_streaming`` is
+True), but skipping the cache branch also means the cache-key-mismatch eviction
+below never fires -- so stage_1's cached transformer stayed resident while
+stage_2 built its own streaming transformer AND did its tiled conditioning VAE
+encode on top of it. Observed: reserved VRAM climbed to 41.68 GB on the 31.82 GB
+card and hung there for 150+ seconds with no progress (denoising loop never
+started). The original repro forced stage 2 onto streaming via Desktop-only
+``use_lora_in_stage_2`` (``_ensure_stage_2_streams_for_lora``). That flag is
+gone as of 1.3.0 / LTXP-514; IC-LoRA stage 2 is no longer forced onto
+streaming. The eviction still matters for any streaming stage (low-VRAM
+``streaming_models_loading``) or when the setting is off. Fix: the non-cacheable
+bypass branch (streaming stages, disabled setting) evicts unconditionally
+before delegating to the original method, not just the cache-hit/miss branch.
 
 Single-slot cache: only the most recently built transformer stays resident.
 Switching to a different checkpoint/LoRA/quantization config (or starting a
@@ -111,6 +111,7 @@ Usage:
 from __future__ import annotations
 
 import gc
+import inspect
 import logging
 import os
 import threading
@@ -124,12 +125,25 @@ from ltx_pipelines.utils.helpers import cleanup_memory
 
 logger = logging.getLogger(__name__)
 
+# Import-time: Desktop never constructs DiffusionStage with a compilation wrapper.
+# If a later revision adds a non-None default, fail at boot like the other re-earn
+# patches instead of discovering it mid-generate.
+_init_params = inspect.signature(DiffusionStage.__init__).parameters
+for _name in ("_model_wrapper", "model_wrapper"):
+    _param = _init_params.get(_name)
+    if _param is not None and _param.default not in (None, inspect.Parameter.empty):
+        raise AssertionError(
+            f"DiffusionStage.__init__ default {_name}={_param.default!r} — "
+            "re-verify diffusion_stage_cache against this ltx-pipelines revision"
+        )
+
 _CacheKey = tuple[object, ...]
 
 _lock = threading.Lock()
 _enabled = os.environ.get("DIFFUSION_STAGE_CACHE_ENABLED", "1") != "0"
 _cached_key: _CacheKey | None = None
 _cached_model: object | None = None
+_logged_wrapper_skip = False
 # >0 while a cached transformer is checked out (yielded to a caller) and possibly
 # mid-denoise. The single-slot cache is only safe under strict sequentiality; this
 # counter lets _evict_locked() fail loud if something tries to free a model that is
@@ -155,6 +169,20 @@ def set_enabled(value: bool) -> None:
 
 
 def _cacheable(stage: DiffusionStage) -> bool:
+    # Desktop constructs DiffusionStage with bare CompilationConfig() (capture=False,
+    # mode=None) and never calls with_model_wrapper. A set _model_wrapper is an
+    # uncovered cache key — 1.3.0 through 1.4.1 apply it after _transformer_ctx yields. Skip the
+    # cache (do not raise): a live generate must degrade to uncached, not crash.
+    # python -O would also strip an assert here and silently reuse wrong weights.
+    if getattr(stage, "_model_wrapper", None) is not None:
+        global _logged_wrapper_skip
+        if not _logged_wrapper_skip:
+            logger.warning(
+                "[diffusion-stage-cache] _model_wrapper is set — skipping cache "
+                "(wrapper is not part of the cache key)"
+            )
+            _logged_wrapper_skip = True
+        return False
     return not stage._is_streaming and isinstance(stage._prepared_builder(), SingleGPUModelBuilder)  # noqa: SLF001
 
 
@@ -200,8 +228,8 @@ def _evict_locked() -> None:
         # (leak) -- see the module docstring's GENERATION-SCOPED repro.
         gc.collect()
         _cached_model.to("meta")  # type: ignore[attr-defined]
-        cleanup_memory()
     _cached_key, _cached_model = None, None
+    cleanup_memory()
 
 
 def evict() -> None:
@@ -210,9 +238,11 @@ def evict() -> None:
     Called from ``GenerationHandler.start_generation``/``start_api_generation``
     so the cache never survives past the generation it was built for -- see
     the module docstring's GENERATION-SCOPED section for why that matters.
-    Safe to call even when nothing is cached (no-op) or when the patch is
-    disabled (module-level cache is simply always empty). Raises if a cached
-    transformer is currently in use (see :func:`_evict_locked`).
+    Always runs ``cleanup_memory()`` so a second job's source encode does not
+    start against a Windows CUDA allocator that already reports ``free=0``
+    (empty cache used to skip that reclaim).
+    Safe to call even when nothing is cached; raises if a cached transformer
+    is currently in use (see :func:`_evict_locked`).
     """
     with _lock:
         _evict_locked()
@@ -231,11 +261,10 @@ _orig_transformer_ctx = DiffusionStage._transformer_ctx  # noqa: SLF001
 @contextmanager
 def _cached_transformer_ctx(self: DiffusionStage, **kwargs: object) -> Iterator[object]:
     if not _enabled or not _cacheable(self):
-        # A non-cacheable build (e.g. IC-LoRA's use_lora_in_stage_2 forcing stage_2
-        # onto the streaming path -- see module docstring's NON-CACHEABLE TRANSITIONS
-        # section) needs the VRAM a still-resident cached transformer is holding.
-        # Evicting only on a cache-key mismatch (below) never fires for this case,
-        # since this path never touches the cache-key branch at all.
+        # A non-cacheable build (streaming stage, or the patch disabled) needs the
+        # VRAM a still-resident cached transformer is holding. Evicting only on a
+        # cache-key mismatch (below) never fires here -- this path never touches
+        # the cache-key branch. See module docstring NON-CACHEABLE TRANSITIONS.
         evict()
         with _orig_transformer_ctx(self, **kwargs) as model:
             yield model

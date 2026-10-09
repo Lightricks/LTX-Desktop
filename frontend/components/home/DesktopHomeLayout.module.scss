@@ -1,0 +1,121 @@
+@use "./homeFonts.scss" as *;
+@use "./shell-layout.scss" as shell;
+
+:global(:root) {
+  --shell-compact-breakpoint: #{shell.$shell-compact-breakpoint};
+}
+
+.layout {
+  position: relative;
+  display: flex;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background-color: transparent;
+  color: var(--semantic-fg-primary);
+  font-family: var(--app-font-family);
+}
+
+.main {
+  --shell-page-inset: var(--spacing-lg);
+
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  background-color: var(--semantic-bg-tertiary);
+  // Fixed header band above the scrolling outlet. Actions stay vertically centered.
+  --page-header-min-height: 60px;
+  --page-header-padding-block-start: 0;
+  --page-header-padding-block-end: 0;
+  --page-header-padding-inline-start: var(--shell-page-inset);
+  --page-header-padding-inline-end: var(--shell-page-inset);
+}
+
+// Full-width scroll root, so the scrollbar sits at the window edge.
+// .contentInner centres the page and caps its width.
+.content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  width: 100%;
+}
+
+.contentInner {
+  flex: 1 0 auto;
+  width: 100%;
+  max-width: 1440px;
+  min-width: 0;
+  margin: 0 auto;
+  padding: 0 var(--shell-page-inset);
+  box-sizing: border-box;
+}
+
+.content[data-home-page] > .contentInner {
+  // Home.module applies --shell-page-inset. Zero this so the inset is not doubled.
+  padding-inline: 0;
+}
+
+.content[data-assets-page] > .contentInner,
+.content[data-settings-page] > .contentInner {
+  max-width: none;
+}
+
+// Feature forms manage their own panes; the shell does not scroll them.
+.content[data-feature-form] {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+
+  > .contentInner {
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 0;
+    max-width: none;
+    padding: 0;
+  }
+}
+
+// The pin control lives on #home-sidebar. The compact drawer never sets
+// data-pinned, so this does not indent the stacked layout.
+.layout:has(:global(#home-sidebar[data-pinned="false"])) {
+  .main {
+    --page-header-padding-inline-start: var(--collapsed-sidebar-chrome-width);
+  }
+
+  // Feature outlet padding is already 0, so the header clears the button
+  // from the column edge.
+  .content[data-feature-form] {
+    --page-header-unpinned-start: var(--collapsed-sidebar-chrome-width);
+  }
+
+  // Assets content already applies --shell-page-inset. Add only the remainder
+  // so the pin button is not counted twice.
+  .content[data-assets-page] {
+    --page-header-unpinned-start: calc(
+      var(--collapsed-sidebar-chrome-width) - var(--shell-page-inset)
+    );
+  }
+}
+
+.main[data-settings-page] {
+  background-color: var(--semantic-bg-primary);
+}
+
+@media (max-width: shell.$shell-compact-breakpoint) {
+  .main {
+    --shell-page-inset: var(--spacing-md);
+  }
+
+  .layout {
+    flex-direction: column;
+  }
+}

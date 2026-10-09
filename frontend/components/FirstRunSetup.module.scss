@@ -1,0 +1,634 @@
+@use "@/ds/styles/themes/animationsValues.scss" as *;
+
+// Beat `.ltx-io { background-color: transparent }` so the page never shows the
+// desktop chrome color through a light theme.
+.root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: transparent;
+  color: var(--semantic-fg-primary);
+
+  :global(html[data-platform="darwin"]) & {
+    // Mac chrome lives in the page; Win/Linux already have a native title bar.
+    padding-top: var(--window-chrome-top);
+  }
+
+  :global(html[data-platform="darwin"]) &.rootFlush {
+    padding-top: 0;
+  }
+}
+
+:global(html[data-platform="darwin"]) .dragRegion {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--window-chrome-top);
+  z-index: 20;
+  pointer-events: auto;
+  background-color: transparent;
+  -webkit-app-region: drag;
+}
+
+.main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background-color: transparent;
+  -webkit-app-region: no-drag;
+}
+
+.content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--spacing-xl) var(--spacing-xl) 0;
+
+  :global(html[data-platform="darwin"]) &:not(.contentFlush) {
+    padding-top: 0;
+  }
+}
+
+.contentFlush {
+  padding: 0;
+}
+
+.step {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stepScroll {
+  overflow-y: auto;
+  padding-bottom: var(--spacing-xl);
+}
+
+.stepTitle {
+  margin-bottom: var(--spacing-xs);
+  color: var(--window-fg, var(--semantic-fg-primary));
+}
+
+.stepTitleOnly {
+  margin-bottom: var(--spacing-lg);
+}
+
+.stepCopy {
+  margin-bottom: var(--spacing-lg);
+  color: var(--semantic-fg-secondary);
+}
+
+.legalLink {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--window-fg, var(--semantic-fg-primary));
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+
+  &:visited {
+    color: var(--window-fg, var(--semantic-fg-primary));
+  }
+
+  &:hover {
+    color: var(--semantic-fg-brand-primary-enabled);
+  }
+}
+
+.licenseFrame {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.licenseBody {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--semantic-bg-secondary);
+  border-radius: var(--radius-md);
+}
+
+.licenseSpinner {
+  display: flex;
+
+  :global(circle:nth-of-type(2)) {
+    stroke: var(--semantic-fg-primary);
+  }
+}
+
+.centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--gap-md);
+}
+
+.centeredRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--gap-sm);
+}
+
+.licenseText {
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--spacing-lg);
+  background: var(--semantic-bg-secondary);
+  border-radius: var(--radius-md);
+}
+
+.licensePre {
+  margin: 0;
+  width: 100%;
+  color: var(--semantic-fg-secondary);
+  font-family: var(--app-font-family);
+  font-size: var(--scale-14);
+  line-height: var(--scale-20);
+  white-space: pre-line;
+  overflow-wrap: break-word;
+}
+
+.agreeRows {
+  display: flex;
+  flex-direction: column;
+  align-self: flex-start;
+  gap: var(--gap-md);
+  margin-top: var(--spacing-lg);
+  margin-bottom: var(--spacing-xl);
+}
+
+.agreeRow {
+  user-select: none;
+}
+
+.card {
+  background: var(--semantic-bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+}
+
+.card + .card {
+  margin-top: var(--spacing-xl);
+}
+
+.recommendationsError {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.recommendationsErrorMessage {
+  flex: 1;
+  color: var(--semantic-fg-danger-primary-enabled);
+}
+
+.accountRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0fr);
+  align-items: stretch;
+  column-gap: 0;
+  container-type: inline-size;
+
+  .card {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: calc(var(--spacing-4xl) * 3);
+    height: 100%;
+  }
+
+  .card + .card {
+    margin-top: 0;
+  }
+}
+
+.accountRowSplit {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: var(--gap-lg);
+}
+
+.accountRowReady {
+  transition:
+    grid-template-columns $duration-slow $easing-standard-expressive,
+    column-gap $duration-slow $easing-standard-expressive;
+}
+
+.apiKeyPane {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+
+  .card {
+    flex: 1 0 auto;
+    box-sizing: border-box;
+    width: calc((100cqi - var(--gap-lg)) / 2);
+    min-width: calc((100cqi - var(--gap-lg)) / 2);
+    transform: translateX(var(--spacing-md));
+  }
+}
+
+.accountRowReady .apiKeyPane {
+  transition:
+    opacity $duration-slow $easing-exit-productive,
+    visibility 0s linear $duration-slow;
+
+  .card {
+    transition: transform $duration-slow $easing-exit-expressive;
+  }
+}
+
+.accountRowSplit .apiKeyPane {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+
+  .card {
+    transform: none;
+  }
+}
+
+.accountRowReady.accountRowSplit .apiKeyPane {
+  transition:
+    opacity $duration-slow $easing-entrance-productive,
+    visibility 0s;
+
+  .card {
+    transition: transform $duration-slow $easing-entrance-expressive;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .accountRowReady,
+  .accountRowReady .apiKeyPane,
+  .accountRowReady.accountRowSplit .apiKeyPane,
+  .accountRowReady .apiKeyPane .card,
+  .accountRowReady.accountRowSplit .apiKeyPane .card {
+    transition: none;
+  }
+
+  .apiKeyPane .card {
+    transform: none;
+  }
+}
+
+.accountRow + .card {
+  margin-top: var(--spacing-lg);
+}
+
+.pathRow {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+  min-width: 0;
+  box-sizing: border-box;
+  padding-block: var(--spacing-xs);
+  padding-inline: var(--spacing-lg) var(--spacing-xs);
+  background: var(--semantic-bg-primary);
+  border: 1px solid var(--semantic-bg-separator-primary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+
+  // Beat `.ltx-io :focus-visible` (1px outline-offset). Flush focus on the row,
+  // not a second ring around the inner path field.
+  :global(.ltx-io) &:focus-visible,
+  :global(.ltx-io) &:has(.pathField:focus-visible) {
+    outline: none;
+    border-color: var(--semantic-fg-primary);
+  }
+}
+
+.field {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--semantic-fg-primary);
+  font-family: var(--app-font-family);
+  font-size: var(--scale-12);
+  line-height: 1;
+  height: 100%;
+  -webkit-text-fill-color: var(--semantic-fg-primary);
+  outline: none;
+
+  &::placeholder {
+    color: var(--semantic-fg-tertiary);
+    -webkit-text-fill-color: var(--semantic-fg-tertiary);
+  }
+
+  :global(.ltx-io) &:focus,
+  :global(.ltx-io) &:focus-visible {
+    outline: none;
+  }
+}
+
+.pathField {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--semantic-fg-primary);
+  font-family: var(--app-font-family);
+  font-size: var(--scale-12);
+  -webkit-text-fill-color: var(--semantic-fg-primary);
+  outline: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+
+  :global(.ltx-io) &:focus,
+  :global(.ltx-io) &:focus-visible {
+    outline: none;
+  }
+}
+
+.fieldWide {
+  font-family: inherit;
+}
+
+.fieldWrap {
+  display: flex;
+  flex-direction: column;
+  margin-top: auto;
+  padding-top: var(--spacing-xl);
+
+  > :global(button) {
+    align-self: flex-end;
+  }
+}
+
+.fieldRow {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+
+  .fieldInner {
+    flex: 1;
+  }
+}
+
+.fieldInner {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  box-sizing: border-box;
+  min-width: 0;
+  height: calc(var(--md-icon-size) + var(--md-v-padding) * 2);
+  padding-block: 0;
+  padding-inline: var(--md-h-padding);
+  background: var(--semantic-bg-primary);
+  border: 1px solid var(--semantic-bg-separator-primary);
+  border-radius: var(--md-radius);
+
+  :global(.ltx-io) &:focus-within {
+    outline: none;
+    border-color: var(--semantic-fg-primary);
+  }
+}
+
+.fieldInnerInvalid {
+  border-color: var(--semantic-bg-danger-primary-enabled);
+
+  :global(.ltx-io) &:focus-within {
+    border-color: var(--semantic-bg-danger-primary-enabled);
+  }
+}
+
+.fieldError {
+  margin: var(--spacing-xs) 0 0;
+  color: var(--semantic-fg-tertiary);
+}
+
+.inlineLink {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: var(--semantic-fg-brand-primary-enabled);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+
+  &:hover {
+    color: var(--semantic-fg-brand-primary-hover);
+  }
+}
+
+.metaRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--spacing-sm);
+  color: var(--semantic-fg-secondary);
+}
+
+.totalRow {
+  color: var(--semantic-fg-primary);
+}
+
+.downloadGroup {
+  width: 100%;
+}
+
+.groupTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-md);
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+
+  :global(.ltx-io) &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 1px var(--semantic-fg-primary);
+  }
+}
+
+.groupInfo {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.groupChevron {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--md-icon-size);
+  height: var(--md-icon-size);
+  color: var(--semantic-fg-secondary);
+  transform: rotate(-90deg);
+
+  svg {
+    display: block;
+    width: var(--xs-icon-size);
+    height: var(--xs-icon-size);
+  }
+
+  .groupTrigger[aria-expanded="true"] & {
+    transform: none;
+  }
+}
+
+.groupItems {
+  padding-inline-start: var(--spacing-xl);
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.cardDone {
+  flex-shrink: 0;
+  width: var(--md-icon-size);
+  height: var(--md-icon-size);
+  color: var(--semantic-fg-success-primary-enabled);
+}
+
+.hfSubtitle {
+  margin: 0;
+  color: var(--semantic-fg-primary);
+}
+
+.hfActions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--gap-md);
+  margin-top: auto;
+  padding-top: var(--spacing-xl);
+
+  > :global(button) {
+    align-self: flex-end;
+  }
+}
+
+.locationBlock:not(:first-child) {
+  margin-top: var(--spacing-lg);
+}
+
+.locationHeader {
+  display: flex;
+  justify-content: flex-start;
+  align-items: baseline;
+  gap: var(--gap-md);
+  margin-bottom: var(--spacing-sm);
+}
+
+.locationLabel {
+  color: var(--semantic-fg-secondary);
+}
+
+.locationFree {
+  color: var(--semantic-fg-secondary);
+}
+
+.downloadRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-xs) 0;
+}
+
+.downloadRowSkipped {
+  color: var(--semantic-fg-tertiary);
+  opacity: 0.7;
+}
+
+.downloadName {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+}
+
+.downloadMeta {
+  flex-shrink: 0;
+  margin-left: var(--spacing-md);
+  color: var(--semantic-fg-primary);
+}
+
+.downloadRowSkipped .downloadMeta {
+  color: var(--semantic-fg-tertiary);
+}
+
+.downloadMetaInstalled {
+  color: var(--semantic-fg-secondary);
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap-lg);
+  padding: var(--spacing-lg) var(--spacing-xl);
+  background-color: transparent;
+  border-top: 1px solid var(--semantic-bg-separator-primary);
+}
+
+.footerCopy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gap-sm);
+  min-width: 0;
+}
+
+.footerDisclaimer {
+  min-width: 0;
+  margin: 0;
+  color: var(--window-fg, var(--semantic-fg-primary));
+  text-align: left;
+}
+
+// Setup pins a light theme, but this control sits on the window glass with the
+// license line. Paint the box and label with the window color so both themes stay legible.
+.analyticsOptOut {
+  color: var(--window-fg, var(--semantic-fg-primary));
+  --checkbox-stroke: var(--window-fg, var(--semantic-fg-primary));
+  --checkbox-fill: transparent;
+  --checkbox-glyph: var(--window-fg, var(--semantic-fg-primary));
+}
+
+.actionError {
+  padding: 0 var(--spacing-xl) var(--spacing-md);
+  color: var(--semantic-fg-danger-primary-enabled);
+}
+
+.actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--gap-sm);
+}

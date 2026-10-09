@@ -48,6 +48,10 @@ class RetakePipeline(Protocol):
         target_width: int | None = None,
         target_height: int | None = None,
         target_frames: int | None = None,
+        encode_start_time: float = 0.0,
+        encode_max_duration: float | None = None,
+        content_width: int | None = None,
+        content_height: int | None = None,
     ) -> None: ...
 
     def extend(
@@ -66,4 +70,8 @@ class RetakePipeline(Protocol):
         target_width: int | None = None,
         target_height: int | None = None,
         target_frames: int | None = None,
+        encode_start_time: float = 0.0,
+        encode_max_duration: float | None = None,
+        content_width: int | None = None,
+        content_height: int | None = None,
     ) -> None: ...

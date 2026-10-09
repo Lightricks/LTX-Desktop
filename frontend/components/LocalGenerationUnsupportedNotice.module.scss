@@ -1,0 +1,130 @@
+// Cinematic card, matching home/PeakCinematicCard: video fills the card,
+// copy and actions overlay bottom-left on a scrim.
+
+.card {
+  position: relative;
+  width: 100%;
+  // Nearly full screen: leave room for the page header and page padding.
+  height: max(420px, calc(100vh - 160px));
+  margin: var(--spacing-lg) 0;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-black-primary);
+}
+
+.media {
+  position: absolute;
+  inset: 0;
+}
+
+.mediaEl {
+  // Absolute fill — % height alone can leave gutters on the sides.
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  // Slight scale kills subpixel hairlines at the card radius.
+  transform: scale(1.02);
+}
+
+// Soft bottom-left read for white type on bright footage.
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    0deg,
+    rgb(0 0 0 / 64%) 0%,
+    rgb(0 0 0 / 32%) 38%,
+    rgb(0 0 0 / 0%) 68%
+  );
+  pointer-events: none;
+}
+
+.content {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-lg);
+  box-sizing: border-box;
+  padding: var(--spacing-xl);
+}
+
+.textPair {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-width: 100%;
+}
+
+.title,
+.body {
+  margin: 0;
+  text-wrap: balance;
+}
+
+// Home reads lighter than the DS default: headings at medium weight.
+// One line on the card; the narrow layout below lets it wrap again.
+.card h1.title {
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--semantic-fg-white-enabled);
+  white-space: nowrap;
+}
+
+.body {
+  max-width: 640px;
+  color: color-mix(in srgb, var(--semantic-fg-white-enabled) 80%, transparent);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+}
+
+// Narrow windows: stack the copy under the video instead of over it.
+@media (width <= 768px) {
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    height: auto;
+    overflow: visible;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .media {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: var(--radius-md);
+    background: var(--semantic-bg-black-primary);
+  }
+
+  .scrim {
+    display: none;
+  }
+
+  .content {
+    position: static;
+    padding: 0;
+  }
+
+  .card h1.title {
+    color: var(--semantic-fg-primary);
+    white-space: normal;
+  }
+
+  .body {
+    color: var(--semantic-fg-secondary);
+  }
+}

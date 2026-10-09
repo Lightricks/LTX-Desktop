@@ -1,0 +1,14 @@
+.warningIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--semantic-fg-tertiary);
+  opacity: 0.85;
+
+  svg {
+    display: block;
+    width: 12px;
+    height: 12px;
+  }
+}

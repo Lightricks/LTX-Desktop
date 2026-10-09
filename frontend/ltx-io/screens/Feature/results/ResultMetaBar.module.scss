@@ -1,0 +1,71 @@
+/* The left side stays on one row and scrolls sideways when it does not fit (phones); the time stays put on the right. */
+.container {
+  width: 100%;
+  padding: var(--spacing-xs) 0;
+  position: relative;
+  z-index: 1;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.left {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.promptGroup {
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+/*
+ * The design-system truncation clamps to one line but still wraps at word
+ * boundaries, so the ellipsis can land well short of the box and leave a gap
+ * before the copy button. Truncate by character instead so the text fills it.
+ */
+.promptGroup .prompt {
+  flex-shrink: 0;
+  min-width: 96px;
+  max-width: 240px;
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  word-break: normal;
+  text-overflow: ellipsis;
+  color: var(--semantic-fg-secondary);
+}
+
+.copyButton {
+  flex-shrink: 0;
+}
+
+.badges {
+  flex-shrink: 0;
+}
+
+/* The overlay badge is `user-select: none` for use on media; here the values (e.g. the seed) are meant to be copied. */
+.badges .badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+  user-select: text;
+  cursor: text;
+}
+
+.trailing {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.timeAgo {
+  flex: 0 0 auto;
+  color: var(--semantic-fg-secondary);
+  white-space: nowrap;
+}

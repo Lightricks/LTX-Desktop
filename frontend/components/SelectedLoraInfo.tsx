@@ -15,10 +15,10 @@ export interface SelectedLoraItem {
 export function SelectedLoraInfo({ items }: { items: SelectedLoraItem[] }) {
   if (items.length === 0) return null
   return (
-    <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-[11px] text-zinc-400">
+    <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-separator bg-surface-primary px-3 py-2 text-[11px] text-fg-secondary">
       {items.map((it, i) => (
         <span key={i} className="inline-flex items-center gap-1">
-          <span className="font-semibold text-zinc-300">{it.name}</span>
+          <span className="font-semibold text-fg-primary">{it.name}</span>
           <LoraInfoPopover
             sections={it.sections ?? []}
             name={it.name}

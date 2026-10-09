@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, Sparkles, Film } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
+import { Sparkles, Film } from 'lucide-react'
+import { Link, Navigate, useParams } from 'react-router'
+import { Text } from '@ds/Text/Text'
+// eslint-disable-next-line no-restricted-imports
+import { useQuickSearch } from '@/ltx-io/components/QuickSearch/QuickSearchContext'
 import { useProjects } from '../contexts/ProjectContext'
-import { useView } from '../contexts/ViewContext'
-import { LtxLogo } from '../components/LtxLogo'
-import { Button } from '../components/ui/button'
+import { recordRecentProjectId } from '../lib/home-recent-projects-preference'
+import { decideProjectRoute } from '../lib/project-navigation'
+import { paths } from '../paths'
 import { GenSpace } from './GenSpace'
 import { VideoEditor } from './VideoEditor'
 import type { ProjectTab } from '../types/project-model'
@@ -11,11 +15,17 @@ import {
   hasVisualAssetMetadataForMigration,
   runVisualAssetMetadataMigration,
 } from '../lib/project-asset-metadata-migration'
+import styles from './Project.module.scss'
 
 export function Project() {
+  const { projectId } = useParams()
+  const { open: openQuickSearch } = useQuickSearch()
   const {
     activeProject,
     currentTab,
+    getProject,
+    activateProject,
+    clearActiveProject,
     setProject,
     setCurrentTab,
     updateAsset,
@@ -24,8 +34,23 @@ export function Project() {
     pendingIcLoraUpdate,
     setPendingIcLoraUpdate,
   } = useProjects()
-  const { goHome } = useView()
+  const resolvedProject = projectId ? getProject(projectId) : null
+  const decision = decideProjectRoute({
+    projectId,
+    activeProjectId: activeProject?.id ?? null,
+    projectExists: resolvedProject !== null,
+  })
   const [assetMetadataMigrationProgress, setAssetMetadataMigrationProgress] = useState({ running: false, total: 0, completed: 0 })
+
+  useLayoutEffect(() => {
+    if (decision !== 'activate' || !projectId) return
+    recordRecentProjectId(projectId)
+    activateProject(projectId)
+  }, [activateProject, decision, projectId])
+
+  useLayoutEffect(() => {
+    return () => clearActiveProject()
+  }, [clearActiveProject])
   const [upgradePassProjectId, setUpgradePassProjectId] = useState<string | null>(null)
   const activeProjectId = activeProject?.id ?? null
   const activeProjectAssets = activeProject?.assets ?? null
@@ -79,21 +104,18 @@ export function Project() {
     pendingIcLoraUpdate,
     setPendingIcLoraUpdate,
   ])
-  
-  if (!activeProject) {
-    return (
-      <div className="h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-zinc-400 mb-4">Project not found</p>
-          <Button onClick={goHome}>Go Home</Button>
-        </div>
-      </div>
-    )
+
+  if (decision === 'projects') {
+    return <Navigate to={paths.projects} replace />
   }
-  
-  const tabs: { id: ProjectTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'gen-space', label: 'Gen Space', icon: <Sparkles className="h-4 w-4" /> },
-    { id: 'video-editor', label: 'Video Editor', icon: <Film className="h-4 w-4" /> },
+
+  if (decision === 'activate' || !activeProject || activeProject.id !== projectId) {
+    return null
+  }
+
+  const tabs: { id: ProjectTab; label: string; icon: ReactNode }[] = [
+    { id: 'gen-space', label: 'Gen Space', icon: <Sparkles className={styles.tabIcon} /> },
+    { id: 'video-editor', label: 'Video Editor', icon: <Film className={styles.tabIcon} /> },
   ]
   const shouldShowAssetMetadataMigrationProgressScreen = assetMetadataMigrationProgress.running
     || (upgradePassProjectId !== activeProjectId && needsAssetMetadataMigration)
@@ -104,14 +126,14 @@ export function Project() {
       : 0
 
     return (
-      <div className="h-screen bg-background flex items-center justify-center">
-        <div className="w-[360px]">
-          <p className="text-center text-sm text-zinc-300 mb-4">
+      <div className={styles.migration}>
+        <div className={styles.migrationInner}>
+          <Text as="p" variant="body" size="lg" align="center" className={styles.migrationCopy}>
             Preparing your project assets...
-          </p>
-          <div className="h-2 w-full rounded-full bg-zinc-800 overflow-hidden">
+          </Text>
+          <div className={styles.migrationTrack}>
             <div
-              className="h-full bg-blue-500 transition-all duration-150"
+              className={styles.migrationFill}
               style={{ width: `${Math.max(0, Math.min(100, progressPct))}%` }}
             />
           </div>
@@ -119,49 +141,46 @@ export function Project() {
       </div>
     )
   }
-  
+  const isMac = window.electronAPI.platform === 'darwin'
+
   return (
-    <div className="h-screen bg-background flex flex-col">
-      {/* Header */}
-      <header className="flex items-center px-4 py-3 border-b border-zinc-800">
-        <div className="flex-1 flex items-center gap-4">
-          {/* Back button and logo */}
-          <button 
-            onClick={goHome}
-            className="p-2 rounded-lg hover:bg-zinc-800 transition-colors"
-          >
-            <ArrowLeft className="h-5 w-5 text-zinc-400" />
-          </button>
-          
-          <LtxLogo className="h-5 w-auto text-white" />
-          
-          {/* Project name */}
-          <span className="text-white font-medium">{activeProject.name}</span>
+    <div className={styles.root}>
+      <header className={`${styles.header} ${isMac ? 'window-drag' : ''}`}>
+        <div className={styles.titleSlot}>
+          <Text as="span" variant="label" size="xl" shouldTruncate className={styles.title}>
+            {activeProject.name}
+          </Text>
         </div>
-        
-        {/* Center - Tabs */}
-        <div className="flex items-center gap-1 bg-zinc-900 rounded-lg p-1">
+
+        <div className={styles.tabs} role="tablist" aria-label="Project views">
           {tabs.map(tab => (
             <button
               key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={currentTab === tab.id}
               onClick={() => setCurrentTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                currentTab === tab.id
-                  ? 'bg-zinc-800 text-white'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
+              className={`${styles.tab} ${currentTab === tab.id ? styles.tabSelected : ''} window-no-drag`}
             >
               {tab.icon}
-              {tab.label}
+              <Text as="span" variant="label" size="lg">
+                {tab.label}
+              </Text>
             </button>
           ))}
         </div>
-        
-        {/* Right spacer - equal to left to keep tabs centered */}
-        <div className="flex-1" />
+
+        <div className={styles.titleSlot} />
       </header>
-      
-      <main className="flex-1 overflow-hidden relative">
+
+      {currentTab === 'gen-space' && (
+        <Text as="p" variant="body" size="md" className={styles.deprecation}>
+          Gen Space is retiring soon. Visit <Link to={paths.home}>Home</Link> or{' '}
+          <button type="button" onClick={openQuickSearch}>Explore Tools</button> to keep generating with all workflows.
+        </Text>
+      )}
+
+      <div className={styles.main}>
         {currentTab === 'gen-space' ? (
           <GenSpace />
         ) : (
@@ -173,7 +192,7 @@ export function Project() {
             pendingIcLoraUpdate={pendingIcLoraUpdate}
           />
         )}
-      </main>
+      </div>
     </div>
   )
 }

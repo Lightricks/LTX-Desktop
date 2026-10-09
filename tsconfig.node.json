@@ -8,7 +8,12 @@
     "strict": true,
     "outDir": "dist-electron",
     "rootDir": "electron",
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "baseUrl": ".",
+    "paths": {
+      "@optional/app-handlers": ["electron/optional-app-handlers.ts"],
+      "@optional/preload": ["electron/optional-preload.ts"]
+    }
   },
   "include": ["electron/**/*.ts", "vite.config.ts"],
   "exclude": ["electron/**/*.test.ts"]

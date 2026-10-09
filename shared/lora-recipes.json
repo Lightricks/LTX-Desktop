@@ -1,0 +1,94 @@
+[
+  {
+    "id": "cozy-felt",
+    "catalogId": "cozy-felt-style",
+    "mode": "t2v",
+    "devices": ["cuda", "mps"],
+    "listed": true
+  },
+  {
+    "id": "claymation",
+    "catalogId": "claymation-style",
+    "mode": "t2v",
+    "devices": ["cuda", "mps"],
+    "listed": true
+  },
+  {
+    "id": "fantasy-painterly",
+    "catalogId": "fantasy-painterly-style",
+    "mode": "t2v",
+    "devices": ["cuda", "mps"],
+    "listed": true
+  },
+  {
+    "id": "paper-cut-out-style",
+    "catalogId": "paper-cutout-style",
+    "mode": "t2v",
+    "devices": ["cuda", "mps"],
+    "listed": true
+  },
+  {
+    "id": "cinemagraph",
+    "catalogId": "cinemagraph-motion",
+    "mode": "i2v",
+    "devices": ["cuda", "mps"],
+    "listed": true
+  },
+  {
+    "id": "jib-up",
+    "catalogId": "jib-up",
+    "mode": "i2v",
+    "devices": ["cuda", "mps"],
+    "listed": true
+  },
+  {
+    "id": "jib-down",
+    "catalogId": "jib-down",
+    "mode": "i2v",
+    "devices": ["cuda", "mps"],
+    "listed": true
+  },
+  {
+    "id": "dolly-in",
+    "catalogId": "dolly-in",
+    "mode": "i2v",
+    "devices": ["cuda", "mps"],
+    "listed": true
+  },
+  {
+    "id": "dolly-out",
+    "catalogId": "dolly-out",
+    "mode": "i2v",
+    "devices": ["cuda", "mps"],
+    "listed": true
+  },
+  {
+    "id": "fpv-motion",
+    "catalogId": "fpv-motion",
+    "mode": "t2v",
+    "devices": ["cuda", "mps"],
+    "listed": true
+  },
+  {
+    "id": "openwheel-t-cam",
+    "catalogId": "openwheel-tcam-style",
+    "mode": "t2v",
+    "devices": ["cuda", "mps"],
+    "listed": true
+  },
+  {
+    "id": "transition",
+    "catalogId": "transition",
+    "mode": "i2v",
+    "devices": ["cuda", "mps"],
+    "listed": true,
+    "requiresEndFrame": true
+  },
+  {
+    "id": "vbvr",
+    "catalogId": "vbvr",
+    "mode": "i2v",
+    "devices": ["cuda", "mps"],
+    "listed": true
+  }
+]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +21,7 @@ from api_types import (
 from _routes._errors import HTTPError
 from api_model_specs import FORCED_API_MODEL_MAP
 from handlers.base import StateHandlerBase
+from server_utils.heartbeat import log_heartbeat
 from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
 from handlers.text_handler import TextHandler
@@ -33,10 +35,17 @@ from runtime_config.ltx_capabilities import local_caps, supports
 from runtime_config.model_download_specs import resolve_active_ltx_model_id
 from runtime_config.runtime_config import RuntimeConfig
 from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
+from services.retake_pipeline.retake_mode import (
+    InvalidRetakeModeError,
+    resolve_retake_mode,
+)
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError
+from services.ltx_api_client.ltx_api_errors import map_ltx_api_client_error, missing_ltx_api_key_error
 from services.interfaces import LTXAPIClient
 from state.app_state_types import AppState
 from state.app_settings import should_video_generate_with_ltx_api
+
+logger = logging.getLogger(__name__)
 
 
 class RetakeHandler(StateHandlerBase):
@@ -68,6 +77,7 @@ class RetakeHandler(StateHandlerBase):
 
         video_file = validate_source_video_path(video_path)
 
+        self._require_local_generation_possible(api_key=self.state.app_settings.ltx_api_key)
         if should_video_generate_with_ltx_api(
             force_api_generations=self.config.force_api_generations,
             settings=self.state.app_settings,
@@ -114,7 +124,7 @@ class RetakeHandler(StateHandlerBase):
     ) -> RetakeResponse:
         api_key = self.state.app_settings.ltx_api_key
         if not api_key:
-            raise HTTPError(400, "LTX API key not configured. Set it in Settings.")
+            raise missing_ltx_api_key_error()
 
         with self._generation.reserved_generation_start():
 
@@ -160,8 +170,9 @@ class RetakeHandler(StateHandlerBase):
 
                 raise HTTPError(500, "Retake API returned no result")
             except LTXAPIClientError as exc:
-                self._generation.fail_generation(exc.detail)
-                raise HTTPError(exc.status_code, exc.detail) from exc
+                mapped = map_ltx_api_client_error(exc)
+                self._generation.fail_generation(mapped.detail)
+                raise mapped from exc
             except HTTPError as exc:
                 self._generation.fail_generation(exc.detail)
                 raise
@@ -200,33 +211,52 @@ class RetakeHandler(StateHandlerBase):
             generation_id = uuid.uuid4().hex[:8]
             seed = self._resolve_seed()
             output_path = self.config.outputs_dir / f"retake_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{generation_id}.mp4"
-            regenerate_video, regenerate_audio = self._resolve_retake_mode(mode)
+            try:
+                regenerate_video, regenerate_audio = resolve_retake_mode(mode)
+            except InvalidRetakeModeError as exc:
+                raise HTTPError(400, "INVALID_RETAKE_MODE") from exc
+            logger.info(
+                "Retake %s started (%dx%d, %d frames @ %g fps, %.2fs–%.2fs)",
+                generation_id,
+                target_width,
+                target_height,
+                target_frames,
+                fps,
+                start_time,
+                end_time,
+            )
 
             try:
-                pipeline_state = self._pipelines.load_retake_pipeline(distilled=True)
+                pipeline_state = self._pipelines.load_retake_pipeline(
+                    distilled=True,
+                    width=target_width,
+                    height=target_height,
+                    frames=target_frames,
+                )
                 self._generation.start_generation(generation_id)
                 self._generation.update_progress("loading_model", 5, 0, 1)
                 self._generation.update_progress("inference", 15, 0, 1)
 
-                pipeline_state.pipeline.generate(
-                    video_path=str(video_file),
-                    prompt=prompt,
-                    start_time=start_time,
-                    end_time=end_time,
-                    seed=seed,
-                    output_path=str(output_path),
-                    negative_prompt=self.config.default_negative_prompt,
-                    num_inference_steps=40,
-                    video_guider_params=None,
-                    audio_guider_params=None,
-                    regenerate_video=regenerate_video,
-                    regenerate_audio=regenerate_audio,
-                    enhance_prompt=False,
-                    distilled=True,
-                    target_width=target_width,
-                    target_height=target_height,
-                    target_frames=target_frames,
-                )
+                with log_heartbeat("retake inference"):
+                    pipeline_state.pipeline.generate(
+                        video_path=str(video_file),
+                        prompt=prompt,
+                        start_time=start_time,
+                        end_time=end_time,
+                        seed=seed,
+                        output_path=str(output_path),
+                        negative_prompt=self.config.default_negative_prompt,
+                        num_inference_steps=40,
+                        video_guider_params=None,
+                        audio_guider_params=None,
+                        regenerate_video=regenerate_video,
+                        regenerate_audio=regenerate_audio,
+                        enhance_prompt=False,
+                        distilled=True,
+                        target_width=target_width,
+                        target_height=target_height,
+                        target_frames=target_frames,
+                    )
 
                 # Denoiser interrupt cannot abort VAE decode / ffmpeg; a Stop after the last
                 # denoise step still finishes encode, then this check drops the file.
@@ -248,12 +278,3 @@ class RetakeHandler(StateHandlerBase):
             finally:
                 self._text.clear_api_embeddings()
 
-    @staticmethod
-    def _resolve_retake_mode(mode: RetakeMode) -> tuple[bool, bool]:
-        if mode == "replace_audio_and_video":
-            return True, True
-        if mode == "replace_video":
-            return True, False
-        if mode == "replace_audio":
-            return False, True
-        raise HTTPError(400, "INVALID_RETAKE_MODE")

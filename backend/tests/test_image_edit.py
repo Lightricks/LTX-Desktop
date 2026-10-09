@@ -7,6 +7,10 @@ from pathlib import Path
 
 from services.generation_interrupt import GenerationCancelledError
 from services.services_utils import compute_edit_dimensions
+from runtime_config.video_job_budget import (
+    LOCAL_GENERATION_UNSUPPORTED,
+    LOCAL_GENERATION_UNSUPPORTED_MESSAGE,
+)
 from tests.http_error_assertions import assert_http_error
 
 
@@ -307,7 +311,12 @@ class TestForcedApiEditImage:
             "/api/generate-image",
             json={"prompt": "x", "imagePath": src, "strength": 0.6},
         )
-        assert_http_error(r, status_code=500, code="FAL_API_KEY_NOT_CONFIGURED")
+        assert_http_error(
+            r,
+            status_code=422,
+            code=LOCAL_GENERATION_UNSUPPORTED,
+            message=LOCAL_GENERATION_UNSUPPORTED_MESSAGE,
+        )
 
     def test_cancelled(self, client, test_state, fake_services, tmp_path):
         self._force_api(test_state)

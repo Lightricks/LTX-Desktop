@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+import logging
+import platform
 from typing import TYPE_CHECKING
 
 import torch
 
-from api_types import ImageConditioningInput
-from services.services_utils import AudioOrNone, PipelineTilingType, TilingConfigType, device_supports_fp8
+from runtime_config.runtime_policy import CUDA_CPU_OFFLOAD_RAM_FLOOR_GB, should_disk_stream_cuda_weights
+from services.services_utils import AudioOrNone, PipelineTilingType, TilingConfigType
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ltx_core.components.guiders import MultiModalGuiderParams
@@ -32,6 +36,17 @@ def host_available_bytes() -> int:
     import psutil
 
     return int(psutil.virtual_memory().available)
+
+
+def host_total_gib() -> int | None:
+    """Total system RAM in GiB, or None if it cannot be queried."""
+    try:
+        import psutil
+
+        return int(psutil.virtual_memory().total // (1024**3))
+    except Exception:
+        logger.warning("Failed to query total system RAM", exc_info=True)
+        return None
 
 
 def diffvae_activation_budget_bytes(device: torch.device | None = None) -> int:
@@ -129,7 +144,9 @@ def offload_mode_for_prefetch_count(streaming_prefetch_count: int | None, device
     (an int); which *kind* of streaming depends on the device's memory model:
 
     - CUDA: system RAM is separate from VRAM, so OffloadMode.CPU pins the blocks in host
-      RAM and streams them to the smaller VRAM — the fast streaming path.
+      RAM and streams them to the smaller VRAM — the fast streaming path. On Linux,
+      that pin is unswappable and needs ~36 GB host RAM; 32 GB machines (the advertised
+      local-gen floor) must use OffloadMode.DISK instead (LTX-Desktop#163).
     - MPS (Apple Silicon): CPU-pinned weights live in the *same* unified RAM as the GPU,
       so OffloadMode.CPU (which pins every block, ~46 GB for the bf16 transformer) OOMs.
       OffloadMode.DISK mmaps blocks from the checkpoint through a small pinned buffer
@@ -142,6 +159,24 @@ def offload_mode_for_prefetch_count(streaming_prefetch_count: int | None, device
         return OffloadMode.NONE
     if device.type == "mps":
         return OffloadMode.DISK
+    if device.type == "cuda":
+        system = platform.system()
+        ram_gb = host_total_gib() if system == "Linux" else None
+        if should_disk_stream_cuda_weights(system, ram_gb):
+            if ram_gb is None:
+                logger.info(
+                    "Using OffloadMode.DISK on Linux CUDA: host RAM unknown; "
+                    "failing closed below the %s GiB pinned-CPU floor (LTX-Desktop#163).",
+                    CUDA_CPU_OFFLOAD_RAM_FLOOR_GB,
+                )
+            else:
+                logger.info(
+                    "Using OffloadMode.DISK on Linux CUDA: host RAM %s GiB is below the "
+                    "%s GiB floor for pinned CPU streaming (LTX-Desktop#163).",
+                    ram_gb,
+                    CUDA_CPU_OFFLOAD_RAM_FLOOR_GB,
+                )
+            return OffloadMode.DISK
     return OffloadMode.CPU
 
 
@@ -161,103 +196,3 @@ def encode_video_output(
         output_path=output_path,
         video_chunks_number=video_chunks_number_value,
     )
-
-
-class DistilledNativePipeline:
-    """Fast native pipeline implementation moved from ltx2_server.py."""
-
-    def __init__(
-        self,
-        checkpoint_path: str,
-        gemma_root: str | None,
-        device: torch.device | None = None,
-        fp8transformer: bool = False,
-    ) -> None:
-        from ltx_core.quantization.fp8_cast import build_policy as build_fp8_cast_policy
-        from ltx_pipelines.utils.blocks import (
-            AudioDecoder,
-            DiffusionStage,
-            ImageConditioner,
-            PromptEncoder,
-            VideoDecoder,
-        )
-        from ltx_pipelines.utils.helpers import get_device
-
-        if device is None:
-            device = get_device()
-
-        self.device = device
-        self.dtype = torch.bfloat16
-        model_paths = build_model_paths(checkpoint_path, gemma_root)
-
-        self.prompt_encoder = PromptEncoder(
-            model_paths, self.dtype, device,
-        )
-        self.image_conditioner = ImageConditioner(
-            checkpoint_path, self.dtype, device,
-        )
-        self.stage = DiffusionStage.from_checkpoint(  # type: ignore[reportUnknownMemberType]
-            checkpoint_path,
-            self.dtype,
-            device,
-            quantization=build_fp8_cast_policy(checkpoint_path) if fp8transformer and device_supports_fp8(device) else None,
-        )
-        self.video_decoder = VideoDecoder(checkpoint_path, self.dtype, device)
-        self.audio_decoder = AudioDecoder(checkpoint_path, self.dtype, device)
-
-    @torch.inference_mode()
-    def __call__(
-        self,
-        prompt: str,
-        seed: int,
-        height: int,
-        width: int,
-        num_frames: int,
-        frame_rate: float,
-        images: list[ImageConditioningInput],
-        tiling_config: TilingConfigType | None = None,
-    ) -> tuple[torch.Tensor | Iterator[torch.Tensor], AudioOrNone]:
-        from ltx_core.components.noisers import GaussianNoiser
-        from ltx_pipelines.utils.args import ImageConditioningInput as _LtxImageInput
-        from ltx_pipelines.utils.constants import DISTILLED_SIGMA_VALUES
-        from ltx_pipelines.utils.denoisers import SimpleDenoiser
-        from ltx_pipelines.utils.helpers import image_conditionings_by_replacing_latent
-        from ltx_pipelines.utils.types import ModalitySpec
-
-        generator = torch.Generator(device=self.device).manual_seed(seed)
-        noiser = GaussianNoiser(generator=generator)
-        dtype = torch.bfloat16
-
-        (ctx_p,) = self.prompt_encoder([prompt])
-        video_context, audio_context = ctx_p.video_encoding, ctx_p.audio_encoding
-
-        sigmas = torch.Tensor(DISTILLED_SIGMA_VALUES).to(self.device)
-
-        ltx_images = [_LtxImageInput(img.path, img.frame_idx, img.strength) for img in images]
-        conditionings = self.image_conditioner(
-            lambda enc: image_conditionings_by_replacing_latent(
-                images=ltx_images,
-                height=height,
-                width=width,
-                video_encoder=enc,
-                dtype=dtype,
-                device=self.device,
-            )
-        )
-
-        video_state, audio_state = self.stage(
-            denoiser=SimpleDenoiser(video_context, audio_context),
-            sigmas=sigmas,
-            noiser=noiser,
-            width=width,
-            height=height,
-            frames=num_frames,
-            fps=frame_rate,
-            video=ModalitySpec(context=video_context, conditionings=conditionings),
-            audio=ModalitySpec(context=audio_context) if audio_context is not None else None,
-        )
-
-        assert video_state is not None
-        decoded_video = self.video_decoder(video_state.latent, tiling_config)
-        decoded_audio = self.audio_decoder(audio_state.latent) if audio_state is not None else None
-        return decoded_video, decoded_audio

@@ -1,0 +1,24 @@
+.root {
+  position: fixed;
+  right: var(--spacing-xl);
+  bottom: var(--spacing-xl);
+  z-index: var(--z-sticky);
+  pointer-events: none;
+
+  > * {
+    pointer-events: auto;
+  }
+}
+
+.fab.fab {
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  justify-content: center;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 10%);
+}
+
+.fabIcon {
+  width: 16px;
+  height: 16px;
+}

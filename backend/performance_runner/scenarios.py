@@ -14,8 +14,11 @@ skipped by the default sweep and only attempted with ``--only`` / ``--include-un
 from __future__ import annotations
 
 import os
+import subprocess
 from dataclasses import dataclass, field
 from typing import Any, Callable
+
+from queued import QueuedJob
 
 # Bundled fixtures (backend/perf/test_assets) so the modality scenarios are
 # runnable without hand-supplying media. Absolute paths so they resolve regardless
@@ -56,6 +59,21 @@ class Scenario:
     required_ic_loras: list[str] = field(default_factory=list)
     # Non-catalog weights (relative to models_dir) checked on disk (union-control, depth).
     required_files: list[str] = field(default_factory=list)
+    # If set, sanity starts /api/generate then POSTs /api/generate/cancel after this
+    # many seconds of phase=inference (not merely status=running). PASS = cancelled.
+    cancel_after_s: float | None = None
+    # Run position within a sweep (stable sort, default 0). Lets a reference scenario run
+    # first and a "still reproduces after everything else" scenario run last, regardless
+    # of registration order. See regression_scenarios.py.
+    order: int = 0
+    # Queued surface (Home/Explore, /api/generations/...): when set, the scenario is driven
+    # through queued.py instead of `route`/`overrides`. Several jobs are submitted together;
+    # `checks` run on the last output and `batch_checks` on all outputs (submission order).
+    queued: list[QueuedJob] | None = None
+    batch_checks: list[Callable[[list[str | None]], tuple[bool, str]]] = field(default_factory=list)
+    # Local-offering flags this scenario needs (retake / extend / builtin_control).
+    # Greyed out when the active LTX family does not offer them.
+    requires_caps: list[str] = field(default_factory=list)
 
     def input_paths(self) -> list[str]:
         """On-disk input assets referenced by this scenario (for the results viewer)."""
@@ -65,6 +83,13 @@ class Scenario:
             v = self.overrides.get(k)
             if isinstance(v, str) and os.path.exists(v):
                 out.append(v)
+        for kf in self.overrides.get("keyframes") or []:
+            if isinstance(kf, dict):
+                p = kf.get("imagePath")
+                if isinstance(p, str) and os.path.exists(p):
+                    out.append(p)
+        for job in self.queued or []:
+            out += [p for p in job.inputs.values() if os.path.exists(p) and p not in out]
         return out
 
     def build_overrides(self, base: dict[str, Any]) -> dict[str, Any]:
@@ -94,6 +119,20 @@ class Scenario:
                 missing += [rel for rel in self.required_files if not (base / rel).exists()]
         return missing
 
+    def blocked_by_caps(self, caps: dict[str, object] | None) -> str | None:
+        """Why this scenario cannot run on the active LTX family, or None if ok.
+
+        ``caps`` is ``perf_config.scenario_caps`` (models-specs + IC-LoRA recommendation).
+        Unreachable backend -> None so the sweep still attempts and surfaces the real error.
+        """
+        if not caps or not self.requires_caps:
+            return None
+        family = caps.get("family") or "this model"
+        for feat in self.requires_caps:
+            if not caps.get(feat, True):
+                return f"not supported on LTX {family} ({feat})"
+        return None
+
 
 # ---- reusable checks -------------------------------------------------------- #
 def output_exists(path: str | None) -> tuple[bool, str]:
@@ -110,7 +149,50 @@ def output_nonempty(path: str | None) -> tuple[bool, str]:
     return sz > 1024, f"{sz} bytes"
 
 
+# E2 signature: a full-width eager K=11 NA tile on MPS silently zeros the last
+# several frames. Per-frame mean luma below this (0-255) counts as black.
+_BLACK_LUMA_MAX = 8.0
+
+
+def last_frames_not_black(path: str | None, n_frames: int = 8) -> tuple[bool, str]:
+    """Fail if any of the last ~n_frames have near-zero luma.
+
+    ``-sseof -1`` seeks one second before EOF; ``-vf reverse,scale=1:1`` then
+    ``-frames:v n`` takes the true last n frames as 1-byte gray samples (without
+    reverse, ``-frames:v`` would decode the *first* n frames after the seek).
+    Missing ffmpeg is a failure — a gate that skips is a false pass.
+    """
+    if not path or not os.path.exists(path):
+        return False, "no file"
+    try:
+        proc = subprocess.run(
+            [
+                "ffmpeg", "-v", "error", "-sseof", "-1", "-i", path,
+                "-an", "-vf", "reverse,scale=1:1,format=gray", "-frames:v", str(n_frames),
+                "-f", "rawvideo", "-pix_fmt", "gray",
+                "pipe:1",
+            ],
+            capture_output=True,
+            timeout=60,
+        )
+    except FileNotFoundError:
+        return False, "ffmpeg not on PATH"
+    except subprocess.TimeoutExpired:
+        return False, "ffmpeg timed out decoding tail frames"
+    raw = proc.stdout
+    if proc.returncode != 0 or not raw:
+        err = (proc.stderr or b"").decode("utf-8", errors="replace")[:200]
+        return False, f"ffmpeg failed: {err or 'no pixels'}"
+    # One byte per frame after scale=1:1. Mean-of-all-tail-pixels would pass a
+    # mostly-bright clip whose last few frames are black.
+    per_frame = list(raw)
+    worst = min(per_frame)
+    ok = worst > _BLACK_LUMA_MAX
+    return ok, f"tail min luma={worst:.1f} / {len(per_frame)} frames ({'ok' if ok else 'BLACK'})"
+
+
 DEFAULT_CHECKS = [output_exists, output_nonempty]
+BUMP_VIDEO_CHECKS = [output_exists, output_nonempty, last_frames_not_black]
 
 
 # ---- feature scenarios (seeded from Desktop's surface) ---------------------- #
@@ -169,7 +251,10 @@ _add(Scenario("lora_cozy_felt_openwheel", "LoRA combo: Cozy Felt + Openwheel T-C
               checks=DEFAULT_CHECKS, tags=["lora", "t2v", "combo"],
               required_loras=["cozy-felt-style", "openwheel-tcam-style"]))
 
-# IC-LoRA — the streaming stage_2 path exercises the patch's NON-CACHEABLE bypass.
+# IC-LoRA. Catalog defaults skip_stage_2; `iclora_stage2_on` (E3) overrides that
+# so both stages run. 1.3.0 no longer forces stage 2 onto streaming
+# (`use_lora_in_stage_2` is gone). Low-VRAM streaming still hits the cache's
+# non-cacheable eviction via `_is_streaming`.
 # Scoped to what the app actually supports today:
 #   - canny / depth: production control IC-LoRAs (api_types.ConditioningType).
 #     Route: POST /api/extract-conditioning then POST /api/generate (ic_lora.py,
@@ -189,7 +274,8 @@ _add(Scenario("video_extend", "Video Extend (end, +5s)",
                "prompt": "the duck suddenly flaps its wings and flies up out of the frame",
                "mode": "end"},
               route="/api/extend",
-              checks=DEFAULT_CHECKS, tags=["extend"]))
+              checks=DEFAULT_CHECKS, tags=["extend"],
+              requires_caps=["extend"]))
 # Prepend note: extend(start) must END on the clip's first frame (duck already in
 # scene, mid-jump), so the generated segment is anchored to a boundary that already
 # CONTAINS the duck. An "entrance from an empty frame" is physically impossible here —
@@ -202,13 +288,15 @@ _add(Scenario("video_prepend", "Video Prepend (start, +5s)",
                          "springs upward, beginning to jump",
                "mode": "start"},
               route="/api/extend",
-              checks=DEFAULT_CHECKS, tags=["extend"]))
+              checks=DEFAULT_CHECKS, tags=["extend"],
+              requires_caps=["extend"]))
 _add(Scenario("retake", "Retake / re-roll (2.0–5.0s)",
               {"video_path": VIDEO_ASSET, "start_time": 2.0, "duration": 3.0,
                "prompt": "the duck flaps hard and flies right out of the frame",
                "mode": "replace_audio_and_video"},
               route="/api/retake",
-              checks=DEFAULT_CHECKS, tags=["retake"]))
+              checks=DEFAULT_CHECKS, tags=["retake"],
+              requires_caps=["retake"]))
 
 # IC-LoRA control (canny/depth): /api/ic-lora/generate re-derives conditioning from
 # the source video internally. Requires the canny/depth IC-LoRA + depth models to be
@@ -225,7 +313,8 @@ _add(Scenario("iclora_canny", "IC-LoRA control: canny",
                          "in the background, cozy morning light, cinematic product shot, high detail"},
               route="/api/ic-lora/generate",
               checks=DEFAULT_CHECKS, tags=["iclora", "control"],
-              required_files=[CP_UNION_CONTROL]))
+              required_files=[CP_UNION_CONTROL],
+              requires_caps=["builtin_control"]))
 _add(Scenario("iclora_depth", "IC-LoRA control: depth",
               {"conditioning_type": "depth", "video_path": VIDEO_ASSET,
                "prompt": "a cute green frog hopping across a mossy rock, lush green garden foliage "
@@ -233,7 +322,8 @@ _add(Scenario("iclora_depth", "IC-LoRA control: depth",
                          "daylight, shallow depth of field, high detail"},
               route="/api/ic-lora/generate",
               checks=DEFAULT_CHECKS, tags=["iclora", "control"],
-              required_files=[CP_UNION_CONTROL, CP_DEPTH_PROCESSOR]))
+              required_files=[CP_UNION_CONTROL, CP_DEPTH_PROCESSOR],
+              requires_caps=["builtin_control"]))
 
 # IC-LoRA transformation (catalog): day-to-night. Uses input_path (not video_path);
 # requires the "day-to-night" IC-LoRA downloaded (else 409 IC_LORA_NOT_DOWNLOADED).
@@ -241,12 +331,64 @@ _add(Scenario("iclora_day_to_night", "IC-LoRA: Day to Night",
               {"ic_lora_id": "day-to-night", "conditioning_type": "custom",
                "input_path": VIDEO_ASSET, "prompt": "turn day into night"},
               route="/api/ic-lora/generate",
-              checks=DEFAULT_CHECKS, tags=["iclora", "transform"],
+              checks=DEFAULT_CHECKS, tags=["iclora", "transform", "bump"],
               required_ic_loras=["day-to-night"]))
 
+# LTX-2 bump gate (`python sanity.py --tags bump --gate-integrity`). E1/E2/E3/cancel/MKF.
+# Do NOT run these under --fast: that forces 540p/5s and IC-LoRA resolution_factor=1.0,
+# which hides the tiling/VRAM bugs the bump is checking.
+_add(Scenario("t2v_540p_8s", "T2V 540p / 8s (E1 decode VRAM)",
+              {"prompt": "a calm ocean at sunset", "seed": 42,
+               "resolution": "540p", "duration": 8, "fps": 24},
+              checks=BUMP_VIDEO_CHECKS, tags=["t2v", "resolution", "bump", "e1"]))
+SCENARIOS["t2v_1080p_5s"].tags.append("bump")
+SCENARIOS["t2v_1080p_5s"].tags.append("e1")
+SCENARIOS["t2v_1080p_5s"].checks = list(BUMP_VIDEO_CHECKS)
+
+# 5s @ 24fps = 120 frames. Same still at 0 / mid / last — exercises the Distilled
+# guiding-latent swap (distilled_keyframe_guiding), not visual variety.
+_add(Scenario("mkf_interpolation", "Multi-keyframe interpolation (guiding swap)",
+              {"prompt": "a fox and a panda walking through a sunlit forest",
+               "seed": 42, "resolution": "540p", "duration": 5, "fps": 24,
+               "keyframes": [
+                   {"imagePath": IMAGE_ASSET, "frameIndex": 0, "strength": 1.0},
+                   {"imagePath": IMAGE_ASSET, "frameIndex": 60, "strength": 1.0},
+                   {"imagePath": IMAGE_ASSET, "frameIndex": 119, "strength": 1.0},
+               ]},
+              checks=BUMP_VIDEO_CHECKS, tags=["t2v", "mkf", "bump"]))
+
+# Catalog never sets skip_stage_2=false; E3 needs stage 2 actually running.
+_add(Scenario("iclora_stage2_on", "IC-LoRA: Day to Night (stage 2 ON, E3)",
+              {"ic_lora_id": "day-to-night", "conditioning_type": "custom",
+               "input_path": VIDEO_ASSET, "prompt": "turn day into night",
+               "skip_stage_2": False},
+              route="/api/ic-lora/generate",
+              checks=DEFAULT_CHECKS, tags=["iclora", "transform", "bump", "e3"],
+              required_ic_loras=["day-to-night"]))
+
+_add(Scenario("cancel_mid_denoise", "Cancel mid-denoise (t2v 540p/8s)",
+              {"prompt": "a calm ocean at sunset", "seed": 42,
+               "resolution": "540p", "duration": 8, "fps": 24},
+              checks=[], tags=["t2v", "bump", "cancel"],
+              cancel_after_s=4.0))
+
+# Full tier of the live regression suite: existing scenarios worth running after a big
+# change but too slow for the smoke tier (plain-LoRA adapters, portrait aspect ratio).
+for _key in ("lora_cozy_felt", "lora_cozy_felt_openwheel", "t2v_720p_9x16"):
+    SCENARIOS[_key].tags.append("full")
+
+# Registers the smoke/full regression scenarios. Imported last: it needs the names above,
+# and importing it first is safe (it imports this module back, which finishes first).
+import regression_scenarios  # noqa: E402,F401
+import regression_queued  # noqa: E402,F401
+
+
 def ready() -> list[Scenario]:
-    """Scenarios whose payloads are wired (safe to run today)."""
-    return [s for s in SCENARIOS.values() if not s.needs_wiring]
+    """Scenarios whose payloads are wired (safe to run today).
+
+    Excludes the regression suite (tag ``regression``): it has its own tiers and would
+    triple the plain sweep. Run it with ``--tags smoke`` / ``--tags smoke full bump``."""
+    return [s for s in SCENARIOS.values() if not s.needs_wiring and "regression" not in s.tags]
 
 
 def all_scenarios() -> list[Scenario]:

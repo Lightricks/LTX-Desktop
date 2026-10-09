@@ -1,7 +1,8 @@
-// Resolution tier options for local retake/extend. Offers the source resolution plus
+// Resolution tier options for GenSpace retake/extend. Offers the source resolution plus
 // standard lower tiers (named by short edge: 1080p / 720p / 540p). Grid sizes such as
 // 576/704/1088 map to the nearest named tier. The backend snaps the chosen size to a
 // valid (÷32, not-upscaled) resolution. Local only — the cloud preserves source resolution.
+// Home Retake and Extend use the IC-LoRA list in videoFeature.ts instead.
 
 export interface ResolutionOption {
   key: string

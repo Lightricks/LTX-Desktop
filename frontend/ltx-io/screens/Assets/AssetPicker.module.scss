@@ -1,0 +1,51 @@
+.frame {
+  align-items: stretch;
+  justify-content: flex-start;
+  width: min(1080px, calc(100vw - 96px));
+  max-width: min(1080px, calc(100vw - 96px));
+  height: min(720px, calc(100vh - 96px));
+  padding: 0;
+  overflow: hidden;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(1080px, calc(100vw - 96px));
+  height: min(720px, calc(100vh - 96px));
+  min-height: 0;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+  overflow: hidden;
+
+  &.dragOver {
+    outline: 1px dashed var(--semantic-fg-primary);
+    outline-offset: -2px;
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.scroll {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.status {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}

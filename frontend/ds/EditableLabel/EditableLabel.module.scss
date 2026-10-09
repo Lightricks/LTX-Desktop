@@ -1,0 +1,105 @@
+@import "@ds/styles/themes/mixins.module.scss";
+
+.content {
+  overflow: hidden;
+  white-space: nowrap;
+  width: 100%;
+  flex-shrink: 0;
+  padding: 0;
+  background-color: transparent;
+  color: inherit;
+  // Without the transparent border, the text slightly jumps when the border appears.
+  border: 1px solid transparent;
+  border-radius: var(--radius-xxs);
+  text-overflow: ellipsis;
+
+  &:hover {
+    background-color: var(--semantic-bg-secondary);
+    border: 1px solid var(--semantic-bg-separator-primary);
+  }
+
+  &:focus,
+  &:active {
+    outline: none;
+    background-color: var(--semantic-bg-secondary);
+    border: 1px solid var(--semantic-bg-brand-primary-enabled);
+  }
+
+  &:disabled {
+    color: var(--semantic-fg-disabled-primary);
+    cursor: initial;
+  }
+
+  &:read-only {
+    // Add transparent border to prevent the text from jumping when the border appears.
+    // This overrides the border set in the :hover and :focus states.
+    border: 1px solid transparent;
+    background-color: unset;
+  }
+
+  &::placeholder {
+    color: var(--semantic-fg-secondary);
+  }
+}
+
+.textarea {
+  cursor: text;
+  word-break: break-word;
+  white-space: pre-wrap;
+  resize: none;
+  overflow-y: scroll;
+  min-height: 18px;
+
+  &::placeholder {
+    color: var(--semantic-fg-tertiary);
+  }
+
+  &:read-only {
+    border: unset;
+    background-color: unset;
+  }
+}
+
+.heading {
+  &.xs {
+    @include text_style_heading_xs;
+  }
+
+  &.sm {
+    @include text_style_heading_sm;
+  }
+
+  &.md {
+    @include text_style_heading_md;
+  }
+
+  &.lg {
+    @include text_style_heading_lg;
+  }
+
+  &.xl {
+    @include text_style_heading_xl;
+  }
+}
+
+.label {
+  &.xs {
+    @include text_style_label_xs;
+  }
+
+  &.sm {
+    @include text_style_label_sm;
+  }
+
+  &.md {
+    @include text_style_label_md;
+  }
+
+  &.lg {
+    @include text_style_label_lg;
+  }
+
+  &.xl {
+    @include text_style_label_xl;
+  }
+}

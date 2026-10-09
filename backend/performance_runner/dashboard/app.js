@@ -20,6 +20,7 @@ const jpost = async (u, b) => (await fetch(u, {method:'POST', headers:{'Content-
 let selected = null;          // selected run id (drives the run log + chart)
 let logSource = 'run';        // 'run' = selected run's log · 'backend' = session log
 let toggleSyncPausedUntil = 0; // don't let a poll clobber a just-clicked toggle
+let runtimeLocked = false;    // a run is in progress — don't flip Settings mid-gen
 
 // ==== token + toggles ====================================================== //
 async function setToken(){
@@ -33,8 +34,30 @@ async function setToken(){
 
 async function toggle(route, checked, label){
   toggleSyncPausedUntil = Date.now() + 2500;
-  try { await jpost(route, {enabled:checked}); $('#tgMsg').textContent = `${label} ${checked?'ON':'OFF'}`; }
-  catch { $('#tgMsg').textContent = `${label} toggle failed (token?)`; }
+  try {
+    const res = await fetch(route, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({enabled:checked})});
+    const data = await res.json();
+    if(!res.ok){
+      $('#tgMsg').textContent = data.error || `${label} failed`;
+      toggleSyncPausedUntil = 0;
+      await syncToggles();
+      return;
+    }
+    $('#tgMsg').textContent = `${label} ${checked?'ON':'OFF'}`;
+  } catch { $('#tgMsg').textContent = `${label} toggle failed (token?)`; }
+}
+
+async function setActiveModel(modelId){
+  toggleSyncPausedUntil = Date.now() + 2500;
+  try {
+    const res = await fetch('/api/active-ltx-model', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({model_id:modelId})});
+    const data = await res.json();
+    if(!res.ok){ $('#tgMsg').textContent = data.error || 'model switch failed'; return; }
+    $('#tgMsg').textContent = 'active model set';
+    lastVersionsJson = '';
+    await syncToggles();
+    await refreshScenarios();
+  } catch { $('#tgMsg').textContent = 'model switch failed (token?)'; }
 }
 
 let envKnown = false;
@@ -49,14 +72,50 @@ async function refreshEnv(){
   document.body.classList.toggle('no-cuda', !e.cuda);
 }
 
+let lastVersionsJson = '';
 async function syncToggles(){
   if(Date.now() < toggleSyncPausedUntil) return;
   try {
     const t = await jget('/api/toggles');
     if(t.cache != null) $('#tgCache').checked = t.cache;
     if(t.torch_compile != null) $('#tgCompile').checked = t.torch_compile;
-    if(t.cache == null && t.torch_compile == null) $('#tgMsg').textContent = t.error ? 'settings unreadable (token?)' : '';
-    else if($('#tgMsg').textContent === 'reading live settings…') $('#tgMsg').textContent = '';
+    const versions = t.versions || [];
+    const vjson = JSON.stringify(versions);
+    if(vjson !== lastVersionsJson){
+      lastVersionsJson = vjson;
+      $('#modelList').innerHTML = versions.length
+        ? versions.map(v => {
+            const tip = v.installed ? (v.model_id || '') : 'not installed — download it in Settings';
+            return `<label class="tog ${v.installed?'':'unavail'}" title="${esc(tip)}">`
+              + `<input type="radio" name="ltxModel" value="${esc(v.model_id)}" `
+              + `${v.active?'checked':''} ${v.installed && !runtimeLocked?'':'disabled'} `
+              + `onchange="setActiveModel(this.value)">`
+              + `${esc(v.label || v.model_id)}${v.installed?'':' (not installed)'}</label>`;
+          }).join('')
+        : '<div class="mut">no versions (token?)</div>';
+    } else {
+      versions.forEach(v => {
+        const el = document.querySelector(`input[name="ltxModel"][value="${CSS.escape(v.model_id)}"]`);
+        if(el){ el.checked = !!v.active; el.disabled = !v.installed || runtimeLocked; }
+      });
+    }
+    const active = versions.find(v => v.active);
+    const on25 = String(active?.model_id || '').startsWith('ltx-2.5');
+    const vaes = t.vaes || {};
+    const row = $('#fastDecodeRow');
+    row.hidden = !on25;
+    const box = $('#tgConvVae');
+    if(t.use_conv_vae != null) box.checked = t.use_conv_vae;
+    const canSwitchToOther = box.checked ? vaes.diff : vaes.conv;
+    box.disabled = runtimeLocked || !on25 || !canSwitchToOther;
+    box.title = !on25 ? 'Fast decode is LTX 2.5 only'
+      : (box.checked && !vaes.diff) ? 'DiffVAE not downloaded — download it in Settings to switch'
+      : (!box.checked && !vaes.conv) ? 'conv VAE not downloaded — download it in Settings to switch'
+      : 'same as Settings → Fast decode (on = conv VAE, off = DiffVAE)';
+    if(t.cache == null && t.torch_compile == null && t.use_conv_vae == null)
+      $('#tgMsg').textContent = t.error ? 'settings unreadable (token?)' : '';
+    else if($('#tgMsg').textContent === 'same as the app Settings modal'
+            || $('#tgMsg').textContent === 'reading live settings…') $('#tgMsg').textContent = '';
   } catch {}
 }
 
@@ -73,6 +132,7 @@ function runSummary(kind, p){
   if(kind === 'sanity'){
     const fast = p.fast ? ' — FAST (540p/5s, surface check only)' : '';
     if(p.only && p.only.length) return `Run scenario "${p.only.join(', ')}" end-to-end (1 generation)${fast}.`;
+    if(p.tags && p.tags.length) return `Start regression suite (tags: ${p.tags.join(', ')}). Scenarios whose weights are missing are skipped.`;
     return `Start sanity sweep${p.include_unwired ? ' (incl. UNWIRED — expect failures)' : ' (wired scenarios)'}${fast}.`;
   }
   return `Start ${kind}?`;
@@ -159,15 +219,19 @@ const scenTip = x => scenAvail(x) ? (x.title || '') : (x.unavailable_reason || '
 
 async function refreshScenarios(){
   scenarios = await jget('/api/scenarios');
-  const mark = x => !scenAvail(x) ? '⬇' : x.needs_wiring ? '⚠︎' : '✓';
+  const mark = x => !scenAvail(x)
+    ? (String(x.unavailable_reason||'').startsWith('not supported') ? '⊘' : '⬇')
+    : x.needs_wiring ? '⚠︎' : '✓';
   $('#scenarios').innerHTML = scenarios.map(x =>
     `<div class="${scenAvail(x)?'':'unavail'}" title="${esc(scenTip(x))}">`
     + `${mark(x)} <b>${esc(x.key)}</b> <span class="mut">${esc(x.title)}</span></div>`).join('');
   const cur = $('#scenSel').value;
-  // Unavailable scenarios are disabled in the picker (can't be selected to run).
+  const suffix = x => !scenAvail(x)
+    ? (String(x.unavailable_reason||'').startsWith('not supported') ? ' (not on this model)' : ' (not downloaded)')
+    : '';
   $('#scenSel').innerHTML = scenarios.map(x =>
     `<option value="${esc(x.key)}"${scenAvail(x)?'':' disabled'}>`
-    + `${!scenAvail(x)?'⬇ ':x.needs_wiring?'⚠︎ ':''}${esc(x.key)} — ${esc(x.title)}${scenAvail(x)?'':' (not downloaded)'}</option>`
+    + `${!scenAvail(x)?'⬇ ':x.needs_wiring?'⚠︎ ':''}${esc(x.key)} — ${esc(x.title)}${suffix(x)}</option>`
   ).join('');
   if(cur && scenarios.some(x => x.key === cur && scenAvail(x))) $('#scenSel').value = cur;
   updateRunScenarioBtn();
@@ -225,6 +289,12 @@ async function refreshRuns(){
   });
   $('#tgCache').disabled = anyRunning;
   $('#tgCompile').disabled = anyRunning;
+  runtimeLocked = anyRunning;
+  document.querySelectorAll('input[name="ltxModel"]').forEach(el => {
+    const installed = !el.parentElement.classList.contains('unavail');
+    el.disabled = anyRunning || !installed;
+  });
+  if($('#tgConvVae') && anyRunning) $('#tgConvVae').disabled = true;
 }
 
 // ==== log + chart ========================================================== //
@@ -297,6 +367,7 @@ function clearChart(){
 // ==== wire-up + polling ==================================================== //
 $('#tgCache').onchange = e => toggle('/api/cache', e.target.checked, 'cache');
 $('#tgCompile').onchange = e => toggle('/api/torch-compile', e.target.checked, 'torch compile (applies next gen)');
+$('#tgConvVae').onchange = e => toggle('/api/fast-decode', e.target.checked, 'Fast decode');
 $('#scenSel').onchange = updateRunScenarioBtn;
 
 const POLLERS = [[refreshTop,3000], [refreshRuns,3000], [refreshLog,3000], [syncToggles,3000], [refreshEnv,3000]];

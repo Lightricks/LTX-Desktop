@@ -1,0 +1,191 @@
+@import "@ds/styles/themes/mixins.module.scss";
+@import "@ds/styles/themes/animationsValues.scss";
+
+$background-color: var(--semantic-bg-primary);
+$text-color: var(--semantic-fg-primary);
+
+.positioner {
+  z-index: var(--z-toast);
+}
+
+.positionerAboveOverlays {
+  z-index: var(--z-max);
+}
+
+.tooltip {
+  position: relative;
+  min-width: 32px;
+  width: max-content;
+  overflow: visible;
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: $background-color;
+  opacity: 1;
+  transform: scale(1) translate(0, 0);
+  transform-origin: center;
+  transition:
+    opacity $duration-fast $easing-standard-productive,
+    transform $duration-fast $easing-entrance-expressive;
+
+  &[data-starting-style],
+  &[data-ending-style] {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+
+  // Grow from the edge nearest the trigger, sliding in slightly toward it.
+  &[data-side="top"] {
+    transform-origin: bottom center;
+  }
+  &[data-side="top"][data-starting-style],
+  &[data-side="top"][data-ending-style] {
+    transform: scale(0.9) translateY(6px);
+  }
+
+  &[data-side="bottom"] {
+    transform-origin: top center;
+  }
+  &[data-side="bottom"][data-starting-style],
+  &[data-side="bottom"][data-ending-style] {
+    transform: scale(0.9) translateY(-6px);
+  }
+
+  &[data-side="left"] {
+    transform-origin: center right;
+  }
+  &[data-side="left"][data-starting-style],
+  &[data-side="left"][data-ending-style] {
+    transform: scale(0.9) translateX(6px);
+  }
+
+  &[data-side="right"] {
+    transform-origin: center left;
+  }
+  &[data-side="right"][data-starting-style],
+  &[data-side="right"][data-ending-style] {
+    transform: scale(0.9) translateX(-6px);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: opacity $duration-moderate $easing-standard-productive;
+    transform: none;
+
+    &[data-starting-style],
+    &[data-ending-style] {
+      transform: none;
+    }
+  }
+
+  // Match arrow fill to the inverted tooltip surface (same token as background).
+  .tooltipArrowSvg,
+  .tooltipArrowSvg path {
+    fill: $background-color;
+  }
+}
+
+// Base UI positions the arrow with inline top/left — never set left/right/top/bottom here.
+// Nudge with translate only; rotate the SVG so the arrow box size stays stable for Floating UI.
+.tooltipArrow {
+  display: block;
+  pointer-events: none;
+
+  &[data-side="top"] {
+    translate: 0 70%;
+
+    .tooltipArrowSvg {
+      rotate: 180deg;
+    }
+  }
+
+  &[data-side="bottom"] {
+    translate: 0 -70%;
+  }
+
+  &[data-side="left"],
+  &[data-side="inline-start"] {
+    translate: 8px 0;
+
+    .tooltipArrowSvg {
+      rotate: 90deg;
+    }
+  }
+
+  &[data-side="right"],
+  &[data-side="inline-end"] {
+    translate: -8px 0;
+
+    .tooltipArrowSvg {
+      rotate: -90deg;
+    }
+  }
+}
+
+.tooltipArrowSvg {
+  display: block;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.tooltipContent {
+  @include text_style_body_lg;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: var(--gap-xxs);
+  text-align: center;
+  color: $text-color;
+}
+
+.tooltipTitle {
+  font-weight: bold;
+}
+
+.tooltipBody {
+  @include text_style_body_lg;
+}
+
+// ── Shared-handle tooltip transitions ──
+// When a single Root serves multiple detached Triggers (via createHandle),
+// the Positioner moves between trigger positions. The Viewport presence
+// activates adaptiveOrigin middleware which positions via left/top
+// (instead of transform), enabling smooth CSS transitions.
+
+.positionTransition {
+  // The auto-resize hook (from Viewport) sets --positioner-width/height
+  // on the positioner. Consuming them gives the Positioner correct dimensions
+  // so Floating UI can calculate arrow placement accurately.
+  width: var(--positioner-width);
+  height: var(--positioner-height);
+  transition:
+    left $duration-moderate $easing-standard-productive,
+    top $duration-moderate $easing-standard-productive,
+    width $duration-moderate $easing-standard-productive,
+    height $duration-moderate $easing-standard-productive;
+}
+
+// ── Viewport content transitions ──
+// The Viewport wraps tooltip content and provides data-current / data-previous
+// children with data-activation-direction for direction-aware slide animations.
+
+.tooltipViewport {
+  position: relative;
+
+  // Entering content
+  :global([data-current]) {
+    transition: opacity $duration-moderate $easing-standard-productive;
+  }
+
+  // Exiting content (DOM snapshot of previous tooltip, positioned absolutely by Base UI)
+  :global([data-previous]) {
+    transition: opacity $duration-moderate $easing-standard-productive;
+    opacity: 0;
+  }
+}
+
+.referenceWrapper {
+  all: unset;
+  display: inline-flex;
+  cursor: inherit;
+}

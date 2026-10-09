@@ -64,21 +64,21 @@ export function VideoEditorLayoutMenu(props: VideoEditorLayoutMenuProps) {
       <button
         onClick={() => setShowLayoutMenu(v => !v)}
         className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[12px] transition-colors ${
-          showLayoutMenu ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+          showLayoutMenu ? 'bg-action text-fg-primary' : 'text-fg-secondary hover:text-fg-primary hover:bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_50%,transparent)]'
         }`}
       >
         <LayoutGrid className="h-3.5 w-3.5" />
         Layout
       </button>
       {showLayoutMenu && (
-        <div className="absolute top-full right-0 mt-1 w-56 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl shadow-black/50 py-1 z-[60]">
+        <div className="absolute top-full right-0 mt-1 w-56 bg-surface-primary border border-separator rounded-lg shadow-xl shadow-black/50 py-1 z-[60]">
           {savingPresetName !== null ? (
             <div className="px-2 py-1.5">
-              <div className="text-[11px] text-zinc-400 mb-1.5 px-1">Name this layout:</div>
+              <div className="text-[11px] text-fg-secondary mb-1.5 px-1">Name this layout:</div>
               <input
                 ref={presetNameInputRef}
                 autoFocus
-                className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-[13px] text-white outline-none focus:border-blue-500"
+                className="w-full bg-action border border-separator rounded px-2 py-1 text-[13px] text-fg-primary outline-none focus:border-blue-500"
                 value={savingPresetName}
                 onChange={e => setSavingPresetName(e.target.value)}
                 onKeyDown={e => {
@@ -101,13 +101,13 @@ export function VideoEditorLayoutMenu(props: VideoEditorLayoutMenuProps) {
                     }
                   }}
                   disabled={!savingPresetName.trim()}
-                  className="flex-1 px-2 py-1 rounded bg-blue-600 text-white text-[11px] font-medium hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="flex-1 px-2 py-1 rounded bg-blue-600 text-fg-primary text-[11px] font-medium hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   Save
                 </button>
                 <button
                   onClick={() => setSavingPresetName(null)}
-                  className="px-2 py-1 rounded bg-zinc-800 text-zinc-400 text-[11px] hover:bg-zinc-700 transition-colors"
+                  className="px-2 py-1 rounded bg-action text-fg-secondary text-[11px] hover:bg-action-hover transition-colors"
                 >
                   Cancel
                 </button>
@@ -120,7 +120,7 @@ export function VideoEditorLayoutMenu(props: VideoEditorLayoutMenuProps) {
                   setSavingPresetName('')
                   requestAnimationFrame(() => presetNameInputRef.current?.focus())
                 }}
-                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[13px] text-zinc-200 hover:bg-blue-600 hover:text-white transition-colors"
+                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[13px] text-fg-primary hover:bg-blue-600 hover:text-fg-primary transition-colors"
               >
                 <Save className="h-3.5 w-3.5" />
                 Save Current Layout...
@@ -130,15 +130,15 @@ export function VideoEditorLayoutMenu(props: VideoEditorLayoutMenuProps) {
                   onResetLayout()
                   setShowLayoutMenu(false)
                 }}
-                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[13px] text-zinc-200 hover:bg-blue-600 hover:text-white transition-colors"
+                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[13px] text-fg-primary hover:bg-blue-600 hover:text-fg-primary transition-colors"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 Reset to Default
               </button>
               {layoutPresets.length > 0 && (
                 <>
-                  <div className="h-px bg-zinc-700 my-1 mx-2" />
-                  <div className="px-3 py-1 text-[10px] text-zinc-500 uppercase tracking-wider">Saved Layouts</div>
+                  <div className="h-px bg-action-hover my-1 mx-2" />
+                  <div className="px-3 py-1 text-[10px] text-fg-tertiary uppercase tracking-wider">Saved Layouts</div>
                   {layoutPresets.map(preset => (
                     <div
                       key={preset.id}
@@ -146,9 +146,9 @@ export function VideoEditorLayoutMenu(props: VideoEditorLayoutMenuProps) {
                     >
                       <button
                         onClick={() => handleApplyLayoutPreset(preset)}
-                        className="flex-1 flex items-center gap-2.5 px-3 py-1.5 text-[13px] text-zinc-200 group-hover:text-white transition-colors text-left"
+                        className="flex-1 flex items-center gap-2.5 px-3 py-1.5 text-[13px] text-fg-primary group-hover:text-fg-primary transition-colors text-left"
                       >
-                        <LayoutGrid className="h-3.5 w-3.5 text-zinc-500 group-hover:text-white" />
+                        <LayoutGrid className="h-3.5 w-3.5 text-fg-tertiary group-hover:text-fg-primary" />
                         {preset.name}
                       </button>
                       <Tooltip content="Delete preset" side="top">
@@ -157,7 +157,7 @@ export function VideoEditorLayoutMenu(props: VideoEditorLayoutMenuProps) {
                             e.stopPropagation()
                             handleDeleteLayoutPreset(preset.id)
                           }}
-                          className="px-2 py-1.5 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                          className="px-2 py-1.5 text-fg-tertiary hover:text-fg-danger opacity-0 group-hover:opacity-100 transition-all"
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>

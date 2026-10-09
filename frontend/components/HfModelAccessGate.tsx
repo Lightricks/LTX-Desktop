@@ -1,6 +1,8 @@
-import { AlertCircle } from 'lucide-react'
+import { Button } from '@ds/Button/Button'
+import { Text } from '@ds/Text/Text'
 import type { ApiSuccessOf } from '../lib/api-client'
-import { Button } from './ui/button'
+import { HfStatusToast } from './HfStatusToast'
+import styles from './HfModelAccessGate.module.scss'
 
 type HfAuthStatus = ApiSuccessOf<'getHuggingFaceAuthStatus'>['status']
 type ModelAccessMap = ApiSuccessOf<'checkModelAccess'>['access']
@@ -15,6 +17,8 @@ interface HfModelAccessGateProps {
   checkError?: string | null
   onRetryCheck?: () => void
   className?: string
+  /** Hide the license sentence when the parent already explains the next step. */
+  hideMessage?: boolean
 }
 
 export function HfModelAccessGate({
@@ -26,26 +30,27 @@ export function HfModelAccessGate({
   checkError = null,
   onRetryCheck,
   className,
+  hideMessage = false,
 }: HfModelAccessGateProps) {
   if (allAuthorized) return null
 
   if (checkError) {
     return (
-      <div className={className ?? 'space-y-2'}>
-        <div className="flex items-start gap-2 text-xs text-amber-400">
-          <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-          <span>Couldn&apos;t verify Hugging Face access: {checkError}</span>
-        </div>
-        {onRetryCheck && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onRetryCheck}
-            className="text-xs"
-          >
-            Retry
-          </Button>
-        )}
+      <div className={className ?? styles.gate}>
+        <HfStatusToast
+          message="Couldn't verify Hugging Face access."
+          detail={checkError}
+        >
+          {onRetryCheck && (
+            <Button
+              appearance="neutral"
+              hierarchy="primary"
+              size="md"
+              label="Retry"
+              onClick={onRetryCheck}
+            />
+          )}
+        </HfStatusToast>
       </div>
     )
   }
@@ -55,43 +60,38 @@ export function HfModelAccessGate({
 
   if (hfAuthStatus !== 'authenticated') {
     return (
-      <div className={className ?? 'space-y-2'}>
-        <div className="flex items-start gap-2 text-xs text-amber-400">
-          <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-          <span>
+      <div className={className ?? styles.gate}>
+        {!hideMessage && (
+          <Text as="p" variant="body" size="lg" className={styles.message}>
             This model is gated on Hugging Face. Sign in, then accept the license to download.
-          </span>
-        </div>
+          </Text>
+        )}
         <Button
+          appearance="brand"
+          hierarchy="primary"
           size="sm"
-          onClick={startHuggingFaceLogin}
+          label={hfAuthPolling ? 'Waiting for sign in…' : 'Sign in with Hugging Face'}
           disabled={hfAuthPolling}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs"
-        >
-          {hfAuthPolling ? 'Waiting for sign in…' : 'Sign in with Hugging Face'}
-        </Button>
+          onClick={startHuggingFaceLogin}
+        />
       </div>
     )
   }
 
   return (
-    <div className={className ?? 'space-y-1.5'}>
-      <p className="text-xs text-amber-400">
-        Accept the Hugging Face license for this model, then download.
-      </p>
+    <div className={className ?? styles.gate}>
       {unauthorizedRepos.map(([repoId]) => (
-        <div key={repoId} className="flex items-center justify-between gap-2 bg-zinc-900 rounded px-2 py-1.5">
-          <span className="text-[10px] text-zinc-400 font-mono truncate">{repoId}</span>
-          <button
-            type="button"
+        <HfStatusToast key={repoId} message="Accept the license on Hugging Face.">
+          <Button
+            appearance="neutral"
+            hierarchy="primary"
+            size="md"
+            label="Request access"
             onClick={() => {
               void window.electronAPI.openHuggingFaceRepo({ repoId })
             }}
-            className="text-[10px] text-indigo-400 hover:text-indigo-300 font-medium flex-shrink-0"
-          >
-            Request access
-          </button>
-        </div>
+          />
+        </HfStatusToast>
       ))}
     </div>
   )

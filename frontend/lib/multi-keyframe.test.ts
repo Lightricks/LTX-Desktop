@@ -207,6 +207,24 @@ describe('videoGenerationModeFromInputs', () => {
   it('falls back to text-to-video when nothing is attached', () => {
     assert.equal(videoGenerationModeFromInputs({}), 'text-to-video')
   })
+
+  it('treats a last frame alone as image-to-video', () => {
+    assert.equal(
+      videoGenerationModeFromInputs({ lastImageUrl: '/end.png' }),
+      'image-to-video',
+    )
+  })
+
+  it('prefers audio over a still', () => {
+    assert.equal(
+      videoGenerationModeFromInputs({
+        audioUrl: '/clip.mp3',
+        imageUrl: '/still.png',
+        lastImageUrl: '/end.png',
+      }),
+      'audio-to-video',
+    )
+  })
 })
 
 describe('enhanceKeyframesPayload', () => {

@@ -155,9 +155,11 @@ class GpuInfoImpl:
         return None
 
     def get_available_ram_gb(self) -> int | None:
-        """Free/available system RAM, not total -- used to gate local generation on
-        Apple Silicon (unified memory shared with the OS/app, so total RAM alone
-        overstates real headroom)."""
+        """Free/available system RAM, not total — used for Darwin per-job sizing.
+
+        Local-generation *eligibility* on Apple Silicon uses total RAM
+        (``get_vram_total_gb``), not this figure.
+        """
         try:
             return int(psutil.virtual_memory().available // (1024**3))
         except Exception:

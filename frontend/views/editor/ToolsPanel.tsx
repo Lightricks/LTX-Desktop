@@ -31,19 +31,19 @@ export function ToolsPanel({
   addTextClip, kbLayout,
 }: ToolsPanelProps) {
   return (
-    <div className="w-10 flex-shrink-0 bg-zinc-900 border-r border-zinc-800 flex flex-col items-center py-1 gap-0.5 overflow-y-auto">
+    <div className="w-10 flex-shrink-0 bg-surface-primary border-r border-separator flex flex-col items-center py-1 gap-0.5 overflow-y-auto">
       {PRIMARY_TOOLS.map(tool => (
         <Tooltip
           key={tool.id}
           side="right"
-          content={(() => { const s = getShortcutLabel(kbLayout, tool.actionId); return <>{tool.label}{s && <span className="text-zinc-400"> ({s})</span>}</>; })()}
+          content={(() => { const s = getShortcutLabel(kbLayout, tool.actionId); return <>{tool.label}{s && <span className="text-fg-secondary"> ({s})</span>}</>; })()}
         >
           <button
             onClick={() => setActiveTool(tool.id)}
             className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
               activeTool === tool.id
-                ? 'bg-blue-600 text-white'
-                : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                ? 'bg-brand text-fg-white'
+                : 'text-fg-secondary hover:bg-action hover:text-fg-primary'
             }`}
           >
             <tool.icon className="h-4 w-4" />
@@ -60,7 +60,7 @@ export function ToolsPanel({
           <div className="relative flex-shrink-0">
             <Tooltip
               side="right"
-              content={(() => { const s = getShortcutLabel(kbLayout, currentTrimTool.actionId); return <>{currentTrimTool.label}<span className="text-zinc-400">{s ? ` (${s}) — ` : ' — '}right-click or hold for more</span></>; })()}
+              content={(() => { const s = getShortcutLabel(kbLayout, currentTrimTool.actionId); return <>{currentTrimTool.label}<span className="text-fg-secondary">{s ? ` (${s}) — ` : ' — '}right-click or hold for more</span></>; })()}
             >
               <button
                 onClick={() => {
@@ -93,8 +93,8 @@ export function ToolsPanel({
                 data-trim-group-btn=""
                 className={`p-1.5 rounded-lg transition-colors relative ${
                   isTrimActive
-                    ? 'bg-blue-600 text-white'
-                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                    ? 'bg-brand text-fg-white'
+                    : 'text-fg-secondary hover:bg-action hover:text-fg-primary'
                 }`}
               >
                 <currentTrimTool.icon className="h-4 w-4" />
@@ -108,7 +108,7 @@ export function ToolsPanel({
                 <>
                   <div className="fixed inset-0 z-[9998]" onMouseDown={() => setShowTrimFlyout(false)} onContextMenu={(e) => { e.preventDefault(); setShowTrimFlyout(false) }} />
                   <div
-                    className="fixed bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-[9999] min-w-[160px]"
+                    className="fixed bg-action border border-separator rounded-lg shadow-xl py-1 z-[9999] min-w-[160px]"
                     style={{ top: rect?.top ?? 0, left: (rect?.right ?? 44) + 4 }}
                   >
                     {TRIM_TOOLS.map(t => (
@@ -120,12 +120,12 @@ export function ToolsPanel({
                           setShowTrimFlyout(false)
                         }}
                         className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
-                          activeTool === t.id ? 'bg-blue-600/30 text-white' : 'text-zinc-300 hover:bg-zinc-700'
+                          activeTool === t.id ? 'bg-blue-600/30 text-fg-primary' : 'text-fg-secondary hover:bg-action-hover'
                         }`}
                       >
                         <t.icon className="h-3.5 w-3.5" />
                         <span className="flex-1">{t.label}</span>
-                        <span className="text-zinc-500 text-[10px]">{getShortcutLabel(kbLayout, t.actionId)}</span>
+                        <span className="text-fg-tertiary text-[10px]">{getShortcutLabel(kbLayout, t.actionId)}</span>
                       </button>
                     ))}
                   </div>
@@ -136,15 +136,15 @@ export function ToolsPanel({
         )
       })()}
 
-      <div className="w-6 h-px bg-zinc-700 my-1 flex-shrink-0" />
+      <div className="w-6 h-px bg-action-hover my-1 flex-shrink-0" />
 
       <Tooltip side="right" content={snapEnabled ? 'Snapping On' : 'Snapping Off'}>
         <button
           onClick={() => setSnapEnabled(!snapEnabled)}
           className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
             snapEnabled
-              ? 'bg-blue-600 text-white'
-              : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+              ? 'bg-brand text-fg-white'
+              : 'text-fg-secondary hover:bg-action hover:text-fg-primary'
           }`}
         >
           <Magnet className="h-4 w-4" />
@@ -152,15 +152,15 @@ export function ToolsPanel({
       </Tooltip>
 
       {/* EFFECTS HIDDEN - FX button hidden because effects are not applied during export
-      <div className="w-6 h-px bg-zinc-700 my-1 flex-shrink-0" />
+      <div className="w-6 h-px bg-action-hover my-1 flex-shrink-0" />
 
       <Tooltip side="right" content="Effects Browser">
         <button
           onClick={() => setShowEffectsBrowser(!showEffectsBrowser)}
           className={`p-1.5 rounded-lg transition-colors flex-shrink-0 text-[10px] font-bold ${
             showEffectsBrowser
-              ? 'bg-blue-600 text-white'
-              : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+              ? 'bg-brand text-fg-white'
+              : 'text-fg-secondary hover:bg-action hover:text-fg-primary'
           }`}
         >
           FX
@@ -168,12 +168,12 @@ export function ToolsPanel({
       </Tooltip>
       EFFECTS HIDDEN */}
 
-      <div className="w-6 h-px bg-zinc-700 my-1 flex-shrink-0" />
+      <div className="w-6 h-px bg-action-hover my-1 flex-shrink-0" />
 
       <Tooltip side="right" content="Add Text Overlay">
         <button
           onClick={() => addTextClip()}
-          className="p-1.5 rounded-lg transition-colors flex-shrink-0 text-cyan-400 hover:bg-cyan-900/30 hover:text-cyan-300"
+          className="p-1.5 rounded-lg transition-colors flex-shrink-0 text-ext-teal hover:bg-ext-teal/15 hover:-ext-teal"
         >
           <Type className="h-4 w-4" />
         </button>

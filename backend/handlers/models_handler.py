@@ -36,6 +36,7 @@ from runtime_config.model_download_specs import (
     DEPTH_PROCESSOR_CP_ID,
     IMG_GEN_MODEL_CP_ID,
     LTXLocalModelRelevant,
+    LTXLocalModelSpec,
     get_downloaded_ltx_model_id,
     get_ic_loras_cp_ids,
     get_latest_ltx_model_id,
@@ -66,6 +67,62 @@ class ResolvedUpgradeDownload:
     cp_ids: tuple[ModelCheckpointID, ...]
 
 
+def _required_ltx_cp_ids(
+    spec: LTXLocalModelSpec, *, use_conv_vae: bool, has_api_key: bool
+) -> set[ModelCheckpointID]:
+    """Full required checkpoint set for `spec`. Pure spec computation: no disk, no state."""
+    required: set[ModelCheckpointID] = {spec.model_cp, spec.upscale_cp}
+    selected_vae = selected_video_vae_cp(spec, use_conv_vae=use_conv_vae)
+    if selected_vae is not None:
+        required.add(selected_vae)
+    # Conv VAE is always part of the 2.5 download set so Fast decode can be turned on
+    # later without a hidden extra fetch. DiffVAE stays selected-only (Mac default).
+    if spec.video_vae_conv_cp is not None:
+        required.add(spec.video_vae_conv_cp)
+    if spec.audio_vae_cp is not None:
+        required.add(spec.audio_vae_cp)
+    if spec.duration_head_cp is not None:
+        required.add(spec.duration_head_cp)
+    if not has_api_key or not spec.supports_api_text_encoding:
+        required.add(spec.text_encoder_cp)
+    return required
+
+
+def _optional_ltx_cp_ids(
+    spec: LTXLocalModelSpec, *, use_conv_vae: bool, has_api_key: bool
+) -> set[ModelCheckpointID]:
+    """Full optional set the user can still choose to download. Pure: no disk, no state.
+
+    Includes the unused 2.5 DiffVAE when Fast decode is on, and any text encoder an
+    LTX API key excused. Never overlaps the required set.
+    """
+    optional: set[ModelCheckpointID] = set()
+    unused_vae = unused_video_vae_cp(spec, use_conv_vae=use_conv_vae)
+    if unused_vae is not None:
+        optional.add(unused_vae)
+    if has_api_key and spec.supports_api_text_encoding:
+        optional.add(spec.text_encoder_cp)
+    optional -= _required_ltx_cp_ids(spec, use_conv_vae=use_conv_vae, has_api_key=has_api_key)
+    return optional
+
+
+def _recommended_quality_ltx_cp_ids(
+    spec: LTXLocalModelSpec, *, required: set[ModelCheckpointID]
+) -> set[ModelCheckpointID]:
+    """Full recommended-quality set: extras recommended but never required to run. Pure.
+
+    LTX 2.5's preferred Gemma 4 E2B enhancer is the only current member. 2.3's
+    encoder already enhances, so it contributes nothing.
+
+    Takes the already-computed `required` set instead of key flags so the caller
+    cannot consult a different API-key state than the rest of the bundle.
+    """
+    if spec.prompt_enhancer_cp is None:
+        return set()
+    recommended: set[ModelCheckpointID] = {spec.prompt_enhancer_cp}
+    return recommended - required
+
+
 class ModelsHandler(StateHandlerBase):
     def __init__(
         self,
@@ -94,6 +151,20 @@ class ModelsHandler(StateHandlerBase):
             self.models_dir, self.state.app_settings.active_ltx_model_id
         )
 
+    def _active_ltx_model_id_for_versions_list(self) -> LTXLocalModelId | None:
+        """Which row to mark Active in Settings — honour the saved choice when runnable.
+
+        ``resolve_active_ltx_model_id`` can fall back to another installed version when its
+        bundle check disagrees with the live required-cp rules (API key, conv VAE). That made
+        set-active appear to do nothing while the preference was persisted correctly.
+        """
+        preferred = self.state.app_settings.active_ltx_model_id
+        if preferred is not None and not self._get_missing_cp_ids(
+            self._get_required_ltx_cp_ids(preferred)
+        ):
+            return preferred
+        return resolve_active_ltx_model_id(self.models_dir, preferred)
+
     def _has_api_key(self) -> bool:
         return bool(self.state.app_settings.ltx_api_key.strip())
 
@@ -118,6 +189,8 @@ class ModelsHandler(StateHandlerBase):
                 return "vae"
             if cp_id == spec.duration_head_cp:
                 return "support"
+            if spec.prompt_enhancer_cp is not None and cp_id == spec.prompt_enhancer_cp:
+                return "prompt_enhancer"
         if cp_id == IMG_GEN_MODEL_CP_ID:
             return "image"
         return "support"
@@ -147,38 +220,47 @@ class ModelsHandler(StateHandlerBase):
         return resolved_use_conv_vae(self.state.app_settings)
 
     def _get_required_ltx_cp_ids(self, model_id: LTXLocalModelId) -> set[ModelCheckpointID]:
+        """Full required set under live settings (conv toggle + API key). No disk check."""
         spec = get_ltx_model_spec(model_id)
-        required: set[ModelCheckpointID] = {spec.model_cp, spec.upscale_cp}
-        selected_vae = selected_video_vae_cp(spec, use_conv_vae=self._use_conv_vae())
-        if selected_vae is not None:
-            required.add(selected_vae)
-        # Conv VAE is always part of the 2.5 download set so Fast decode can be turned on
-        # later without a hidden extra fetch. DiffVAE stays selected-only (Mac default).
-        if spec.video_vae_conv_cp is not None:
-            required.add(spec.video_vae_conv_cp)
-        if spec.audio_vae_cp is not None:
-            required.add(spec.audio_vae_cp)
-        if spec.duration_head_cp is not None:
-            required.add(spec.duration_head_cp)
-        if not self._has_api_key() or not spec.supports_api_text_encoding:
-            required.add(spec.text_encoder_cp)
-        return required
+        return _required_ltx_cp_ids(
+            spec, use_conv_vae=self._use_conv_vae(), has_api_key=self._has_api_key()
+        )
 
-    def _get_optional_ltx_cp_ids(self, model_id: LTXLocalModelId) -> set[ModelCheckpointID]:
-        """Missing checkpoints the user can still choose to download.
+    def _get_recommended_quality_ltx_cp_ids(self, model_id: LTXLocalModelId) -> set[ModelCheckpointID]:
+        """Missing quality extras under live settings. Always missing-filtered."""
+        spec = get_ltx_model_spec(model_id)
+        use_conv_vae = self._use_conv_vae()
+        has_api_key = self._has_api_key()
+        required = _required_ltx_cp_ids(spec, use_conv_vae=use_conv_vae, has_api_key=has_api_key)
+        return self._get_missing_cp_ids(
+            _recommended_quality_ltx_cp_ids(spec, required=required)
+        )
 
-        Includes the unused 2.5 DiffVAE when Fast decode is on, and any text encoder an
-        LTX API key excused. Never overlaps the required set.
+    def _ltx_download_bundle(
+        self, model_id: LTXLocalModelId, *, has_api_key: bool, only_missing: bool
+    ) -> LtxDownloadRecommendationResponse:
+        """Single construction site for download recommendations.
+
+        All three sets derive from the same `has_api_key` + one conv-toggle read, so the
+        recommended set can never consult a different key state than required/optional.
+        `only_missing=False` returns the full spec sets (fresh/empty-machine bundle);
+        `only_missing=True` filters each set to checkpoints not on disk.
         """
         spec = get_ltx_model_spec(model_id)
-        optional: set[ModelCheckpointID] = set()
-        unused_vae = unused_video_vae_cp(spec, use_conv_vae=self._use_conv_vae())
-        if unused_vae is not None:
-            optional.add(unused_vae)
-        if self._has_api_key() and spec.supports_api_text_encoding:
-            optional.add(spec.text_encoder_cp)
-        optional -= self._get_required_ltx_cp_ids(model_id)
-        return self._get_missing_cp_ids(optional)
+        use_conv_vae = self._use_conv_vae()
+        required = _required_ltx_cp_ids(spec, use_conv_vae=use_conv_vae, has_api_key=has_api_key)
+        optional = _optional_ltx_cp_ids(spec, use_conv_vae=use_conv_vae, has_api_key=has_api_key)
+        recommended = _recommended_quality_ltx_cp_ids(spec, required=required)
+        if only_missing:
+            required = self._get_missing_cp_ids(required)
+            optional = self._get_missing_cp_ids(optional)
+            recommended = self._get_missing_cp_ids(recommended)
+        return LtxDownloadRecommendationResponse(
+            status="download",
+            cps_to_download=self._ordered_cp_ids(required),
+            optional_cp_ids=self._ordered_cp_ids(optional),
+            recommended_quality_cp_ids=self._ordered_cp_ids(recommended),
+        )
 
     def _get_missing_cp_ids(self, cp_ids: set[ModelCheckpointID]) -> set[ModelCheckpointID]:
         return {cp_id for cp_id in cp_ids if not self.is_cp_downloaded(cp_id)}
@@ -261,20 +343,28 @@ class ModelsHandler(StateHandlerBase):
             if self.is_cp_downloaded(cp_id)
         }
 
-    def get_ltx_recommendation(self) -> LtxRecommendationResponse:
+    def get_ltx_recommendation(
+        self, fresh: bool = False, include_installed: bool = False
+    ) -> LtxRecommendationResponse:
         self._ensure_local_model_mode()
+        if fresh:
+            # Empty-machine bundle: full no-key spec sets of the latest model, no disk
+            # filtering. Still honors the Fast-decode conv toggle. `include_installed`
+            # does not apply here — fresh always means latest, even if an older bundle
+            # is what Setup would repair.
+            return self._ltx_download_bundle(
+                get_latest_ltx_model_id(), has_api_key=False, only_missing=False
+            )
 
         current_model_id = self._current_downloaded_ltx_model_id()
         latest_model_id = get_latest_ltx_model_id()
+        has_api_key = self._has_api_key()
 
         if current_model_id is None:
-            cps_to_download = self._ordered_cp_ids(
-                self._get_missing_cp_ids(self._get_required_ltx_cp_ids(latest_model_id))
-            )
-            return LtxDownloadRecommendationResponse(
-                status="download",
-                cps_to_download=cps_to_download,
-                optional_cp_ids=self._ordered_cp_ids(self._get_optional_ltx_cp_ids(latest_model_id)),
+            return self._ltx_download_bundle(
+                latest_model_id,
+                has_api_key=has_api_key,
+                only_missing=not include_installed,
             )
 
         # A required checkpoint for the current model can be missing even when its base
@@ -282,15 +372,17 @@ class ModelsHandler(StateHandlerBase):
         # superseded the version already on disk. Surface that download before offering any
         # base upgrade: the current setup needs it regardless of whether the user upgrades,
         # and routing it through the 'download' status lets the missing-models gate prompt it.
-        missing_current = self._ordered_cp_ids(
-            self._get_missing_cp_ids(self._get_required_ltx_cp_ids(current_model_id))
+        # `include_installed` returns that same model's full sets so Setup can show files
+        # already on disk. It must not swap in the latest model.
+        current_bundle = self._ltx_download_bundle(
+            current_model_id, has_api_key=has_api_key, only_missing=True
         )
-        if missing_current:
-            return LtxDownloadRecommendationResponse(
-                status="download",
-                cps_to_download=missing_current,
-                optional_cp_ids=self._ordered_cp_ids(self._get_optional_ltx_cp_ids(current_model_id)),
-            )
+        if current_bundle.cps_to_download:
+            if include_installed:
+                return self._ltx_download_bundle(
+                    current_model_id, has_api_key=has_api_key, only_missing=False
+                )
+            return current_bundle
 
         if current_model_id == latest_model_id:
             return LtxOkRecommendationResponse(status="ok")
@@ -315,12 +407,16 @@ class ModelsHandler(StateHandlerBase):
             cps_to_download=cps_to_download,
             cps_to_delete=cps_to_delete,
             loses_built_in_control=loses_control,
+            recommended_quality_cp_ids=self._ordered_cp_ids(
+                self._get_recommended_quality_ltx_cp_ids(latest_model_id)
+            ),
         )
 
-    def get_img_gen_recommendation(self) -> ImageGenRecommendationResponse:
+    def get_img_gen_recommendation(self, fresh: bool = False) -> ImageGenRecommendationResponse:
         self._ensure_local_model_mode()
-        cp_to_download = None if self.is_cp_downloaded(IMG_GEN_MODEL_CP_ID) else IMG_GEN_MODEL_CP_ID
-        return ImageGenRecommendationResponse(cp_to_download=cp_to_download)
+        if fresh or not self.is_cp_downloaded(IMG_GEN_MODEL_CP_ID):
+            return ImageGenRecommendationResponse(cp_to_download=IMG_GEN_MODEL_CP_ID)
+        return ImageGenRecommendationResponse(cp_to_download=None)
 
     def list_installed_models(self, model_type: str | None) -> InstalledModelsResponse:
         # "lora" -> regular LoRAs only (IC-LoRAs excluded; they need a reference video),
@@ -381,8 +477,10 @@ class ModelsHandler(StateHandlerBase):
         spec = get_model_cp_spec(cp_id)
         enhancer_cp = ltx_spec.prompt_enhancer_cp
         active_enhancer_cp = resolve_downloaded_prompt_enhancer_cp(self.models_dir, ltx_spec)
+        encoder_downloaded = self.is_cp_downloaded(cp_id)
+        removable = encoder_downloaded and self._local_text_encoder_is_removable(ltx_spec)
         return TextEncoderRecommendationResponse(
-            cp_to_download=None if self.is_cp_downloaded(cp_id) else cp_id,
+            cp_to_download=None if encoder_downloaded else cp_id,
             expected_size_bytes=spec.expected_size_bytes,
             expected_size_gb=round(spec.expected_size_bytes / (1024**3), 1),
             api_encoding_supported=ltx_spec.supports_api_text_encoding,
@@ -394,6 +492,8 @@ class ModelsHandler(StateHandlerBase):
                 else round(get_model_cp_spec(enhancer_cp).expected_size_bytes / (1024**3), 1)
             ),
             active_local_enhancer_cp=active_enhancer_cp,
+            active_local_text_encoder_cp=cp_id if encoder_downloaded else None,
+            local_text_encoder_removable=removable,
         )
 
     def resolve_upgrade_download(self, requested_cp_ids: set[ModelCheckpointID]) -> ResolvedUpgradeDownload:
@@ -436,13 +536,31 @@ class ModelsHandler(StateHandlerBase):
             cp_ids=tuple(self._ordered_cp_ids(expected_cp_ids)),
         )
 
+    def _local_text_encoder_is_removable(self, ltx_spec: LTXLocalModelSpec) -> bool:
+        """Whether the active model's local text encoder is safe to delete right now.
+
+        The encoder is only expendable when prompts can be encoded another way: the model
+        supports API encoding, a key is configured, and the user has not chosen local
+        encoding. Otherwise deleting it would leave the app unable to encode at all, so it
+        stays protected and Settings disables the action.
+        """
+        if not ltx_spec.supports_api_text_encoding:
+            return False
+        if self.state.app_settings.use_local_text_encoder:
+            return False
+        return self._has_api_key()
+
     def get_protected_cp_ids(self) -> set[ModelCheckpointID]:
         active_model_id = resolve_active_ltx_model_id(
             self.models_dir, self.state.app_settings.active_ltx_model_id
         )
         if active_model_id is None:
             return set()
-        return set(get_ltx_model_cp_ids(active_model_id))
+        protected = set(get_ltx_model_cp_ids(active_model_id))
+        ltx_spec = get_ltx_model_spec(active_model_id)
+        if self._local_text_encoder_is_removable(ltx_spec):
+            protected.discard(ltx_spec.text_encoder_cp)
+        return protected
 
     def delete_checkpoints(self, cp_ids: set[ModelCheckpointID]) -> None:
         protected = self.get_protected_cp_ids()
@@ -455,7 +573,7 @@ class ModelsHandler(StateHandlerBase):
     def list_ltx_versions(self) -> LtxModelVersionsResponse:
         self._ensure_local_model_mode()
         latest = get_latest_ltx_model_id()
-        active = resolve_active_ltx_model_id(self.models_dir, self.state.app_settings.active_ltx_model_id)
+        active = self._active_ltx_model_id_for_versions_list()
         items: list[LtxModelVersionItem] = []
         for model_id in ALL_LTX_LOCAL_MODEL_IDS:
             spec = get_ltx_model_spec(model_id)

@@ -5,7 +5,11 @@ from __future__ import annotations
 import pytest
 
 from runtime_config.runtime_policy import (
+    CUDA_CPU_OFFLOAD_RAM_FLOOR_GB,
+    DARWIN_ADVERTISED_FLOOR_GB,
+    DARWIN_STREAMING_FLOOR_GB,
     decide_local_generation_mode,
+    should_disk_stream_cuda_weights,
     streaming_prefetch_count_for_mode,
 )
 
@@ -19,7 +23,13 @@ def test_darwin_without_mps_unsupported() -> None:
 
 def test_darwin_with_low_ram_unsupported() -> None:
     assert (
-        decide_local_generation_mode(system="Darwin", cuda_available=False, vram_gb=None, mps_available=True, ram_gb=14)
+        decide_local_generation_mode(
+            system="Darwin",
+            cuda_available=False,
+            vram_gb=None,
+            mps_available=True,
+            ram_gb=DARWIN_STREAMING_FLOOR_GB - 1,
+        )
         == "unsupported"
     )
 
@@ -31,30 +41,14 @@ def test_darwin_with_unknown_ram_unsupported() -> None:
     )
 
 
-def test_darwin_streams_below_full_resident_floor() -> None:
-    assert (
-        decide_local_generation_mode(system="Darwin", cuda_available=False, vram_gb=None, mps_available=True, ram_gb=15)
-        == "streaming_models_loading"
-    )
-    assert (
-        decide_local_generation_mode(system="Darwin", cuda_available=False, vram_gb=None, mps_available=True, ram_gb=48)
-        == "streaming_models_loading"
-    )
-    assert (
-        decide_local_generation_mode(system="Darwin", cuda_available=False, vram_gb=None, mps_available=True, ram_gb=84)
-        == "streaming_models_loading"
-    )
-
-
-def test_darwin_full_resident_at_and_above_floor() -> None:
-    assert (
-        decide_local_generation_mode(system="Darwin", cuda_available=False, vram_gb=None, mps_available=True, ram_gb=85)
-        == "full_models_loading"
-    )
-    assert (
-        decide_local_generation_mode(system="Darwin", cuda_available=False, vram_gb=None, mps_available=True, ram_gb=128)
-        == "full_models_loading"
-    )
+def test_darwin_always_streams_when_ram_is_sufficient() -> None:
+    for ram_gb in (DARWIN_STREAMING_FLOOR_GB, DARWIN_ADVERTISED_FLOOR_GB, 48, 64, 128):
+        assert (
+            decide_local_generation_mode(
+                system="Darwin", cuda_available=False, vram_gb=None, mps_available=True, ram_gb=ram_gb
+            )
+            == "streaming_models_loading"
+        )
 
 
 def test_darwin_defaults_to_unsupported_without_mps_kwargs() -> None:
@@ -161,12 +155,37 @@ def test_darwin_ignores_fp8_capable() -> None:
         decide_local_generation_mode(
             system="Darwin", cuda_available=False, vram_gb=None, mps_available=True, ram_gb=85, fp8_capable=False
         )
-        == "full_models_loading"
+        == "streaming_models_loading"
     )
 
 
 def test_other_systems_fail_closed() -> None:
     assert decide_local_generation_mode(system="FreeBSD", cuda_available=True, vram_gb=48) == "unsupported"
+
+
+def test_linux_32gb_must_disk_stream_cuda_weights() -> None:
+    """LTX-Desktop#163: advertised 32 GB Linux floor cannot pin OffloadMode.CPU."""
+    assert should_disk_stream_cuda_weights("Linux", 32) is True
+    assert should_disk_stream_cuda_weights("Linux", CUDA_CPU_OFFLOAD_RAM_FLOOR_GB - 1) is True
+
+
+def test_linux_high_ram_keeps_cpu_weight_streaming() -> None:
+    assert should_disk_stream_cuda_weights("Linux", CUDA_CPU_OFFLOAD_RAM_FLOOR_GB) is False
+    assert should_disk_stream_cuda_weights("Linux", 64) is False
+
+
+def test_linux_unknown_ram_fails_closed_to_disk_streaming() -> None:
+    assert should_disk_stream_cuda_weights("Linux", None) is True
+
+
+def test_windows_does_not_force_disk_streaming_on_32gb() -> None:
+    """Windows already uses pageable host buffers (LTX-Desktop#141)."""
+    assert should_disk_stream_cuda_weights("Windows", 32) is False
+    assert should_disk_stream_cuda_weights("Windows", None) is False
+
+
+def test_darwin_disk_vs_cpu_is_not_this_gate() -> None:
+    assert should_disk_stream_cuda_weights("Darwin", 16) is False
 
 
 def test_streaming_prefetch_count_for_full_loading_is_none() -> None:

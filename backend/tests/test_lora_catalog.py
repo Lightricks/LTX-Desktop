@@ -8,7 +8,7 @@ from services.lora_catalog.file_lora_catalog import FileLoraCatalogProvider
 _VALID = """
 {"schema_version": 1, "ic_loras": [{
   "id": "ingredients-v1", "name": "Ingredients", "description": "d",
-  "download": {"repo_id": "Lightricks/x", "variants": [{"id": "default", "label": "Default", "filename": "i.safetensors", "size_bytes": 10}]},
+  "download": {"repo_id": "Lightricks/x", "variants": [{"id": "default", "label": "Default", "filename": "i.safetensors", "size_bytes": 10, "base_model": "LTX-2.3"}]},
   "requires_hf_login": true,
   "input": {"kind": "image"},
   "preprocessing": [{"utility": "image_to_frames", "params": {}}],
@@ -49,11 +49,14 @@ def test_supported_models_rejects_empty_and_duplicates():
         parse_lora_catalog(dup)
 
 
-def test_shipped_catalog_allows_2_3_and_2_5():
+def test_shipped_ingredients_is_2_3_only():
     catalog = Path(__file__).parent.parent / "runtime_config" / "lora_catalog.json"
     cat = parse_lora_catalog(catalog.read_text(encoding="utf-8"))
+    ing = next(r for r in cat.ic_loras if r.id == "ingredients")
+    assert ing.supported_models == ["LTX-2.3"]
     for item in [*cat.loras, *cat.ic_loras]:
-        assert item.supported_models == ["LTX-2.3", "LTX-2.5"], item.id
+        assert item.supported_models, item.id
+        assert len(item.supported_models) == len(set(item.supported_models)), item.id
 
 def test_controls_default_to_empty():
     no_controls = _VALID.replace(
@@ -138,7 +141,7 @@ def test_file_provider_reads_local_file(tmp_path: Path):
 _VALID_LORA = """
 {"schema_version": 1, "loras": [{
   "id": "my-style", "name": "My Style", "description": "d",
-  "download": {"repo_id": "Lightricks/s", "variants": [{"id": "default", "label": "Default", "filename": "s.safetensors", "size_bytes": 5}]},
+  "download": {"repo_id": "Lightricks/s", "variants": [{"id": "default", "label": "Default", "filename": "s.safetensors", "size_bytes": 5, "base_model": "LTX-2.3"}]},
   "requires_hf_login": false,
   "instructions": [{"kind": "prompting", "title": "Prompt", "body": "use TRIGGER"}],
   "license": {"name": "OpenRAIL-M", "url": "https://example/license"},
@@ -260,7 +263,7 @@ def test_shipped_catalog_uses_relative_demo_videos_and_author_affiliation():
             assert not item.media.demo_video.startswith("http://")
             assert not item.media.demo_video.startswith("https://")
     official = [r for r in cat.ic_loras if r.author and r.author.affiliation == "ltx"]
-    assert len(official) == 10
+    assert len(official) == 14
     missing = next(r for r in cat.loras if r.id == "fantasy-anime-style")
     assert missing.media is not None and missing.media.demo_video == "fantasy_anime_style_demo.mp4"
 
@@ -287,16 +290,16 @@ def test_download_variants_require_unique_filenames_and_ids():
         DownloadSpec(
             repo_id="org/repo",
             variants=[
-                DownloadVariant(id="a", label="A", filename="a.safetensors", size_bytes=1),
-                DownloadVariant(id="b", label="B", filename="a.safetensors", size_bytes=2),
+                DownloadVariant(id="a", label="A", filename="a.safetensors", size_bytes=1, base_model="LTX-2.3"),
+                DownloadVariant(id="b", label="B", filename="a.safetensors", size_bytes=2, base_model="LTX-2.3"),
             ],
         )
     with pytest.raises(ValidationError):
         DownloadSpec(
             repo_id="org/repo",
             variants=[
-                DownloadVariant(id="a", label="A", filename="a.safetensors", size_bytes=1),
-                DownloadVariant(id="a", label="B", filename="b.safetensors", size_bytes=2),
+                DownloadVariant(id="a", label="A", filename="a.safetensors", size_bytes=1, base_model="LTX-2.3"),
+                DownloadVariant(id="a", label="B", filename="b.safetensors", size_bytes=2, base_model="LTX-2.3"),
             ],
         )
 
@@ -307,8 +310,8 @@ def test_download_resolve_variant_defaults_to_first():
     spec = DownloadSpec(
         repo_id="org/repo",
         variants=[
-            DownloadVariant(id="strong", label="Strong", filename="strong.safetensors", size_bytes=2),
-            DownloadVariant(id="light", label="Light", filename="light.safetensors", size_bytes=1),
+            DownloadVariant(id="strong", label="Strong", filename="strong.safetensors", size_bytes=2, base_model="LTX-2.3"),
+            DownloadVariant(id="light", label="Light", filename="light.safetensors", size_bytes=1, base_model="LTX-2.3"),
         ],
     )
     assert spec.resolve_variant(None).id == "strong"
@@ -316,6 +319,48 @@ def test_download_resolve_variant_defaults_to_first():
     assert spec.resolve_variant("light").filename == "light.safetensors"
     assert spec.candidate_filenames() == ["strong.safetensors", "light.safetensors"]
     assert spec.resolve_variant("x") is None
+
+
+def test_stored_default_variant_id_resolves_to_the_original_checkpoint():
+    from api_types import DownloadSpec, DownloadVariant
+
+    spec = DownloadSpec(
+        repo_id="org/repo",
+        variants=[
+            DownloadVariant(id="ltx-2.5__x", label="LTX-2.5", filename="new.safetensors", size_bytes=2, base_model="LTX-2.5"),
+            DownloadVariant(id="ltx-2.3__x", label="LTX-2.3", filename="old.safetensors", size_bytes=1, base_model="LTX-2.3"),
+        ],
+    )
+    assert spec.resolve_variant("default").filename == "old.safetensors"
+    assert spec.legacy_variant().filename == "old.safetensors"
+    assert spec.resolve_variant("ltx-2.5__x").filename == "new.safetensors"
+    assert spec.resolve_variant("nope") is None
+
+
+def test_variant_for_run_omitted_id_rules():
+    from api_types import DownloadSpec, DownloadVariant
+
+    def variant(variant_id: str, filename: str) -> DownloadVariant:
+        return DownloadVariant(id=variant_id, label=variant_id, filename=filename, size_bytes=1, base_model="LTX-2.3")
+
+    single = DownloadSpec(repo_id="org/repo", variants=[variant("only", "a.safetensors")])
+    multi = DownloadSpec(
+        repo_id="org/repo",
+        variants=[variant("new", "new.safetensors"), variant("old", "old.safetensors")],
+    )
+    assert single.variant_for_run(None, ["only"]).id == "only"
+    assert single.variant_for_run(None, []).id == "only"
+    assert multi.variant_for_run(None, []).id == "new"
+    assert multi.variant_for_run(None, ["old"]) is None
+    assert multi.variant_for_run("old", ["old"]).id == "old"
+
+
+def test_shipped_variant_ids_are_unique_and_never_default():
+    catalog = Path(__file__).parent.parent / "runtime_config" / "lora_catalog.json"
+    cat = parse_lora_catalog(catalog.read_text(encoding="utf-8"))
+    ids = [v.id for item in [*cat.loras, *cat.ic_loras] for v in item.download.variants]
+    assert "default" not in ids
+    assert len(ids) == len(set(ids))
 
 
 def test_shipped_3dreal_has_strong_v2_default_and_light_variant():
@@ -381,6 +426,109 @@ def test_enhancement_examples_parse_when_present():
     assert parse_lora_catalog(j).loras[0].enhancement_examples == ["ex one", "ex two"]
 
 
+def test_shipped_dolly_in_lora_is_wired_for_prompt_enhancement():
+    from services.prompt_enhancement.system_prompt import render_catalog_item_block
+
+    catalog = Path(__file__).parent.parent / "runtime_config" / "lora_catalog.json"
+    cat = parse_lora_catalog(catalog.read_text(encoding="utf-8"))
+    item = next(r for r in cat.loras if r.id == "dolly-in")
+    assert item.name == "Dolly In"
+    assert item.download.repo_id == "Lightricks/LTX-2-19b-LoRA-Camera-Control-Dolly-In"
+    assert item.download.default_variant().filename == (
+        "ltx-2-19b-lora-camera-control-dolly-in.safetensors"
+    )
+    assert item.download.default_variant().size_bytes == 327309208
+    assert item.requires_hf_login is True
+    assert item.author is not None and item.author.affiliation == "ltx"
+    assert item.trigger is None and item.trigger_placement is None
+    assert item.prompt_template is None
+    assert item.recommended_strength == 1.0
+    assert "motion" in item.tags
+    kinds = {instr.kind for instr in item.instructions}
+    assert {"summary", "prompting"}.issubset(kinds)
+    assert item.enhancement_examples, "catalog-aware rewrite needs few-shot examples"
+    block = render_catalog_item_block(item)
+    assert "destination of the movement" in block
+    for example in item.enhancement_examples:
+        assert example in block
+    assert "LoRA strength ~1.0" not in block
+    tips = next(instr.body for instr in item.instructions if instr.kind == "tips")
+    assert isinstance(tips, str)
+    assert "no input clip" not in tips
+    assert "Text-to-video" not in tips
+    assert "start still" in tips
+
+
+def test_shipped_camera_control_loras_are_wired_for_prompt_enhancement():
+    from services.prompt_enhancement.system_prompt import render_catalog_item_block
+
+    catalog = Path(__file__).parent.parent / "runtime_config" / "lora_catalog.json"
+    cat = parse_lora_catalog(catalog.read_text(encoding="utf-8"))
+    expected = {
+        "jib-up": (
+            "Lightricks/LTX-2-19b-LoRA-Camera-Control-Jib-Up",
+            "ltx-2-19b-lora-camera-control-jib-up.safetensors",
+            2214978664,
+        ),
+        "jib-down": (
+            "Lightricks/LTX-2-19b-LoRA-Camera-Control-Jib-Down",
+            "ltx-2-19b-lora-camera-control-jib-down.safetensors",
+            2214978664,
+        ),
+        "dolly-out": (
+            "Lightricks/LTX-2-19b-LoRA-Camera-Control-Dolly-Out",
+            "ltx-2-19b-lora-camera-control-dolly-out.safetensors",
+            327309208,
+        ),
+    }
+    for lora_id, (repo_id, filename, size_bytes) in expected.items():
+        item = next(r for r in cat.loras if r.id == lora_id)
+        assert item.download.repo_id == repo_id
+        assert item.download.default_variant().filename == filename
+        assert item.download.default_variant().size_bytes == size_bytes
+        assert item.requires_hf_login is True
+        assert item.author is not None and item.author.affiliation == "ltx"
+        assert item.trigger is None and item.trigger_placement is None
+        assert item.prompt_template is None
+        assert item.enhancement_examples, lora_id
+        block = render_catalog_item_block(item)
+        assert "destination of the movement" in block
+        for example in item.enhancement_examples:
+            assert example in block
+        assert "LoRA strength ~1.0" not in block
+
+
+def test_shipped_transition_and_vbvr_have_enhancement_examples():
+    from services.prompt_enhancement.system_prompt import render_catalog_item_block
+
+    catalog = Path(__file__).parent.parent / "runtime_config" / "lora_catalog.json"
+    cat = parse_lora_catalog(catalog.read_text(encoding="utf-8"))
+    transition = next(r for r in cat.loras if r.id == "transition")
+    assert transition.download.repo_id == "joyfox/LTX-2.3-Transition-LORA"
+    assert transition.download.default_variant().filename == "ltx2.3-transition.safetensors"
+    assert transition.download.default_variant().size_bytes == 390229424
+    assert transition.trigger == "zhuanchang"
+    assert transition.enhancement_examples
+    transition_block = render_catalog_item_block(transition)
+    assert "zhuanchang" in transition_block
+    for example in transition.enhancement_examples:
+        assert example in transition_block
+    assert "Home Transition is image-to-video" not in transition_block
+
+    vbvr = next(r for r in cat.loras if r.id == "vbvr")
+    assert vbvr.download.repo_id == "LiconStudio/Ltx2.3-VBVR-lora-I2V"
+    assert (
+        vbvr.download.default_variant().filename
+        == "Ltx2.3-Licon-VBVR-I2V-390K-R32.safetensors"
+    )
+    assert vbvr.download.default_variant().size_bytes == 554006432
+    assert vbvr.enhancement_examples
+    vbvr_block = render_catalog_item_block(vbvr)
+    for example in vbvr.enhancement_examples:
+        assert example in vbvr_block
+    assert "Home VBVR is image-to-video" not in vbvr_block
+
+
 def test_input_optional_defaults_false():
     assert parse_lora_catalog(_VALID).ic_loras[0].input.optional is False
 
@@ -435,3 +583,17 @@ def test_downloaded_variant_ids_lists_only_installed_checkpoints(tmp_path: Path)
     light.parent.mkdir(parents=True)
     light.write_bytes(b"x")
     assert downloaded_ic_lora_variant_ids(tmp_path, "3d-render-to-real", variants) == ["light"]
+
+
+def test_catalog_entry_pins_a_reference_image_only_to_frame_0_or_the_still_frame():
+    def entry(frame: int) -> str:
+        return _VALID.replace(
+            '"requires_hf_login": true,',
+            f'"requires_hf_login": true, "allows_reference_image": true, "reference_image_frame": {frame},',
+        )
+
+    assert parse_lora_catalog(entry(0)).ic_loras[0].reference_image_frame == 0
+    assert parse_lora_catalog(entry(-1)).ic_loras[0].reference_image_frame == -1
+    for frame in (5, -2):
+        with pytest.raises(ValidationError, match="reference_image_frame must be 0 or -1"):
+            parse_lora_catalog(entry(frame))

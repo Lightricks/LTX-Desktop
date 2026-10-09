@@ -1,5 +1,13 @@
 import { randomUUID } from 'crypto';
 import { app } from 'electron';
+import os from 'os';
+import {
+  buildAnalyticsPayload,
+  mergeAnalyticsDetails,
+  shouldDeliverAnalytics,
+  type AnalyticsEventName,
+  type AnalyticsHardware,
+} from './analytics-payload';
 import { isDev } from './config';
 import { readAppState, writeAppState } from './app-state';
 
@@ -7,6 +15,29 @@ const ANALYTICS_ENDPOINT = 'https://ltx-desktop.lightricks.com/v2/ingest';
 const REQUEST_TIMEOUT_MS = 5000;
 const MAX_RETRIES = 3;
 const RETRY_DELAYS_MS = [1000, 3000, 10000]
+const MAX_INGEST_REQUESTS = 200
+const INGEST_WINDOW_MS = 5 * 60 * 1000
+const ingestTimestamps: number[] = []
+
+function pruneIngestTimestamps(now: number): void {
+  const cutoff = now - INGEST_WINDOW_MS
+  while (ingestTimestamps.length > 0 && ingestTimestamps[0] <= cutoff) {
+    ingestTimestamps.shift()
+  }
+}
+
+function ingestAtCapacity(): boolean {
+  pruneIngestTimestamps(Date.now())
+  return ingestTimestamps.length >= MAX_INGEST_REQUESTS
+}
+
+function tryAcquireIngest(): boolean {
+  const now = Date.now()
+  pruneIngestTimestamps(now)
+  if (ingestTimestamps.length >= MAX_INGEST_REQUESTS) return false
+  ingestTimestamps.push(now)
+  return true
+}
 
 export function getAnalyticsState(): { analyticsEnabled: boolean; installationId: string } {
   const state = readAppState()
@@ -39,6 +70,8 @@ async function sendWithRetry(
   options: RequestInit,
 ): Promise<void> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (!tryAcquireIngest()) return
+
     try {
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
@@ -56,16 +89,49 @@ async function sendWithRetry(
   }
 }
 
+function readGpuName(info: unknown): string | undefined {
+  if (typeof info !== 'object' || info === null || !('gpuDevice' in info)) return undefined
+  const devices = (info as { gpuDevice?: unknown }).gpuDevice
+  if (!Array.isArray(devices)) return undefined
+  const named = devices.filter((device): device is { active?: boolean; deviceString?: string } => (
+    typeof device === 'object' && device !== null
+  ))
+  const selected = named.find((device) => device.active) ?? named[0]
+  return typeof selected?.deviceString === 'string' && selected.deviceString
+    ? selected.deviceString
+    : undefined
+}
+
+let hardwarePromise: Promise<AnalyticsHardware> | null = null
+
+function currentHardware(): Promise<AnalyticsHardware> {
+  hardwarePromise ??= loadHardware()
+  return hardwarePromise
+}
+
+async function loadHardware(): Promise<AnalyticsHardware> {
+  const hardware: AnalyticsHardware = {
+    ramGb: Math.round(os.totalmem() / 1024 ** 3),
+  }
+  try {
+    hardware.gpuName = readGpuName(await app.getGPUInfo('basic'))
+  } catch {
+    // Hardware metadata is optional and must never prevent an event.
+  }
+  return hardware
+}
+
 export async function sendAnalyticsEvent(
-  eventName: string,
+  eventName: AnalyticsEventName,
   extraDetails?: Record<string, unknown> | null,
 ): Promise<void> {
   try {
-    // Skip analytics in dev builds
-    if (isDev) return;
-
     const state = readAppState()
-    if (state.analyticsEnabled === false) return
+    if (!shouldDeliverAnalytics({
+      dev: isDev,
+      enabled: state.analyticsEnabled !== false,
+    })) return
+    if (ingestAtCapacity()) return
 
     // Generate installationId on first send
     if (!state.installationId) {
@@ -73,26 +139,16 @@ export async function sendAnalyticsEvent(
       writeAppState(state)
     }
 
-    const platformNames: Record<string, string> = { darwin: 'mac', win32: 'windows', linux: 'linux' }
-    const platform = platformNames[process.platform] ?? process.platform
     const now = Date.now()
-
-    const payload = {
-      events: [
-        {
-          subject: eventName,
-          eventId: randomUUID(),
-          eventTimestamp: now,
-          event: {
-            app_version: app.getVersion(),
-            device_timestamp: now,
-            installation_id: state.installationId,
-            platform,
-            extra_details: extraDetails ? JSON.stringify(extraDetails) : null,
-          },
-        },
-      ],
-    }
+    const payload = buildAnalyticsPayload({
+      eventName,
+      eventId: randomUUID(),
+      timestamp: now,
+      appVersion: app.getVersion(),
+      installationId: state.installationId,
+      platform: process.platform,
+      extraDetails: mergeAnalyticsDetails(extraDetails, await currentHardware(), eventName),
+    })
 
     // Fire-and-forget with retries — never throws
     void sendWithRetry(ANALYTICS_ENDPOINT, {

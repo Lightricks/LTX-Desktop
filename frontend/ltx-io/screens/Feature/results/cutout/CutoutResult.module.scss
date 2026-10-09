@@ -1,0 +1,12 @@
+@import "@ds/styles/common.module.scss";
+
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.checkerboardStage {
+  @extend .stage;
+  @extend .checkerboardBackground;
+}

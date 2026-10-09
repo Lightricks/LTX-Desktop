@@ -1,10 +1,12 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
+import { Text } from '@ds/Text/Text'
+import { useThemedPortalContainer } from '@/ds/styles/themes/useTheme'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import {
   Trash2, Download, Image, Video, X,
   Heart, Film, Volume2, VolumeX, Sparkles, Sparkle,
-  Clock, Monitor, ChevronUp, Scissors, Music, Undo2, Redo2, Loader2,
+  Clock, Monitor, ChevronUp, Scissors, Music, Undo2, Redo2,
   MoveHorizontal, Wand2, Square, Rows3
 } from 'lucide-react'
 import { useProjects } from '../contexts/ProjectContext'
@@ -15,7 +17,7 @@ import { useFixedMenu } from '../hooks/use-fixed-menu'
 import { setActiveGenerationOwner, hasValidBaselineId } from '../lib/generation-recovery'
 import { withGenerationActive, canCancelLocalJob } from '../lib/generation-active'
 import { useVideoGenerationModelSpecs } from '../hooks/use-video-generation-model-specs'
-import { createLocalGenerationError, type GenerationError } from '../lib/generation-errors'
+import { createLocalGenerationError, generationErrorFromApiFailure, type GenerationError } from '../lib/generation-errors'
 import {
   useRetake,
   RETAKE_EXTEND_MODELS,
@@ -48,9 +50,15 @@ import {
   resolvePipelineDisplayName,
   resolveVideoGenerationOptions,
   sanitizeVideoGenerationSettings,
+  untrainedAspectRatioWarning,
+  orderAspectRatiosForPicker,
   type VideoGenerationModelSpecItem,
   type VideoGenerationPipeline,
 } from '../lib/video-generation-model-specs'
+import {
+  GENSPACE_IMAGE_ASPECT_RATIOS,
+  genSpaceImageAspectRatio,
+} from '../lib/genspace-image-aspect'
 import { logger } from '../lib/logger'
 import { ApiClient, type ApiSuccessOf } from '../lib/api-client'
 import type { GenerationSettings, LoraSelection } from '../components/SettingsPanel'
@@ -73,6 +81,8 @@ import {
   GEMINI_KEY_REQUIRED_SETTINGS_DETAIL,
   isEnhanceBlockedByMissingGeminiKey,
 } from '../lib/enhance-gemini-key'
+import { enhanceActionLabel } from '../lib/enhance-ui-copy'
+import { EnhanceSplitButton } from '../components/EnhanceSplitButton'
 import {
   autoDurationOptionVisible,
   canUseMultiKeyframeMode,
@@ -93,12 +103,20 @@ import {
   videoGenerationModeFromInputs,
   type KeyframeItem,
 } from '../lib/multi-keyframe'
+import {
+  appendEnhanceResult,
+  historyForRestoredPrompt,
+  resolvePromptProvenance,
+  shouldApplyEnhanceResult,
+  type PromptHistoryEntry,
+} from '../lib/prompt-provenance'
 import { lastFrameFromDuration, previewKeyframeForPlayhead, retimeKeyframesForSettings, sameDraggedFrame, type DraggedFrame } from '../lib/keyframe-timeline'
 import { GenSpaceFilterEmptyState } from './genspace/GenSpaceFilterEmptyState'
 import { GenSpaceGalleryToolbar } from './genspace/GenSpaceGalleryToolbar'
 import { gallerySizeClasses, type GallerySize } from './genspace/GenSpaceGallerySizeMenu'
 import { useGenSpaceGallery } from './genspace/useGenSpaceGallery'
 import { useGenSpacePromptBarHeight } from './genspace/useGenSpacePromptBarHeight'
+import { genspaceModePanelPaddingBottom, LORA_CHIP_OVERLAY_GAP } from '../lib/genspace-layout'
 
 // Asset card with hover overlays
 function AssetCard({
@@ -166,7 +184,7 @@ function AssetCard({
 
   return (
     <div
-      className="relative group cursor-pointer rounded-xl overflow-hidden bg-zinc-900"
+      className="relative group cursor-pointer rounded-xl overflow-hidden bg-surface-primary"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => {
         setIsHovered(false)
@@ -177,7 +195,7 @@ function AssetCard({
       onDragStart={(e) => asset.type === 'image' && onDragStart(e, asset)}
     >
       {asset.type === 'video' ? (
-        <div className="relative w-full aspect-video bg-zinc-900">
+        <div className="relative w-full aspect-video bg-surface-primary">
           {asset.bigThumbnailPath && (
             <img
               src={pathToFileUrl(asset.bigThumbnailPath)}
@@ -209,7 +227,7 @@ function AssetCard({
       {isFavorite && !isHovered && (
         <button
           onClick={(e) => { e.stopPropagation(); onToggleFavorite?.() }}
-          className="absolute top-2 left-2 p-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white transition-colors z-10"
+          className="absolute top-2 left-2 p-1.5 rounded-lg bg-black/40 backdrop-blur-md text-fg-white transition-colors z-10"
         >
           <Heart className="h-3.5 w-3.5 fill-current" />
         </button>
@@ -225,7 +243,7 @@ function AssetCard({
             <button
               onClick={(e) => { e.stopPropagation(); onToggleFavorite?.() }}
               className={`p-1.5 rounded-lg backdrop-blur-md transition-colors ${
-                isFavorite ? 'bg-white/20 text-white' : 'bg-black/40 text-white hover:bg-black/60'
+                isFavorite ? 'bg-[color-mix(in_srgb,var(--semantic-fg-white-enabled)_20%,transparent)] text-fg-white' : 'bg-black/40 text-fg-white hover:bg-black/60'
               }`}
             >
               <Heart className={`h-3.5 w-3.5 ${isFavorite ? 'fill-current' : ''}`} />
@@ -235,14 +253,14 @@ function AssetCard({
               <>
                 <button
                   onClick={(e) => { e.stopPropagation(); onCreateVideo?.(asset) }}
-                  className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
+                  className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-fg-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
                 >
                   <Film className="h-3 w-3" />
                   Create video
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); onEditImage?.(asset) }}
-                  className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
+                  className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-fg-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
                 >
                   <Wand2 className="h-3 w-3" />
                   Edit image
@@ -254,7 +272,7 @@ function AssetCard({
                 {onRetake && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onRetake(asset) }}
-                    className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
+                    className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-fg-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
                   >
                     <Scissors className="h-3 w-3" />
                     Retake
@@ -263,7 +281,7 @@ function AssetCard({
                 {onExtend && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onExtend(asset) }}
-                    className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
+                    className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-fg-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
                   >
                     <MoveHorizontal className="h-3 w-3" />
                     Extend
@@ -272,7 +290,7 @@ function AssetCard({
                 {onIcLora && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onIcLora(asset) }}
-                    className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
+                    className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-fg-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
                   >
                     <Sparkles className="h-3 w-3" />
                     IC-LoRA
@@ -285,7 +303,7 @@ function AssetCard({
           <div className="flex items-center gap-1.5">
             <button
               onClick={handleDownload}
-              className="p-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors"
+              className="p-1.5 rounded-lg bg-black/40 backdrop-blur-md text-fg-white hover:bg-black/60 transition-colors"
             >
               <Download className="h-3.5 w-3.5" />
             </button>
@@ -297,13 +315,13 @@ function AssetCard({
         {asset.type === 'video' && (
           <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <div className="px-2 py-1 rounded-lg bg-black/50 backdrop-blur-md text-white text-xs font-mono">
+              <div className="px-2 py-1 rounded-lg bg-black/50 backdrop-blur-md text-fg-white text-xs font-mono">
                 {formatTime(currentTime)}
               </div>
               <div className="flex items-center gap-1.5 rounded-lg bg-black/40 backdrop-blur-md pl-1.5 pr-2 py-1">
                 <button
                   onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted) }}
-                  className="text-white hover:text-white/80 transition-colors"
+                  className="text-fg-white hover:text-fg-white-hover transition-colors"
                   aria-label={isMuted ? 'Unmute' : 'Mute'}
                 >
                   {isMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
@@ -338,7 +356,7 @@ function AssetCard({
         {(
           <button
             onClick={(e) => { e.stopPropagation(); onDelete() }}
-            className="absolute bottom-2 right-2 p-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white/70 hover:bg-red-500/80 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+            className="absolute bottom-2 right-2 p-1.5 rounded-lg bg-black/40 backdrop-blur-md text-fg-white hover:bg-danger-soft hover:text-fg-white transition-colors opacity-0 group-hover:opacity-100"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -401,6 +419,7 @@ function LoRAPicker({
   catalogIdsByPath?: Map<string, string>
 }) {
   const { isOpen, setIsOpen, triggerRef, menuRef, style } = useFixedMenu('above')
+  const portalRoot = useThemedPortalContainer()
 
   const nameFor = (lora: ApiSuccessOf<'listModels'>['models'][0]) => displayNames?.get(lora.path) ?? lora.name
 
@@ -427,7 +446,7 @@ function LoRAPicker({
     <div ref={triggerRef} className="relative">
       <button
         onClick={() => setIsOpen(o => !o)}
-        className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-zinc-800/60 text-zinc-300 text-xs hover:bg-zinc-700/60 transition-colors max-w-[160px]"
+        className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_60%,transparent)] text-fg-secondary text-xs hover:bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-hover)_60%,transparent)] transition-colors max-w-[160px]"
       >
         <Sparkles className="h-3.5 w-3.5 flex-shrink-0" />
         <span className="truncate">{label}</span>
@@ -436,24 +455,24 @@ function LoRAPicker({
         <div
           ref={menuRef}
           style={style}
-          className="fixed w-72 max-h-80 overflow-y-auto rounded-md border border-zinc-700 bg-zinc-900 shadow-xl"
+          className="fixed w-72 max-h-80 overflow-y-auto rounded-md border border-separator bg-surface-primary shadow-xl"
         >
-          <div className="px-3 py-2 text-[10px] uppercase tracking-wide text-zinc-500 border-b border-zinc-800">
+          <div className="px-3 py-2 text-[10px] uppercase tracking-wide text-fg-tertiary border-b border-separator">
             Select LoRAs
           </div>
           {available.map(lora => {
             const sel = selected.find(s => s.ref === lora.path)
             return (
-              <div key={lora.path} className="px-3 py-2 hover:bg-zinc-800 transition-colors">
-                <div className="flex items-center gap-2">
+              <div key={lora.path} className="px-3 py-2 hover:bg-action transition-colors">
+                <label className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={Boolean(sel)}
                     onChange={() => toggle(lora)}
-                    className="accent-white"
+                    className="accent-brand"
                   />
-                  <span className="text-xs text-zinc-300 truncate flex-1" title={nameFor(lora)}>{nameFor(lora)}</span>
-                </div>
+                  <span className="text-xs text-fg-secondary truncate flex-1" title={nameFor(lora)}>{nameFor(lora)}</span>
+                </label>
                 {sel && (
                   <div className="flex items-center gap-2 mt-1.5 pl-6">
                     <input
@@ -463,16 +482,16 @@ function LoRAPicker({
                       step={0.05}
                       value={sel.scale}
                       onChange={e => updateScale(lora.path, parseFloat(e.target.value))}
-                      className="flex-1 accent-white"
+                      className="flex-1 accent-brand"
                     />
-                    <span className="text-[10px] text-zinc-400 w-8 text-right">{sel.scale.toFixed(2)}</span>
+                    <span className="text-[10px] text-fg-secondary w-8 text-right">{sel.scale.toFixed(2)}</span>
                   </div>
                 )}
               </div>
             )
           })}
         </div>,
-        document.body,
+        portalRoot ?? document.body,
       )}
     </div>
   )
@@ -575,7 +594,7 @@ function PromptBar({
   resolutionOptions?: ResolutionOption[]
   selectedResolution?: string
   onResolutionChange?: (key: string) => void
-  // Retake/extend, API mode: ltxv-api /v1/retake and /v2/extend accept
+  // Retake/extend, API mode: ltxv-api /v2/retake and /v2/extend accept
   // ltx-2-pro / ltx-2-3-pro (Desktop pipeline "pro").
   retakeExtendModel?: RetakeExtendModel
   onRetakeExtendModelChange?: (model: RetakeExtendModel) => void
@@ -662,7 +681,7 @@ function PromptBar({
         <>
           <Monitor className="h-3.5 w-3.5" />
           <span>{(resolutionOpts!.find((o) => o.key === selectedResolution)?.label ?? 'Original').split(' ')[0]}</span>
-          <ChevronUp className="h-3 w-3 text-zinc-500" />
+          <ChevronUp className="h-3 w-3 text-fg-tertiary" />
         </>
       }
     />
@@ -685,7 +704,7 @@ function PromptBar({
         <>
           <Sparkles className="h-3.5 w-3.5" />
           <span>{retakeExtendModelLabel(retakeExtendModel ?? 'pro')}</span>
-          <ChevronUp className="h-3 w-3 text-zinc-500" />
+          <ChevronUp className="h-3 w-3 text-fg-tertiary" />
         </>
       }
     />
@@ -712,6 +731,7 @@ function PromptBar({
     : resolvedVideoOptions?.selectedDuration
       ?? resolvedVideoOptions?.durationOptions[0]
       ?? settings.duration
+  const selectedAspectRatio = resolvedVideoOptions?.selectedAspectRatio ?? settings.aspectRatio
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -826,7 +846,7 @@ function PromptBar({
   const generateDisabled = isGenerating || !canGenerate || isEnhancingPrompt
 
   return (
-    <div className="h-full min-h-0 flex flex-col bg-zinc-900 border border-zinc-800 rounded-2xl overflow-visible">
+    <div className="h-full min-h-0 flex flex-col bg-surface-primary border border-separator rounded-2xl overflow-visible">
       {mode === 'multi-keyframe' && (
         <MultiKeyframePanel
           keyframes={keyframes}
@@ -845,7 +865,7 @@ function PromptBar({
         {(mode === 'video' || mode === 'image') && !isRetake && !isIcLora && (
           <div
             className={`relative w-10 h-10 mx-2 mt-2 self-start rounded-lg border-2 border-dashed transition-colors flex items-center justify-center flex-shrink-0 cursor-pointer ${
-              isDragOver ? 'border-blue-500 bg-blue-500/10' : 'border-zinc-700 hover:border-zinc-500'
+              isDragOver ? 'border-blue-500 bg-blue-500/10' : 'border-separator hover:border-separator'
             }`}
             onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
             onDragLeave={() => setIsDragOver(false)}
@@ -861,13 +881,13 @@ function PromptBar({
                     onInputImageChange(null)
                     onInputLastImageChange(null)
                   }}
-                  className="absolute -top-1 -right-1 p-0.5 rounded-full bg-zinc-800 text-zinc-400 hover:text-white z-10"
+                  className="absolute -top-1 -right-1 p-0.5 rounded-full bg-action text-fg-secondary hover:text-fg-primary z-10"
                 >
                   <X className="h-3 w-3" />
                 </button>
               </>
             ) : (
-              <Image className="h-4 w-4 text-zinc-500" />
+              <Image className="h-4 w-4 text-fg-tertiary" />
             )}
             <input
               ref={inputRef}
@@ -886,7 +906,7 @@ function PromptBar({
         }) && !isRetake && !isIcLora && (
           <div
             className={`relative w-10 h-10 mt-2 mr-2 rounded-lg border-2 border-dashed transition-colors flex items-center justify-center flex-shrink-0 cursor-pointer ${
-              isLastDragOver ? 'border-blue-500 bg-blue-500/10' : 'border-zinc-700 hover:border-zinc-500'
+              isLastDragOver ? 'border-blue-500 bg-blue-500/10' : 'border-separator hover:border-separator'
             }`}
             title="Last frame"
             onDragOver={(e) => { e.preventDefault(); setIsLastDragOver(true) }}
@@ -899,13 +919,13 @@ function PromptBar({
                 <img src={pathToFileUrl(inputLastImage)} alt="" className="w-full h-full object-cover rounded-md" />
                 <button
                   onClick={(e) => { e.stopPropagation(); onInputLastImageChange(null) }}
-                  className="absolute -top-1 -right-1 p-0.5 rounded-full bg-zinc-800 text-zinc-400 hover:text-white z-10"
+                  className="absolute -top-1 -right-1 p-0.5 rounded-full bg-action text-fg-secondary hover:text-fg-primary z-10"
                 >
                   <X className="h-3 w-3" />
                 </button>
               </>
             ) : (
-              <Image className="h-4 w-4 text-zinc-500" />
+              <Image className="h-4 w-4 text-fg-tertiary" />
             )}
             <input
               ref={lastFrameInputRef}
@@ -921,7 +941,7 @@ function PromptBar({
         {genSpaceUsesAudioInput(mode) && !isRetake && !isIcLora && (
           <div
             className={`relative w-10 h-10 mt-2 self-start rounded-lg border-2 border-dashed transition-colors flex items-center justify-center flex-shrink-0 cursor-pointer ${
-              isAudioDragOver ? 'border-emerald-500 bg-emerald-500/10' : inputAudio ? 'border-emerald-600' : 'border-zinc-700 hover:border-zinc-500'
+              isAudioDragOver ? 'border-success bg-success-soft' : inputAudio ? 'border-success' : 'border-separator hover:border-separator'
             }`}
             onDragOver={(e) => { e.preventDefault(); setIsAudioDragOver(true) }}
             onDragLeave={() => setIsAudioDragOver(false)}
@@ -931,16 +951,16 @@ function PromptBar({
           >
             {inputAudio ? (
               <>
-                <Music className="h-4 w-4 text-emerald-400" />
+                <Music className="h-4 w-4 text-fg-success" />
                 <button
                   onClick={(e) => { e.stopPropagation(); onInputAudioChange(null) }}
-                  className="absolute -top-1 -right-1 p-0.5 rounded-full bg-zinc-800 text-zinc-400 hover:text-white z-10"
+                  className="absolute -top-1 -right-1 p-0.5 rounded-full bg-action text-fg-secondary hover:text-fg-primary z-10"
                 >
                   <X className="h-3 w-3" />
                 </button>
               </>
             ) : (
-              <Music className="h-4 w-4 text-zinc-500" />
+              <Music className="h-4 w-4 text-fg-tertiary" />
             )}
             <input
               ref={audioInputRef}
@@ -972,14 +992,14 @@ function PromptBar({
                     : "A close-up of a woman talking on the phone...")
                 : "The woman sips from a cup of coffee..."
             }
-            className="w-full h-full min-h-0 bg-transparent text-white text-sm placeholder:text-zinc-500 focus:outline-none px-2 py-2 resize-none overflow-y-auto leading-5"
+            className="w-full h-full min-h-0 bg-transparent text-fg-primary text-sm placeholder:text-fg-tertiary focus:outline-none px-2 py-2 resize-none overflow-y-auto leading-5"
           />
         </div>
 
       </div>
       
       {/* Bottom row: Mode selector + Settings */}
-      <div className="flex flex-shrink-0 items-center gap-0.5 px-1.5 py-1.5 border-t border-zinc-800/60 text-xs text-zinc-400">
+      <div className="flex flex-shrink-0 items-center gap-0.5 px-1.5 py-1.5 border-t border-separator-secondary text-xs text-fg-secondary">
         {/* Mode dropdown */}
         <SettingsDropdown
           title="MODE"
@@ -996,8 +1016,8 @@ function PromptBar({
           trigger={
             <>
               {mode === 'image' ? <Image className="h-3.5 w-3.5" /> : mode === 'multi-keyframe' ? <Rows3 className="h-3.5 w-3.5" /> : mode === 'retake' ? <Scissors className="h-3.5 w-3.5" /> : mode === 'extend' ? <MoveHorizontal className="h-3.5 w-3.5" /> : mode === 'ic-lora' ? <Sparkles className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}
-              <span className="text-zinc-300 font-medium">{mode === 'image' ? 'Image' : mode === 'multi-keyframe' ? 'Multi Keyframes' : mode === 'retake' ? 'Retake' : mode === 'extend' ? 'Extend' : mode === 'ic-lora' ? 'IC-LoRA' : 'Video'}</span>
-              <ChevronUp className="h-3 w-3 text-zinc-500" />
+              <span className="text-fg-secondary font-medium">{mode === 'image' ? 'Image' : mode === 'multi-keyframe' ? 'Multi Keyframes' : mode === 'retake' ? 'Retake' : mode === 'extend' ? 'Extend' : mode === 'ic-lora' ? 'IC-LoRA' : 'Video'}</span>
+              <ChevronUp className="h-3 w-3 text-fg-tertiary" />
             </>
           }
         />
@@ -1008,12 +1028,12 @@ function PromptBar({
           <>
             {modelControl}
             {modelControl && resolutionControl && (
-              <div className="w-px h-4 bg-zinc-700 mx-0.5" />
+              <div className="w-px h-4 bg-action-hover mx-0.5" />
             )}
             {resolutionControl}
             {/* Always available: in API mode modelControl used to replace this hint, so a
                 <2s selection disabled submit with no explanation. */}
-            <div className="text-[10px] text-zinc-500 pr-2">Trim in the panel above, then retake</div>
+            <div className="text-[10px] text-fg-tertiary pr-2">Trim in the panel above, then retake</div>
           </>
         ) : isExtend ? (
           <>
@@ -1029,11 +1049,11 @@ function PromptBar({
                 <>
                   <MoveHorizontal className="h-3.5 w-3.5" />
                   <span>{extendDirection === 'start' ? 'At start' : 'At end'}</span>
-                  <ChevronUp className="h-3 w-3 text-zinc-500" />
+                  <ChevronUp className="h-3 w-3 text-fg-tertiary" />
                 </>
               }
             />
-            <div className="w-px h-4 bg-zinc-700 mx-0.5" />
+            <div className="w-px h-4 bg-action-hover mx-0.5" />
             <SettingsDropdown
               title="SECONDS TO ADD"
               value={String(extendSeconds ?? DEFAULT_EXTEND_SECONDS)}
@@ -1043,19 +1063,19 @@ function PromptBar({
                 <>
                   <Clock className="h-3.5 w-3.5" />
                   <span>{extendSeconds ?? DEFAULT_EXTEND_SECONDS}s</span>
-                  <ChevronUp className="h-3 w-3 text-zinc-500" />
+                  <ChevronUp className="h-3 w-3 text-fg-tertiary" />
                 </>
               }
             />
             {modelControl && (
               <>
-                <div className="w-px h-4 bg-zinc-700 mx-0.5" />
+                <div className="w-px h-4 bg-action-hover mx-0.5" />
                 {modelControl}
               </>
             )}
             {resolutionControl && (
               <>
-                <div className="w-px h-4 bg-zinc-700 mx-0.5" />
+                <div className="w-px h-4 bg-action-hover mx-0.5" />
                 {resolutionControl}
               </>
             )}
@@ -1065,14 +1085,14 @@ function PromptBar({
         ) : mode === 'image' ? (
           <>
             {/* Model indicator */}
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800/50">
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_50%,transparent)]">
               <ZitIcon className="h-3.5 w-3.5" />
-              <span className="text-zinc-300 font-medium">Z-Image Turbo{imageUsesFalApi ? ' (API)' : ''}</span>
+              <span className="text-fg-secondary font-medium">Z-Image Turbo{imageUsesFalApi ? ' (API)' : ''}</span>
             </div>
 
             {isEditingImage ? (
               // Edit runs at the source image's resolution — resolution/ratio don't apply.
-              <div className="flex items-center gap-1.5 px-2 text-[10px] text-zinc-400">
+              <div className="flex items-center gap-1.5 px-2 text-[10px] text-fg-secondary">
                 <span>Strength</span>
                 <input
                   type="range"
@@ -1081,7 +1101,7 @@ function PromptBar({
                   step={0.01}
                   value={settings.imageEditStrength ?? 0.6}
                   onChange={(e) => onSettingsChange({ ...settings, imageEditStrength: parseFloat(e.target.value) })}
-                  className="w-20 accent-white"
+                  className="w-20 accent-brand"
                 />
                 <span className="w-8 text-right">{(settings.imageEditStrength ?? 0.6).toFixed(2)}</span>
               </div>
@@ -1108,17 +1128,16 @@ function PromptBar({
                 {/* Aspect ratio dropdown */}
                 <SettingsDropdown
                   title="RATIO"
-                  value={settings.aspectRatio}
+                  value={genSpaceImageAspectRatio(settings.aspectRatio)}
                   onChange={(v) => onSettingsChange({ ...settings, aspectRatio: v })}
-                  options={[
-                    { value: '16:9', label: '16:9' },
-                    { value: '1:1', label: '1:1' },
-                    { value: '9:16', label: '9:16' },
-                  ]}
+                  options={GENSPACE_IMAGE_ASPECT_RATIOS.map((value) => ({
+                    value,
+                    label: value,
+                  }))}
                   trigger={
                     <>
                       <AspectIcon className="h-3.5 w-3.5" />
-                      <span>{settings.aspectRatio}</span>
+                      <span>{genSpaceImageAspectRatio(settings.aspectRatio)}</span>
                     </>
                   }
                 />
@@ -1140,7 +1159,7 @@ function PromptBar({
                   trigger={
                     <>
                       <LightricksIcon className="h-3.5 w-3.5" />
-                      <span className="text-zinc-300 font-medium">
+                      <span className="text-fg-secondary font-medium">
                         {resolvedVideoOptions.modelOptions.find((item) => item.pipeline === resolvedVideoOptions.selectedModel)?.spec.display_name
                           ?? settings.model}
                       </span>
@@ -1148,7 +1167,7 @@ function PromptBar({
                   }
                 />
 
-                <div className="w-px h-4 bg-zinc-700 mx-0.5" />
+                <div className="w-px h-4 bg-action-hover mx-0.5" />
 
                 <SettingsDropdown
                   title="DURATION"
@@ -1213,16 +1232,22 @@ function PromptBar({
 
                 <SettingsDropdown
                   title="ASPECT RATIO"
-                  value={settings.aspectRatio}
+                  value={selectedAspectRatio}
                   onChange={(v) => onSettingsChange({ ...settings, aspectRatio: v })}
-                  options={[
-                    { value: '16:9', label: '16:9' },
-                    { value: '9:16', label: '9:16' },
-                  ]}
+                  options={orderAspectRatiosForPicker(
+                    resolvedVideoOptions.aspectRatioOptions,
+                  ).map((value) => {
+                    const warning = untrainedAspectRatioWarning(value);
+                    return {
+                      value,
+                      label: value,
+                      ...(warning ? { warning } : {}),
+                    };
+                  })}
                   trigger={
                     <>
                       <AspectIcon className="h-3.5 w-3.5" />
-                      <span>{settings.aspectRatio}</span>
+                      <span>{selectedAspectRatio}</span>
                     </>
                   }
                 />
@@ -1238,7 +1263,7 @@ function PromptBar({
                 )}
               </>
             ) : (
-              <div className="px-2 py-1.5 rounded-md bg-zinc-800/60 text-zinc-500 text-xs">
+              <div className="px-2 py-1.5 rounded-md bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_60%,transparent)] text-fg-tertiary text-xs">
                 {videoSettingsMessage || 'Loading generation settings...'}
               </div>
             )}
@@ -1257,7 +1282,7 @@ function PromptBar({
                   onClick={onUndoPrompt}
                   disabled={isEnhancingPrompt || !canUndoPrompt}
                   title="Undo (previous prompt)"
-                  className="flex items-center justify-center h-7 w-7 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center h-7 w-7 rounded-md text-fg-secondary hover:text-fg-primary hover:bg-action flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <Undo2 className="h-3.5 w-3.5" />
                 </button>
@@ -1266,49 +1291,25 @@ function PromptBar({
                   onClick={onRedoPrompt}
                   disabled={isEnhancingPrompt || !canRedoPrompt}
                   title="Redo (next prompt)"
-                  className="flex items-center justify-center h-7 w-7 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center h-7 w-7 rounded-md text-fg-secondary hover:text-fg-primary hover:bg-action flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <Redo2 className="h-3.5 w-3.5" />
                 </button>
               </>
             )}
-            <div className="flex items-center flex-shrink-0">
-              <button
-                type="button"
-                onClick={onEnhancePrompt}
-                disabled={enhanceDisabled}
-                title={enhancePromptError ?? 'Enhance prompt'}
-                className={`flex items-center gap-1 px-2 py-1.5 text-xs font-medium ${
-                  onEnhanceProviderChange ? 'rounded-l-md' : 'rounded-md'
-                } ${
-                  enhanceDisabled
-                    ? 'text-zinc-600 cursor-not-allowed'
-                    : enhancePromptError
-                      ? 'text-red-400 hover:bg-red-950/40'
-                      : 'text-zinc-300 hover:bg-zinc-800'
-                }`}
-              >
-                {isEnhancingPrompt ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Sparkle className="h-3.5 w-3.5" />
-                )}
-                {isEnhancingPrompt ? 'Enhancing...' : enhanceProvider === 'api' ? 'Enhance (API)' : 'Enhance'}
-              </button>
-              {onEnhanceProviderChange && (
-                <SettingsDropdown
-                  title="ENHANCE VIA"
-                  value={enhanceProvider ?? 'local'}
-                  onChange={(v) => onEnhanceProviderChange(v === 'api' ? 'api' : 'local')}
-                  options={[
-                    { value: 'local', label: 'Local (Gemma)' },
-                    { value: 'api', label: 'API (Gemini)' },
-                  ]}
-                  trigger={<ChevronUp className="h-3 w-3 text-zinc-500" />}
-                  triggerClassName="rounded-l-none border-l border-zinc-700 px-1"
-                />
-              )}
-            </div>
+            <EnhanceSplitButton
+              surface="promptBar"
+              label={enhanceActionLabel(enhanceProvider ?? 'api', !!isEnhancingPrompt)}
+              onEnhance={() => onEnhancePrompt?.()}
+              disabled={enhanceDisabled}
+              isLoading={!!isEnhancingPrompt}
+              hasError={!!enhancePromptError}
+              title={enhancePromptError ?? 'Enhance prompt'}
+              leftIcon={<Sparkle className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />}
+              showProviderMenu={onEnhanceProviderChange != null}
+              provider={enhanceProvider ?? 'api'}
+              onProviderChange={onEnhanceProviderChange}
+            />
           </>
         )}
 
@@ -1319,11 +1320,11 @@ function PromptBar({
           className={`flex items-center gap-1.5 ml-2 mt-2 self-start px-3 py-1.5 rounded-md text-xs font-medium transition-all flex-shrink-0 ${
             showStop
               ? stopDisabled
-                ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
-                : 'bg-red-600 text-white hover:bg-red-500'
+                ? 'bg-action-hover text-fg-tertiary cursor-not-allowed'
+                : 'bg-danger text-fg-primary hover:bg-danger'
               : generateDisabled
-                ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
-                : 'bg-white text-black hover:bg-zinc-200'
+                ? 'bg-action-hover text-fg-tertiary cursor-not-allowed'
+                : 'bg-brand text-fg-white hover:bg-brand-hover'
           }`}
         >
           {showStop ? (
@@ -1384,12 +1385,16 @@ export function GenSpace() {
   } = useVideoGenerationModelSpecs()
   const [mode, setMode] = useState<GenSpaceMode>('video')
   const [prompt, setPrompt] = useState('')
+  const promptRef = useRef(prompt)
+  promptRef.current = prompt
   const [isEnhancingPrompt, setIsEnhancingPrompt] = useState(false)
   const [enhancePromptError, setEnhancePromptError] = useState<string | null>(null)
   // Undo/redo stack for the prompt enhancer, e.g. [original, enhance#1, enhance#2].
   // historyIndex points at whichever entry is currently shown in the textarea. Undo/Redo are
   // pure local navigation (no network call) — only a fresh Enhance call ever grows the stack.
-  const [promptHistory, setPromptHistory] = useState<string[]>([])
+  // Each entry carries its provenance, so navigating the stack also restores whether Generate
+  // may enhance what is in the box.
+  const [promptHistory, setPromptHistory] = useState<PromptHistoryEntry[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
   const [inputImage, setInputImage] = useState<string | null>(null)
   const [inputLastImage, setInputLastImage] = useState<string | null>(null)
@@ -1526,7 +1531,6 @@ export function GenSpace() {
   const [installedIcLoras, setInstalledIcLoras] = useState<ApiSuccessOf<'listModels'>['models']>([])
   const [icLoraCustomRef, setIcLoraCustomRef] = useState<string | null>(null)
   const [icLoraSkipStage2, setIcLoraSkipStage2] = useState(false)
-  const [icLoraUseLoraInStage2, setIcLoraUseLoraInStage2] = useState(false)
   const [icLoraResolutionFactor, setIcLoraResolutionFactor] = useState(2.0)
   const [icLoraAudioMode, setIcLoraAudioMode] = useState<IcLoraAudioMode>('generated')
   const [icLoraLoraStrength, setIcLoraLoraStrength] = useState(1.0)
@@ -1534,11 +1538,10 @@ export function GenSpace() {
 
   // IC-LoRA mode: a downloadable curated IC-LoRA that resolves its own weights and builds
   // the control video server-side. When an IC-LoRA is selected, it supersedes canny/depth/custom.
-  const { enableMultipleKeyframesVideos, advancedIcLoraControls } = useDevFlags().flags
+  const { advancedIcLoraControls } = useDevFlags().flags
   const canUseMultiKeyframe = canUseMultiKeyframeMode({
     isLocalMode,
     localCaps,
-    enableMultipleKeyframesVideos,
   })
   // Values for the selected IC-LoRA's catalog controls, keyed by control id. Seeded from each
   // control's default on selection; the settings row renders + edits them generically.
@@ -1559,7 +1562,6 @@ export function GenSpace() {
     const s = item?.ic_lora.default_settings
     if (s) {
       setIcLoraSkipStage2(s.skip_stage_2 ?? false)
-      setIcLoraUseLoraInStage2(s.use_lora_in_stage_2 ?? false)
       setIcLoraResolutionFactor(s.resolution_factor ?? 2.0)
       setIcLoraAudioMode(s.audio_mode ?? 'generated')
       setIcLoraLoraStrength(s.lora_strength ?? 1.0)
@@ -1594,9 +1596,22 @@ export function GenSpace() {
   )
   const selectedIcLora = icLoras.find(r => r.ic_lora.id === selectedIcLoraId)?.ic_lora ?? null
   const isCatalogIcLora = selectedIcLora !== null
+  const showIcLoraChipOverlay = mode === 'ic-lora' && isCatalogIcLora
+  const loraChipOverlayRef = useRef<HTMLDivElement>(null)
+  const [loraChipOverlayHeight, setLoraChipOverlayHeight] = useState(0)
+  useLayoutEffect(() => {
+    const el = loraChipOverlayRef.current
+    if (!el) return
+    const update = () => setLoraChipOverlayHeight(el.getBoundingClientRect().height)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [showIcLoraChipOverlay, selectedLoras.length, isGenerating])
   const hasPositionCanvas = (selectedIcLora?.controls ?? []).some(c => c.kind === 'position_canvas')
   // Catalog IC-LoRAs may opt into promptless generation (e.g. outpainting fills from the scene).
   const promptOptional = isCatalogIcLora && (selectedIcLora?.allows_empty_prompt ?? false)
+  const referenceImageRequired = selectedIcLora?.reference_image_required ?? false
   const onControlChange = useCallback((id: string, value: number | string) => {
     setControlValues(prev => ({ ...prev, [id]: value }))
   }, [])
@@ -1719,12 +1734,6 @@ export function GenSpace() {
     width: 0,
     height: 0,
   })
-  // Resolution tiers for the use_lora_in_stage_2 two-stage path (mirrors retake/extend).
-  const [icLoraResolutionKey, setIcLoraResolutionKey] = useState('original')
-  const icLoraResolutionOpts = useMemo(
-    () => resolutionOptions(icLoraInput.width, icLoraInput.height),
-    [icLoraInput.width, icLoraInput.height],
-  )
   const [icLoraPanelKey, setIcLoraPanelKey] = useState(0)
   const [icLoraCondType, setIcLoraCondType] = useState<ICLoraConditioningType>('canny')
   // Transformation knobs apply only to custom IC-LoRAs. Reset them when switching to
@@ -1735,8 +1744,6 @@ export function GenSpace() {
     selectIcLora(null)
     if (type !== 'custom') {
       setIcLoraSkipStage2(false)
-      setIcLoraUseLoraInStage2(false)
-      setIcLoraResolutionKey('original')
       setIcLoraResolutionFactor(2.0)
       setIcLoraFps(null)
       setIcLoraAudioMode('generated')
@@ -1908,19 +1915,19 @@ export function GenSpace() {
 
   useEffect(() => {
     if (retakeError) {
-      setLocalError(createLocalGenerationError(retakeError))
+      setLocalError(generationErrorFromApiFailure(retakeError))
     }
   }, [retakeError])
 
   useEffect(() => {
     if (extendError) {
-      setLocalError(createLocalGenerationError(extendError))
+      setLocalError(generationErrorFromApiFailure(extendError))
     }
   }, [extendError])
 
   useEffect(() => {
     if (icLoraError) {
-      setLocalError(createLocalGenerationError(icLoraError))
+      setLocalError(generationErrorFromApiFailure(icLoraError))
     }
   }, [icLoraError])
 
@@ -1996,6 +2003,11 @@ export function GenSpace() {
       // not an empty prompt and default settings.
       setPrompt(ctx.prompt)
       setLastPrompt(ctx.prompt)
+      // Without this, a reload mid-generation loses the fact that the in-flight prompt was
+      // already enhanced, and hitting Generate again would enhance the rewrite.
+      const restored = historyForRestoredPrompt(ctx.prompt, ctx.promptProvenance)
+      setPromptHistory(restored.history)
+      setHistoryIndex(restored.index)
       // ic-lora/retake carry no settings: recover as a standalone video asset.
       const s = ctx.settings
       if (!s) {
@@ -2085,6 +2097,7 @@ export function GenSpace() {
       keyframes: usedKeyframes,
       audioUrl: usedAudio,
       imageUrl: usedImage,
+      lastImageUrl: usedLastImage,
     })
 
     ;(async () => {
@@ -2408,7 +2421,7 @@ export function GenSpace() {
           audio: false,
           cameraMotion: 'none',
           imageResolution: settings.imageResolution,
-          imageAspectRatio: settings.aspectRatio ?? '16:9',
+          imageAspectRatio: genSpaceImageAspectRatio(settings.aspectRatio),
           imageSteps: 4,
         }
     const editContext = lastImageEditRef.current
@@ -2543,18 +2556,20 @@ export function GenSpace() {
   })
   const canUndoPrompt = historyIndex > 0
   const canRedoPrompt = historyIndex >= 0 && historyIndex < promptHistory.length - 1
+  // Derived, not stored: any edit to the textarea diverges from the history entry it came from,
+  // which is exactly when the prompt becomes eligible for automatic enhancement again.
+  const promptProvenance = resolvePromptProvenance(prompt, promptHistory, historyIndex)
 
-  // Appends [sourcePrompt (if not already the top of the stack), enhancedPrompt] and truncates
-  // any redo entries beyond the current position first — the same rule any undo/redo stack
-  // uses: taking a new action after an undo discards the redone-away future.
   const applyEnhanceResult = useCallback((sourcePrompt: string, enhancedPrompt: string) => {
-    const truncated = promptHistory.slice(0, historyIndex + 1)
-    const withSource = truncated.length > 0 && truncated[truncated.length - 1] === sourcePrompt
-      ? truncated
-      : [...truncated, sourcePrompt]
-    const nextHistory = [...withSource, enhancedPrompt]
-    setPromptHistory(nextHistory)
-    setHistoryIndex(nextHistory.length - 1)
+    const next = appendEnhanceResult({
+      history: promptHistory,
+      index: historyIndex,
+      sourcePrompt,
+      sourceProvenance: resolvePromptProvenance(sourcePrompt, promptHistory, historyIndex),
+      enhancedPrompt,
+    })
+    setPromptHistory(next.history)
+    setHistoryIndex(next.index)
     setPrompt(enhancedPrompt)
   }, [promptHistory, historyIndex])
 
@@ -2633,7 +2648,9 @@ export function GenSpace() {
     }
     logger.info('Enhance request succeeded, clearing recovery marker')
     localStorage.removeItem(GENERATION_RECOVERY_KEY)
-    applyEnhanceResult(sourcePrompt, result.data.enhancedPrompt)
+    if (shouldApplyEnhanceResult(promptRef.current, sourcePrompt)) {
+      applyEnhanceResult(sourcePrompt, result.data.enhancedPrompt)
+    }
   }, [isEnhancingPrompt, mode, selectedLoras, selectedIcLoraId, icLoraCondType, inputImage, inputLastImage, keyframes, settings.duration, settings.fps, enhanceProvider, applyEnhanceResult, writeRecoveryContext])
 
   const handleEnhanceProviderChange = useCallback((provider: EnhanceProvider) => {
@@ -2662,14 +2679,14 @@ export function GenSpace() {
     if (!canUndoPrompt) return
     const newIndex = historyIndex - 1
     setHistoryIndex(newIndex)
-    setPrompt(promptHistory[newIndex])
+    setPrompt(promptHistory[newIndex].text)
   }, [canUndoPrompt, historyIndex, promptHistory])
 
   const handleRedoPrompt = useCallback(() => {
     if (!canRedoPrompt) return
     const newIndex = historyIndex + 1
     setHistoryIndex(newIndex)
-    setPrompt(promptHistory[newIndex])
+    setPrompt(promptHistory[newIndex].text)
   }, [canRedoPrompt, historyIndex, promptHistory])
 
   // On mount: reconnect to an enhance that was still running when the frontend reloaded.
@@ -2747,7 +2764,9 @@ export function GenSpace() {
       localStorage.removeItem(GENERATION_RECOVERY_KEY)
       setIsEnhancingPrompt(false)
       if (result.data.status === 'complete' && typeof result.data.result === 'string') {
-        applyEnhanceResult(ctx.prompt, result.data.result)
+        if (shouldApplyEnhanceResult(promptRef.current, ctx.prompt)) {
+          applyEnhanceResult(ctx.prompt, result.data.result)
+        }
       }
     }
     void poll()
@@ -2758,6 +2777,7 @@ export function GenSpace() {
   const handleGenerate = async () => {
     if (mode === 'ic-lora') {
       if ((!prompt.trim() && !promptOptional) || !icLoraInput.videoPath || !icLoraInput.ready) return
+      if (referenceImageRequired && !icLoraInput.referenceImagePath) return
 
       // Catalog IC-LoRA mode: the backend resolves catalog weights and builds the control
       // video from the user's input via the IC-LoRA's preprocessing pipeline.
@@ -2770,12 +2790,13 @@ export function GenSpace() {
             conditioningStrength: icLoraStrength,
           },
         }
-        await writeRecoveryContext({ prompt })
+        await writeRecoveryContext({ prompt, promptProvenance })
         await submitIcLora({
           videoPath: '',
           conditioningType: 'custom',
           conditioningStrength: icLoraStrength,
           prompt,
+          promptProvenance,
           icLoraId: selectedIcLora.id,
           variantId: selectedIcLoraVariantId ?? undefined,
           inputPath: icLoraInput.videoPath,
@@ -2789,8 +2810,6 @@ export function GenSpace() {
           ...(advancedIcLoraControls
             ? {
                 skipStage2: icLoraSkipStage2,
-                useLoraInStage2: icLoraUseLoraInStage2,
-                resolution: resolveResolution(icLoraResolutionOpts, icLoraResolutionKey),
                 resolutionFactor: icLoraResolutionFactor,
                 audioMode: icLoraAudioMode,
                 loraStrength: icLoraLoraStrength,
@@ -2815,17 +2834,16 @@ export function GenSpace() {
           customLoraRef: isCustomIcLora ? icLoraCustomRef ?? undefined : undefined,
         },
       }
-      await writeRecoveryContext({ prompt })
+      await writeRecoveryContext({ prompt, promptProvenance })
       await submitIcLora({
         videoPath: icLoraInput.videoPath,
         conditioningType: icLoraCondType,
         conditioningStrength: icLoraStrength,
         prompt,
+        promptProvenance,
         customLoraRef: isCustomIcLora ? icLoraCustomRef ?? undefined : undefined,
         controlVideoPath: isCustomIcLora ? icLoraInput.videoPath : undefined,
         skipStage2: icLoraSkipStage2,
-        useLoraInStage2: icLoraUseLoraInStage2,
-        resolution: resolveResolution(icLoraResolutionOpts, icLoraResolutionKey),
         resolutionFactor: icLoraResolutionFactor,
         audioMode: icLoraAudioMode,
         loraStrength: icLoraLoraStrength,
@@ -2846,12 +2864,13 @@ export function GenSpace() {
           videoDuration: retakeInput.videoDuration,
         },
       }
-      await writeRecoveryContext({ prompt, model: retakeModel })
+      await writeRecoveryContext({ prompt, promptProvenance, model: retakeModel })
       await submitRetake({
         videoPath: retakeInput.videoPath,
         startTime: retakeInput.startTime,
         duration: retakeInput.duration,
         prompt,
+        promptProvenance,
         mode: 'replace_audio_and_video',
         resolution: resolveResolution(retakeResolutionOpts, retakeResolutionKey),
         model: retakeModel,
@@ -2871,11 +2890,12 @@ export function GenSpace() {
           videoDuration: extendInput.videoDuration,
         },
       }
-      await writeRecoveryContext({ prompt, model: extendModel })
+      await writeRecoveryContext({ prompt, promptProvenance, model: extendModel })
       await submitExtend({
         videoPath: extendInput.videoPath,
         duration: extendSeconds,
         prompt,
+        promptProvenance,
         mode: extendDirection,
         resolution: resolveResolution(extendResolutionOpts, extendResolutionKey),
         model: extendModel,
@@ -2901,7 +2921,7 @@ export function GenSpace() {
         audio: false,
         cameraMotion: 'none',
         imageResolution: settings.imageResolution,
-        imageAspectRatio: settings.aspectRatio ?? '16:9',
+        imageAspectRatio: genSpaceImageAspectRatio(settings.aspectRatio),
         imageSteps: editSource ? IMAGE_STEPS_EDIT : IMAGE_STEPS_GENERATE,
         variations: settings.variations,
         imageEditStrength: settings.imageEditStrength,
@@ -2955,6 +2975,7 @@ export function GenSpace() {
       }
       await writeRecoveryContext({
         prompt,
+        promptProvenance,
         settings: genSettings,
         modelLabel,
         inputImageUrl: imagePath ?? undefined,
@@ -2962,7 +2983,7 @@ export function GenSpace() {
         inputAudioUrl: audioPath ?? undefined,
         keyframes: mode === 'multi-keyframe' ? toPersistedKeyframes(keyframes) : undefined,
       })
-      generate(prompt, imagePath, genSettings, audioPath, lastImagePath, { mode, keyframes })
+      generate(prompt, imagePath, genSettings, audioPath, lastImagePath, { mode, keyframes }, promptProvenance)
     }
   }
   
@@ -3053,6 +3074,7 @@ export function GenSpace() {
       ? extendInput.ready && !!extendInput.videoPath
       : isIcLoraMode
         ? (!!prompt.trim() || promptOptional) && icLoraInput.ready && !!icLoraInput.videoPath
+          && (!referenceImageRequired || !!icLoraInput.referenceImagePath)
           && (isCatalogIcLora || icLoraCondType !== 'custom' || !!icLoraCustomRef)
         : !!prompt.trim()
           && (mode !== 'multi-keyframe' || keyframes.length >= 1)
@@ -3138,11 +3160,6 @@ export function GenSpace() {
     onIcLoraCustomRefChange: setIcLoraCustomRef,
     icLoraSkipStage2,
     onIcLoraSkipStage2Change: setIcLoraSkipStage2,
-    icLoraUseLoraInStage2,
-    onIcLoraUseLoraInStage2Change: setIcLoraUseLoraInStage2,
-    icLoraResolutionOptions: icLoraResolutionOpts,
-    icLoraResolutionKey,
-    onIcLoraResolutionKeyChange: setIcLoraResolutionKey,
     icLoraResolutionFactor,
     onIcLoraResolutionFactorChange: setIcLoraResolutionFactor,
     icLoraAudioMode,
@@ -3159,7 +3176,7 @@ export function GenSpace() {
   }
 
   return (
-    <div className="h-full relative bg-zinc-950">
+    <div className="h-full relative bg-surface-secondary">
       <Group orientation="vertical" className="h-full w-full">
         <Panel id="genspace-content-panel" minSize={20} className="min-h-0">
           <div className="relative h-full min-h-0">
@@ -3167,14 +3184,16 @@ export function GenSpace() {
       {/* Empty state */}
       {isLibraryMode && assets.length === 0 && !isGenerating && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-          <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-zinc-700 flex items-center justify-center mb-4">
-            <Sparkles className="h-10 w-10 text-zinc-600" />
+          <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-separator flex items-center justify-center mb-4">
+            <Sparkles className="h-10 w-10 text-fg-tertiary" />
           </div>
-          <h3 className="text-xl font-semibold text-white mb-2">Start Creating</h3>
-          <p className="text-zinc-500 max-w-md">
+          <Text as="h3" variant="heading" size="lg" align="center" className="mb-2">
+            Start Creating
+          </Text>
+          <Text as="p" variant="body" size="xl" align="center" className="max-w-md text-fg-secondary">
             Use the prompt bar below to generate images and videos.
             Drag assets into the input box to use them as references.
-          </p>
+          </Text>
         </div>
       )}
 
@@ -3211,19 +3230,21 @@ export function GenSpace() {
           <div className="overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable] flex-1">
             <div className={`grid ${gallerySizeClasses[gallerySize]} gap-4`}>
               {showGeneratingTile && (
-                <div className="relative rounded-xl overflow-hidden bg-zinc-800 aspect-video">
+                <div className="relative rounded-xl overflow-hidden bg-action aspect-video">
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
                     <div className="relative w-16 h-16 mb-3">
-                      <div className="absolute inset-0 rounded-full border-2 border-violet-500/30" />
-                      <div className="absolute inset-0 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
-                      <div className="absolute inset-2 rounded-full bg-zinc-800 flex items-center justify-center">
-                        <Sparkles className="h-6 w-6 text-violet-400" />
+                      <div className="absolute inset-0 rounded-full border-2 border-ext-purple/30" />
+                      <div className="absolute inset-0 rounded-full border-2 border-ext-purple border-t-transparent animate-spin" />
+                      <div className="absolute inset-2 rounded-full bg-action flex items-center justify-center">
+                        <Sparkles className="h-6 w-6 text-ext-purple" />
                       </div>
                     </div>
-                    <p className="text-sm text-zinc-400">{statusMessage || 'Generating...'}</p>
+                    <Text as="p" variant="body" size="lg" className="text-fg-secondary">
+                      {statusMessage || 'Generating...'}
+                    </Text>
                     {progress > 0 && (
-                      <div className="w-32 h-1 bg-zinc-800 rounded-full mt-2 overflow-hidden">
-                        <div className="h-full bg-violet-500 transition-all" style={{ width: `${progress}%` }} />
+                      <div className="w-32 h-1 bg-action rounded-full mt-2 overflow-hidden">
+                        <div className="h-full bg-ext-purple transition-all" style={{ width: `${progress}%` }} />
                       </div>
                     )}
                   </div>
@@ -3290,7 +3311,10 @@ export function GenSpace() {
       )}
 
       {mode === 'ic-lora' && !forceApiGenerations && (
-        <div className="absolute inset-0 px-4 pt-4 pb-4 flex flex-col overflow-hidden">
+        <div
+          className="absolute inset-0 px-4 pt-4 flex flex-col overflow-hidden"
+          style={{ paddingBottom: genspaceModePanelPaddingBottom(showIcLoraChipOverlay, loraChipOverlayHeight) }}
+        >
           <ICLoraPanel
             initialVideoPath={icLoraInitial.videoPath}
             resetKey={icLoraPanelKey}
@@ -3300,6 +3324,7 @@ export function GenSpace() {
             inputKind={selectedIcLora?.input?.kind ?? 'video'}
             selectedIcLoraId={selectedIcLoraId}
             allowsReferenceImage={selectedIcLora?.allows_reference_image ?? false}
+            referenceImageRequired={referenceImageRequired}
             showOutpaintCanvas={hasPositionCanvas}
             outpaintPads={outpaintPads}
             onOutpaintPadsChange={setOutpaintPads}
@@ -3430,8 +3455,9 @@ export function GenSpace() {
 
       {/* LoRA chips / API bubble overlay the gallery so they never steal prompt-bar height. */}
       <div
+        ref={loraChipOverlayRef}
         className="pointer-events-none absolute left-1/2 z-20 w-[min(860px,calc(100%-2rem))] -translate-x-1/2"
-        style={{ bottom: promptBarHeight + 4 }}
+        style={{ bottom: promptBarHeight + LORA_CHIP_OVERLAY_GAP }}
       >
         <div className="pointer-events-auto">
           <FreeApiKeyBubble
@@ -3440,7 +3466,7 @@ export function GenSpace() {
             isGenerating={isGenerating}
           />
 
-          {mode === 'ic-lora' && isCatalogIcLora && selectedIcLora && (
+          {showIcLoraChipOverlay && selectedIcLora && (
             <SelectedLoraInfo items={[{
               name: variantDisplayName(
                 selectedIcLora.name,

@@ -105,12 +105,14 @@ const KB_ROWS: KBKey[][] = [
 ]
 
 // Category → color mapping
-const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string; dot: string }> = {
-  Tools:     { bg: 'bg-blue-600/30',    border: 'border-blue-500/60',    text: 'text-blue-300',    dot: 'bg-blue-400' },
-  Transport: { bg: 'bg-emerald-600/30', border: 'border-emerald-500/60', text: 'text-emerald-300', dot: 'bg-emerald-400' },
-  Editing:   { bg: 'bg-amber-600/30',   border: 'border-amber-500/60',   text: 'text-amber-300',   dot: 'bg-amber-400' },
-  Marking:   { bg: 'bg-rose-600/30',    border: 'border-rose-500/60',    text: 'text-rose-300',    dot: 'bg-rose-400' },
-  Timeline:  { bg: 'bg-blue-600/30',  border: 'border-blue-500/60',  text: 'text-blue-300',  dot: 'bg-blue-400' },
+// Category is a wash + accent, not the type color. Pastel 300-on-600/30
+// was dark-only and made Light-mode keys unreadable.
+const CATEGORY_COLORS: Record<string, { wash: string; border: string; dot: string }> = {
+  Tools:     { wash: 'bg-blue-500/20',    border: 'border-blue-500/50',    dot: 'bg-blue-500' },
+  Transport: { wash: 'bg-success-soft', border: 'border-success/50', dot: 'bg-success' },
+  Editing:   { wash: 'bg-warning-soft',   border: 'border-warning/50',   dot: 'bg-warning' },
+  Marking:   { wash: 'bg-danger-soft',    border: 'border-danger/50',    dot: 'bg-danger' },
+  Timeline:  { wash: 'bg-ext-purple/20',  border: 'border-ext-purple/50',  dot: 'bg-ext-purple' },
 }
 
 // Keys that are modifier indicators (not assignable targets)
@@ -332,46 +334,46 @@ export function KeyboardShortcutsModal() {
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget && !recordingAction) setEditorOpen(false) }}
     >
-      <div className="w-[880px] max-h-[90vh] bg-zinc-900 rounded-xl border border-zinc-700/80 shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-[880px] max-h-[90vh] bg-surface-primary rounded-xl border border-separator shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-3 border-b border-zinc-800 bg-zinc-900/95">
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-separator bg-surface-primary">
           <div className="w-8 h-8 rounded-lg bg-blue-600/20 flex items-center justify-center">
             <Keyboard className="h-4 w-4 text-blue-400" />
           </div>
           <div className="flex-1">
-            <h2 className="text-sm font-semibold text-white">Keyboard Shortcuts</h2>
-            <p className="text-[11px] text-zinc-500 mt-0.5">Customize keybindings — drag actions onto keys or click Edit</p>
+            <h2 className="text-sm font-semibold text-fg-primary">Keyboard Shortcuts</h2>
+            <p className="text-[11px] text-fg-tertiary mt-0.5">Customize keybindings — drag actions onto keys or click Edit</p>
           </div>
           <button
             onClick={() => setShowKeyboard(!showKeyboard)}
             className={`px-2.5 py-1 text-[10px] font-medium rounded-md transition-colors ${
-              showKeyboard ? 'bg-blue-600/20 text-blue-300' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+              showKeyboard ? 'bg-action text-fg-primary' : 'text-fg-tertiary hover:text-fg-primary hover:bg-action'
             }`}
           >
             {showKeyboard ? 'Hide Keyboard' : 'Show Keyboard'}
           </button>
-          <button onClick={() => setEditorOpen(false)} className="text-zinc-500 hover:text-white transition-colors p-1">
+          <button onClick={() => setEditorOpen(false)} className="text-fg-tertiary hover:text-fg-primary transition-colors p-1">
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Toolbar: Preset selector + Search + Actions */}
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800/80 bg-zinc-950/50">
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-separator bg-surface-tertiary">
           {/* Preset dropdown */}
           <div className="relative">
             <button
               onClick={() => setShowPresetDropdown(!showPresetDropdown)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-md border border-zinc-700/60 text-[11px] text-zinc-300 transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 bg-action hover:bg-action-hover rounded-md border border-separator text-[11px] text-fg-secondary transition-colors"
             >
               <span className="max-w-[140px] truncate">{activePreset?.name || 'Custom'}</span>
-              <ChevronDown className="h-3 w-3 text-zinc-500" />
+              <ChevronDown className="h-3 w-3 text-fg-tertiary" />
             </button>
             {showPresetDropdown && (
-              <div className="absolute top-full left-0 mt-1 w-64 bg-zinc-800 rounded-lg border border-zinc-700 shadow-xl z-50 overflow-hidden">
+              <div className="absolute top-full left-0 mt-1 w-64 bg-action rounded-lg border border-separator shadow-xl z-50 overflow-hidden">
                 {presets.map(p => (
                   <div
                     key={p.id}
-                    className={`flex items-center gap-1 hover:bg-zinc-700 transition-colors ${
+                    className={`flex items-center gap-1 hover:bg-action-hover transition-colors ${
                       p.id === activePresetId ? 'bg-blue-600/15' : ''
                     }`}
                   >
@@ -381,11 +383,11 @@ export function KeyboardShortcutsModal() {
                         setShowPresetDropdown(false)
                       }}
                       className={`flex-1 text-left px-3 py-2 text-[11px] ${
-                        p.id === activePresetId ? 'text-blue-300' : 'text-zinc-300'
+                        p.id === activePresetId ? 'text-fg-primary' : 'text-fg-secondary'
                       }`}
                     >
                       <div className="font-medium">{p.name}</div>
-                      <div className="text-[10px] text-zinc-500 mt-0.5">{p.description}</div>
+                      <div className="text-[10px] text-fg-tertiary mt-0.5">{p.description}</div>
                     </button>
                     {/* Delete button — only for user-created (non-built-in) presets */}
                     {!p.builtIn && (
@@ -401,7 +403,7 @@ export function KeyboardShortcutsModal() {
                             }
                           }
                         }}
-                        className="p-1.5 mr-1.5 rounded text-zinc-600 hover:text-red-400 hover:bg-red-600/10 transition-colors"
+                        className="p-1.5 mr-1.5 rounded text-fg-tertiary hover:text-fg-danger hover:bg-danger-soft transition-colors"
                         title={`Delete "${p.name}"`}
                       >
                         <Trash2 className="h-3 w-3" />
@@ -414,21 +416,21 @@ export function KeyboardShortcutsModal() {
           </div>
 
           {/* Search */}
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-zinc-600" />
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-separator bg-action px-2.5 py-1.5 transition-colors focus-within:border-blue-500/50">
+            <Search className="h-3 w-3 shrink-0 text-fg-tertiary" />
             <input
               type="text"
               placeholder="Search actions or keys..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-zinc-800 rounded-md text-[11px] text-white placeholder-zinc-600 outline-none border border-zinc-700/40 focus:border-blue-500/50 transition-colors"
+              className="min-w-0 flex-1 bg-transparent text-[11px] leading-none text-fg-primary outline-none placeholder:text-fg-tertiary"
             />
           </div>
 
           {/* Reset button */}
           <button
             onClick={() => resetToPreset(activePresetId)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-fg-secondary hover:text-fg-primary hover:bg-action rounded-md transition-colors"
             title="Reset all shortcuts to the selected preset"
           >
             <RotateCcw className="h-3 w-3" />
@@ -439,15 +441,15 @@ export function KeyboardShortcutsModal() {
           <div className="relative">
             <button
               onClick={() => setShowSaveDialog(!showSaveDialog)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-fg-secondary hover:text-fg-primary hover:bg-action rounded-md transition-colors"
               title="Save current layout as a custom preset"
             >
               <Save className="h-3 w-3" />
               Save As
             </button>
             {showSaveDialog && (
-              <div className="absolute top-full right-0 mt-1 w-52 bg-zinc-800 rounded-lg border border-zinc-700 shadow-xl z-50 p-3">
-                <p className="text-[10px] text-zinc-400 mb-2">Save as custom preset:</p>
+              <div className="absolute top-full right-0 mt-1 w-52 bg-action rounded-lg border border-separator shadow-xl z-50 p-3">
+                <p className="text-[10px] text-fg-secondary mb-2">Save as custom preset:</p>
                 <input
                   type="text"
                   placeholder="Preset name..."
@@ -460,7 +462,7 @@ export function KeyboardShortcutsModal() {
                       setShowSaveDialog(false)
                     }
                   }}
-                  className="w-full px-2 py-1.5 bg-zinc-900 rounded text-[11px] text-white placeholder-zinc-600 outline-none border border-zinc-700 focus:border-blue-500 mb-2"
+                  className="w-full px-2 py-1.5 bg-surface-primary rounded text-[11px] text-fg-primary placeholder-fg-tertiary outline-none border border-separator focus:border-blue-500 mb-2"
                   autoFocus
                 />
                 <button
@@ -472,7 +474,7 @@ export function KeyboardShortcutsModal() {
                     }
                   }}
                   disabled={!savePresetName.trim()}
-                  className="w-full py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-[11px] font-medium rounded transition-colors"
+                  className="w-full py-1.5 bg-brand hover:bg-brand-hover disabled:bg-action disabled:text-fg-tertiary text-fg-white text-[11px] font-medium rounded transition-colors"
                 >
                   Save Preset
                 </button>
@@ -483,9 +485,9 @@ export function KeyboardShortcutsModal() {
 
         {/* Conflict warning */}
         {conflicts.size > 0 && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-amber-950/30 border-b border-amber-800/30">
-            <AlertTriangle className="h-3.5 w-3.5 text-amber-400 flex-shrink-0" />
-            <span className="text-[11px] text-amber-400/90">
+          <div className="flex items-center gap-2 px-4 py-2 bg-warning-soft border-b border-warning/30">
+            <AlertTriangle className="h-3.5 w-3.5 text-fg-warning flex-shrink-0" />
+            <span className="text-[11px] text-fg-primary">
               {conflicts.size} shortcut conflict{conflicts.size > 1 ? 's' : ''} detected — some keys are assigned to multiple actions
             </span>
           </div>
@@ -493,10 +495,10 @@ export function KeyboardShortcutsModal() {
 
         {/* ══════════════ Visual Keyboard ══════════════ */}
         {showKeyboard && (
-          <div className="border-b border-zinc-800/80 bg-zinc-950/60 px-4 py-3">
+          <div className="border-b border-separator bg-surface-tertiary px-4 py-3">
             {/* Modifier toggles */}
             <div className="flex items-center gap-2 mb-2.5">
-              <span className="text-[10px] text-zinc-500 font-medium mr-1">Modifiers:</span>
+              <span className="text-[10px] text-fg-tertiary font-medium mr-1">Modifiers:</span>
               {([
                 { label: 'Ctrl', active: kbModCtrl, toggle: () => setKbModCtrl(v => !v) },
                 { label: 'Shift', active: kbModShift, toggle: () => setKbModShift(v => !v) },
@@ -507,8 +509,8 @@ export function KeyboardShortcutsModal() {
                   onClick={mod.toggle}
                   className={`px-3 py-1 rounded text-[10px] font-bold transition-all ${
                     mod.active
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-                      : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300 border border-zinc-700/50'
+                      ? 'bg-brand text-fg-white shadow-lg shadow-blue-600/20'
+                      : 'bg-action text-fg-tertiary hover:bg-action-hover hover:text-fg-primary border border-separator'
                   }`}
                 >
                   {mod.label}
@@ -522,7 +524,7 @@ export function KeyboardShortcutsModal() {
                   return (
                     <div key={cat} className="flex items-center gap-1">
                       <div className={`w-2 h-2 rounded-sm ${c.dot}`} />
-                      <span className="text-[9px] text-zinc-500">{cat}</span>
+                      <span className="text-[9px] text-fg-tertiary">{cat}</span>
                     </div>
                   )
                 })}
@@ -557,18 +559,18 @@ export function KeyboardShortcutsModal() {
                           relative flex flex-col items-center justify-center rounded-md
                           border text-center select-none transition-all duration-100
                           ${isModifier
-                            ? 'bg-zinc-800/60 border-zinc-700/40 cursor-default'
+                            ? 'bg-action border-separator cursor-default'
                             : isDropTarget
-                              ? 'bg-blue-600/40 border-blue-400 ring-1 ring-blue-400 scale-105'
+                              ? 'bg-blue-500/25 border-blue-500 ring-1 ring-blue-500'
                               : isHighlighted
-                                ? 'bg-blue-600/30 border-blue-500 ring-1 ring-blue-400/50'
+                                ? 'bg-blue-500/20 border-blue-500 ring-1 ring-blue-500/50'
                                 : hasConflict
-                                  ? 'bg-amber-900/30 border-amber-600/60'
+                                  ? 'bg-warning-soft border-warning/60'
                                   : assigned && catColors
-                                    ? `${catColors.bg} ${catColors.border}`
+                                    ? `${catColors.wash} ${catColors.border}`
                                     : isDragging && !isModifier
-                                      ? 'bg-zinc-800/80 border-zinc-600/80 border-dashed hover:border-blue-500/60 hover:bg-zinc-700/50'
-                                      : 'bg-zinc-850 border-zinc-700/50 hover:border-zinc-600'
+                                      ? 'bg-action border-separator border-dashed hover:border-blue-500/60 hover:bg-action-hover'
+                                      : 'bg-action border-separator hover:border-separator'
                           }
                           ${!isModifier ? 'cursor-pointer' : ''}
                         `}
@@ -587,25 +589,19 @@ export function KeyboardShortcutsModal() {
                         }
                       >
                         {/* Key label */}
-                        <span className={`text-[9px] font-medium leading-none ${
-                          isModifier ? 'text-zinc-600' :
-                          assigned && catColors ? catColors.text :
-                          isHighlighted ? 'text-blue-300' :
-                          'text-zinc-500'
+                        <span className={`text-[9px] font-semibold leading-none ${
+                          isModifier ? 'text-fg-tertiary' : 'text-fg-primary'
                         }`}>
                           {kbKey.label}
                         </span>
-                        {/* Assigned action label (truncated) */}
                         {assigned && !isModifier && (
-                          <span className={`text-[7px] leading-tight mt-0.5 max-w-full px-0.5 truncate ${
-                            catColors ? catColors.text : 'text-zinc-400'
-                          }`} style={{ opacity: 0.8 }}>
+                          <span className="text-[8px] leading-tight mt-0.5 max-w-full px-0.5 truncate text-fg-primary">
                             {assigned.action.label.replace(/ Tool$/, '').replace(/ \(.*\)$/, '')}
                           </span>
                         )}
                         {/* Conflict indicator */}
                         {hasConflict && (
-                          <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400" />
+                          <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-warning" />
                         )}
                       </div>
                     )
@@ -626,11 +622,11 @@ export function KeyboardShortcutsModal() {
         )}
 
         {/* Category tabs */}
-        <div className="flex items-center gap-1 px-4 py-2 border-b border-zinc-800/60 bg-zinc-950/30">
+        <div className="flex items-center gap-1 px-4 py-2 border-b border-separator bg-surface-tertiary">
           <button
             onClick={() => setSelectedCategory(null)}
             className={`px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors ${
-              !selectedCategory ? 'bg-blue-600/20 text-blue-300' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+              !selectedCategory ? 'bg-action text-fg-primary' : 'text-fg-tertiary hover:text-fg-primary hover:bg-action'
             }`}
           >
             All
@@ -642,7 +638,7 @@ export function KeyboardShortcutsModal() {
                 key={cat}
                 onClick={() => setSelectedCategory(cat === selectedCategory ? null : cat)}
                 className={`px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors flex items-center gap-1.5 ${
-                  selectedCategory === cat ? `${c.bg} ${c.text}` : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                  selectedCategory === cat ? `${c.wash} text-fg-primary` : 'text-fg-tertiary hover:text-fg-primary hover:bg-action'
                 }`}
               >
                 <div className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
@@ -661,9 +657,9 @@ export function KeyboardShortcutsModal() {
             return (
               <div key={cat}>
                 {/* Category header */}
-                <div className="sticky top-0 z-10 px-4 py-1.5 bg-zinc-950/95 border-b border-zinc-800/50 flex items-center gap-2">
+                <div className="sticky top-0 z-10 px-4 py-1.5 bg-surface-tertiary border-b border-separator flex items-center gap-2">
                   <div className={`w-1.5 h-1.5 rounded-full ${catColor.dot}`} />
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{cat}</span>
+                  <span className="text-[10px] font-bold text-fg-tertiary uppercase tracking-widest">{cat}</span>
                 </div>
                 {/* Action rows */}
                 {actions.map(action => {
@@ -680,17 +676,17 @@ export function KeyboardShortcutsModal() {
                       onMouseDown={(e) => { if (!isRecording) handleActionMouseDown(e, action.id) }}
                       onMouseEnter={() => setHoveredActionId(action.id)}
                       onMouseLeave={() => setHoveredActionId(null)}
-                      className={`flex items-center gap-3 px-4 py-2 border-b border-zinc-800/30 transition-colors select-none ${
+                      className={`flex items-center gap-3 px-4 py-2 border-b border-separator transition-colors select-none ${
                         isRecording ? 'bg-blue-950/30' :
                         draggedActionId === action.id ? 'bg-blue-600/20 ring-1 ring-blue-500/50' :
-                        hoveredActionId === action.id ? 'bg-zinc-800/40' :
-                        'hover:bg-zinc-800/30'
+                        hoveredActionId === action.id ? 'bg-action' :
+                        'hover:bg-action'
                       } ${!isRecording ? 'cursor-grab active:cursor-grabbing' : ''}`}
                     >
                       {/* Drag handle */}
                       {!isRecording && (
                         <GripVertical className={`h-3 w-3 flex-shrink-0 ${
-                          draggedActionId === action.id ? 'text-blue-400 cursor-grabbing' : 'text-zinc-700 cursor-grab'
+                          draggedActionId === action.id ? 'text-blue-400 cursor-grabbing' : 'text-fg-tertiary cursor-grab'
                         }`} />
                       )}
 
@@ -699,14 +695,14 @@ export function KeyboardShortcutsModal() {
 
                       {/* Action label */}
                       <div className="flex-1 min-w-0">
-                        <span className={`text-[12px] ${hasConflict ? 'text-amber-300' : 'text-zinc-300'}`}>
+                        <span className="text-[12px] text-fg-primary">
                           {action.label}
                         </span>
                         {action.description && (
-                          <span className="text-[10px] text-zinc-600 ml-2">{action.description}</span>
+                          <span className="text-[10px] text-fg-tertiary ml-2">{action.description}</span>
                         )}
                         {hasConflict && (
-                          <AlertTriangle className="inline-block h-3 w-3 text-amber-400 ml-1.5 -mt-0.5" />
+                          <AlertTriangle className="inline-block h-3 w-3 text-fg-warning ml-1.5 -mt-0.5" />
                         )}
                       </div>
 
@@ -714,10 +710,10 @@ export function KeyboardShortcutsModal() {
                       <div className="flex items-center gap-1.5">
                         {isRecording ? (
                           <div className="flex items-center gap-2 px-3 py-1 bg-blue-600/20 border border-blue-500/50 rounded-md animate-pulse">
-                            <span className="text-[11px] text-blue-300">Press a key...</span>
+                            <span className="text-[11px] text-fg-primary">Press a key...</span>
                             <button
                               onClick={(e) => { e.stopPropagation(); setRecordingAction(null) }}
-                              className="text-zinc-500 hover:text-white"
+                              className="text-fg-tertiary hover:text-fg-primary"
                             >
                               <X className="h-3 w-3" />
                             </button>
@@ -725,7 +721,7 @@ export function KeyboardShortcutsModal() {
                         ) : (
                           <>
                             {combos.length === 0 ? (
-                              <span className="text-[11px] text-zinc-600 italic">Unassigned</span>
+                              <span className="text-[11px] text-fg-tertiary italic">Unassigned</span>
                             ) : (
                               combos.map((combo, i) => {
                                 const comboKey = formatKeyCombo(combo)
@@ -735,8 +731,8 @@ export function KeyboardShortcutsModal() {
                                     key={i}
                                     className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium ${
                                       conflicting
-                                        ? 'bg-amber-900/30 text-amber-300 border border-amber-700/50'
-                                        : `${catColor.bg} ${catColor.text} border ${catColor.border}`
+                                        ? 'bg-warning-soft text-fg-primary border border-warning/50'
+                                        : `${catColor.wash} text-fg-primary border ${catColor.border}`
                                     }`}
                                   >
                                     {comboKey}
@@ -753,14 +749,14 @@ export function KeyboardShortcutsModal() {
                         <div className="flex items-center gap-1 ml-2">
                           <button
                             onClick={() => setRecordingAction(action.id)}
-                            className="px-2 py-0.5 text-[10px] text-zinc-500 hover:text-blue-400 hover:bg-blue-600/10 rounded transition-colors"
+                            className="px-2 py-0.5 text-[10px] text-fg-tertiary hover:text-blue-400 hover:bg-blue-600/10 rounded transition-colors"
                           >
                             Edit
                           </button>
                           {combos.length > 0 && (
                             <button
                               onClick={() => updateBinding(action.id, [])}
-                              className="px-2 py-0.5 text-[10px] text-zinc-600 hover:text-red-400 hover:bg-red-600/10 rounded transition-colors"
+                              className="px-2 py-0.5 text-[10px] text-fg-tertiary hover:text-fg-danger hover:bg-danger-soft rounded transition-colors"
                             >
                               Clear
                             </button>
@@ -776,13 +772,13 @@ export function KeyboardShortcutsModal() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-zinc-800 bg-zinc-950/80">
-          <span className="text-[10px] text-zinc-600">
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-separator bg-surface-tertiary">
+          <span className="text-[10px] text-fg-tertiary">
             {ACTION_REGISTRY.length} actions &middot; Drag actions onto keys or click "Edit" to record
           </span>
           <button
             onClick={() => setEditorOpen(false)}
-            className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-medium rounded-md transition-colors"
+            className="px-4 py-1.5 bg-brand hover:bg-brand-hover text-fg-white text-[11px] font-medium rounded-md transition-colors"
           >
             Done
           </button>

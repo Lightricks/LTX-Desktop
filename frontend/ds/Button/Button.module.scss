@@ -1,0 +1,309 @@
+@import "@ds/styles/themes/mixins.module.scss";
+
+/* Base button structure */
+.button {
+  cursor: pointer;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 0;
+  box-sizing: border-box;
+  width: fit-content;
+  flex: none;
+
+  /* Default color variables (overridden by variants) */
+  --btn-bg: transparent;
+  --btn-bg-hover: var(--btn-bg);
+  --btn-bg-active: var(--btn-bg);
+  --btn-bg-disabled: var(--semantic-bg-disabled-primary);
+  --btn-fg: var(--semantic-fg-primary);
+  --btn-fg-hover: var(--btn-fg);
+  --btn-fg-active: var(--btn-fg);
+  --btn-fg-disabled: var(--semantic-fg-disabled-primary);
+
+  /* Default icon and label spacing (overridden by size variants) */
+  --btn-icon-size: var(--md-icon-size);
+  --btn-label-spacing: var(--md-label-spacing);
+
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+
+  // Pointer capability, not viewport: touch synthesizes :hover after tap and
+  // would otherwise leave the fill stuck. Mouse/trackpad still get hover.
+  @media (hover: hover) {
+    &:hover {
+      background: var(--btn-bg-hover);
+      color: var(--btn-fg-hover);
+    }
+  }
+
+  &:active,
+  &.active,
+  &[aria-pressed="true"],
+  &[aria-selected="true"],
+  &[aria-expanded="true"] {
+    background: var(--btn-bg-active);
+    color: var(--btn-fg-active);
+  }
+
+  &:disabled {
+    cursor: default;
+    background: var(--btn-bg-disabled);
+    color: var(--btn-fg-disabled);
+  }
+
+  &:focus-visible {
+    outline: 1px solid var(--semantic-border-focus);
+    outline-offset: 1px;
+    background: var(--btn-bg-hover);
+    color: var(--btn-fg-hover);
+  }
+
+  /* Size variants */
+  &.xs {
+    --btn-icon-size: var(--xs-icon-size);
+    --btn-label-spacing: var(--xs-label-spacing);
+    gap: var(--gap-no);
+    height: 16px;
+    border-radius: var(--xs-radius);
+    padding: var(--xs-v-padding) var(--xs-h-padding);
+
+    &.iconOnly {
+      padding: var(--xs-only-icon-padding);
+    }
+  }
+
+  &.sm {
+    --btn-icon-size: var(--sm-icon-size);
+    --btn-label-spacing: var(--sm-label-spacing);
+    gap: var(--gap-xxs);
+    height: 18px;
+    border-radius: var(--sm-radius);
+    padding: var(--sm-v-padding) var(--sm-h-padding);
+
+    &.icon {
+      padding: var(--sm-only-icon-padding);
+    }
+
+    &.iconFirst,
+    &.iconFirstAndLast {
+      gap: calc(var(--sm-gap) + var(--sm-label-spacing));
+    }
+
+    &.iconLast {
+      gap: calc(var(--sm-gap) + var(--sm-label-spacing));
+    }
+  }
+
+  &.md {
+    --btn-icon-size: var(--md-icon-size);
+    --btn-label-spacing: var(--md-label-spacing);
+    gap: var(--gap-xxs);
+    height: 24px;
+    border-radius: var(--md-radius);
+    padding: var(--md-v-padding) var(--md-h-padding);
+
+    &.iconOnly {
+      padding: var(--md-only-icon-padding);
+    }
+  }
+
+  &.lg {
+    --btn-icon-size: var(--lg-icon-size);
+    --btn-label-spacing: var(--lg-label-spacing);
+    gap: var(--gap-xs);
+    height: 30px;
+    border-radius: var(--lg-radius);
+    padding: var(--lg-v-padding) var(--lg-h-padding);
+
+    &.iconOnly {
+      padding: var(--lg-only-icon-padding);
+    }
+  }
+
+  &.xl {
+    --btn-icon-size: var(--xl-icon-size);
+    --btn-label-spacing: var(--xl-label-spacing);
+    gap: var(--gap-xs);
+    height: 34px;
+    border-radius: var(--xl-radius);
+    padding: var(--xl-v-padding) var(--xl-h-padding);
+
+    &.iconOnly {
+      padding: var(--xl-only-icon-padding);
+    }
+  }
+
+  /* Brand appearance */
+  &.brand.primary {
+    --btn-bg: var(--semantic-bg-brand-primary-enabled);
+    --btn-bg-hover: var(--semantic-bg-brand-primary-hover);
+    --btn-bg-active: var(--semantic-bg-brand-primary-active);
+    --btn-fg: var(--semantic-fg-white-enabled);
+  }
+
+  &.brand.secondary {
+    --btn-bg: var(--semantic-bg-brand-secondary-enabled);
+    --btn-bg-hover: var(--semantic-bg-brand-secondary-hover);
+    --btn-bg-active: var(--semantic-bg-brand-secondary-active);
+    --btn-bg-disabled: var(--semantic-bg-disabled-secondary);
+    --btn-fg: var(--semantic-fg-brand-primary-enabled);
+  }
+
+  &.brand.plain {
+    --btn-bg: var(--semantic-bg-transparent);
+    --btn-bg-hover: var(--semantic-bg-action-secondary-hover);
+    --btn-bg-active: var(--semantic-bg-action-secondary-active);
+    --btn-bg-disabled: var(--semantic-bg-transparent);
+    --btn-fg: var(--semantic-fg-brand-primary-enabled);
+  }
+
+  &.brand.elevated {
+    --btn-bg: var(--semantic-bg-action-secondary-enabled);
+    --btn-bg-hover: var(--semantic-bg-action-secondary-hover);
+    --btn-bg-active: var(--semantic-bg-action-secondary-active);
+    --btn-bg-disabled: var(--semantic-bg-disabled-secondary);
+    --btn-fg: var(--semantic-fg-brand-primary-enabled);
+    @include effect_style_shadow_elevation_low;
+  }
+
+  /* Neutral appearance */
+  &.neutral.primary {
+    --btn-bg: var(--semantic-bg-action-primary-enabled);
+    --btn-bg-hover: var(--semantic-bg-action-primary-hover);
+    --btn-bg-active: var(--semantic-bg-action-primary-active);
+    --btn-fg: var(--semantic-fg-action-secondary-enabled);
+  }
+
+  &.neutral.secondary {
+    --btn-bg: var(--semantic-bg-action-secondary-enabled);
+    --btn-bg-hover: var(--semantic-bg-action-secondary-hover);
+    --btn-bg-active: var(--semantic-bg-action-secondary-active);
+    --btn-bg-disabled: var(--semantic-bg-disabled-secondary);
+    --btn-fg: var(--semantic-fg-action-primary-enabled);
+  }
+
+  &.neutral.plain {
+    --btn-bg: var(--semantic-bg-transparent);
+    --btn-bg-hover: var(--semantic-bg-action-secondary-hover);
+    --btn-bg-active: var(--semantic-bg-action-secondary-active);
+    --btn-bg-disabled: var(--semantic-bg-transparent);
+    --btn-fg: var(--semantic-fg-action-primary-enabled);
+  }
+
+  &.neutral.elevated {
+    --btn-bg: var(--semantic-bg-action-secondary-enabled);
+    --btn-bg-hover: var(--semantic-bg-action-secondary-hover);
+    --btn-bg-active: var(--semantic-bg-action-secondary-active);
+    --btn-bg-disabled: var(--semantic-bg-disabled-secondary);
+    --btn-fg: var(--semantic-fg-action-primary-enabled);
+    @include effect_style_shadow_elevation_low;
+  }
+
+  /* White appearance */
+  &.white.primary {
+    --btn-bg: var(--semantic-bg-white-primary-enabled);
+    --btn-bg-hover: var(--semantic-bg-white-primary-hover);
+    --btn-bg-active: var(--semantic-bg-white-primary-active);
+    --btn-fg: var(--semantic-fg-black-enabled);
+  }
+
+  &.white.secondary {
+    --btn-bg: var(--semantic-bg-white-secondary-enabled);
+    --btn-bg-hover: var(--semantic-bg-white-secondary-hover);
+    --btn-bg-active: var(--semantic-bg-white-secondary-active);
+    --btn-bg-disabled: var(--semantic-bg-disabled-secondary);
+    --btn-fg: var(--semantic-fg-black-enabled);
+  }
+
+  &.white.plain {
+    --btn-bg: var(--semantic-bg-transparent);
+    --btn-bg-disabled: var(--semantic-bg-transparent);
+    --btn-fg: var(--semantic-fg-white-enabled);
+    --btn-fg-hover: var(--semantic-fg-white-hover);
+    --btn-fg-active: var(--semantic-fg-white-active);
+  }
+
+  /* Overlay appearance */
+  &.overlay.primary {
+    --btn-bg: var(--semantic-bg-overlay-secondary-inverse);
+    --btn-fg: var(--semantic-fg-inverse-primary);
+    backdrop-filter: blur(12px);
+  }
+
+  &.overlay.secondary {
+    --btn-bg: var(--semantic-bg-overlay-secondary);
+    --btn-fg: var(--semantic-fg-action-primary-selected);
+    backdrop-filter: blur(12px);
+  }
+
+  /* Danger appearance */
+  &.danger.primary {
+    --btn-bg: var(--semantic-bg-danger-primary-enabled);
+    --btn-bg-hover: var(--semantic-bg-danger-primary-hover);
+    --btn-bg-active: var(--semantic-bg-danger-primary-active);
+    --btn-fg: var(--semantic-fg-white-enabled);
+  }
+
+  &.danger.secondary {
+    --btn-bg: var(--semantic-bg-action-secondary-enabled);
+    --btn-bg-hover: var(--semantic-bg-action-secondary-hover);
+    --btn-bg-active: var(--semantic-bg-action-secondary-active);
+    --btn-bg-disabled: var(--semantic-bg-disabled-secondary);
+    --btn-fg: var(--semantic-fg-danger-primary-enabled);
+  }
+
+  &.danger.plain {
+    --btn-bg: var(--semantic-bg-transparent);
+    --btn-bg-hover: var(--semantic-bg-action-secondary-hover);
+    --btn-bg-active: var(--semantic-bg-action-secondary-active);
+    --btn-bg-disabled: var(--semantic-bg-transparent);
+    --btn-fg: var(--semantic-fg-danger-primary-enabled);
+  }
+
+  /* Monetization appearance */
+  &.monetization.primary {
+    --btn-bg: #{$color-monetization-enabled};
+    --btn-bg-hover: #{$color-monetization-hover};
+    --btn-bg-active: #{$color-monetization-active};
+    --btn-fg: var(--semantic-fg-white-enabled);
+  }
+}
+
+/* Icon container - handles SVGs, images, and custom React components */
+.iconContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-height: var(--btn-icon-size);
+  max-height: var(--btn-icon-size);
+  min-width: var(--btn-icon-size);
+
+  // Plain SVG icons need a definite box so width/height: 100% on the glyph
+  // scales with --btn-icon-size (including mobile remaps). React-node
+  // icons (e.g. icon + badge) skip this so badges aren’t clipped.
+  &:has(> svg) {
+    width: var(--btn-icon-size);
+    height: var(--btn-icon-size);
+    max-width: var(--btn-icon-size);
+  }
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.label {
+  padding: 0 var(--btn-label-spacing);
+  min-width: 0;
+}
+
+.loading {
+  pointer-events: none;
+}

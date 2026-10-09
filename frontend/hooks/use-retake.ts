@@ -2,12 +2,13 @@ import { useCallback, useState } from 'react'
 import type { components } from '../generated/backend-openapi'
 import { ApiClient } from '../lib/api-client'
 import { canCancelLocalJob, withGenerationActive } from '../lib/generation-active'
+import type { ApiFailure } from '../lib/generation-errors'
 import { logger } from '../lib/logger'
 import { useAppSettings } from '../contexts/AppSettingsContext'
 
 export type RetakeMode = 'replace_audio_and_video' | 'replace_video' | 'replace_audio'
 
-// ltxv-api /v1/retake and /v2/extend accept ltx-2-pro / ltx-2-3-pro.
+// ltxv-api /v2/retake and /v2/extend accept ltx-2-pro / ltx-2-3-pro.
 // Desktop maps those to pipeline "pro".
 export type RetakeExtendModel = components['schemas']['RetakeRequest']['model']
 
@@ -27,6 +28,7 @@ export interface RetakeSubmitParams {
   startTime: number
   duration: number
   prompt: string
+  promptProvenance?: 'typed' | 'enhanced'
   mode: RetakeMode
   resolution?: { width: number; height: number }
   model: RetakeExtendModel
@@ -40,7 +42,7 @@ interface UseRetakeState {
   isRetaking: boolean
   canCancel: boolean
   retakeStatus: string
-  retakeError: string | null
+  retakeError: ApiFailure | null
   result: RetakeResult | null
 }
 
@@ -71,6 +73,7 @@ export function useRetake() {
         start_time: params.startTime,
         duration: params.duration,
         prompt: params.prompt,
+        prompt_provenance: params.promptProvenance ?? 'typed',
         mode: params.mode,
         resolution: params.resolution,
         model: params.model,
@@ -82,7 +85,7 @@ export function useRetake() {
           isRetaking: false,
           canCancel: false,
           retakeStatus: '',
-          retakeError: result.error.message,
+          retakeError: { code: result.error.code, message: result.error.message },
           result: null,
         })
         return
@@ -115,12 +118,14 @@ export function useRetake() {
       }
 
       logger.error(`Retake completed without local video payload: ${JSON.stringify(payload.result)}`)
-      const errorMsg = 'Retake completed but no local video file was returned'
       setState({
         isRetaking: false,
         canCancel: false,
         retakeStatus: '',
-        retakeError: errorMsg,
+        retakeError: {
+          code: 'RETAKE_NO_LOCAL_VIDEO',
+          message: 'Retake completed but no local video file was returned',
+        },
         result: null,
       })
     })

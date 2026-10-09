@@ -2,6 +2,8 @@ import { ChildProcess, spawn } from 'child_process'
 import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
+import { sendAnalyticsEvent } from './analytics'
+import { startAnalyticsSink, type AnalyticsSink } from './analytics-sink'
 import { getAppDataDir } from './app-paths'
 import { getCurrentDir, isDev } from './config'
 import { logger, writeLog } from './logger'
@@ -11,11 +13,19 @@ import { getMainWindow } from './window'
 import { PY_REMOVE_CWD_FROM_DLL_SEARCH } from './win-dll-search'
 
 let pythonProcess: ChildProcess | null = null
+let analyticsSink: AnalyticsSink | null = null
 let isIntentionalShutdown = false
 let lastCrashTime = 0
 const CRASH_DEBOUNCE_MS = 10_000
 let startPromise: Promise<void> | null = null
 let takeoverInFlight: Promise<void> | null = null
+let startEpoch = 0
+
+function closeAnalyticsSink(): void {
+  const sink = analyticsSink
+  analyticsSink = null
+  if (sink) void sink.close()
+}
 
 // HTTP liveness monitoring: once the backend has answered /health after
 // startup, poll it periodically. On sustained failure, SIGTERM the process so
@@ -300,8 +310,25 @@ export async function startPythonBackend(): Promise<void> {
   }
 
   isIntentionalShutdown = false
+  const epoch = startEpoch
 
-  startPromise = new Promise((resolve, reject) => {
+  const openSink: Promise<AnalyticsSink | null> = analyticsSink
+    ? Promise.resolve(analyticsSink)
+    : startAnalyticsSink(sendAnalyticsEvent).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error)
+        logger.warn(`Analytics sink failed to start; continuing without it: ${message}`)
+        return null
+      })
+
+  startPromise = openSink.then((sink) => new Promise<void>((resolve, reject) => {
+    if (epoch !== startEpoch) {
+      if (sink && sink !== analyticsSink) void sink.close()
+      reject(new Error('Python backend stopped during startup'))
+      return
+    }
+    if (sink) {
+      analyticsSink = sink
+    }
     const pythonPath = getPythonPath()
     const backendPath = getBackendPath()
     const mainPy = path.join(backendPath, 'ltx2_server.py')
@@ -344,11 +371,22 @@ export async function startPythonBackend(): Promise<void> {
         } : {}),
         // Only pass LTX_PORT when the developer explicitly set it
         ...(process.env.LTX_PORT ? { LTX_PORT: process.env.LTX_PORT } : {}),
+        ...(process.env.LTX_REMOTE_PORT ? { LTX_REMOTE_PORT: process.env.LTX_REMOTE_PORT } : {}),
+        ...(process.env.LTX_REMOTE_CLIENT_DIR ? { LTX_REMOTE_CLIENT_DIR: process.env.LTX_REMOTE_CLIENT_DIR } : {}),
+        ...(!isDev ? {
+          LTX_REMOTE_CLIENT_DIR: process.env.LTX_REMOTE_CLIENT_DIR
+            ?? path.join(process.resourcesPath, 'dist-remote'),
+        } : {}),
         LTX_AUTH_TOKEN: authToken,
         LTX_ADMIN_TOKEN: adminToken,
         LTX_LOG_FILE: getCurrentLogFilename(),
         LTX_APP_DATA_DIR: getAppDataDir(),
         LTX_DEV_MODE: isDev ? '1' : '0',
+        LTX_ANALYTICS_SINK_URL: sink?.url ?? '',
+        LTX_ANALYTICS_TOKEN: sink?.token ?? '',
+        // Explore UI is gated on local_viable; designers on low-RAM Macs still need
+        // to iterate in pnpm dev without closing every other app first.
+        ...(isDev ? { LTX_DEV_FORCE_LOCAL_VIABLE: '1' } : {}),
         // Bundled prebuilt mps-sdpa zero-copy extension cache (macOS). Lives inside
         // python-embed (→ resources/python) so it rides the CI python-embed cache. The
         // backend direct-imports the .so from here (mps_prebuilt_ext.py), no copy step;
@@ -460,6 +498,7 @@ export async function startPythonBackend(): Promise<void> {
         if (isIntentionalShutdown) {
           isIntentionalShutdown = false
           backendOwnership = null
+          closeAnalyticsSink()
           settleReject(new Error('Python backend stopped during startup'))
           return
         }
@@ -486,6 +525,7 @@ export async function startPythonBackend(): Promise<void> {
       if (isIntentionalShutdown) {
         isIntentionalShutdown = false
         backendOwnership = null
+        closeAnalyticsSink()
         return
       }
 
@@ -520,7 +560,7 @@ export async function startPythonBackend(): Promise<void> {
       publishBackendHealthStatus({ status: 'dead' })
       settleReject(new Error('Python backend failed to start within 5 minutes'))
     }, 300000)
-  })
+  }))
 
   try {
     await startPromise
@@ -530,6 +570,8 @@ export async function startPythonBackend(): Promise<void> {
 }
 
 export function stopPythonBackend(): void {
+  startEpoch += 1
+
   if (pythonProcess) {
     isIntentionalShutdown = true
     stopLivenessMonitor()
@@ -550,6 +592,8 @@ export function stopPythonBackend(): void {
     }
     return
   }
+
+  closeAnalyticsSink()
 
   if (backendOwnership === 'adopted') {
     backendOwnership = null

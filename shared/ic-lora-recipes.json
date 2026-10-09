@@ -1,0 +1,38 @@
+[
+  {
+    "id": "day-to-night",
+    "catalogId": "day-to-night"
+  },
+  {
+    "id": "alpha-gen",
+    "catalogId": "alpha-gen"
+  },
+  {
+    "id": "deblur",
+    "catalogId": "deblur"
+  },
+  {
+    "id": "colorization",
+    "catalogId": "colorization"
+  },
+  {
+    "id": "clean-plate",
+    "catalogId": "clean-plate"
+  },
+  {
+    "id": "decompression",
+    "catalogId": "decompression"
+  },
+  {
+    "id": "water-simulation",
+    "catalogId": "water-simulation"
+  },
+  {
+    "id": "layout-to-render",
+    "catalogId": "layout-to-render"
+  },
+  {
+    "id": "restore",
+    "catalogId": "restore"
+  }
+]

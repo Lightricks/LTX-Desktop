@@ -23,7 +23,7 @@ function generateLogFilename(gitHash: string): string {
   return `session_${ts}_${gitHash}.log`
 }
 
-function cleanupOldLogs(logDir: string, maxFiles = 30): void {
+function cleanupOldLogs(logDir: string, maxFiles = 100): void {
   try {
     const files = fs.readdirSync(logDir)
       .filter(f => (f.startsWith('session_') || f.startsWith('backend_')) && f.endsWith('.log'))

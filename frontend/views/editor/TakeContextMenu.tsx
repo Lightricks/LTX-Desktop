@@ -30,11 +30,11 @@ export function TakeContextMenu({
   return (
     <div
       ref={takeContextMenuRef}
-      className="fixed bg-zinc-800 border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-[60] min-w-[190px] text-xs"
+      className="fixed bg-action border border-separator rounded-xl shadow-2xl py-1.5 z-[60] min-w-[190px] text-xs"
       style={{ left: takeContextMenu.x, top: takeContextMenu.y }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="px-3 py-1 text-[10px] text-zinc-500 font-medium">
+      <div className="px-3 py-1 text-[10px] text-fg-tertiary font-medium">
         Take {takeIndex + 1} of {tcAsset.takes!.length}
       </div>
 
@@ -44,9 +44,9 @@ export function TakeContextMenu({
             actions.setAssetActiveTake(tcAsset.id, takeIndex)
             setTakeContextMenu(null)
           }}
-          className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
+          className="w-full text-left px-3 py-1.5 text-fg-secondary hover:bg-action-hover flex items-center gap-3"
         >
-          <Eye className="h-3.5 w-3.5 text-zinc-500" />
+          <Eye className="h-3.5 w-3.5 text-fg-tertiary" />
           <span>Set as Active Take</span>
         </button>
       )}
@@ -61,20 +61,20 @@ export function TakeContextMenu({
           }, 0)
           setTakeContextMenu(null)
         }}
-        className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
+        className="w-full text-left px-3 py-1.5 text-fg-secondary hover:bg-action-hover flex items-center gap-3"
       >
-        <Plus className="h-3.5 w-3.5 text-zinc-500" />
+        <Plus className="h-3.5 w-3.5 text-fg-tertiary" />
         <span>Add to Timeline</span>
       </button>
 
-      <div className="h-px bg-zinc-700 my-1" />
+      <div className="h-px bg-action-hover my-1" />
 
       <button
         onClick={() => {
           actions.addAssetToEditor(createAssetFromTake(tcAsset, take))
           setTakeContextMenu(null)
         }}
-        className="w-full text-left px-3 py-1.5 text-blue-300 hover:bg-zinc-700 flex items-center gap-3"
+        className="w-full text-left px-3 py-1.5 text-blue-300 hover:bg-action-hover flex items-center gap-3"
       >
         <Copy className="h-3.5 w-3.5" />
         <span>Create New Asset from Take</span>
@@ -82,7 +82,7 @@ export function TakeContextMenu({
 
       {tcAsset.takes!.length > 1 && (
         <>
-          <div className="h-px bg-zinc-700 my-1" />
+          <div className="h-px bg-action-hover my-1" />
           <button
             onClick={() => {
               if (confirm(`Delete take ${takeIndex + 1}?`)) {
@@ -90,7 +90,7 @@ export function TakeContextMenu({
               }
               setTakeContextMenu(null)
             }}
-            className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-red-900/30 flex items-center gap-3"
+            className="w-full text-left px-3 py-1.5 text-fg-danger hover:bg-danger-soft flex items-center gap-3"
           >
             <Trash2 className="h-3.5 w-3.5" />
             <span>Delete Take</span>

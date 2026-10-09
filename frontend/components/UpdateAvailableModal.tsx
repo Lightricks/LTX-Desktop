@@ -1,28 +1,44 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertCircle, Download, RefreshCw, X } from 'lucide-react'
-import { Button } from './ui/button'
+import { useCallback, useEffect, useState } from 'react'
+import { AlertCircle, X } from 'lucide-react'
+import { Button } from '@ds/Button/Button'
+import type { UpdateStatePayload } from '../../shared/electron-api-schema'
 import type { AppUpdate } from '../hooks/use-app-update'
-import './UpdateAvailableModal.css'
+import {
+  AppProductDialogShell,
+  ProductDialogBlock,
+  ProductDialogIconButton,
+  ProductDialogTextButton,
+} from './dialog/AppProductDialogShell'
+
+/** Frozen state for local UI previews. Production leaves this unset. */
+export type UpdateAvailableModalPreview = {
+  state: UpdateStatePayload
+  isGenerationActive?: boolean
+}
 
 interface Props {
   update: AppUpdate
   isGenerationActive: boolean
-  // onClose receives whether the user ticked "Skip this version".
+  // onClose(true) when the user skips this version; false when dismissing with X / backdrop.
   onClose: (skipThisVersion: boolean) => void
+  preview?: UpdateAvailableModalPreview
 }
 
-function titleForStatus(status: AppUpdate['state']['status']): string {
-  if (status === 'downloaded') return 'Ready to install'
+function titleForStatus(status: UpdateStatePayload['status']): string {
+  if (status === 'downloaded') return 'Restart to update'
   if (status === 'downloading') return 'Downloading update'
   if (status === 'checking') return 'Checking for updates'
   return 'Update available'
 }
 
-export function UpdateAvailableModal({ update, isGenerationActive, onClose }: Props) {
-  const { state, startDownload, installAndRestart } = update
-  const [skipChecked, setSkipChecked] = useState(false)
+export function UpdateAvailableModal({ update, isGenerationActive, onClose, preview }: Props) {
+  // Vite replaces this with `false` in a production build, so the preview branches drop out.
+  const devPreview = import.meta.env.DEV ? preview : undefined
+  const { startDownload, installAndRestart } = update
+  const state = devPreview?.state ?? update.state
+  const generationActive = devPreview?.isGenerationActive ?? isGenerationActive
+
   const [installError, setInstallError] = useState<string | null>(null)
-  const dialogRef = useRef<HTMLDivElement>(null)
 
   const downloading = state.status === 'downloading'
   const downloaded = state.status === 'downloaded'
@@ -31,12 +47,13 @@ export function UpdateAvailableModal({ update, isGenerationActive, onClose }: Pr
 
   const handleClose = useCallback(() => {
     if (!canDismiss) return
-    onClose(skipChecked && state.status === 'available')
-  }, [canDismiss, onClose, skipChecked, state.status])
+    onClose(false)
+  }, [canDismiss, onClose])
 
-  useEffect(() => {
-    dialogRef.current?.focus()
-  }, [])
+  const handleSkipVersion = useCallback(() => {
+    if (state.status !== 'available') return
+    onClose(true)
+  }, [onClose, state.status])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -47,6 +64,7 @@ export function UpdateAvailableModal({ update, isGenerationActive, onClose }: Pr
   }, [canDismiss, handleClose])
 
   const handleInstall = async () => {
+    if (devPreview) return
     try {
       const res = await installAndRestart()
       if (!res.success) setInstallError(res.error ?? 'Could not install the update.')
@@ -55,79 +73,103 @@ export function UpdateAvailableModal({ update, isGenerationActive, onClose }: Pr
     }
   }
 
-  return (
-    <div
-      className="update-modal-backdrop"
-      onClick={canDismiss ? handleClose : undefined}
-    >
-      <div
-        ref={dialogRef}
-        className="update-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="update-modal-title"
-        tabIndex={-1}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {canDismiss && (
-          <button className="update-modal-close" onClick={handleClose} aria-label="Close">
-            <X className="h-4 w-4" />
-          </button>
-        )}
+  const handleDownload = () => {
+    if (devPreview) return
+    void startDownload()
+  }
 
-        <h2 id="update-modal-title">{titleForStatus(state.status)}</h2>
-        <p className="update-modal-version">
-          {state.currentVersion} → <strong>{state.version}</strong>
-        </p>
-
-        {state.releaseNotes && <div className="update-modal-notes">{state.releaseNotes}</div>}
-
-        {state.message && (
-          <p className="update-modal-error"><AlertCircle className="h-4 w-4" /> {state.message}</p>
-        )}
-        {installError && (
-          <p className="update-modal-error"><AlertCircle className="h-4 w-4" /> {installError}</p>
-        )}
-
-        {downloading && (
-          <div className="update-modal-progress">
-            <div className="update-modal-bar" style={{ width: `${state.percent ?? 0}%` }} />
-            <span>{state.percent ?? 0}%</span>
-          </div>
-        )}
-
-        {downloaded && isGenerationActive && (
-          <p className="update-modal-warning">
-            A generation is running. Installing will restart the app — it will be enabled when the
-            generation finishes.
-          </p>
-        )}
-
-        {state.status === 'available' && (
-          <label className="update-modal-skip">
-            <input type="checkbox" checked={skipChecked} onChange={(e) => setSkipChecked(e.target.checked)} />
-            Skip this version
-          </label>
-        )}
-
-        <div className="update-modal-actions">
-          {downloaded ? (
-            <Button onClick={handleInstall} disabled={isGenerationActive}>
-              <RefreshCw className="h-4 w-4" /> Restart to update
-            </Button>
-          ) : downloading ? (
-            <Button variant="ghost" onClick={handleClose}>Hide</Button>
-          ) : (
-            <>
-              <Button variant="ghost" onClick={handleClose}>Later</Button>
-              <Button onClick={startDownload} disabled={!canDownload}>
-                {state.message ? (<><Download className="h-4 w-4" /> Try again</>)
-                               : (<><Download className="h-4 w-4" /> Update now</>)}
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
+  const footer = downloaded ? (
+    <Button
+      appearance="brand"
+      hierarchy="primary"
+      size="xl"
+      className="w-fit"
+      label="Restart"
+      disabled={generationActive}
+      onClick={() => void handleInstall()}
+    />
+  ) : downloading ? (
+    <div className="flex flex-col items-center gap-2">
+      <Button
+        appearance="brand"
+        hierarchy="primary"
+        size="xl"
+        className="min-w-[5.5rem] w-fit tabular-nums"
+        label={`${Math.round(state.percent ?? 0)}%`}
+        isLoading
+        disabled
+      />
+      <p className="text-center text-xs text-fg-tertiary">Downloading update</p>
     </div>
+  ) : (
+    <div className="flex flex-col items-center gap-2">
+      <Button
+        appearance="brand"
+        hierarchy="primary"
+        size="xl"
+        className="w-fit"
+        label={state.message ? 'Retry' : 'Update'}
+        disabled={!canDownload}
+        onClick={handleDownload}
+      />
+      {state.status === 'available' ? (
+        <ProductDialogTextButton type="button" onClick={handleSkipVersion}>
+          Skip this version
+        </ProductDialogTextButton>
+      ) : null}
+    </div>
+  )
+
+  return (
+    <AppProductDialogShell
+      aria-labelledby="app-update-dialog-title"
+      title={titleForStatus(state.status)}
+      subtitle={
+        state.version ? (
+          <>
+            Version {state.currentVersion} → {state.version}
+          </>
+        ) : (
+          <>Version {state.currentVersion}</>
+        )
+      }
+      onBackdropClick={canDismiss ? handleClose : undefined}
+      headerActions={
+        canDismiss ? (
+          <ProductDialogIconButton type="button" onClick={handleClose} aria-label="Close app update dialog">
+            <X className="h-4 w-4" />
+          </ProductDialogIconButton>
+        ) : undefined
+      }
+      footer={footer}
+    >
+      {state.releaseNotes ? (
+          <ProductDialogBlock title="What's new" tone="highlight">
+            <div className="whitespace-pre-wrap text-sm leading-relaxed text-fg-secondary">
+              {state.releaseNotes}
+            </div>
+          </ProductDialogBlock>
+        ) : null}
+
+        {downloaded && generationActive ? (
+          <p className="text-sm text-fg-tertiary">
+            A generation is running. Restart will be available when it finishes.
+          </p>
+        ) : null}
+
+        {state.message ? (
+          <p className="flex items-start gap-2 text-sm text-red-600 dark:text-red-300">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{state.message}</span>
+          </p>
+        ) : null}
+
+        {installError ? (
+          <p className="flex items-start gap-2 text-sm text-red-600 dark:text-red-300">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{installError}</span>
+          </p>
+        ) : null}
+    </AppProductDialogShell>
   )
 }

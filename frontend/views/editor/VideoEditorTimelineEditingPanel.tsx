@@ -1411,14 +1411,14 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     <>
       <div className="h-full min-h-0 flex flex-col">
         {/* Timeline Tabs */}
-        <div className="h-8 bg-zinc-900 flex items-center px-1 gap-0.5 overflow-x-auto flex-shrink-0">
+        <div className="h-8 bg-surface-primary flex items-center px-1 gap-0.5 overflow-x-auto flex-shrink-0">
           {timelines.filter(tl => openTimelineIds.has(tl.id)).map(tl => (
             <div
               key={tl.id}
               className={`group flex items-center gap-1 pl-3 pr-1 h-6 rounded-t text-xs font-medium cursor-pointer transition-colors flex-shrink-0 ${
                 tl.id === activeTimeline?.id
-                  ? 'bg-zinc-950 text-white border-t border-l border-r border-zinc-700'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+                  ? 'bg-surface-secondary text-fg-primary border-t border-l border-r border-separator'
+                  : 'text-fg-tertiary hover:text-fg-secondary hover:bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_50%,transparent)]'
               }`}
               onClick={() => handleSwitchTimeline(tl.id)}
               onDoubleClick={() => handleStartRename(tl.id, tl.name)}
@@ -1435,7 +1435,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                     if (e.key === 'Enter') handleFinishRename()
                     if (e.key === 'Escape') { setRenamingTimelineId(null); setRenameValue('') }
                   }}
-                  className="bg-transparent border-b border-blue-500 outline-none text-white text-xs w-20"
+                  className="bg-transparent border-b border-blue-500 outline-none text-fg-primary text-xs w-20"
                   autoFocus
                   onClick={(e) => e.stopPropagation()}
                 />
@@ -1447,8 +1447,8 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                 <button
                   className={`ml-0.5 p-0.5 rounded transition-colors flex-shrink-0 ${
                     tl.id === activeTimeline?.id
-                      ? 'text-zinc-500 hover:text-white hover:bg-zinc-700'
-                      : 'text-zinc-600 opacity-0 group-hover:opacity-100 hover:text-zinc-300 hover:bg-zinc-700'
+                      ? 'text-fg-tertiary hover:text-fg-primary hover:bg-action-hover'
+                      : 'text-fg-tertiary opacity-0 group-hover:opacity-100 hover:text-fg-secondary hover:bg-action-hover'
                   }`}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -1465,7 +1465,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
           <Tooltip content="New timeline" side="bottom">
             <button
               onClick={handleAddTimeline}
-              className="flex items-center justify-center w-6 h-6 rounded text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors flex-shrink-0"
+              className="flex items-center justify-center w-6 h-6 rounded text-fg-tertiary hover:text-fg-primary hover:bg-action transition-colors flex-shrink-0"
             >
               <Plus className="h-3.5 w-3.5" />
             </button>
@@ -1476,7 +1476,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
           {timelineContextMenu && (
             <div 
               ref={timelineContextMenuRef}
-              className="fixed bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-50 min-w-[140px]"
+              className="fixed bg-action border border-separator rounded-lg shadow-xl py-1 z-50 min-w-[140px]"
               style={{ left: timelineContextMenu.x, top: timelineContextMenu.y }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -1485,53 +1485,53 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   const tl = timelines.find(t => t.id === timelineContextMenu.timelineId)
                   if (tl) handleStartRename(tl.id, tl.name, 'panel')
                 }}
-                className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
+                className="w-full text-left px-3 py-1.5 text-xs text-fg-secondary hover:bg-action-hover flex items-center gap-2"
               >
                 <Pencil className="h-3 w-3" />
                 Rename
               </button>
               <button
                 onClick={() => handleDuplicateTimeline(timelineContextMenu.timelineId)}
-                className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
+                className="w-full text-left px-3 py-1.5 text-xs text-fg-secondary hover:bg-action-hover flex items-center gap-2"
               >
                 <Copy className="h-3 w-3" />
                 Duplicate
               </button>
-              <div className="h-px bg-zinc-700 my-0.5" />
+              <div className="h-px bg-action-hover my-0.5" />
               <button
                 disabled={true}
                 title="Coming Soon!"
-                className="w-full text-left px-3 py-1.5 text-xs text-zinc-500 flex items-center gap-2 opacity-50 cursor-not-allowed"
+                className="w-full text-left px-3 py-1.5 text-xs text-fg-tertiary flex items-center gap-2 opacity-50 cursor-not-allowed"
               >
                 <ZoomIn className="h-3 w-3" />
                 Upscale Timeline
               </button>
-              <div className="h-px bg-zinc-700 my-0.5" />
+              <div className="h-px bg-action-hover my-0.5" />
               <button
                 onClick={() => {
                   actions.openImportTimelineModal()
                   setTimelineContextMenu(null)
                 }}
-                className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
+                className="w-full text-left px-3 py-1.5 text-xs text-fg-secondary hover:bg-action-hover flex items-center gap-2"
               >
                 <FileUp className="h-3 w-3" />
                 Import XML Timeline
               </button>
               <div className="relative group/export">
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
+                  className="w-full text-left px-3 py-1.5 text-xs text-fg-secondary hover:bg-action-hover flex items-center gap-2"
                 >
                   <Upload className="h-3 w-3" />
                   Export
-                  <ChevronRight className="h-3 w-3 ml-auto text-zinc-500" />
+                  <ChevronRight className="h-3 w-3 ml-auto text-fg-tertiary" />
                 </button>
-                <div className="absolute left-full top-0 ml-0.5 min-w-[160px] bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-50 hidden group-hover/export:block">
+                <div className="absolute left-full top-0 ml-0.5 min-w-[160px] bg-action border border-separator rounded-lg shadow-xl py-1 z-50 hidden group-hover/export:block">
                   <button
                     onClick={() => {
                       actions.openExportModal()
                       setTimelineContextMenu(null)
                     }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
+                    className="w-full text-left px-3 py-1.5 text-xs text-fg-secondary hover:bg-action-hover flex items-center gap-2"
                   >
                     <Upload className="h-3 w-3" />
                     Export Timeline...
@@ -1542,20 +1542,20 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                       setTimelineContextMenu(null)
                     }}
                     disabled={clips.length === 0}
-                    className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2 disabled:opacity-40"
+                    className="w-full text-left px-3 py-1.5 text-xs text-fg-secondary hover:bg-action-hover flex items-center gap-2 disabled:opacity-40"
                   >
                     <FileDown className="h-3 w-3" />
                     Export as FCP 7 XML
                   </button>
                 </div>
               </div>
-              <div className="h-px bg-zinc-700 my-0.5" />
+              <div className="h-px bg-action-hover my-0.5" />
               <button
                 onClick={() => {
                   handleCloseTimelineTab(timelineContextMenu.timelineId)
                   setTimelineContextMenu(null)
                 }}
-                className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 flex items-center gap-2"
+                className="w-full text-left px-3 py-1.5 text-xs text-fg-secondary hover:bg-action-hover flex items-center gap-2"
               >
                 <X className="h-3 w-3" />
                 Close Tab
@@ -1564,7 +1564,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                 <>
                   <button
                     onClick={() => handleDeleteTimeline(timelineContextMenu.timelineId)}
-                    className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-zinc-700 flex items-center gap-2"
+                    className="w-full text-left px-3 py-1.5 text-xs text-fg-danger hover:bg-action-hover flex items-center gap-2"
                   >
                     <Trash2 className="h-3 w-3" />
                     Delete
@@ -1576,22 +1576,22 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
         </div>
         
         {/* Timeline with Tools */}
-        <div className="bg-zinc-950 border-t border-zinc-800 flex overflow-hidden flex-1 min-h-0">
+        <div className="bg-surface-secondary border-t border-separator flex overflow-hidden flex-1 min-h-0">
           {/* Tools Panel */}
-          <div className="w-10 flex-shrink-0 bg-zinc-900 border-r border-zinc-800 flex flex-col items-center py-1 gap-0.5 overflow-hidden">
+          <div className="w-10 flex-shrink-0 bg-surface-primary border-r border-separator flex flex-col items-center py-1 gap-0.5 overflow-hidden">
             {PRIMARY_TOOLS.map(tool => (
               <Tooltip key={tool.id} content={tooltipLabel(tool.label, getShortcutLabel(kbLayout, tool.actionId))} side="right">
                 <button
                   onClick={() => setActiveTool(tool.id)}
                   className={`p-1.5 rounded-lg transition-colors relative group flex-shrink-0 ${
                     activeTool === tool.id
-                      ? 'bg-blue-600 text-white'
-                      : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                      ? 'bg-brand text-fg-white'
+                      : 'text-fg-secondary hover:bg-action hover:text-fg-primary'
                   }`}
                 >
                   <tool.icon className="h-4 w-4" />
-                  <div className="absolute left-full ml-2 px-2 py-1 bg-zinc-800 rounded text-xs text-white whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50">
-                    {(() => { const s = getShortcutLabel(kbLayout, tool.actionId); return <>{tool.label}{s && <span className="text-zinc-400"> ({s})</span>}</>; })()}
+                  <div className="absolute left-full ml-2 px-2 py-1 bg-action rounded text-xs text-fg-primary whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50">
+                    {(() => { const s = getShortcutLabel(kbLayout, tool.actionId); return <>{tool.label}{s && <span className="text-fg-secondary"> ({s})</span>}</>; })()}
                   </div>
                 </button>
               </Tooltip>
@@ -1636,14 +1636,14 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                       data-trim-group-btn=""
                       className={`p-1.5 rounded-lg transition-colors relative group ${
                         isTrimActive
-                          ? 'bg-blue-600 text-white'
-                          : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                          ? 'bg-brand text-fg-white'
+                          : 'text-fg-secondary hover:bg-action hover:text-fg-primary'
                       }`}
                     >
                       <currentTrimTool.icon className="h-4 w-4" />
                       <div className="absolute bottom-0 right-0 w-0 h-0 border-l-[4px] border-l-transparent border-b-[4px] border-b-current opacity-60" />
-                      <div className="absolute left-full ml-2 px-2 py-1 bg-zinc-800 rounded text-xs text-white whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50">
-                        {(() => { const s = getShortcutLabel(kbLayout, currentTrimTool.actionId); return <>{currentTrimTool.label}{s && <span className="text-zinc-400"> ({s})</span>}</>; })()}
+                      <div className="absolute left-full ml-2 px-2 py-1 bg-action rounded text-xs text-fg-primary whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50">
+                        {(() => { const s = getShortcutLabel(kbLayout, currentTrimTool.actionId); return <>{currentTrimTool.label}{s && <span className="text-fg-secondary"> ({s})</span>}</>; })()}
                       </div>
                     </button>
                   </Tooltip>
@@ -1654,7 +1654,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                       <>
                         <div className="fixed inset-0 z-[9998]" onMouseDown={() => setShowTrimFlyout(false)} onContextMenu={(e) => { e.preventDefault(); setShowTrimFlyout(false) }} />
                         <div
-                          className="fixed bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-[9999] min-w-[160px]"
+                          className="fixed bg-action border border-separator rounded-lg shadow-xl py-1 z-[9999] min-w-[160px]"
                           style={{ top: rect?.top ?? 0, left: (rect?.right ?? 44) + 4 }}
                         >
                           {TRIM_TOOLS.map(t => (
@@ -1666,12 +1666,12 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                 setShowTrimFlyout(false)
                               }}
                               className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
-                                activeTool === t.id ? 'bg-blue-600/30 text-white' : 'text-zinc-300 hover:bg-zinc-700'
+                                activeTool === t.id ? 'bg-blue-600/30 text-fg-primary' : 'text-fg-secondary hover:bg-action-hover'
                               }`}
                             >
                               <t.icon className="h-3.5 w-3.5" />
                               <span className="flex-1">{t.label}</span>
-                              <span className="text-zinc-500 text-[10px]">{getShortcutLabel(kbLayout, t.actionId)}</span>
+                              <span className="text-fg-tertiary text-[10px]">{getShortcutLabel(kbLayout, t.actionId)}</span>
                             </button>
                           ))}
                         </div>
@@ -1682,15 +1682,15 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
               )
             })()}
             
-            <div className="w-6 h-px bg-zinc-700 my-1 flex-shrink-0" />
+            <div className="w-6 h-px bg-action-hover my-1 flex-shrink-0" />
             
             <Tooltip content={snapEnabled ? 'Snapping On' : 'Snapping Off'} side="right">
               <button
                 onClick={() => setSnapEnabled(!snapEnabled)}
                 className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
                   snapEnabled
-                    ? 'bg-blue-600 text-white'
-                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                    ? 'bg-brand text-fg-white'
+                    : 'text-fg-secondary hover:bg-action hover:text-fg-primary'
                 }`}
               >
                 <Magnet className="h-4 w-4" />
@@ -1698,14 +1698,14 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
             </Tooltip>
             
             {/* EFFECTS HIDDEN - FX button hidden because effects are not applied during export
-            <div className="w-6 h-px bg-zinc-700 my-1 flex-shrink-0" />
+            <div className="w-6 h-px bg-action-hover my-1 flex-shrink-0" />
 
             <button
               onClick={() => setShowEffectsBrowser(!showEffectsBrowser)}
               className={`p-1.5 rounded-lg transition-colors flex-shrink-0 text-[10px] font-bold ${
                 showEffectsBrowser
-                  ? 'bg-blue-600 text-white'
-                  : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                  ? 'bg-brand text-fg-white'
+                  : 'text-fg-secondary hover:bg-action hover:text-fg-primary'
               }`}
               title="Effects Browser"
             >
@@ -1713,15 +1713,15 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
             </button>
             EFFECTS HIDDEN */}
 
-            <div className="w-6 h-px bg-zinc-700 my-1 flex-shrink-0" />
+            <div className="w-6 h-px bg-action-hover my-1 flex-shrink-0" />
             
             <Tooltip content="Add Text Overlay" side="right">
               <button
                 onClick={() => addTextClip()}
-                className="p-1.5 rounded-lg transition-colors flex-shrink-0 text-cyan-400 hover:bg-cyan-900/30 hover:text-cyan-300 group relative"
+                className="p-1.5 rounded-lg transition-colors flex-shrink-0 text-ext-teal hover:bg-ext-teal/15 hover:-ext-teal group relative"
               >
                 <Type className="h-4 w-4" />
-                <div className="absolute left-full ml-2 px-2 py-1 bg-zinc-800 rounded text-xs text-white whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50">
+                <div className="absolute left-full ml-2 px-2 py-1 bg-action rounded text-xs text-fg-primary whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50">
                   Add Text Overlay
                 </div>
               </button>
@@ -1729,7 +1729,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
 
             {canUseIcLora && (
               <>
-                <div className="w-6 h-px bg-zinc-700 my-1 flex-shrink-0" />
+                <div className="w-6 h-px bg-action-hover my-1 flex-shrink-0" />
 
                 <Tooltip content="IC-LoRA Style Transfer" side="right">
                   <button
@@ -1739,10 +1739,10 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                       }
                     }}
                     disabled={selectedClip?.type !== 'video'}
-                    className="p-1.5 rounded-lg transition-colors flex-shrink-0 group relative text-amber-500/70 hover:bg-amber-900/30 hover:text-amber-400 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="p-1.5 rounded-lg transition-colors flex-shrink-0 group relative text-fg-warning hover:bg-warning-soft hover:text-fg-warning disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Sparkles className="h-4 w-4" />
-                    <div className="absolute left-full ml-2 px-2 py-1 bg-zinc-800 rounded text-xs text-white whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50">
+                    <div className="absolute left-full ml-2 px-2 py-1 bg-action rounded text-xs text-fg-primary whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50">
                       IC-LoRA Style Transfer
                     </div>
                   </button>
@@ -1756,11 +1756,11 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
               <button
                 onClick={() => setShowPropertiesPanel(p => !p)}
                 className={`p-1.5 rounded-lg transition-colors flex-shrink-0 group relative ${
-                  showPropertiesPanel ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                  showPropertiesPanel ? 'bg-brand text-fg-white' : 'text-fg-secondary hover:bg-action hover:text-fg-primary'
                 }`}
               >
                 <PanelRight className="h-4 w-4" />
-                <div className="absolute left-full ml-2 px-2 py-1 bg-zinc-800 rounded text-xs text-white whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50">
+                <div className="absolute left-full ml-2 px-2 py-1 bg-action rounded text-xs text-fg-primary whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50">
                   {showPropertiesPanel ? 'Hide Properties' : 'Show Properties'}
                 </div>
               </button>
@@ -1774,7 +1774,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
             {/* Ruler row - fixed at top */}
             <div className="flex flex-shrink-0">
               <div
-                className="w-32 h-6 flex-shrink-0 border-b border-r border-zinc-800 bg-zinc-900 flex items-center justify-center cursor-text"
+                className="w-32 h-6 flex-shrink-0 border-b border-r border-separator bg-surface-primary flex items-center justify-center cursor-text"
                 onClick={() => {
                   if (!editingTimecode) {
                     setTimecodeInput(formatTime(isPlaying ? playbackTimeRef.current : currentTime))
@@ -1787,7 +1787,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   <input
                     ref={timecodeInputRef}
                     autoFocus
-                    className="w-full h-full bg-zinc-950 text-amber-400 text-[11px] font-mono font-medium text-center outline-none border-none tabular-nums tracking-tight px-1"
+                    className="w-full h-full bg-surface-secondary text-fg-primary text-[11px] font-mono font-medium text-center outline-none border-none tabular-nums tracking-tight px-1"
                     value={timecodeInput}
                     onChange={e => setTimecodeInput(e.target.value)}
                     onKeyDown={e => {
@@ -1810,7 +1810,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                 ) : (
                   <span
                     ref={timelineTimecodeRef}
-                    className="text-[11px] font-mono font-medium text-amber-400 tabular-nums tracking-tight select-none"
+                    className="text-[11px] font-mono font-medium text-fg-primary tabular-nums tracking-tight select-none"
                   >
                     {formatTime(currentTime)}
                   </span>
@@ -1820,14 +1820,13 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                 <div 
                   ref={timelineRef}
                   style={{ minWidth: `${totalDuration * pixelsPerSecond}px` }}
-                  className={`h-6 bg-zinc-900 border-b border-zinc-800 relative select-none ${
+                  className={`h-6 bg-surface-primary border-b border-separator relative select-none ${
                     'cursor-pointer'
                   }`}
                   onMouseDown={handleRulerMouseDown}
                 >
                   {(() => {
                     const ticks: React.ReactNode[] = []
-                    // Render major + minor ticks up to totalDuration
                     const end = totalDuration + rulerInterval
                     for (let t = 0; t < end; t = +(t + rulerSubInterval).toFixed(4)) {
                       const isMajor = Math.abs(t % rulerInterval) < 0.001 || Math.abs(t % rulerInterval - rulerInterval) < 0.001
@@ -1838,9 +1837,15 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           className="absolute top-0 bottom-0"
                           style={{ left: `${leftPx}px` }}
                         >
-                          <div className={`h-full border-l ${isMajor ? 'border-zinc-700' : 'border-zinc-800'}`} />
+                          <div
+                            className={`border-l ${isMajor ? 'h-2' : 'h-1'} ${
+                              isMajor
+                                ? 'border-[color-mix(in_srgb,var(--semantic-bg-separator-secondary)_45%,transparent)]'
+                                : 'border-[color-mix(in_srgb,var(--semantic-bg-separator-secondary)_28%,transparent)]'
+                            }`}
+                          />
                           {isMajor && (
-                            <span className="absolute left-1 bottom-0.5 text-[10px] text-zinc-500 whitespace-nowrap leading-none">
+                            <span className="absolute left-1 bottom-0.5 text-[10px] whitespace-nowrap leading-none text-fg-tertiary">
                               {formatTime(t)}
                             </span>
                           )}
@@ -1906,7 +1911,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   {/* Playhead (ruler) — position updated by rAF engine during playback */}
                   <div 
                     ref={playheadRulerRef}
-                    className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"
+                    className="absolute top-0 bottom-0 w-0.5 bg-danger z-20 pointer-events-none"
                     style={{ left: `${currentTime * pixelsPerSecond}px` }}
                   >
                     <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent border-t-red-500" />
@@ -1920,12 +1925,12 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
               {/* Scrollable tracks area */}
               <div className="flex flex-1 min-h-0">
               {/* Track headers column */}
-              <div className="w-32 flex-shrink-0 border-r border-zinc-800 bg-zinc-900 flex flex-col overflow-hidden">
+              <div className="w-32 flex-shrink-0 border-r border-separator bg-surface-primary flex flex-col overflow-hidden">
                 {/* Add track buttons - pinned above scrollable area */}
-                <div className="flex-shrink-0 h-7 flex items-center px-2 gap-1.5 border-b border-zinc-700/50">
+                <div className="flex-shrink-0 h-7 flex items-center px-2 gap-1.5 border-b border-separator-secondary">
                   <button 
                     onClick={() => addTrack('video')}
-                    className="text-[10px] text-zinc-500 hover:text-zinc-300 flex items-center gap-0.5"
+                    className="text-[10px] text-fg-tertiary hover:text-fg-secondary flex items-center gap-0.5"
                     title="Add video track"
                   >
                     <Plus className="h-3 w-3" />
@@ -1933,22 +1938,22 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   </button>
                   <button 
                     onClick={() => addTrack('audio')}
-                    className="text-[10px] text-emerald-500/70 hover:text-emerald-400 flex items-center gap-0.5"
+                    className="text-[10px] text-fg-success hover:text-fg-success flex items-center gap-0.5"
                     title="Add audio track"
                   >
                     <Plus className="h-3 w-3" />
                     A
                   </button>
-                  <div className="w-px h-3 bg-zinc-700" />
+                  <div className="w-px h-3 bg-action-hover" />
                   <button 
                     onClick={() => addSubtitleTrack()}
-                    className="text-[10px] text-amber-500/70 hover:text-amber-400 flex items-center gap-0.5"
+                    className="text-[10px] text-fg-warning hover:text-fg-warning flex items-center gap-0.5"
                     title="Add subtitle track"
                   >
                     <MessageSquare className="h-3 w-3" />
                     Subs
                   </button>
-                  <div className="w-px h-3 bg-zinc-700" />
+                  <div className="w-px h-3 bg-action-hover" />
                   <button 
                     onClick={() => createAdjustmentLayerAsset()}
                     className="text-[10px] text-blue-400/70 hover:text-blue-300 flex items-center gap-0.5"
@@ -1965,7 +1970,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                     {/* Draggable divider between video and audio sections */}
                     {displayRow === audioDividerDisplayRow && (
                       <div 
-                        className="flex-shrink-0 bg-zinc-700/60 relative cursor-row-resize hover:bg-blue-500/30 transition-colors group/divider"
+                        className="flex-shrink-0 bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-hover)_60%,transparent)] relative cursor-row-resize hover:bg-blue-500/30 transition-colors group/divider"
                         style={{ height: DIVIDER_H }}
                         onMouseDown={(e) => {
                           e.preventDefault()
@@ -1990,19 +1995,19 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                       >
                         <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center justify-center">
                           <div className="flex flex-col items-center gap-[1px]">
-                            <div className="w-8 h-[1px] bg-zinc-500 group-hover/divider:bg-blue-400 transition-colors rounded-full" />
-                            <div className="w-8 h-[1px] bg-zinc-500 group-hover/divider:bg-blue-400 transition-colors rounded-full" />
+                            <div className="w-8 h-[1px] bg-action-active group-hover/divider:bg-blue-400 transition-colors rounded-full" />
+                            <div className="w-8 h-[1px] bg-action-active group-hover/divider:bg-blue-400 transition-colors rounded-full" />
                           </div>
                         </div>
-                        <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-[7px] font-bold text-zinc-400 bg-zinc-800 px-1.5 rounded-sm leading-none pointer-events-none">V | A</span>
+                        <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-[7px] font-bold text-fg-secondary bg-action px-1.5 rounded-sm leading-none pointer-events-none">V | A</span>
                       </div>
                     )}
                     <div 
-                      className={`group flex-shrink-0 border-b border-zinc-800 text-xs relative ${
+                      className={`group flex-shrink-0 border-b border-separator text-xs relative ${
                         track.type === 'subtitle'
-                          ? 'bg-amber-950/20 px-1.5 flex flex-col justify-center gap-0'
+                          ? 'bg-warning-soft px-1.5 flex flex-col justify-center gap-0'
                           : track.kind === 'audio'
-                          ? 'bg-emerald-950/10 px-2 flex items-center justify-between'
+                          ? 'bg-success-soft px-2 flex items-center justify-between'
                           : 'px-2 flex items-center justify-between'
                       }`}
                       style={{ height: track.type === 'subtitle' ? subtitleTrackHeight : track.kind === 'audio' ? audioTrackHeight : videoTrackHeight }}
@@ -2011,8 +2016,8 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                         <>
                           {/* Row 1: track name */}
                           <div className="flex items-center gap-1">
-                            <MessageSquare className="h-3 w-3 text-amber-500/60 flex-shrink-0" />
-                            <span className={`text-[10px] font-semibold truncate ${track.muted ? 'text-zinc-600' : 'text-amber-400/80'}`}>
+                            <MessageSquare className="h-3 w-3 text-fg-warning flex-shrink-0" />
+                            <span className={`text-[10px] font-semibold truncate ${track.muted ? 'text-fg-tertiary' : 'text-fg-warning'}`}>
                               {track.name}
                             </span>
                           </div>
@@ -2021,7 +2026,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                             <Tooltip content="Track style settings" side="right">
                               <button
                                 onClick={() => setSubtitleTrackStyleIdx(subtitleTrackStyleIdx === realIndex ? null : realIndex)}
-                                className={`p-0.5 rounded ${subtitleTrackStyleIdx === realIndex ? 'text-amber-400 bg-amber-900/30' : 'text-amber-500/60 hover:text-amber-400'}`}
+                                className={`p-0.5 rounded ${subtitleTrackStyleIdx === realIndex ? 'text-fg-warning bg-warning-soft' : 'text-fg-warning hover:text-fg-warning'}`}
                               >
                                 <Palette className="h-3 w-3" />
                               </button>
@@ -2029,7 +2034,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                             <Tooltip content="Add subtitle" side="right">
                               <button
                                 onClick={() => addSubtitleClip(realIndex)}
-                                className="p-0.5 rounded text-amber-500/60 hover:text-amber-400"
+                                className="p-0.5 rounded text-fg-warning hover:text-fg-warning"
                               >
                                 <Plus className="h-3 w-3" />
                               </button>
@@ -2037,7 +2042,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                             <Tooltip content={track.locked ? 'Unlock' : 'Lock'} side="right">
                               <button
                                 onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? {...t, locked: !t.locked} : t))}
-                                className={`p-0.5 rounded ${track.locked ? 'text-yellow-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                className={`p-0.5 rounded ${track.locked ? 'text-fg-warning' : 'text-fg-tertiary hover:text-fg-secondary'}`}
                               >
                                 {track.locked ? <Lock className="h-2.5 w-2.5" /> : <Unlock className="h-2.5 w-2.5" />}
                               </button>
@@ -2045,7 +2050,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                             <Tooltip content={track.muted ? 'Show subtitles' : 'Hide subtitles'} side="right">
                               <button
                                 onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? {...t, muted: !t.muted} : t))}
-                                className={`p-0.5 rounded ${track.muted ? 'text-red-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                className={`p-0.5 rounded ${track.muted ? 'text-fg-danger' : 'text-fg-tertiary hover:text-fg-secondary'}`}
                               >
                                 {track.muted ? <EyeOff className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
                               </button>
@@ -2058,7 +2063,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                     setSubtitles(prev => prev.filter(s => s.trackIndex !== realIndex))
                                   }
                                 }}
-                                className="p-0.5 rounded text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="p-0.5 rounded text-fg-tertiary hover:text-fg-danger opacity-0 group-hover:opacity-100 transition-opacity"
                               >
                                 <Trash2 className="h-2.5 w-2.5" />
                               </button>
@@ -2074,9 +2079,9 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                             className={`p-0.5 rounded flex-shrink-0 transition-colors ${
                               track.sourcePatched !== false
                                 ? track.kind === 'audio'
-                                  ? 'text-emerald-400 hover:text-emerald-300'
+                                  ? 'text-fg-success hover:text-fg-success'
                                   : 'text-blue-400 hover:text-blue-300'
-                                : 'text-zinc-600 hover:text-zinc-400'
+                                : 'text-fg-tertiary hover:text-fg-secondary'
                             }`}
                           >
                             {track.sourcePatched !== false
@@ -2086,9 +2091,9 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           </button>
                         </Tooltip>
                         <span className={`text-[10px] font-semibold truncate ${
-                          track.muted ? 'text-zinc-600' 
-                          : track.kind === 'audio' ? 'text-emerald-400/80'
-                          : 'text-zinc-300'
+                          track.muted ? 'text-fg-tertiary' 
+                          : track.kind === 'audio' ? 'text-fg-success'
+                          : 'text-fg-secondary'
                         }`}>
                           {track.name}
                         </span>
@@ -2097,7 +2102,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                         <Tooltip content={track.locked ? 'Unlock' : 'Lock'} side="right">
                           <button
                             onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? {...t, locked: !t.locked} : t))}
-                            className={`p-0.5 rounded ${track.locked ? 'text-yellow-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                            className={`p-0.5 rounded ${track.locked ? 'text-fg-warning' : 'text-fg-tertiary hover:text-fg-secondary'}`}
                           >
                             {track.locked ? <Lock className="h-2.5 w-2.5" /> : <Unlock className="h-2.5 w-2.5" />}
                           </button>
@@ -2106,7 +2111,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           <Tooltip content={track.enabled === false ? 'Enable track output' : 'Disable track output'} side="right">
                             <button
                               onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? {...t, enabled: !(t.enabled !== false)}: t))}
-                              className={`p-0.5 rounded ${track.enabled === false ? 'text-zinc-600' : 'text-zinc-500 hover:text-zinc-300'}`}
+                              className={`p-0.5 rounded ${track.enabled === false ? 'text-fg-tertiary' : 'text-fg-tertiary hover:text-fg-secondary'}`}
                             >
                               {track.enabled === false ? <EyeOff className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
                             </button>
@@ -2116,7 +2121,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           <Tooltip content={track.muted ? 'Unmute' : 'Mute'} side="right">
                             <button
                               onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? {...t, muted: !t.muted} : t))}
-                              className={`p-0.5 rounded ${track.muted ? 'text-red-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                              className={`p-0.5 rounded ${track.muted ? 'text-fg-danger' : 'text-fg-tertiary hover:text-fg-secondary'}`}
                             >
                               {track.muted ? <VolumeX className="h-2.5 w-2.5" /> : <Volume2 className="h-2.5 w-2.5" />}
                             </button>
@@ -2126,7 +2131,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           <button
                             onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? {...t, muted: !t.muted} : t))}
                             className={`px-1 py-0.5 rounded text-[10px] font-bold leading-none ${
-                              track.muted ? 'bg-red-500/80 text-white' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
+                              track.muted ? 'bg-danger-soft text-fg-primary' : 'text-fg-tertiary hover:text-fg-secondary hover:bg-action-hover'
                             }`}
                             title={track.muted ? 'Unmute track' : 'Mute track'}
                           >
@@ -2137,7 +2142,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           <button
                             onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? {...t, solo: !t.solo} : t))}
                             className={`px-1 py-0.5 rounded text-[10px] font-bold leading-none ${
-                              track.solo ? 'bg-yellow-500/80 text-black' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
+                              track.solo ? 'bg-warning-soft text-black' : 'text-fg-tertiary hover:text-fg-secondary hover:bg-action-hover'
                             }`}
                             title={track.solo ? 'Unsolo track' : 'Solo track'}
                           >
@@ -2148,7 +2153,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           <Tooltip content="Delete track" side="right">
                             <button
                               onClick={() => deleteTrack(realIndex)}
-                              className="p-0.5 rounded text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="p-0.5 rounded text-fg-tertiary hover:text-fg-danger opacity-0 group-hover:opacity-100 transition-opacity"
                             >
                               <Trash2 className="h-2.5 w-2.5" />
                             </button>
@@ -2187,7 +2192,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           window.addEventListener('mouseup', onUp)
                         }}
                       >
-                        <div className="mx-auto w-6 h-0.5 bg-zinc-600 rounded-full mt-0.5 group-hover/resize:bg-blue-400 transition-colors" />
+                        <div className="mx-auto w-6 h-0.5 bg-action-active rounded-full mt-0.5 group-hover/resize:bg-blue-400 transition-colors" />
                       </div>
                     </div>
                   </React.Fragment>
@@ -2202,11 +2207,11 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                 {/* Full-height playhead line — spans spacer + tracks, positioned on the wrapper */}
                 <div
                   ref={playheadOverlayRef}
-                  className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-30 pointer-events-none"
+                  className="absolute top-0 bottom-0 w-0.5 bg-danger z-30 pointer-events-none"
                   style={{ left: `${currentTime * pixelsPerSecond - (trackContainerRef.current?.scrollLeft || 0)}px` }}
                 />
                 {/* Spacer matching the add-track button bar height */}
-                <div className="flex-shrink-0 h-7 border-b border-zinc-700/50" />
+                <div className="flex-shrink-0 h-7 border-b border-separator-secondary" />
                 <div 
                   ref={trackContainerRef}
                   className="flex-1 overflow-auto select-none"
@@ -2342,7 +2347,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                       {/* Divider between video and audio sections */}
                       {displayRow === audioDividerDisplayRow && (
                         <div
-                          className="bg-zinc-700/60 cursor-row-resize hover:bg-blue-500/30 transition-colors"
+                          className="bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-hover)_60%,transparent)] cursor-row-resize hover:bg-blue-500/30 transition-colors"
                           style={{ height: DIVIDER_H }}
                           onMouseDown={(e) => {
                             e.preventDefault()
@@ -2368,12 +2373,12 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                       )}
                       <div 
                         data-track-bg="true"
-                        className={`border-b border-zinc-800 ${
+                        className={`border-b border-separator ${
                           track.type === 'subtitle'
-                            ? 'bg-amber-950/15'
+                            ? 'bg-warning-soft'
                             : track.kind === 'audio'
-                              ? (displayRow % 2 === 0 ? 'bg-emerald-950/20' : 'bg-emerald-950/10')
-                              : displayRow % 2 === 0 ? 'bg-zinc-900/50' : 'bg-zinc-950'
+                              ? (displayRow % 2 === 0 ? 'bg-success-soft' : 'bg-success-soft')
+                              : displayRow % 2 === 0 ? 'bg-[color-mix(in_srgb,var(--semantic-bg-primary)_50%,transparent)]' : 'bg-surface-secondary'
                         } ${track.locked ? 'opacity-50' : ''}`}
                         style={{ height: track.type === 'subtitle' ? subtitleTrackHeight : track.kind === 'audio' ? audioTrackHeight : videoTrackHeight }}
                         onDrop={(e) => {
@@ -2430,14 +2435,14 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           ? 'border-blue-500 shadow-lg shadow-blue-500/20' 
                           : clipColor
                             ? `hover:brightness-125`
-                            : 'border-zinc-600 hover:border-zinc-500'
-                      } ${!clipColor ? (clip.type === 'audio' ? 'bg-green-900/50' : clip.type === 'adjustment' ? 'bg-blue-900/40 border-dashed' : clip.type === 'text' ? 'bg-cyan-900/50 border-cyan-600/40' : 'bg-zinc-800') : ''} ${
+                            : 'border-separator hover:border-separator'
+                      } ${!clipColor ? (clip.type === 'audio' ? 'bg-success-soft' : clip.type === 'adjustment' ? 'bg-blue-900/40 border-dashed' : clip.type === 'text' ? 'bg-ext-teal/20 border-ext-teal/40' : 'bg-action') : ''} ${
                         activeTool === 'select' || activeTool === 'ripple' || activeTool === 'roll' ? 'cursor-grab' : ''
                       } ${
                         activeTool === 'slip' ? 'cursor-ew-resize' : ''
                       } ${activeTool === 'slide' ? 'cursor-col-resize' : ''} ${
                         draggingClip?.clipId === clip.id || (draggingClip && selectedClipIds.has(clip.id)) ? 'opacity-80 cursor-grabbing z-30' : ''
-                      } ${slipSlideClip?.clipId === clip.id ? 'opacity-90 ring-2 ring-yellow-500/50 z-30' : ''
+                      } ${slipSlideClip?.clipId === clip.id ? 'opacity-90 ring-2 ring-warning/50 z-30' : ''
                       }`}
                       style={{
                         left: `${clip.startTime * pixelsPerSecond}px`,
@@ -2486,15 +2491,15 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           : (bladeHoverInfo.time - clip.startTime) * pixelsPerSecond
                         return (
                           <div
-                            className={`absolute top-0 bottom-0 w-px z-20 pointer-events-none ${isHoveredClip ? 'bg-red-500' : 'bg-red-500/60'}`}
+                            className={`absolute top-0 bottom-0 w-px z-20 pointer-events-none ${isHoveredClip ? 'bg-danger' : 'bg-danger-soft'}`}
                             style={{ left: `${indicatorPx}px` }}
                           >
-                            <div className={`absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 ${isHoveredClip ? 'bg-red-500' : 'bg-red-500/60'}`} />
-                            <div className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 ${isHoveredClip ? 'bg-red-500' : 'bg-red-500/60'}`} />
+                            <div className={`absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 ${isHoveredClip ? 'bg-danger' : 'bg-danger-soft'}`} />
+                            <div className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 ${isHoveredClip ? 'bg-danger' : 'bg-danger-soft'}`} />
                           </div>
                         )
                       })()}
-                      <div className={`absolute left-0 top-0 bottom-0 w-4 flex items-center justify-center text-zinc-500 hover:text-white ${activeTool === 'trackForward' || activeTool === 'blade' ? '' : 'cursor-grab'}`}
+                      <div className={`absolute left-0 top-0 bottom-0 w-4 flex items-center justify-center text-fg-tertiary hover:text-fg-primary ${activeTool === 'trackForward' || activeTool === 'blade' ? '' : 'cursor-grab'}`}
                         style={activeTool === 'blade' ? { cursor: SCISSORS_CURSOR } : activeTool === 'trackForward' ? { cursor: bladeShiftHeld ? TRACK_FWD_ONE_CURSOR : TRACK_FWD_ALL_CURSOR } : {}}>
                         <GripVertical className="h-3 w-3" />
                       </div>
@@ -2505,14 +2510,14 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                             <Layers className="h-4 w-4 text-blue-400" />
                           </div>
                         ) : clip.type === 'text' ? (
-                          <div className="h-8 w-8 flex-shrink-0 rounded bg-cyan-800/30 border border-cyan-600/30 flex items-center justify-center">
-                            <Type className="h-4 w-4 text-cyan-400" />
+                          <div className="h-8 w-8 flex-shrink-0 rounded bg-ext-teal/15 border border-ext-teal/30 flex items-center justify-center">
+                            <Type className="h-4 w-4 text-ext-teal" />
                           </div>
                         ) : clip.type === 'audio' ? (
                           <>
                             <ClipWaveform url={pathToFileUrl(getClipPath(clip) || clip.asset?.path || '')} />
-                            <div className="h-8 w-8 flex-shrink-0 rounded bg-emerald-800/50 flex items-center justify-center relative z-10">
-                              <Music className="h-4 w-4 text-emerald-400" />
+                            <div className="h-8 w-8 flex-shrink-0 rounded bg-success-soft flex items-center justify-center relative z-10">
+                              <Music className="h-4 w-4 text-fg-success" />
                             </div>
                           </>
                         ) : clip.asset && (() => {
@@ -2536,23 +2541,23 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           )
                         })()}
                         <div className={`flex-1 min-w-0 ${clip.type === 'audio' ? 'relative z-10' : ''}`}>
-                          <p className={`text-[10px] truncate ${clip.type === 'adjustment' ? 'text-blue-300' : clip.type === 'text' ? 'text-cyan-300' : clip.type === 'audio' ? 'text-emerald-300' : 'text-zinc-300'}`}>
+                          <p className={`text-[10px] truncate ${clip.type === 'adjustment' ? 'text-blue-300' : clip.type === 'text' ? '-ext-teal' : clip.type === 'audio' ? 'text-fg-success' : 'text-fg-secondary'}`}>
                             {clip.type === 'adjustment' ? 'Adjustment Layer' : clip.type === 'text' ? (clip.textStyle?.text?.slice(0, 30) || 'Text') : clip.asset?.prompt?.slice(0, 30) || clip.importedName || 'Clip'}
                           </p>
-                          <div className="flex items-center gap-2 text-[9px] text-zinc-500">
+                          <div className="flex items-center gap-2 text-[9px] text-fg-tertiary">
                             <span>{clip.duration.toFixed(1)}s</span>
                             {(() => {
                               const resInfo = getClipResolution(clip)
                               if (!resInfo) return null
                               return <span style={{ color: resInfo.color }} className="font-semibold">{resInfo.displayName}</span>
                             })()}
-                            {clip.speed !== 1 && <span className="text-yellow-400">{clip.speed}x</span>}
+                            {clip.speed !== 1 && <span className="text-fg-warning">{clip.speed}x</span>}
                             {clip.reversed && <span className="text-blue-400">REV</span>}
-                            {clip.muted && <span className="text-red-400">M</span>}
-                            {(clip.flipH || clip.flipV) && <span className="text-cyan-400">FLIP</span>}
-                            {clip.colorCorrection && Object.values(clip.colorCorrection).some(v => v !== 0) && <span className="text-orange-400">CC</span>}
+                            {clip.muted && <span className="text-fg-danger">M</span>}
+                            {(clip.flipH || clip.flipV) && <span className="text-ext-teal">FLIP</span>}
+                            {clip.colorCorrection && Object.values(clip.colorCorrection).some(v => v !== 0) && <span className="text-fg-warning">CC</span>}
                             {clip.letterbox?.enabled && <span className="text-blue-400">LB</span>}
-                            {clip.linkedClipIds?.length && <Link2 className="h-2.5 w-2.5 text-zinc-500 inline" />}
+                            {clip.linkedClipIds?.length && <Link2 className="h-2.5 w-2.5 text-fg-tertiary inline" />}
                           </div>
                         </div>
                         
@@ -2568,18 +2573,18 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                   <Tooltip content="Previous take" side="top">
                                     <button
                                       onClick={() => handleClipTakeChange(clip.id, 'prev')}
-                                      className="p-0.5 rounded hover:bg-white/10 text-zinc-500 hover:text-white transition-colors"
+                                      className="p-0.5 rounded hover:bg-[color-mix(in_srgb,var(--semantic-fg-primary)_10%,transparent)] text-fg-tertiary hover:text-fg-primary transition-colors"
                                     >
                                       <ChevronLeft className="h-3 w-3" />
                                     </button>
                                   </Tooltip>
-                                  <span className="text-[8px] text-zinc-400 min-w-[24px] text-center">
+                                  <span className="text-[8px] text-fg-secondary min-w-[24px] text-center">
                                     {(clip.takeIndex ?? (liveAsset.activeTakeIndex ?? liveAsset.takes.length - 1)) + 1}/{liveAsset.takes.length}
                                   </span>
                                   <Tooltip content="Next take" side="top">
                                     <button
                                       onClick={() => handleClipTakeChange(clip.id, 'next')}
-                                      className="p-0.5 rounded hover:bg-white/10 text-zinc-500 hover:text-white transition-colors"
+                                      className="p-0.5 rounded hover:bg-[color-mix(in_srgb,var(--semantic-fg-primary)_10%,transparent)] text-fg-tertiary hover:text-fg-primary transition-colors"
                                     >
                                       <ChevronRight className="h-3 w-3" />
                                     </button>
@@ -2591,7 +2596,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                           handleDeleteTake(clip.id)
                                         }
                                       }}
-                                      className="p-0.5 rounded hover:bg-red-900/50 text-zinc-500 hover:text-red-400 transition-colors"
+                                      className="p-0.5 rounded hover:bg-danger-soft text-fg-tertiary hover:text-fg-danger transition-colors"
                                     >
                                       <Trash2 className="h-2.5 w-2.5" />
                                     </button>
@@ -2605,7 +2610,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                   className={`p-0.5 rounded transition-colors ${
                                     clip.isRegenerating
                                       ? 'text-blue-400'
-                                      : 'hover:bg-white/10 text-zinc-500 hover:text-blue-400'
+                                      : 'hover:bg-[color-mix(in_srgb,var(--semantic-fg-primary)_10%,transparent)] text-fg-tertiary hover:text-blue-400'
                                   }`}
                                 >
                                   <RefreshCw className={`h-3 w-3 ${clip.isRegenerating ? 'animate-spin' : ''}`} />
@@ -2615,7 +2620,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                 <Tooltip content="Retake section" side="top">
                                   <button
                                     onClick={() => requestRetakeClip(clip)}
-                                    className="p-0.5 rounded transition-colors hover:bg-white/10 text-zinc-500 hover:text-blue-400"
+                                    className="p-0.5 rounded transition-colors hover:bg-[color-mix(in_srgb,var(--semantic-fg-primary)_10%,transparent)] text-fg-tertiary hover:text-blue-400"
                                   >
                                     <Film className="h-3 w-3" />
                                   </button>
@@ -2637,7 +2642,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                             {canCancelInFlight && (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleCancelRegeneration() }}
-                              className="ml-1 px-1.5 py-0.5 rounded bg-zinc-800/80 border border-zinc-600/60 text-[9px] text-zinc-300 hover:text-red-400 hover:border-red-500/50 hover:bg-red-900/30 transition-colors"
+                              className="ml-1 px-1.5 py-0.5 rounded bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_80%,transparent)] border border-separator-secondary text-[9px] text-fg-secondary hover:text-fg-danger hover:border-danger/50 hover:bg-danger-soft transition-colors"
                             >
                               Cancel
                             </button>
@@ -2684,27 +2689,27 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                       <div 
                         className={`absolute left-0 top-0 bottom-0 w-3 ${activeTool === 'trackForward' || activeTool === 'blade' ? '' : 'cursor-ew-resize'} transition-colors flex items-center justify-center ${
                           resizingClip?.clipId === clip.id && resizingClip?.edge === 'left'
-                            ? activeTool === 'roll' ? 'bg-yellow-500' : activeTool === 'ripple' ? 'bg-green-500' : 'bg-blue-500'
-                            : activeTool === 'roll' ? 'hover:bg-yellow-500/50' : activeTool === 'ripple' ? 'hover:bg-green-500/50' : 'hover:bg-blue-500/50'
+                            ? activeTool === 'roll' ? 'bg-warning' : activeTool === 'ripple' ? 'bg-success' : 'bg-blue-500'
+                            : activeTool === 'roll' ? 'hover:bg-warning-soft' : activeTool === 'ripple' ? 'hover:bg-success-soft' : 'hover:bg-blue-500/50'
                         }`}
                         style={activeTool === 'blade' ? { cursor: SCISSORS_CURSOR } : activeTool === 'trackForward' ? { cursor: bladeShiftHeld ? TRACK_FWD_ONE_CURSOR : TRACK_FWD_ALL_CURSOR } : {}}
                         onMouseDown={(e) => handleResizeStart(e, clip, 'left')}
                       >
                         <div className={`w-0.5 h-6 rounded-full ${
-                          activeTool === 'roll' ? 'bg-yellow-300' : activeTool === 'ripple' ? 'bg-green-300' : 'bg-zinc-500'
+                          activeTool === 'roll' ? 'bg-warning' : activeTool === 'ripple' ? 'bg-success' : 'bg-action-active'
                         }`} />
                       </div>
                       <div 
                         className={`absolute right-0 top-0 bottom-0 w-3 ${activeTool === 'trackForward' || activeTool === 'blade' ? '' : 'cursor-ew-resize'} transition-colors flex items-center justify-center ${
                           resizingClip?.clipId === clip.id && resizingClip?.edge === 'right'
-                            ? activeTool === 'roll' ? 'bg-yellow-500' : activeTool === 'ripple' ? 'bg-green-500' : 'bg-blue-500'
-                            : activeTool === 'roll' ? 'hover:bg-yellow-500/50' : activeTool === 'ripple' ? 'hover:bg-green-500/50' : 'hover:bg-blue-500/50'
+                            ? activeTool === 'roll' ? 'bg-warning' : activeTool === 'ripple' ? 'bg-success' : 'bg-blue-500'
+                            : activeTool === 'roll' ? 'hover:bg-warning-soft' : activeTool === 'ripple' ? 'hover:bg-success-soft' : 'hover:bg-blue-500/50'
                         }`}
                         style={activeTool === 'blade' ? { cursor: SCISSORS_CURSOR } : activeTool === 'trackForward' ? { cursor: bladeShiftHeld ? TRACK_FWD_ONE_CURSOR : TRACK_FWD_ALL_CURSOR } : {}}
                         onMouseDown={(e) => handleResizeStart(e, clip, 'right')}
                       >
                         <div className={`w-0.5 h-6 rounded-full ${
-                          activeTool === 'roll' ? 'bg-yellow-300' : activeTool === 'ripple' ? 'bg-green-300' : 'bg-zinc-500'
+                          activeTool === 'roll' ? 'bg-warning' : activeTool === 'ripple' ? 'bg-success' : 'bg-action-active'
                         }`} />
                       </div>
                     </div>
@@ -2799,7 +2804,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                             <Tooltip content="Cancel generation" side="top">
                               <button
                                 onClick={(e) => { e.stopPropagation(); cancelGapGeneration() }}
-                                className="absolute top-0.5 right-0.5 p-0.5 rounded hover:bg-zinc-700/80 text-zinc-500 hover:text-red-400 transition-colors"
+                                className="absolute top-0.5 right-0.5 p-0.5 rounded hover:bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-hover)_80%,transparent)] text-fg-tertiary hover:text-fg-danger transition-colors"
                               >
                                 <X className="h-2.5 w-2.5" />
                               </button>
@@ -2834,8 +2839,8 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                         key={sub.id}
                         className={`absolute rounded border-2 overflow-hidden cursor-pointer select-none flex items-center ${
                           isSelected
-                            ? 'border-amber-400 shadow-lg shadow-amber-500/20 bg-amber-900/60'
-                            : 'border-amber-700/50 hover:border-amber-600/70 bg-amber-900/40'
+                            ? 'border-warning shadow-lg shadow-warning/20 bg-warning-soft'
+                            : 'border-warning/50 hover:border-warning/70 bg-warning-soft'
                         } ${track.locked ? 'pointer-events-none opacity-50' : ''}`}
                         style={{
                           left: `${leftPx}px`,
@@ -2884,7 +2889,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                             <input
                               autoFocus
                               defaultValue={sub.text}
-                              className="w-full bg-transparent text-amber-100 text-[10px] leading-tight outline-none border-b border-amber-500/50"
+                              className="w-full bg-transparent text-fg-warning text-[10px] leading-tight outline-none border-b border-warning/50"
                               onBlur={(e) => {
                                 updateSubtitle(sub.id, { text: e.target.value })
                                 setEditingSubtitleId(null)
@@ -2900,7 +2905,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                               onClick={(e) => e.stopPropagation()}
                             />
                           ) : (
-                            <span className="text-[10px] text-amber-200 leading-tight line-clamp-2 break-all">
+                            <span className="text-[10px] text-fg-warning leading-tight line-clamp-2 break-all">
                               {sub.text}
                             </span>
                           )}
@@ -2908,7 +2913,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
 
                         {/* Left resize handle */}
                         <div
-                          className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-amber-400/30"
+                          className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-warning-soft"
                           onMouseDown={(e) => {
                             e.stopPropagation()
                             const startX = e.clientX
@@ -2929,7 +2934,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                         />
                         {/* Right resize handle */}
                         <div
-                          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-amber-400/30"
+                          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-warning-soft"
                           onMouseDown={(e) => {
                             e.stopPropagation()
                             const startX = e.clientX
@@ -3092,7 +3097,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <button
-                                  className="px-2 py-0.5 rounded bg-red-900/80 border border-red-700 text-[9px] text-red-300 hover:bg-red-800 transition-colors shadow-lg"
+                                  className="px-2 py-0.5 rounded bg-danger-soft border border-danger text-[9px] text-fg-danger hover:bg-danger transition-colors shadow-lg"
                                   onClick={() => removeCrossDissolve(cp.leftClip.id, cp.rightClip.id)}
                                 >
                                   Remove
@@ -3109,7 +3114,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <button
-                                  className="px-2 py-1 rounded-lg bg-blue-600/90 border border-blue-500 text-[10px] text-white hover:bg-blue-500 transition-colors shadow-lg flex items-center gap-1"
+                                  className="px-2 py-1 rounded-lg bg-blue-600/90 border border-blue-500 text-[10px] text-fg-primary hover:bg-blue-500 transition-colors shadow-lg flex items-center gap-1"
                                   onClick={() => addCrossDissolve(cp.leftClip.id, cp.rightClip.id)}
                                 >
                                   <Film className="h-3 w-3" />
@@ -3131,11 +3136,11 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
         </div>
         
         {/* Bottom toolbar with zoom bar */}
-        <div className="h-9 bg-zinc-900 border-t border-zinc-800 flex items-center px-3 gap-2 flex-shrink-0">
+        <div className="h-9 bg-surface-primary border-t border-separator flex items-center px-3 gap-2 flex-shrink-0">
           {selectedClip && (
             <>
-              <div className="w-px h-4 bg-zinc-700" />
-              <div className="flex items-center gap-1.5 text-[10px] text-zinc-400">
+              <div className="w-px h-4 bg-action-hover" />
+              <div className="flex items-center gap-1.5 text-[10px] text-fg-secondary">
                 <Gauge className="h-3 w-3" />
                 <select
                   value={selectedClip.speed}
@@ -3148,7 +3153,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                     newDuration = Math.max(0.5, newDuration)
                     updateClip(selectedClip.id, { speed: newSpeed, duration: newDuration })
                   }}
-                  className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-white"
+                  className="bg-action border border-separator rounded px-1.5 py-0.5 text-[10px] text-fg-primary"
                 >
                   <option value={0.25}>0.25x</option>
                   <option value={0.5}>0.5x</option>
@@ -3163,12 +3168,12 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
             </>
           )}
           
-          <div className="w-px h-4 bg-zinc-700" />
+          <div className="w-px h-4 bg-action-hover" />
           
           <Button
             variant="outline"
             size="sm"
-            className="h-6 border-zinc-700 text-zinc-400 text-[10px] px-2"
+            className="h-6 border-separator text-fg-secondary text-[10px] px-2"
             onClick={() => actions.openExportModal()}
           >
             <Upload className="h-3 w-3 mr-1" />
@@ -3179,11 +3184,11 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
           {/* Subtitle import/export */}
           {tracks.some(t => t.type === 'subtitle') && (
             <>
-              <div className="w-px h-4 bg-zinc-700" />
+              <div className="w-px h-4 bg-action-hover" />
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => subtitleFileInputRef.current?.click()}
-                  className="h-6 px-2 rounded bg-amber-900/30 border border-amber-700/30 text-amber-400 hover:bg-amber-900/50 text-[10px] flex items-center gap-1 transition-colors"
+                  className="h-6 px-2 rounded bg-warning-soft border border-warning/30 text-fg-warning hover:bg-warning-soft text-[10px] flex items-center gap-1 transition-colors"
                   title="Import SRT subtitles"
                 >
                   <FileUp className="h-3 w-3" />
@@ -3192,7 +3197,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                 <button
                   onClick={handleExportSrt}
                   disabled={subtitles.length === 0}
-                  className="h-6 px-2 rounded bg-amber-900/30 border border-amber-700/30 text-amber-400 hover:bg-amber-900/50 text-[10px] flex items-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="h-6 px-2 rounded bg-warning-soft border border-warning/30 text-fg-warning hover:bg-warning-soft text-[10px] flex items-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   title="Export SRT subtitles"
                 >
                   <FileDown className="h-3 w-3" />
@@ -3217,7 +3222,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
             <Tooltip content="Zoom out (-)" side="top">
               <button
                 onClick={() => { centerOnPlayheadRef.current = true; setZoom(Math.max(getMinZoom(), +(zoom - 0.25).toFixed(2))) }}
-                className="p-0.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
+                className="p-0.5 rounded hover:bg-action text-fg-tertiary hover:text-fg-secondary transition-colors"
               >
                 <ZoomOut className="h-3.5 w-3.5" />
               </button>
@@ -3235,16 +3240,16 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
             <Tooltip content="Zoom in (+)" side="top">
               <button
                 onClick={() => { centerOnPlayheadRef.current = true; setZoom(Math.min(4, +(zoom + 0.25).toFixed(2))) }}
-                className="p-0.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
+                className="p-0.5 rounded hover:bg-action text-fg-tertiary hover:text-fg-secondary transition-colors"
               >
                 <ZoomIn className="h-3.5 w-3.5" />
               </button>
             </Tooltip>
-            <span className="text-[10px] text-zinc-500 tabular-nums w-8 text-right">{Math.round(zoom * 100)}%</span>
+            <span className="text-[10px] text-fg-tertiary tabular-nums w-8 text-right">{Math.round(zoom * 100)}%</span>
             <Tooltip content="Fit to view (Ctrl+0)" side="top">
               <button
                 onClick={handleFitToView}
-                className="p-0.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors ml-0.5"
+                className="p-0.5 rounded hover:bg-action text-fg-tertiary hover:text-fg-secondary transition-colors ml-0.5"
               >
                 <Maximize2 className="h-3.5 w-3.5" />
               </button>

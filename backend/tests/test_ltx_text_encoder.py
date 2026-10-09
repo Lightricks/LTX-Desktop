@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 import torch
 
+from _routes._errors import HTTPError
 from runtime_config.ltx_api_text_encoder_ids import LTX_2_5_API_PROMPT_EMBEDDING_MODEL
 from runtime_config.model_download_specs import get_ltx_model_spec
 from services.text_encoder.ltx_text_encoder import (  # noqa: SLF001
@@ -200,3 +201,53 @@ def test_encode_via_api_skips_request_when_no_selector(tmp_path: Path) -> None:
 
     assert result is None
     assert http.calls == []
+
+
+def test_encode_via_api_raises_when_the_key_is_rejected(tmp_path: Path) -> None:
+    http = FakeHTTPClient()
+    http.queue("post", FakeResponse(status_code=401, text="unauthorized"))
+    encoder = LTXTextEncoder(
+        device=torch.device("cpu"),
+        http=http,
+        ltx_api_base_url="https://api.ltx.video",
+    )
+    checkpoint = tmp_path / "ltx-2.5.safetensors"
+    checkpoint.write_bytes(b"not-a-checkpoint")
+
+    with pytest.raises(HTTPError) as exc_info:
+        encoder.encode_via_api(
+            prompt="prompt",
+            api_key="bad-key",
+            checkpoint_path=str(checkpoint),
+            enhance_prompt=False,
+            api_model=LTX_2_5_API_PROMPT_EMBEDDING_MODEL,
+        )
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.code == "LTX_INVALID_API_KEY"
+    assert exc_info.value.detail == "This LTX API key isn’t valid."
+
+
+def test_encode_via_api_raises_when_the_request_times_out(tmp_path: Path) -> None:
+    http = FakeHTTPClient()
+    http.queue("post", TimeoutError("timed out"))
+    encoder = LTXTextEncoder(
+        device=torch.device("cpu"),
+        http=http,
+        ltx_api_base_url="https://api.ltx.video",
+    )
+    checkpoint = tmp_path / "ltx-2.5.safetensors"
+    checkpoint.write_bytes(b"not-a-checkpoint")
+
+    with pytest.raises(HTTPError) as exc_info:
+        encoder.encode_via_api(
+            prompt="prompt",
+            api_key="key",
+            checkpoint_path=str(checkpoint),
+            enhance_prompt=False,
+            api_model=LTX_2_5_API_PROMPT_EMBEDDING_MODEL,
+        )
+
+    assert exc_info.value.status_code == 504
+    assert exc_info.value.code == "LTX_API_PROMPT_EMBEDDING_FAILED"
+    assert exc_info.value.detail == "LTX API text encoding failed."

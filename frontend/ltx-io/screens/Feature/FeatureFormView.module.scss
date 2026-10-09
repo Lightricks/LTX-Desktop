@@ -1,0 +1,321 @@
+@use "@ds/styles/themes/animationsValues.scss" as *;
+@use "@/components/home/shell-layout.scss" as shell;
+@import "@ds/styles/themes/mixins.module.scss";
+
+.formShell {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: var(--semantic-bg-tertiary);
+}
+
+.formScroll {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.formBody {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  /* Top spacing comes from the PageHeader min-height band (same as above the row). */
+  padding: 0 0 var(--shell-page-inset, var(--spacing-lg));
+  box-sizing: border-box;
+}
+
+.stepStack {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.stepRow {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+}
+
+.stepBody {
+  display: grid;
+  grid-template-columns: minmax(360px, 440px) minmax(480px, 1fr);
+  gap: var(--spacing-md);
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.stepControls,
+.stepOutput {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-secondary);
+  box-sizing: border-box;
+
+  [data-theme="dark"] & {
+    background: #101010;
+  }
+}
+
+.stepFields {
+  display: flex;
+  flex-direction: column;
+  /* Size to the fields. flex: 1 / min-height: 0 shrinks this box inside the
+     scrolling column, and the fields that don't fit paint below the sticky
+     actions instead of scrolling behind them. */
+  flex: none;
+  gap: var(--spacing-lg);
+}
+
+.stepSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--spacing-md);
+}
+
+.fieldLabel {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  gap: var(--spacing-xxs);
+  color: var(--semantic-fg-tertiary);
+}
+
+.fieldControl {
+  min-width: 0;
+  width: 100%;
+}
+
+.labeledSettings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  width: 100%;
+  min-width: 0;
+
+  .fieldControl {
+    width: 100%;
+  }
+}
+
+.fieldError {
+  @include text_style_body_md;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  color: var(--semantic-fg-danger-primary-enabled);
+  animation: field-error-in 0.35s ease;
+}
+
+.fieldNotice {
+  @include text_style_body_md;
+
+  color: var(--semantic-fg-primary);
+}
+
+@keyframes field-error-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.promptEnhanceRow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  width: 100%;
+}
+
+.textarea {
+  @include text_style_body_lg;
+
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 104px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-primary);
+  color: var(--semantic-fg-primary);
+  outline: none;
+  padding: var(--spacing-md);
+  resize: vertical;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    box-shadow 150ms ease;
+
+  &:hover,
+  &:focus {
+    border-color: var(--semantic-bg-separator-primary);
+    box-shadow: none;
+  }
+}
+
+.sliderControl {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  width: 100%;
+}
+
+.slider {
+  flex: 1 1 0;
+  min-width: 0;
+  accent-color: var(--semantic-bg-brand-primary-enabled);
+  cursor: pointer;
+}
+
+.sliderValue {
+  @include text_style_body_md;
+
+  min-width: 40px;
+  text-align: right;
+  color: var(--semantic-fg-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.stepActions {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-top: auto;
+  margin-inline: calc(-1 * var(--spacing-md));
+  padding: var(--spacing-lg) var(--spacing-md) var(--spacing-md);
+  border-top: 1px solid var(--semantic-border-secondary);
+  border-bottom-right-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+  background: transparent;
+  backdrop-filter: blur(32px);
+}
+
+.stepActionsRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.generateButtonWrap {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--spacing-3xs);
+}
+
+.generateButton.generateButton {
+  width: 100%;
+}
+
+.generateHint {
+  display: block;
+  width: 100%;
+  text-align: center;
+  color: var(--semantic-fg-white-hover);
+}
+
+@media (max-width: shell.$shell-compact-breakpoint) {
+  .formShell {
+    height: 100%;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .formScroll {
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .formBody {
+    height: auto;
+    min-height: 100%;
+    padding: 0 0
+      calc(
+        var(--shell-page-inset, var(--spacing-md)) + env(safe-area-inset-bottom, 0px)
+      );
+  }
+
+  .stepStack,
+  .stepRow {
+    flex: none;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .stepBody {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+
+  .stepControls,
+  .stepOutput {
+    width: 100%;
+    max-width: 100%;
+    max-height: none;
+    overflow-x: hidden;
+    overflow-y: visible;
+  }
+}
+
+@media (max-width: 640px) {
+  .stepControls,
+  .stepOutput {
+    padding: var(--spacing-sm);
+  }
+
+  .textarea {
+    min-height: 88px;
+  }
+
+  .stepActions {
+    padding: var(--spacing-md) var(--spacing-sm) var(--spacing-sm);
+  }
+
+  .stepActionsRow {
+    flex-wrap: wrap;
+  }
+}

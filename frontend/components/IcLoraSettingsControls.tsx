@@ -6,7 +6,6 @@ import type { ApiSuccessOf } from '../lib/api-client'
 import type { components } from '../generated/backend-openapi'
 import type { ICLoraConditioningType } from './ICLoraPanel'
 import type { IcLoraAudioMode } from '../hooks/use-ic-lora'
-import type { ResolutionOption } from '../lib/video-resolution'
 
 type CatalogControl = components['schemas']['IcLoraControl']
 
@@ -36,12 +35,6 @@ export interface IcLoraControlsProps {
   onIcLoraCustomRefChange?: (ref: string | null) => void
   icLoraSkipStage2?: boolean
   onIcLoraSkipStage2Change?: (skip: boolean) => void
-  icLoraUseLoraInStage2?: boolean
-  onIcLoraUseLoraInStage2Change?: (use: boolean) => void
-  // Resolution tiers for the use_lora_in_stage_2 path (empty until source media loads).
-  icLoraResolutionOptions?: ResolutionOption[]
-  icLoraResolutionKey?: string
-  onIcLoraResolutionKeyChange?: (key: string) => void
   icLoraResolutionFactor?: number
   onIcLoraResolutionFactorChange?: (factor: number) => void
   icLoraAudioMode?: IcLoraAudioMode
@@ -86,14 +79,14 @@ export function IcLoraSettingsControls({
               options={icLoraSelectorOptions ?? []}
               trigger={
                 <>
-                  <span className="text-zinc-300 font-medium">{(icLoraSelectorOptions ?? []).find(o => o.value === icLoraSelectorValue)?.label ?? 'Canny Edges'}</span>
-                  <ChevronUp className="h-3 w-3 text-zinc-500" />
+                  <span className="text-fg-secondary font-medium">{(icLoraSelectorOptions ?? []).find(o => o.value === icLoraSelectorValue)?.label ?? 'Canny Edges'}</span>
+                  <ChevronUp className="h-3 w-3 text-fg-tertiary" />
                 </>
               }
             />
             {!isCatalogIcLora && icLoraCondType === 'custom' && (
               <>
-                <div className="w-px h-4 bg-zinc-700 mx-0.5" />
+                <div className="w-px h-4 bg-action-hover mx-0.5" />
                 <SettingsDropdown
                   title="IC-LORA"
                   value={icLoraCustomRef ?? ''}
@@ -101,11 +94,11 @@ export function IcLoraSettingsControls({
                   options={(availableIcLoras ?? []).map(m => ({ value: m.path, label: m.name }))}
                   trigger={
                     <>
-                      <span className="text-zinc-300 font-medium truncate max-w-[160px]">
+                      <span className="text-fg-secondary font-medium truncate max-w-[160px]">
                         {availableIcLoras?.find(m => m.path === icLoraCustomRef)?.name
                           ?? (availableIcLoras?.length ? 'Select IC-LoRA' : 'No IC-LoRAs found')}
                       </span>
-                      <ChevronUp className="h-3 w-3 text-zinc-500" />
+                      <ChevronUp className="h-3 w-3 text-fg-tertiary" />
                     </>
                   }
                 />
@@ -113,7 +106,7 @@ export function IcLoraSettingsControls({
             )}
             {!isCatalogIcLora && (
               <>
-                <div className="w-px h-4 bg-zinc-700 mx-0.5" />
+                <div className="w-px h-4 bg-action-hover mx-0.5" />
                 <SettingsDropdown
                   title="STRENGTH"
                   tooltip={CONTROL_TOOLTIPS.condStrength}
@@ -129,9 +122,9 @@ export function IcLoraSettingsControls({
                   ]}
                   trigger={
                     <>
-                      <span className="text-zinc-500 text-[10px]">STR</span>
-                      <span className="text-zinc-300 font-medium">{(icLoraStrength ?? 1.0).toFixed(2)}</span>
-                      <ChevronUp className="h-3 w-3 text-zinc-500" />
+                      <span className="text-fg-tertiary text-[10px]">STR</span>
+                      <span className="text-fg-secondary font-medium">{(icLoraStrength ?? 1.0).toFixed(2)}</span>
+                      <ChevronUp className="h-3 w-3 text-fg-tertiary" />
                     </>
                   }
                 />
@@ -144,7 +137,7 @@ export function IcLoraSettingsControls({
               const title = c.label.toUpperCase()
               return (
                 <Fragment key={c.id}>
-                  <div className="w-px h-4 bg-zinc-700 mx-0.5" />
+                  <div className="w-px h-4 bg-action-hover mx-0.5" />
                   <SettingsDropdown
                     title={title}
                     tooltip={CONTROL_TOOLTIPS[c.id]}
@@ -153,9 +146,9 @@ export function IcLoraSettingsControls({
                     options={(c.options as (number | string)[]).map((o) => ({ value: String(o), label: controlOptionLabel(c, o) }))}
                     trigger={
                       <>
-                        <span className="text-zinc-500 text-[10px]">{title}</span>
-                        <span className="text-zinc-300 font-medium">{controlOptionLabel(c, current)}</span>
-                        <ChevronUp className="h-3 w-3 text-zinc-500" />
+                        <span className="text-fg-tertiary text-[10px]">{title}</span>
+                        <span className="text-fg-secondary font-medium">{controlOptionLabel(c, current)}</span>
+                        <ChevronUp className="h-3 w-3 text-fg-tertiary" />
                       </>
                     }
                   />
@@ -166,10 +159,10 @@ export function IcLoraSettingsControls({
                 It scales the adapter merge weight, so it always has an effect. (The advanced knobs —
                 S2/Res/Audio/FPS — live in IcLoraAdvancedPanel beside the prompt bar.) A continuous
                 slider (like the plain-LoRA strength bar) rather than a dropdown, for finer control. */}
-            <div className="w-px h-4 bg-zinc-700 mx-0.5" />
+            <div className="w-px h-4 bg-action-hover mx-0.5" />
             <Tooltip content={CONTROL_TOOLTIPS.loraStrength}>
               <div className="flex items-center gap-1.5 px-2 py-1.5">
-                <span className="text-zinc-500 text-[10px]">LORA</span>
+                <span className="text-fg-tertiary text-[10px]">LORA</span>
                 <input
                   type="range"
                   min={0}
@@ -177,10 +170,10 @@ export function IcLoraSettingsControls({
                   step={0.05}
                   value={icLoraLoraStrength ?? 1.0}
                   onChange={(e) => onIcLoraLoraStrengthChange?.(parseFloat(e.target.value))}
-                  className="w-16 h-1 accent-white cursor-pointer"
+                  className="w-16 h-1 accent-brand cursor-pointer"
                   aria-label="LoRA strength"
                 />
-                <span className="text-zinc-300 font-medium w-9 text-right">{(icLoraLoraStrength ?? 1.0).toFixed(2)}</span>
+                <span className="text-fg-secondary font-medium w-9 text-right">{(icLoraLoraStrength ?? 1.0).toFixed(2)}</span>
               </div>
             </Tooltip>
     </>

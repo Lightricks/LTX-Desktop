@@ -19,70 +19,40 @@ const allModesAvailable = {
 }
 
 describe('autoDurationOptionVisible', () => {
-  it('hides Auto in multi-keyframe mode even when the model supports it', () => {
+  it('shows Auto only in video mode when the model supports it', () => {
     assert.equal(autoDurationOptionVisible('multi-keyframe', true), false)
-  })
-
-  it('shows Auto in video mode when the model supports it', () => {
-    assert.equal(autoDurationOptionVisible('video', true), true)
-  })
-
-  it('hides Auto when the model does not support it', () => {
     assert.equal(autoDurationOptionVisible('video', false), false)
+    assert.equal(autoDurationOptionVisible('video', true), true)
   })
 })
 
 describe('canUseMultiKeyframeMode', () => {
-  it('is false in API mode even when the local offering supports it', () => {
+  it('is true only in local mode when the capability is enabled', () => {
     assert.equal(
       canUseMultiKeyframeMode({
         isLocalMode: false,
         localCaps: { multi_keyframe: true },
-        enableMultipleKeyframesVideos: true,
       }),
       false,
     )
-  })
-
-  it('is false in local mode when the capability is missing', () => {
     assert.equal(
       canUseMultiKeyframeMode({
         isLocalMode: true,
         localCaps: {},
-        enableMultipleKeyframesVideos: true,
       }),
       false,
     )
-  })
-
-  it('is false in local mode when the capability is disabled', () => {
     assert.equal(
       canUseMultiKeyframeMode({
         isLocalMode: true,
         localCaps: { multi_keyframe: false },
-        enableMultipleKeyframesVideos: true,
       }),
       false,
     )
-  })
-
-  it('is false when the Dev Panel flag is off, even in local mode with the capability', () => {
     assert.equal(
       canUseMultiKeyframeMode({
         isLocalMode: true,
         localCaps: { multi_keyframe: true },
-        enableMultipleKeyframesVideos: false,
-      }),
-      false,
-    )
-  })
-
-  it('is true only in local mode when the capability and Dev Panel flag are enabled', () => {
-    assert.equal(
-      canUseMultiKeyframeMode({
-        isLocalMode: true,
-        localCaps: { multi_keyframe: true },
-        enableMultipleKeyframesVideos: true,
       }),
       true,
     )
@@ -90,7 +60,7 @@ describe('canUseMultiKeyframeMode', () => {
 })
 
 describe('fallbackGenSpaceMode', () => {
-  it('falls back from multi-keyframe when unavailable', () => {
+  it('falls back to video when a tool mode is unavailable and keeps it when available', () => {
     assert.equal(
       fallbackGenSpaceMode('multi-keyframe', {
         ...allModesAvailable,
@@ -98,14 +68,12 @@ describe('fallbackGenSpaceMode', () => {
       }),
       'video',
     )
-  })
 
-  for (const [mode, flag] of [
-    ['retake', 'canUseRetake'],
-    ['extend', 'canUseExtend'],
-    ['ic-lora', 'canUseIcLora'],
-  ] as const) {
-    it(`falls back from ${mode} when unavailable`, () => {
+    for (const [mode, flag] of [
+      ['retake', 'canUseRetake'],
+      ['extend', 'canUseExtend'],
+      ['ic-lora', 'canUseIcLora'],
+    ] as const) {
       assert.equal(
         fallbackGenSpaceMode(mode, {
           ...allModesAvailable,
@@ -113,12 +81,9 @@ describe('fallbackGenSpaceMode', () => {
         }),
         'video',
       )
-    })
-
-    it(`keeps ${mode} when available`, () => {
       assert.equal(fallbackGenSpaceMode(mode, allModesAvailable), mode)
-    })
-  }
+    }
+  })
 })
 
 describe('modeOptionValues', () => {
@@ -139,12 +104,9 @@ describe('modeOptionValues', () => {
 })
 
 describe('isGenSpaceLibraryMode', () => {
-  it('shows the asset library for image and video', () => {
+  it('shows the asset library for image and video and hides it in tool modes', () => {
     assert.equal(isGenSpaceLibraryMode('image'), true)
     assert.equal(isGenSpaceLibraryMode('video'), true)
-  })
-
-  it('hides the asset library in tool modes, matching retake and extend', () => {
     assert.equal(isGenSpaceLibraryMode('multi-keyframe'), false)
     assert.equal(isGenSpaceLibraryMode('retake'), false)
     assert.equal(isGenSpaceLibraryMode('extend'), false)
@@ -165,14 +127,11 @@ describe('modeAfterCompletedGeneration', () => {
 })
 
 describe('isEnhanceAvailableForMode', () => {
-  it('includes multi-keyframe alongside video, image, and ic-lora', () => {
+  it('includes video, image, multi-keyframe, and ic-lora, and hides retake and extend', () => {
     assert.equal(isEnhanceAvailableForMode('multi-keyframe'), true)
     assert.equal(isEnhanceAvailableForMode('video'), true)
     assert.equal(isEnhanceAvailableForMode('image'), true)
     assert.equal(isEnhanceAvailableForMode('ic-lora'), true)
-  })
-
-  it('hides Enhance in retake and extend', () => {
     assert.equal(isEnhanceAvailableForMode('retake'), false)
     assert.equal(isEnhanceAvailableForMode('extend'), false)
   })

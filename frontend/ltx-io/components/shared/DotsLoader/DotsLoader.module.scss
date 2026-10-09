@@ -1,0 +1,74 @@
+// Theme-aware indeterminate loader: four dots sweep left→right.
+// Colors are mixed from fg/bg so light and dark themes stay correct without
+// a second palette. Override `--dots-loader-bg` when the surface differs.
+
+.dots {
+  --fg: var(--semantic-fg-secondary);
+  --bg: var(--dots-loader-bg, var(--semantic-bg-secondary));
+  --c1: color-mix(in srgb, var(--fg), var(--bg) 78%);
+  --c2: color-mix(in srgb, var(--fg), var(--bg) 45%);
+  --c4: var(--fg);
+
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  transform: scale(0.5);
+  background: var(--c1);
+  animation: dots-loader-sweep 1.9s ease-in-out infinite;
+
+  &:nth-child(1) {
+    animation-delay: 0s;
+  }
+
+  &:nth-child(2) {
+    animation-delay: 0.16s;
+  }
+
+  &:nth-child(3) {
+    animation-delay: 0.32s;
+  }
+
+  &:nth-child(4) {
+    animation-delay: 0.48s;
+  }
+}
+
+@keyframes dots-loader-sweep {
+  0% {
+    transform: scale(0.5);
+    background: var(--c1);
+  }
+
+  10% {
+    transform: scale(0.8);
+    background: var(--c2);
+  }
+
+  20% {
+    transform: scale(1);
+    background: var(--c4);
+  }
+
+  32% {
+    transform: scale(0.8);
+    background: var(--c2);
+  }
+
+  46%,
+  100% {
+    transform: scale(0.5);
+    background: var(--c1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+  }
+}

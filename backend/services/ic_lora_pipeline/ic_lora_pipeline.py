@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 from api_types import ImageConditioningInput
+from runtime_config.ic_lora_tiling import IcLoraTiling
 
 if TYPE_CHECKING:
     import torch
@@ -24,6 +25,8 @@ class IcLoraPipeline(Protocol):
         video_vae_path: str | None = None,
         audio_vae_path: str | None = None,
         duration_head_path: str | None = None,
+        stage_2_ic_lora: bool = False,
+        tiling: IcLoraTiling | None = None,
     ) -> "IcLoraPipeline":
         ...
 
@@ -44,5 +47,6 @@ class IcLoraPipeline(Protocol):
         source_audio_path: str | None = None,
         mute_audio: bool = False,
         conditioning_mask_path: str | None = None,
+        chunk_pixel_frames: int | None = None,
     ) -> None:
         ...

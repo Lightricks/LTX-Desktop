@@ -1,0 +1,87 @@
+@use "./shell-layout.scss" as shell;
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  flex: 0 0 auto;
+  min-height: var(--page-header-min-height, 60px);
+  padding-block: var(--page-header-padding-block-start, 0)
+    var(--page-header-padding-block-end, 0);
+  padding-inline: var(--page-header-padding-inline-start, var(--spacing-lg))
+    var(--page-header-padding-inline-end, var(--spacing-lg));
+  box-sizing: border-box;
+
+  :global(html[data-platform="darwin"]) & {
+    -webkit-app-region: drag;
+  }
+}
+
+.headerInsetFromShell {
+  position: sticky;
+  top: 0;
+  // Queue popover is positioned inside this header. A flat z-index matches
+  // the result metadata row, which then paints over Done and takes its clicks.
+  // Dropdown stays above in-page chrome and below modals.
+  z-index: var(--z-dropdown);
+  padding-inline: 0;
+  // Unset unless an unpinned sidebar sets it on the content column.
+  padding-inline-start: var(--page-header-unpinned-start, 0px);
+  background-color: var(--semantic-bg-tertiary);
+
+  :global(html[data-platform="darwin"]) & {
+    padding-inline-start: var(--page-header-unpinned-start, 0px);
+  }
+}
+
+.leading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+  // Hug the content. Growing would make the empty space no-drag and block
+  // dragging the window by the header.
+  flex: 0 1 auto;
+
+  :global(html[data-platform="darwin"]) & {
+    -webkit-app-region: no-drag;
+  }
+}
+
+.historyNav {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--spacing-xxs);
+}
+
+.historyBack {
+  transform: scaleX(-1);
+}
+
+.trailing {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
+  min-width: 0;
+
+  :global(html[data-platform="darwin"]) & {
+    -webkit-app-region: no-drag;
+  }
+}
+
+@media (max-width: shell.$shell-compact-breakpoint) {
+  .header {
+    flex-wrap: wrap;
+    row-gap: var(--spacing-sm);
+    height: auto;
+  }
+
+  .trailing {
+    flex-shrink: 1;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+}

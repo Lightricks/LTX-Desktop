@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from api_types import ExtendMode, RetakeMode, VideoCameraMotion
+
+INSUFFICIENT_FUNDS_ERROR_TYPE = "insufficient_funds_error"
+PAYMENT_DECLINED_ERROR_TYPE = "payment_declined_error"
+CONTENT_FILTERED_ERROR_TYPE = "content_filtered_error"
 
 
 @dataclass(frozen=True)
@@ -19,7 +23,7 @@ class LTXAPIClientError(RuntimeError):
         self,
         status_code: int,
         detail: str,
-        stage: str | None = None,
+        stage: Literal["upload_init", "upload_parse", "upload_put"] | None = None,
         *,
         provider_error_type: str | None = None,
         provider_message: str | None = None,
@@ -54,6 +58,7 @@ class LTXAPIClient(Protocol):
         fps: float,
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
+        enhance_prompt: bool = True,
     ) -> bytes:
         ...
 
@@ -70,6 +75,7 @@ class LTXAPIClient(Protocol):
         generate_audio: bool,
         camera_motion: VideoCameraMotion = "none",
         last_frame_uri: str | None = None,
+        enhance_prompt: bool = True,
     ) -> bytes:
         ...
 
@@ -83,6 +89,7 @@ class LTXAPIClient(Protocol):
         model: str,
         resolution: str,
         last_frame_uri: str | None = None,
+        enhance_prompt: bool = True,
     ) -> bytes:
         ...
 

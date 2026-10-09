@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { Text } from '@ds/Text/Text'
 
 interface LibraryModalProps {
   open: boolean
@@ -9,8 +10,6 @@ interface LibraryModalProps {
   children: ReactNode
 }
 
-// Generic library dialog shell — no asset/recipe knowledge. A future regular-LoRA
-// library reuses it.
 export function LibraryModal({ open, onClose, title, headerSlot, children }: LibraryModalProps) {
   const ref = useRef<HTMLDialogElement>(null)
 
@@ -25,20 +24,18 @@ export function LibraryModal({ open, onClose, title, headerSlot, children }: Lib
     <dialog
       ref={ref}
       onClose={onClose}
-      // Clicking the backdrop targets the <dialog> element itself (content is the inner div).
       onClick={(e) => { if (e.target === ref.current) onClose() }}
-      className="m-auto w-[min(960px,calc(100%-2rem))] max-h-[80vh] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 p-0 text-white backdrop:bg-black/60"
+      className="m-auto w-[min(960px,calc(100%-2rem))] max-h-[80vh] overflow-hidden rounded-2xl border border-separator bg-surface-primary p-0 text-fg-primary backdrop:bg-surface-overlay"
     >
-      {/* Flex column so only the body scrolls — no hardcoded header-height calc. */}
       <div className="flex max-h-[80vh] flex-col">
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
-          <h2 className="text-sm font-semibold">{title}</h2>
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-separator-secondary px-4 py-3">
+          <Text as="h2" variant="label" size="lg">{title}</Text>
           <div className="flex items-center gap-2">
             {headerSlot}
             <button
               onClick={onClose}
               aria-label="Close"
-              className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+              className="rounded-md p-1.5 text-fg-secondary transition-colors hover:bg-action hover:text-fg-primary"
             >
               <X className="h-4 w-4" />
             </button>

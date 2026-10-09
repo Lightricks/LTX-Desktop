@@ -1,0 +1,213 @@
+@use "@/ds/styles/themes/mixins.module.scss" as *;
+
+// Draft E — full-width cinematic band.
+// Video fills the card; title + blurb overlay bottom-left.
+
+.card {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--semantic-bg-black-primary);
+  text-align: left;
+  transition:
+    background-color 180ms ease-out,
+    box-shadow 180ms ease-out;
+
+  &:hover,
+  &:focus-within {
+    background: var(--semantic-bg-secondary);
+    box-shadow: 0 0 0 var(--spacing-xs) var(--semantic-bg-secondary);
+  }
+}
+
+.media {
+  position: relative;
+  // Wide cinematic strip — matches composed-pip.mp4 (1920×800 = 2.4:1).
+  aspect-ratio: 2.4 / 1;
+  min-height: 220px;
+  overflow: hidden;
+  // Black placeholder when the hero asset is still TBD.
+  background: var(--semantic-bg-black-primary);
+}
+
+.mediaEl {
+  // Absolute fill — % height alone can leave #111 gutters on the sides.
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  // Card is 2.4:1; 16:9 showreels crop top/bottom — keep the subject centered.
+  object-position: center;
+  // Slight scale kills subpixel hairlines at the card radius.
+  transform: scale(1.02);
+  transform-origin: center top;
+
+  &::-webkit-media-controls {
+    display: none !important;
+  }
+}
+
+// Stacked clips for example pills — only the active one is visible.
+.mediaElStacked {
+  transition: opacity 160ms ease-out;
+}
+
+.mediaElActive {
+  opacity: 1;
+  z-index: 0;
+}
+
+.mediaElHidden {
+  opacity: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+// Soft bottom-left read for white type on bright footage.
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    0deg,
+    rgb(0 0 0 / 58%) 0%,
+    rgb(0 0 0 / 28%) 38%,
+    rgb(0 0 0 / 0%) 68%
+  );
+  pointer-events: none;
+}
+
+.content {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-lg);
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--spacing-xl);
+  pointer-events: none;
+}
+
+// Quiet model label + one big launch line.
+.textPair {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  // `em` on max-width uses this element's font-size. Display-xl is 64px;
+  // inheriting the 16px card root made 18em = 288px and stacked the 64px
+  // launch line one word per line, clipping it out of overflow:hidden.
+  @include text_style_display_xl;
+  max-width: min(18em, 88%);
+}
+
+.eyebrow,
+.title {
+  margin: 0;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+.eyebrow {
+  // Same size as the launch line — tertiary color only.
+  color: color-mix(in srgb, var(--semantic-fg-white-enabled) 56%, transparent);
+}
+
+.title {
+  // Slightly open so warm footage can tint through the letters.
+  color: color-mix(in srgb, var(--semantic-fg-white-enabled) 88%, transparent);
+}
+
+// Beat `.page :is(h1–h6) { font-weight: 500 }` so display stays bold.
+.card .eyebrow,
+.card h1.title {
+  @include text_style_display_xl;
+}
+
+.titleBreak {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+
+  .mediaElStacked {
+    transition: none;
+  }
+}
+
+@media (width <= 768px) {
+  .card {
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    border-radius: 0;
+    background: transparent;
+
+    &:hover,
+    &:focus-within {
+      background: transparent;
+      box-shadow: none;
+    }
+  }
+
+  .media {
+    aspect-ratio: 16 / 9;
+    min-height: 0;
+    border-radius: var(--radius-md);
+  }
+
+  .scrim {
+    display: none;
+  }
+
+  .content {
+    position: static;
+    order: -1;
+    align-items: center;
+    width: 100%;
+    max-width: 100%;
+    padding: 0 0 var(--spacing-md);
+    text-align: center;
+  }
+
+  .textPair {
+    align-items: center;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .eyebrow {
+    color: var(--semantic-fg-secondary);
+  }
+
+  .title {
+    color: var(--semantic-fg-primary);
+  }
+
+  .titleBreak {
+    display: inline;
+  }
+
+  .titleJoin {
+    display: none;
+  }
+
+  .card .eyebrow,
+  .card h1.title {
+    @include text_style_display_sm;
+
+    width: 100%;
+    text-align: center;
+    text-wrap: auto;
+  }
+}

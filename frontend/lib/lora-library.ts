@@ -27,10 +27,25 @@ export interface LibraryEntry {
   author?: { name: string; url?: string | null; affiliation?: 'ltx' | 'community' }
   license?: { name: string; url?: string | null }
   // When length > 1, the library card shows a variant picker (download per checkpoint).
-  variants?: { id: string; label: string; filename: string; sizeBytes: number }[]
+  variants?: {
+    id: string
+    label: string
+    filename: string
+    sizeBytes: number
+    baseModel?: string
+    repoId?: string
+  }[]
   defaultVariantId?: string
   // Subset of variants[].id present on disk (API ∪ on-disk filename match).
   downloadedVariantIds?: string[]
+}
+
+/** Index 0 is the checkpoint Download fetches. Its repo is the one the info link opens. */
+export function catalogDefaultRepoId(download: {
+  repo_id: string
+  variants: readonly { repo_id?: string | null }[]
+}): string {
+  return download.variants[0]?.repo_id ?? download.repo_id
 }
 
 // Map a catalog item (plain or IC — IcLoraCatalogItem extends the base) to the shared
@@ -42,6 +57,8 @@ export function catalogItemToEntry(item: LoraCatalogItem): Omit<LibraryEntry, 'd
     label: v.label,
     filename: v.filename,
     sizeBytes: v.size_bytes,
+    baseModel: v.base_model,
+    repoId: v.repo_id ?? undefined,
   }))
   const defaultVariant = variants[0]
   return {
@@ -51,7 +68,7 @@ export function catalogItemToEntry(item: LoraCatalogItem): Omit<LibraryEntry, 'd
     sizeBytes: defaultVariant.sizeBytes,
     recommendedStrength: item.recommended_strength ?? undefined,
     instructions: item.instructions ?? undefined,
-    repoId: item.download.repo_id,
+    repoId: catalogDefaultRepoId(item.download),
     requiresHfLogin: item.requires_hf_login,
     thumbnailUrl: item.media?.thumbnail ?? undefined,
     demoVideoUrl: item.media?.demo_video ?? undefined,

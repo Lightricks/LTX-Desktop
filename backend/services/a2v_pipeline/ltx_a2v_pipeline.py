@@ -128,6 +128,8 @@ class LTXa2vPipeline:
         audio_max_duration: float | None,
         output_path: str,
     ) -> None:
+        from services.denoising_progress import distilled_total_steps, track_denoising
+
         tiling_config = resolve_tiling_config(
             self.pipeline.video_decoder.checkpoint_path,
             height=height,
@@ -135,20 +137,21 @@ class LTXa2vPipeline:
             num_frames=num_frames,
             device=self.pipeline.device,
         )
-        video, audio = self._run_inference(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            seed=seed,
-            height=height,
-            width=width,
-            num_frames=num_frames,
-            frame_rate=frame_rate,
-            num_inference_steps=num_inference_steps,
-            images=images,
-            audio_path=audio_path,
-            audio_start_time=audio_start_time,
-            audio_max_duration=audio_max_duration,
-            tiling_config=tiling_config,
-        )
+        with track_denoising(distilled_total_steps()):
+            video, audio = self._run_inference(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                seed=seed,
+                height=height,
+                width=width,
+                num_frames=num_frames,
+                frame_rate=frame_rate,
+                num_inference_steps=num_inference_steps,
+                images=images,
+                audio_path=audio_path,
+                audio_start_time=audio_start_time,
+                audio_max_duration=audio_max_duration,
+                tiling_config=tiling_config,
+            )
         chunks = video_chunks_number(num_frames, tiling_config)
         encode_video_output(video=video, audio=audio, fps=int(frame_rate), output_path=output_path, video_chunks_number_value=chunks)

@@ -13,7 +13,7 @@ export function setupCSP(): void {
           "script-src 'self' 'unsafe-inline'",
           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
           "font-src 'self' https://fonts.gstatic.com",
-          "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*",
+          "connect-src 'self' blob: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*",
           "img-src 'self' data: blob: file: https://storage.googleapis.com",
           "media-src 'self' blob: file: https://videos.ltx.io https://storage.googleapis.com",
           "object-src 'none'",
@@ -26,7 +26,9 @@ export function setupCSP(): void {
           "script-src 'self'",
           "style-src 'self' https://fonts.googleapis.com",
           "font-src 'self' https://fonts.gstatic.com",
-          "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*",
+          // blob: covers app-created object URLs the renderer fetches back (audio
+          // waveform decoding reads local asset bytes through one).
+          "connect-src 'self' blob: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*",
           "img-src 'self' data: blob: file: https://storage.googleapis.com",
           "media-src 'self' blob: file: https://videos.ltx.io https://storage.googleapis.com",
           "object-src 'none'",

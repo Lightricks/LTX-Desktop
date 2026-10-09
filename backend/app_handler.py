@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
+from api_types import LTXLocalModelId
 from state.app_settings import AppSettings
 from handlers import (
+    AssetHandler,
     DownloadHandler,
     GenerationHandler,
     HealthHandler,
@@ -20,11 +26,15 @@ from handlers import (
     SuggestGapPromptHandler,
     RetakeHandler,
     ExtendHandler,
+    FeatureFlagsHandler,
     RuntimePolicyHandler,
     SettingsHandler,
     TextHandler,
     VideoGenerationHandler,
 )
+from handlers.dashboard_handler import DashboardHandler
+from handlers.queued_generation_handler import QueuedGenerationHandler
+from runtime_config.offerings import OFFERING_IDS, resolve_offering_local_model_id
 from runtime_config.runtime_config import RuntimeConfig
 from services.interfaces import (
     A2VPipeline,
@@ -45,9 +55,39 @@ from services.interfaces import (
     TextEncoder,
     VideoProcessor,
 )
+from services.analytics import AnalyticsService, QueuedEnhancement
 from services.lora_catalog import LoraCatalogProvider
+from services.store import Store
+from services.records import GenerationRecord, UnavailableError
+from services.unavailable_store import UnavailableStore
+from services.generation_queue.registry import ExecutorRegistry
+from services.generation_queue.runner import QueueRunner
+from services.features.video import (
+    AUDIO_TO_VIDEO_FEATURE,
+    EXTEND_FEATURE,
+    FEATURE as TEXT_TO_VIDEO_FEATURE,
+    IMAGE_TO_VIDEO_FEATURE,
+    RETAKE_FEATURE,
+    AudioToVideoExecutor,
+    IcLoraRecipeExecutor,
+    ExtendExecutor,
+    ImageToVideoExecutor,
+    RebindableAssetResolver,
+    RetakeExecutor,
+    TextToVideoExecutor,
+)
+from services.features.ic_lora_recipes import queued_ic_lora_recipes
+from services.features.lora_recipes import (
+    i2v_lora_recipes,
+    make_recipe_lora_resolver,
+    make_recipe_prompt_wrap,
+    t2v_lora_recipes,
+)
+from services.generation_queue.types import GenerationExecutor
 from services.prompt_enhancer_pipeline.gemini_prompt_enhancer_pipeline import GeminiPromptEnhancerPipeline
 from state.app_state_types import AppState, TextEncoderState
+
+logger = logging.getLogger(__name__)
 
 
 class AppHandler:
@@ -75,6 +115,8 @@ class AppHandler:
         a2v_pipeline_class: type[A2VPipeline],
         retake_pipeline_class: type[RetakePipeline],
         prompt_enhancer_pipeline_class: type[PromptEnhancerPipeline],
+        store: Store,
+        generation_executors: Mapping[str, GenerationExecutor] | None = None,
     ) -> None:
         self.config = config
 
@@ -97,6 +139,12 @@ class AppHandler:
         self.prompt_enhancer_pipeline_class = prompt_enhancer_pipeline_class
 
         self._lock = threading.RLock()
+        self.analytics = AnalyticsService(
+            http=http,
+            task_runner=task_runner,
+            sink_url=os.environ.get("LTX_ANALYTICS_SINK_URL", ""),
+            token=os.environ.get("LTX_ANALYTICS_TOKEN", ""),
+        )
 
         self.state = AppState(
             downloading_session=None,
@@ -197,6 +245,83 @@ class AppHandler:
             config=config,
         )
 
+        self._lora_catalog_provider = lora_catalog_provider
+        self.ic_lora = IcLoraHandler(
+            state=self.state,
+            lock=self._lock,
+            generation_handler=self.generation,
+            pipelines_handler=self.pipelines,
+            text_handler=self.text,
+            prompt_enhancement_handler=self.prompt_enhancement,
+            video_processor=video_processor,
+            lora_catalog=lora_catalog_provider,
+            config=config,
+        )
+        self._queued_asset_resolver: RebindableAssetResolver | None = None
+        if generation_executors is None:
+            self._queued_asset_resolver = RebindableAssetResolver(store)
+            executors: dict[str, GenerationExecutor] = {
+                TEXT_TO_VIDEO_FEATURE: TextToVideoExecutor(self.video_generation),
+                IMAGE_TO_VIDEO_FEATURE: ImageToVideoExecutor(
+                    self.video_generation, self._queued_asset_resolver
+                ),
+            }
+            # Each t2v LoRA recipe reuses the text-to-video executor, keyed on its
+            # Explore id, with its scaffold applied post-enhance. i2v recipes reuse
+            # the image-to-video executor the same way (start frame + LoRA).
+            for recipe in t2v_lora_recipes():
+                executors[recipe.recipe_id] = TextToVideoExecutor(
+                    self.video_generation,
+                    prompt_wrap=make_recipe_prompt_wrap(recipe),
+                    lora_resolver=make_recipe_lora_resolver(
+                        recipe,
+                        catalog=self._lora_catalog_provider,
+                        models_dir=lambda: self.video_generation.models_dir,
+                    ),
+                )
+            for recipe in i2v_lora_recipes():
+                executors[recipe.recipe_id] = ImageToVideoExecutor(
+                    self.video_generation,
+                    self._queued_asset_resolver,
+                    prompt_wrap=make_recipe_prompt_wrap(recipe),
+                    lora_resolver=make_recipe_lora_resolver(
+                        recipe,
+                        catalog=self._lora_catalog_provider,
+                        models_dir=lambda: self.video_generation.models_dir,
+                    ),
+                )
+            executors[AUDIO_TO_VIDEO_FEATURE] = AudioToVideoExecutor(
+                self.video_generation, self._queued_asset_resolver
+            )
+            executors[RETAKE_FEATURE] = RetakeExecutor(
+                self.pipelines,
+                self._queued_asset_resolver,
+                self.text,
+                lambda: self.video_generation.models_dir,
+                config.default_negative_prompt,
+                self.generation,
+            )
+            executors[EXTEND_FEATURE] = ExtendExecutor(
+                self.pipelines,
+                self._queued_asset_resolver,
+                self.text,
+                lambda: self.video_generation.models_dir,
+                config.default_negative_prompt,
+                self.generation,
+            )
+            for recipe in queued_ic_lora_recipes():
+                executors[recipe.recipe_id] = IcLoraRecipeExecutor(
+                    self.ic_lora,
+                    self._queued_asset_resolver,
+                    lambda: self.video_generation.models_dir,
+                    catalog_id=recipe.catalog_id,
+                    cutout=recipe.cutout,
+                )
+            self.executor_registry = ExecutorRegistry(executors)
+        else:
+            self.executor_registry = ExecutorRegistry(generation_executors)
+        self._bind_store(store)
+
         self.image_generation = ImageGenerationHandler(
             state=self.state,
             lock=self._lock,
@@ -215,6 +340,7 @@ class AppHandler:
         )
 
         self.runtime_policy = RuntimePolicyHandler(config=config)
+        self.feature_flags = FeatureFlagsHandler(lock=self._lock, config=config)
 
         self.suggest_gap_prompt = SuggestGapPromptHandler(
             state=self.state,
@@ -243,17 +369,6 @@ class AppHandler:
             text_handler=self.text,
         )
 
-        self.ic_lora = IcLoraHandler(
-            state=self.state,
-            lock=self._lock,
-            generation_handler=self.generation,
-            pipelines_handler=self.pipelines,
-            text_handler=self.text,
-            video_processor=video_processor,
-            lora_catalog=lora_catalog_provider,
-            config=config,
-        )
-
         self.downloads.cleanup_downloading_dir()
 
         self.load_persistent_state(default_settings)
@@ -262,6 +377,66 @@ class AppHandler:
         """Load persisted state from disk (settings, HF auth token, etc.)."""
         self.settings.load_settings(default_settings)
         self.hf_auth.load_token()
+        try:
+            self.queued_generations.recover_on_boot()
+        except UnavailableError:
+            logger.warning(
+                "Store boot recovery failed; store unavailable at %s",
+                self.config.app_data_dir / "store.sqlite3",
+                exc_info=True,
+            )
+            self._bind_store(UnavailableStore())
+
+    def _queued_local_model_id(self, generation: GenerationRecord) -> LTXLocalModelId | None:
+        """The checkpoint this queued job will encode with, not the active model."""
+        params = generation.spec.get("params")
+        if not isinstance(params, dict):
+            return None
+        model = params.get("model")
+        if not isinstance(model, str) or model not in OFFERING_IDS:
+            return None
+        return resolve_offering_local_model_id(self.video_generation.models_dir, model)
+
+    def _queued_enhancement_policy(self, generation: GenerationRecord) -> QueuedEnhancement:
+        settings = self.state.app_settings
+        model_id = self._queued_local_model_id(generation)
+        return QueuedEnhancement(
+            explore_auto_enhance_prompts=settings.explore_auto_enhance_prompts,
+            prompt_enhancer_enabled=settings.prompt_enhancer_enabled,
+            use_local_encoding=self.text.should_use_local_encoding(model_id),
+            local_enhancer_available=(
+                self.text.resolve_prompt_enhancer_root_if_downloaded(model_id) is not None
+            ),
+        )
+
+    def _bind_store(self, store: Store) -> None:
+        if self._queued_asset_resolver is not None:
+            self._queued_asset_resolver.bind(store)
+        self.generation_queue = QueueRunner(
+            db=store,
+            generation=self.generation,
+            executors=self.executor_registry,
+            analytics=self.analytics,
+            enhancement_policy=self._queued_enhancement_policy,
+        )
+        self.assets = AssetHandler(
+            store=store,
+        )
+        self.queued_generations = QueuedGenerationHandler(
+            store=store,
+            executor_registry=self.executor_registry,
+            derive_local_a2v=self.video_generation.derive_local_a2v_params,
+            queue_control=self.generation_queue,
+            progress_reader=self.generation.get_generation_progress,
+            config=self.config,
+            lora_catalog_provider=self._lora_catalog_provider,
+            state=self.state,
+            lock=self._lock,
+        )
+        self.generation_queue.set_finished_listener(
+            self.queued_generations.remember_finished
+        )
+        self.dashboard = DashboardHandler(store, self._lora_catalog_provider)
 
 
 @dataclass
@@ -284,6 +459,8 @@ class ServiceBundle:
     a2v_pipeline_class: type[A2VPipeline]
     retake_pipeline_class: type[RetakePipeline]
     prompt_enhancer_pipeline_class: type[PromptEnhancerPipeline]
+    store: Store
+    generation_executors: Mapping[str, GenerationExecutor] | None = None
 
 
 def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
@@ -334,7 +511,20 @@ def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
         a2v_pipeline_class=LTXa2vPipeline,
         retake_pipeline_class=LTXRetakePipeline,
         prompt_enhancer_pipeline_class=LtxPromptEnhancerPipeline,
+        store=open_store(config.app_data_dir),
     )
+
+
+def open_store(app_data_dir: Path) -> Store:
+    from services.sqlite_store import SqliteStore
+
+    try:
+        return SqliteStore(app_data_dir)
+    except UnavailableError:
+        logger.warning(
+            "Store unavailable at %s", app_data_dir / "store.sqlite3", exc_info=True
+        )
+        return UnavailableStore()
 
 
 def build_initial_state(
@@ -365,4 +555,6 @@ def build_initial_state(
         a2v_pipeline_class=bundle.a2v_pipeline_class,
         retake_pipeline_class=bundle.retake_pipeline_class,
         prompt_enhancer_pipeline_class=bundle.prompt_enhancer_pipeline_class,
+        store=bundle.store,
+        generation_executors=bundle.generation_executors,
     )

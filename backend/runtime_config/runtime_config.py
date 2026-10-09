@@ -28,6 +28,12 @@ class RuntimeConfig:
     lora_catalog_source: str = ""
     # Bundled catalog used as a fallback when lora_catalog_source is a URL that fails to fetch.
     lora_catalog_fallback_path: str = ""
+    # Discrete GPU VRAM (CUDA). On Darwin this is total unified memory (SKU).
+    vram_gb: int | None = None
+    # Darwin: available (free) RAM at process start, used for per-job sizing.
+    available_ram_gb: int | None = None
+    # MPS unified-memory machines never load full; tests leave this False to simulate CUDA.
+    darwin_unified_memory: bool = False
 
     @property
     def force_api_generations(self) -> bool:

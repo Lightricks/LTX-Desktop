@@ -6,6 +6,7 @@ node_modules/
 # Build outputs
 dist/
 dist-electron/
+dist-remote/
 .vite/
 release/
 *.tsbuildinfo
@@ -35,6 +36,8 @@ backend/**/__pycache__/
 .vscode/*
 !.vscode/launch.json
 !.vscode/tasks.json
+!.vscode/settings.json
+!.vscode/extensions.json
 *.swp
 *.swo
 *~

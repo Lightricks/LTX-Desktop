@@ -1,17 +1,28 @@
-import { z } from 'zod'
+import { z } from "zod";
 
-const fileFilter = z.object({ name: z.string(), extensions: z.array(z.string()) })
+import {
+  DEEP_LINK_SHELL_SLUGS,
+  type DeepLinkIntent,
+  FETCHER_TOOL_SLUGS,
+} from "./deep-link.ts";
+import { EXPLORE_LORA_RECIPE_SEED_IDS } from "./explore-seed-filenames.ts";
+import { PACKAGED_SEED_KINDS, type PackagedSeedKind } from "./explore-seed-filenames.ts";
+
+const fileFilter = z.object({
+  name: z.string(),
+  extensions: z.array(z.string()),
+});
 
 function ipcResult<T extends z.ZodRawShape>(valueShape: T) {
-  return z.discriminatedUnion('success', [
+  return z.discriminatedUnion("success", [
     z.object({ success: z.literal(true), ...valueShape }),
     z.object({ success: z.literal(false), error: z.string() }),
-  ])
+  ]);
 }
 
-export type IpcResult<T extends z.ZodRawShape> = z.infer<ReturnType<typeof ipcResult<T>>>
+export type IpcResult<T extends z.ZodRawShape> = z.infer<ReturnType<typeof ipcResult<T>>>;
 
-const emptyResult = ipcResult({})
+const emptyResult = ipcResult({});
 
 const exportClip = z.object({
   path: z.string(),
@@ -27,7 +38,7 @@ const exportClip = z.object({
   trackIndex: z.number(),
   muted: z.boolean(),
   volume: z.number(),
-})
+});
 
 const exportSubtitle = z.object({
   text: z.string(),
@@ -42,30 +53,53 @@ const exportSubtitle = z.object({
     position: z.string(),
     italic: z.boolean(),
   }),
-})
+});
 
 const logsResponse = z.object({
   logPath: z.string(),
   lines: z.array(z.string()),
   error: z.string().optional(),
-})
+});
 
 const backendHealthStatus = z.object({
-  status: z.enum(['alive', 'restarting', 'dead']),
+  status: z.enum(["alive", "restarting", "dead"]),
   exitCode: z.number().nullable().optional(),
-})
+});
 
-export type BackendHealthStatus = z.infer<typeof backendHealthStatus>
+export type BackendHealthStatus = z.infer<typeof backendHealthStatus>;
 
 const updateStatePayload = z.object({
-  status: z.enum(['idle', 'checking', 'available', 'downloading', 'downloaded', 'not-available']),
+  status: z.enum([
+    "idle",
+    "checking",
+    "available",
+    "downloading",
+    "downloaded",
+    "not-available",
+  ]),
   currentVersion: z.string(),
   version: z.string().optional(),
   releaseNotes: z.string().optional(),
   percent: z.number().optional(),
   message: z.string().optional(),
-})
-export type UpdateStatePayload = z.infer<typeof updateStatePayload>
+});
+export type UpdateStatePayload = z.infer<typeof updateStatePayload>;
+
+const deepLinkIntentSchema = z.object({
+  id: z.string().min(1),
+  target: z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("fetcher-tool"),
+      slug: z.enum(FETCHER_TOOL_SLUGS),
+    }),
+    z.object({
+      kind: z.literal("home-shell"),
+      slug: z.enum(DEEP_LINK_SHELL_SLUGS),
+    }),
+  ]),
+  receivedAt: z.number(),
+  arrival: z.enum(["cold-start", "open-url", "second-instance"]),
+});
 
 export const electronAPISchemas = {
   // App info
@@ -83,26 +117,48 @@ export const electronAPISchemas = {
   },
   checkGpu: {
     input: z.object({}),
-    output: z.object({ available: z.boolean(), name: z.string().optional(), vram: z.number().optional() }),
+    output: z.object({
+      available: z.boolean(),
+      name: z.string().optional(),
+      vram: z.number().optional(),
+    }),
   },
   getAppInfo: {
     input: z.object({}),
-    output: z.object({ version: z.string(), isPackaged: z.boolean(), modelsPath: z.string(), userDataPath: z.string() }),
+    output: z.object({
+      version: z.string(),
+      isPackaged: z.boolean(),
+      modelsPath: z.string(),
+      userDataPath: z.string(),
+    }),
   },
 
   // First-run setup
   checkFirstRun: {
     input: z.object({}),
-    output: z.object({ needsSetup: z.boolean(), needsLicense: z.boolean() }),
-  },
-  acceptLicense: {
-    input: z.object({}),
-    output: z.boolean(),
+    output: z.object({ needsSetup: z.boolean() }),
   },
   completeSetup: {
     input: z.object({}),
     output: z.boolean(),
   },
+  setMainWindowMode: {
+    input: z.object({
+      mode: z.enum(["install", "app"]),
+    }),
+    output: z.boolean(),
+  },
+
+  // Window appearance
+  setWindowAppearance: {
+    input: z.object({
+      theme: z.enum(["light", "dark", "system"]),
+      persist: z.boolean().optional(),
+    }),
+    output: z.boolean(),
+  },
+
+  // Legal texts
   fetchLicenseText: {
     input: z.object({}),
     output: z.string(),
@@ -172,6 +228,27 @@ export const electronAPISchemas = {
     input: z.object({}),
     output: z.string().nullable(),
   },
+  getExploreLoraRecipeSeedPath: {
+    input: z.object({
+      seedId: z.enum(EXPLORE_LORA_RECIPE_SEED_IDS),
+    }),
+    output: z.string(),
+  },
+  getPackagedSeedPath: {
+    input: z.object({
+      kind: z.enum(
+        PACKAGED_SEED_KINDS as unknown as [
+          PackagedSeedKind,
+          ...PackagedSeedKind[],
+        ],
+      ),
+    }),
+    output: z.string(),
+  },
+  getExploreAudioToVideoSeedPaths: {
+    input: z.object({}),
+    output: z.object({ audio: z.string(), startFrame: z.string() }),
+  },
   getDownloadsPath: {
     input: z.object({}),
     output: z.string(),
@@ -183,7 +260,11 @@ export const electronAPISchemas = {
 
   // Project assets
   addVisualAssetToProject: {
-    input: z.object({ srcPath: z.string(), projectId: z.string(), type: z.enum(['video', 'image']) }),
+    input: z.object({
+      srcPath: z.string(),
+      projectId: z.string(),
+      type: z.enum(["video", "image"]),
+    }),
     output: ipcResult({
       path: z.string(),
       bigThumbnailPath: z.string(),
@@ -197,14 +278,14 @@ export const electronAPISchemas = {
     output: ipcResult({ path: z.string() }),
   },
   makeThumbnailsForProjectAsset: {
-    input: z.object({ path: z.string(), type: z.enum(['video', 'image']) }),
+    input: z.object({ path: z.string(), type: z.enum(["video", "image"]) }),
     output: ipcResult({
       bigThumbnailPath: z.string(),
       smallThumbnailPath: z.string(),
     }),
   },
   makeDimensionsForProjectAsset: {
-    input: z.object({ path: z.string(), type: z.enum(['video', 'image']) }),
+    input: z.object({ path: z.string(), type: z.enum(["video", "image"]) }),
     output: ipcResult({
       width: z.number(),
       height: z.number(),
@@ -229,12 +310,38 @@ export const electronAPISchemas = {
     output: z.string().nullable(),
   },
   saveFile: {
-    input: z.object({ filePath: z.string(), data: z.string(), encoding: z.string().optional() }),
+    input: z.object({
+      filePath: z.string(),
+      data: z.string(),
+      encoding: z.string().optional(),
+    }),
     output: ipcResult({ path: z.string() }),
   },
   saveBinaryFile: {
     input: z.object({ filePath: z.string(), data: z.instanceof(ArrayBuffer) }),
     output: ipcResult({ path: z.string() }),
+  },
+  writeTempFile: {
+    input: z.object({
+      suffix: z.literal(".wav"),
+      data: z.instanceof(ArrayBuffer),
+    }),
+    output: ipcResult({ path: z.string() }),
+  },
+  diagnoseMicrophone: {
+    input: z.object({}),
+    output: ipcResult({
+      osMicrophone: z.enum([
+        "granted",
+        "denied",
+        "not-determined",
+        "unknown",
+      ]),
+    }),
+  },
+  openMicrophoneSettings: {
+    input: z.object({}),
+    output: emptyResult,
   },
   showOpenDirectoryDialog: {
     input: z.object({ title: z.string().optional() }),
@@ -267,7 +374,9 @@ export const electronAPISchemas = {
       height: z.number(),
       fps: z.number(),
       quality: z.number(),
-      letterbox: z.object({ ratio: z.number(), color: z.string(), opacity: z.number() }).optional(),
+      letterbox: z
+        .object({ ratio: z.number(), color: z.string(), opacity: z.number() })
+        .optional(),
       subtitles: z.array(exportSubtitle).optional(),
     }),
     output: emptyResult,
@@ -294,6 +403,10 @@ export const electronAPISchemas = {
     input: z.object({}),
     output: backendHealthStatus.nullable(),
   },
+  takePendingDeepLink: {
+    input: z.object({}),
+    output: deepLinkIntentSchema.nullable(),
+  },
   // Tells the liveness monitor a generation is known to be in flight, so it doesn't mistake a
   // long-running local generation (MPS/CUDA compute can starve the backend's own event loop for
   // tens of seconds, delaying /health) for a genuinely hung process and kill it mid-generation.
@@ -301,10 +414,19 @@ export const electronAPISchemas = {
     input: z.object({ active: z.boolean() }),
     output: z.void(),
   },
+  notifyRemoteExposure: {
+    input: z.object({ active: z.boolean() }),
+    output: z.void(),
+  },
 
   // Video processing
   extractVideoFrame: {
-    input: z.object({ videoPath: z.string(), seekTime: z.number(), width: z.number().optional(), quality: z.number().optional() }),
+    input: z.object({
+      videoPath: z.string(),
+      seekTime: z.number(),
+      width: z.number().optional(),
+      quality: z.number().optional(),
+    }),
     output: z.object({ path: z.string() }),
   },
 
@@ -329,14 +451,18 @@ export const electronAPISchemas = {
   // Analytics
   getAnalyticsState: {
     input: z.object({}),
-    output: z.object({ analyticsEnabled: z.boolean(), installationId: z.string() }),
+    output: z.object({
+      analyticsEnabled: z.boolean(),
+      installationId: z.string(),
+    }),
   },
   setAnalyticsEnabled: {
     input: z.object({ enabled: z.boolean() }),
     output: z.void(),
   },
-  sendAnalyticsEvent: {
-    input: z.object({ eventName: z.string(), extraDetails: z.record(z.string(), z.unknown()).nullable().optional() }),
+  // First-install signal only. Main sends `launched` after the opt-out write.
+  notifyInstallStarted: {
+    input: z.object({}),
     output: z.void(),
   },
 
@@ -369,21 +495,22 @@ export const electronAPISchemas = {
     input: z.object({ enabled: z.boolean() }),
     output: emptyResult,
   },
-} as const
+} as const;
 
-type Schemas = typeof electronAPISchemas
+type Schemas = typeof electronAPISchemas;
 
 type InvokeAPI = {
-  [K in keyof Schemas]: z.infer<Schemas[K]['input']> extends Record<string, never>
-    ? () => Promise<z.infer<Schemas[K]['output']>>
-    : (input: z.infer<Schemas[K]['input']>) => Promise<z.infer<Schemas[K]['output']>>
-}
+  [K in keyof Schemas]: z.infer<Schemas[K]["input"]> extends Record<string, never>
+    ? () => Promise<z.infer<Schemas[K]["output"]>>
+    : (input: z.infer<Schemas[K]["input"]>) => Promise<z.infer<Schemas[K]["output"]>>;
+};
 
 export type ElectronAPI = InvokeAPI & {
-  onPythonSetupProgress: (cb: (data: unknown) => void) => void
-  removePythonSetupProgress: () => void
-  onBackendHealthStatus: (cb: (data: BackendHealthStatus) => void) => (() => void)
-  onUpdateEvent: (cb: (data: UpdateStatePayload) => void) => (() => void)
-  getPathForFile: (file: File) => string
-  platform: string
-}
+  onPythonSetupProgress: (cb: (data: unknown) => void) => void;
+  removePythonSetupProgress: () => void;
+  onBackendHealthStatus: (cb: (data: BackendHealthStatus) => void) => () => void;
+  onUpdateEvent: (cb: (data: UpdateStatePayload) => void) => () => void;
+  onDeepLink: (cb: (data: DeepLinkIntent) => void) => () => void;
+  getPathForFile: (file: File) => string;
+  platform: string;
+};

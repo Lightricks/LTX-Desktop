@@ -28,6 +28,26 @@ def test_image_to_frames_produces_video_artifact(tmp_path: Path):
     assert out.frame_count == 25
 
 
+def test_image_to_frames_calls_on_frame_per_frame(tmp_path: Path):
+    calls = {"n": 0}
+
+    def on_frame() -> None:
+        calls["n"] += 1
+
+    ctx = PreprocessingContext(
+        num_frames=9,
+        outputs_dir=tmp_path,
+        video_processor=FakeVideoProcessor(),
+        on_frame=on_frame,
+    )
+    run_preprocessing(
+        [PreprocessingStep(utility="image_to_frames", params={"fps": 24})],
+        MediaArtifact(path=str(tmp_path / "in.png"), kind="image"),
+        ctx,
+    )
+    assert calls["n"] == 9
+
+
 def test_pipeline_must_end_in_video(tmp_path: Path):
     # An image input with no steps still ends as an image -> rejected.
     inp_img = MediaArtifact(path="x.png", kind="image")

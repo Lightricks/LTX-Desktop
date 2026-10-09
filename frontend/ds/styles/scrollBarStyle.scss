@@ -1,0 +1,26 @@
+$scrollbar-thumb-color: rgba(96, 96, 96, 45%);
+
+.ltx-io {
+  /*! Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: $scrollbar-thumb-color transparent; /* first color applies
+  to the thumb of the scrollbar, the second to the track. */
+
+  /*! Other Browser */
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border-radius: var(--radius-xs);
+    background-color: transparent;
+  }
+
+  :hover::-webkit-scrollbar-thumb {
+    background-color: $scrollbar-thumb-color;
+  }
+}

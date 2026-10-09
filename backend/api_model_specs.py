@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Literal, cast
+
 from api_types import (
+    DownloadedLocalVideoGenerationModelSpecItem,
     GenerateVideoModelsSpecsResponse,
     GenerateVideoRequest,
     LTXLocalModelId,
@@ -10,14 +14,34 @@ from api_types import (
     LTXVideoGenerationModelSpecItem,
     LTXVideoGenerationResolutionSpec,
     LTXVideoGenerationSpec,
+    LTXVideoGenAspectRatio,
     LTXVideoGenDuration,
     LTXVideoGenFps,
     LTXVideoGenPipeline,
     LTXVideoGenResolution,
 )
 from keyframe_request import validate_keyframe_inputs
-from runtime_config.ltx_capabilities import LtxOfferingCapabilities, api_caps, effective_local_caps
-from runtime_config.model_download_specs import get_latest_ltx_model_id, get_ltx_model_spec
+from runtime_config.ltx_capabilities import (
+    CanvasMode,
+    LtxOfferingCapabilities,
+    api_caps,
+    budget_size,
+    effective_local_caps,
+    local_canvas,
+    pixels_for,
+)
+from runtime_config.offerings import (
+    OFFERING_IDS,
+    offering_id_for_local_model_id,
+    resolve_offering_local_model_id,
+)
+from runtime_config.model_download_specs import (
+    get_latest_ltx_model_id,
+    get_ltx_model_spec,
+    is_duration_head_ready,
+)
+from runtime_config.runtime_policy import LocalGenerationMode
+from runtime_config.video_job_budget import advertised_fast_durations
 from server_utils.media_validation import normalize_optional_path
 
 # The concrete ltxv-api model id each Desktop-facing pipeline maps to when forced onto
@@ -61,45 +85,61 @@ _API_FPS_PRO_2_5: _ApiFpsDurationMap = {
 }
 
 
-def _resolution_spec(fps_to_durations: _ApiFpsDurationMap) -> LTXVideoGenerationResolutionSpec:
+# 2.3 generate is 16:9/9:16. 2.5 adds 1:1 and 3:2. 21:9, 4:3, and 4:5 are local-only.
+_API_ASPECT_RATIOS_2_3: tuple[LTXVideoGenAspectRatio, ...] = ("16:9", "9:16")
+_API_ASPECT_RATIOS_2_5: tuple[LTXVideoGenAspectRatio, ...] = ("16:9", "3:2", "1:1", "9:16")
+
+
+def _resolution_spec(
+    fps_to_durations: _ApiFpsDurationMap,
+    aspect_ratios: tuple[LTXVideoGenAspectRatio, ...],
+) -> LTXVideoGenerationResolutionSpec:
     return LTXVideoGenerationResolutionSpec(
         fps_to_durations={
             fps: list(durations)
             for fps, durations in fps_to_durations.items()
         },
+        aspect_ratios=list(aspect_ratios),
     )
 
 
-_API_STANDARD_RESOLUTION = _resolution_spec(_API_FPS_STANDARD)
-_API_EXTENDED_RESOLUTION = _resolution_spec(_API_FPS_EXTENDED)
-_API_PRO_2_5_RESOLUTION = _resolution_spec(_API_FPS_PRO_2_5)
+def _resolution_map(
+    cells: dict[LTXVideoGenResolution, _ApiFpsDurationMap],
+    aspect_ratios: tuple[LTXVideoGenAspectRatio, ...],
+) -> _ApiResolutionMap:
+    return {
+        resolution: _resolution_spec(fps_to_durations, aspect_ratios)
+        for resolution, fps_to_durations in cells.items()
+    }
+
 
 # Fast t2v/i2v: 720p/1080p get 20s at 24/25; 1440p/4K stay at 10s.
-_API_FAST_RESOLUTIONS: _ApiResolutionMap = {
-    "720p": _API_EXTENDED_RESOLUTION,
-    "1080p": _API_EXTENDED_RESOLUTION,
-    "1440p": _API_STANDARD_RESOLUTION,
-    "2160p": _API_STANDARD_RESOLUTION,
+_API_FAST_CELLS: dict[LTXVideoGenResolution, _ApiFpsDurationMap] = {
+    "720p": _API_FPS_EXTENDED,
+    "1080p": _API_FPS_EXTENDED,
+    "1440p": _API_FPS_STANDARD,
+    "2160p": _API_FPS_STANDARD,
 }
 # Pro 2.3 t2v/i2v: 10s at every fps and resolution, including 720p.
-_API_PRO_RESOLUTIONS: _ApiResolutionMap = {
-    "720p": _API_STANDARD_RESOLUTION,
-    "1080p": _API_STANDARD_RESOLUTION,
-    "1440p": _API_STANDARD_RESOLUTION,
-    "2160p": _API_STANDARD_RESOLUTION,
+_API_PRO_CELLS: dict[LTXVideoGenResolution, _ApiFpsDurationMap] = {
+    "720p": _API_FPS_STANDARD,
+    "1080p": _API_FPS_STANDARD,
+    "1440p": _API_FPS_STANDARD,
+    "2160p": _API_FPS_STANDARD,
 }
-# Pro 2.5 t2v/i2v/a2v: 720p+1080p, 24/25/50, 10s. No 48 fps, no 1440p/4K.
-_API_PRO_2_5_RESOLUTIONS: _ApiResolutionMap = {
-    "720p": _API_PRO_2_5_RESOLUTION,
-    "1080p": _API_PRO_2_5_RESOLUTION,
+# Pro 2.5 t2v/i2v: 720p+1080p, 24/25/50, 10s. No 48 fps, no 1440p/4K.
+_API_PRO_2_5_CELLS: dict[LTXVideoGenResolution, _ApiFpsDurationMap] = {
+    "720p": _API_FPS_PRO_2_5,
+    "1080p": _API_FPS_PRO_2_5,
 }
-# A2V for Pro 2.3 / Fast 2.5: 20s audio at 720p/1080p, 10s at 1440p/4K.
-_API_A2V_RESOLUTIONS: _ApiResolutionMap = {
-    "720p": _API_EXTENDED_RESOLUTION,
-    "1080p": _API_EXTENDED_RESOLUTION,
-    "1440p": _API_STANDARD_RESOLUTION,
-    "2160p": _API_STANDARD_RESOLUTION,
-}
+
+_API_FAST_RESOLUTIONS = _resolution_map(_API_FAST_CELLS, _API_ASPECT_RATIOS_2_3)
+_API_FAST_25_RESOLUTIONS = _resolution_map(_API_FAST_CELLS, _API_ASPECT_RATIOS_2_5)
+_API_PRO_RESOLUTIONS = _resolution_map(_API_PRO_CELLS, _API_ASPECT_RATIOS_2_3)
+_API_PRO_2_5_RESOLUTIONS = _resolution_map(_API_PRO_2_5_CELLS, _API_ASPECT_RATIOS_2_5)
+# A2V stays 16:9/9:16 even on 2.5. 20s audio at 720p/1080p, 10s at 1440p/4K.
+_API_A2V_RESOLUTIONS = _resolution_map(_API_FAST_CELLS, _API_ASPECT_RATIOS_2_3)
+_API_PRO_2_5_A2V_RESOLUTIONS = _resolution_map(_API_PRO_2_5_CELLS, _API_ASPECT_RATIOS_2_3)
 
 
 ltx_api_model_specs: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], ...] = (
@@ -123,7 +163,7 @@ ltx_api_model_specs: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], .
         "fast-2.5",
         LTXVideoGenerationSpec(
             display_name="LTX-2.5 Fast (API)",
-            supported_resolutions_durations=_API_FAST_RESOLUTIONS,
+            supported_resolutions_durations=_API_FAST_25_RESOLUTIONS,
             a2v_supported_resolutions_durations=_API_A2V_RESOLUTIONS,
         ),
     ),
@@ -132,10 +172,26 @@ ltx_api_model_specs: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], .
         LTXVideoGenerationSpec(
             display_name="LTX-2.5 Pro (API)",
             supported_resolutions_durations=_API_PRO_2_5_RESOLUTIONS,
-            a2v_supported_resolutions_durations=_API_PRO_2_5_RESOLUTIONS,
+            a2v_supported_resolutions_durations=_API_PRO_2_5_A2V_RESOLUTIONS,
         ),
     ),
 )
+
+
+def forced_api_resolution_map() -> dict[str, dict[str, dict[str, str]]]:
+    """Pipeline → resolution label → aspect → WxH, taken from each API spec cell."""
+    mapped: dict[str, dict[str, dict[str, str]]] = {}
+    for pipeline, spec in ltx_api_model_specs:
+        caps = api_caps(pipeline)
+        by_resolution: dict[str, dict[str, str]] = {}
+        for resolution, cell in spec.supported_resolutions_durations.items():
+            by_resolution[resolution] = {
+                aspect: f"{width}x{height}"
+                for aspect in cell.aspect_ratios
+                for width, height in (pixels_for(caps, resolution, aspect),)
+            }
+        mapped[pipeline] = by_resolution
+    return mapped
 
 
 def _capabilities_spec(caps: LtxOfferingCapabilities) -> LTXOfferingCapabilitiesSpec:
@@ -172,17 +228,105 @@ def _item_with_caps(
     )
 
 
+def _filter_local_fast_resolution_map(
+    specs: dict[LTXVideoGenResolution, LTXVideoGenerationResolutionSpec] | None,
+    caps: LtxOfferingCapabilities,
+    *,
+    memory_gb: float | None,
+    process_mode: LocalGenerationMode,
+    darwin: bool,
+    mode: CanvasMode = "video",
+) -> dict[LTXVideoGenResolution, LTXVideoGenerationResolutionSpec] | None:
+    if specs is None:
+        return None
+    if process_mode == "unsupported":
+        return {}
+    filtered: dict[LTXVideoGenResolution, LTXVideoGenerationResolutionSpec] = {}
+    for resolution, spec in specs.items():
+        if resolution not in caps.resolution_pixels_16_9:
+            raise KeyError(resolution)
+        width, height = budget_size(local_canvas(resolution, mode=mode))
+        fps_to_durations: dict[LTXVideoGenFps, list[LTXVideoGenDuration]] = {}
+        for fps, durations in spec.fps_to_durations.items():
+            kept = advertised_fast_durations(
+                width,
+                height,
+                int(fps),
+                durations,
+                memory_gb=memory_gb,
+                process_mode=process_mode,
+                darwin=darwin,
+            )
+            if kept:
+                fps_to_durations[fps] = cast(list[LTXVideoGenDuration], kept)
+        if fps_to_durations:
+            filtered[resolution] = LTXVideoGenerationResolutionSpec(
+                fps_to_durations=fps_to_durations,
+                aspect_ratios=list(spec.aspect_ratios),
+            )
+    return filtered
+
+
+def _filter_local_fast_item(
+    item: LTXVideoGenerationModelSpecItem,
+    caps: LtxOfferingCapabilities,
+    *,
+    memory_gb: float | None,
+    process_mode: LocalGenerationMode,
+    darwin: bool,
+) -> LTXVideoGenerationModelSpecItem:
+    spec = item.spec
+    return item.model_copy(
+        update={
+            "spec": spec.model_copy(
+                update={
+                    "supported_resolutions_durations": _filter_local_fast_resolution_map(
+                        spec.supported_resolutions_durations,
+                        caps,
+                        memory_gb=memory_gb,
+                        process_mode=process_mode,
+                        darwin=darwin,
+                    ),
+                    "a2v_supported_resolutions_durations": _filter_local_fast_resolution_map(
+                        spec.a2v_supported_resolutions_durations,
+                        caps,
+                        memory_gb=memory_gb,
+                        process_mode=process_mode,
+                        darwin=darwin,
+                        mode="a2v",
+                    ),
+                }
+            )
+        }
+    )
+
+
 def get_local_video_generation_model_specs(
     model_id: LTXLocalModelId | None = None,
     *,
     duration_head_ready: bool = False,
+    memory_gb: float | None = None,
+    process_mode: LocalGenerationMode | None = None,
+    darwin: bool = False,
 ) -> list[LTXVideoGenerationModelSpecItem]:
     resolved_id = model_id or get_latest_ltx_model_id()
     local_model_spec = get_ltx_model_spec(resolved_id)
     caps = effective_local_caps(resolved_id, duration_head_ready=duration_head_ready)
-    return [
+    items = [
         _item_with_caps(pipeline, spec, caps)
         for pipeline, spec in local_model_spec.supported_pipelines
+    ]
+    if process_mode is None:
+        return items
+    return [
+        _filter_local_fast_item(
+            item,
+            caps,
+            memory_gb=memory_gb,
+            process_mode=process_mode,
+            darwin=darwin,
+        )
+        for item in items
     ]
 
 
@@ -194,16 +338,71 @@ def get_api_video_generation_model_specs() -> list[LTXVideoGenerationModelSpecIt
     ]
 
 
+def get_downloaded_local_video_generation_model_specs(
+    models_dir: Path,
+    *,
+    memory_gb: float | None = None,
+    process_mode: LocalGenerationMode | None = None,
+    darwin: bool = False,
+) -> list[DownloadedLocalVideoGenerationModelSpecItem]:
+    items: list[DownloadedLocalVideoGenerationModelSpecItem] = []
+    for offering in OFFERING_IDS:
+        model_id = resolve_offering_local_model_id(models_dir, offering)
+        if model_id is None:
+            continue
+        for local_item in get_local_video_generation_model_specs(
+            model_id,
+            duration_head_ready=is_duration_head_ready(models_dir, model_id),
+            memory_gb=memory_gb,
+            process_mode=process_mode,
+            darwin=darwin,
+        ):
+            items.append(
+                DownloadedLocalVideoGenerationModelSpecItem(
+                    model=offering,
+                    pipeline=local_item.pipeline,
+                    spec=local_item.spec,
+                )
+            )
+    return items
+
+
 def build_generate_video_model_specs_response(
     local_model_id: LTXLocalModelId | None = None,
     *,
+    models_dir: Path | None = None,
     duration_head_ready: bool = False,
+    memory_gb: float | None = None,
+    process_mode: LocalGenerationMode | None = None,
+    darwin: bool = False,
+    low_performance_machine: bool = False,
 ) -> GenerateVideoModelsSpecsResponse:
+    downloaded = (
+        get_downloaded_local_video_generation_model_specs(
+            models_dir,
+            memory_gb=memory_gb,
+            process_mode=process_mode,
+            darwin=darwin,
+        )
+        if models_dir is not None
+        else []
+    )
     return GenerateVideoModelsSpecsResponse(
         local_models=get_local_video_generation_model_specs(
-            local_model_id, duration_head_ready=duration_head_ready
+            local_model_id,
+            duration_head_ready=duration_head_ready,
+            memory_gb=memory_gb,
+            process_mode=process_mode,
+            darwin=darwin,
         ),
         api_models=get_api_video_generation_model_specs(),
+        downloaded_local_models=downloaded,
+        active_offering=(
+            offering_id_for_local_model_id(local_model_id)
+            if local_model_id is not None
+            else None
+        ),
+        low_performance_machine=low_performance_machine,
     )
 
 
@@ -249,6 +448,36 @@ def supported_duration_range(
     return min(durations), max(durations)
 
 
+VideoGenerationFeature = Literal[
+    "multi-keyframe",
+    "audio-to-video",
+    "image-to-video",
+    "text-to-video",
+]
+
+
+def video_generation_feature(
+    *,
+    audio_path: str | None,
+    image_path: str | None,
+    last_image_path: str | None = None,
+    keyframes: object = None,
+) -> VideoGenerationFeature:
+    """User-facing mode. Keyframes win, then audio, then a still.
+
+    Same order as ``videoGenerationModeFromInputs`` in the frontend. Validation
+    error text and analytics feature names both use this so a keyframe job is
+    not recorded as image-to-video.
+    """
+    if keyframes:
+        return "multi-keyframe"
+    if audio_path:
+        return "audio-to-video"
+    if image_path or last_image_path:
+        return "image-to-video"
+    return "text-to-video"
+
+
 def validate_generate_video_request(
     req: GenerateVideoRequest,
     *,
@@ -268,10 +497,11 @@ def validate_generate_video_request(
     image_path = normalize_optional_path(req.imagePath)
     last_image_path = normalize_optional_path(req.lastImagePath)
     audio_path = normalize_optional_path(req.audioPath)
-    generation_mode = (
-        "audio-to-video" if audio_path is not None
-        else "image-to-video" if image_path is not None or req.keyframes
-        else "text-to-video"
+    generation_mode = video_generation_feature(
+        audio_path=audio_path,
+        image_path=image_path,
+        last_image_path=last_image_path,
+        keyframes=req.keyframes,
     )
 
     keyframe_error = validate_keyframe_inputs(
@@ -301,6 +531,12 @@ def validate_generate_video_request(
         return (
             f"Unsupported {generation_backend} {generation_mode} resolution '{req.resolution}' "
             f"for pipeline '{req.model}'"
+        )
+
+    if req.aspectRatio not in resolution_spec.aspect_ratios:
+        return (
+            f"Unsupported {generation_backend} {generation_mode} aspect ratio '{req.aspectRatio}' "
+            f"for pipeline '{req.model}' at resolution '{req.resolution}'"
         )
 
     if req.fps not in resolution_spec.fps_to_durations:

@@ -27,13 +27,11 @@ type ModeAvailability = {
 export function canUseMultiKeyframeMode({
   isLocalMode,
   localCaps,
-  enableMultipleKeyframesVideos,
 }: {
   isLocalMode: boolean
   localCaps?: MultiKeyframeCapabilities | null
-  enableMultipleKeyframesVideos: boolean
 }): boolean {
-  return enableMultipleKeyframesVideos && isLocalMode && Boolean(localCaps?.multi_keyframe)
+  return isLocalMode && Boolean(localCaps?.multi_keyframe)
 }
 
 export function fallbackGenSpaceMode(

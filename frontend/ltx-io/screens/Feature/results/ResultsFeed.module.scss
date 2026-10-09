@@ -1,0 +1,95 @@
+@use "@ds/styles/themes/animationsValues.scss" as *;
+
+.outputStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  width: min(100%, calc(75vh * 16 / 9));
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.outputStackCentered {
+  margin-block: auto;
+}
+
+.scrollUp {
+  position: sticky;
+  top: var(--spacing-md);
+  z-index: 2;
+  align-self: stretch;
+  width: 100%;
+  margin-bottom: calc(-1 * var(--spacing-xl));
+  height: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity $duration-moderate $easing-standard-productive,
+    visibility $duration-moderate $easing-standard-productive;
+}
+
+.scrollUpVisible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.scrollUpInner {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - var(--spacing-md));
+  transform: translate(-50%, calc(-1 * var(--spacing-md)));
+  transition: transform $duration-moderate $easing-standard-productive;
+}
+
+.scrollUpVisible .scrollUpInner {
+  transform: translate(-50%, 0);
+}
+
+.scrollUpPulse button {
+  animation: results-scroll-bounce $duration-slow $easing-entrance-expressive forwards;
+}
+
+@keyframes results-scroll-bounce {
+  0% {
+    transform: scale(1);
+  }
+
+  40% {
+    transform: scale(1.08);
+  }
+
+  70% {
+    transform: scale(0.97);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+.resultGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  width: 100%;
+}
+
+.historyLoading {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  width: 100%;
+  min-height: 0;
+}
+
+.exampleEmpty {
+  flex: 0 0 auto;
+  width: 100%;
+}

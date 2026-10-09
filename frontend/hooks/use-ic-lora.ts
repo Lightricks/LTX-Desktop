@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { ApiClient, type ApiRequestBodyOf } from '../lib/api-client'
 import { withGenerationActive } from '../lib/generation-active'
 import { logger } from '../lib/logger'
+import type { PromptProvenance } from '../lib/prompt-provenance'
 
 export type IcLoraConditioningType = 'canny' | 'depth' | 'custom'
 export type IcLoraAudioMode = 'source' | 'generated' | 'off'
@@ -11,17 +12,13 @@ export interface IcLoraSubmitParams {
   conditioningType: IcLoraConditioningType
   conditioningStrength: number
   prompt: string
+  // Omitted means typed: the backend enhances it (catalog-aware) before generating.
+  promptProvenance?: PromptProvenance
   // "custom": the user's own IC-LoRA weights + a pre-rendered control video.
   customLoraRef?: string
   controlVideoPath?: string
   // Skip Stage 2 refine — transformation IC-LoRAs need this; default off.
   skipStage2?: boolean
-  // Keep the IC-LoRA active during Stage 2 refine (only when Stage 2 runs). Default off.
-  // On: the transformation survives refinement and the output lands at the chosen resolution.
-  useLoraInStage2?: boolean
-  // Target output resolution for the useLoraInStage2 path (undefined = source). Backend
-  // snaps it down to a valid size and never upscales above source.
-  resolution?: { width: number; height: number }
   // Stage-1-only canvas multiplier: 2.0 = native, 1.0 = half. Only used when skipStage2.
   resolutionFactor?: number
   // Soundtrack: source (input clip) / generated (prompt) / off.
@@ -57,7 +54,7 @@ interface UseIcLoraState {
   isGenerating: boolean
   canCancel: boolean
   status: string
-  error: string | null
+  error: { code: string; message: string } | null
   result: IcLoraResult | null
 }
 
@@ -94,11 +91,10 @@ export function useIcLora() {
         conditioning_type: params.conditioningType,
         conditioning_strength: params.conditioningStrength,
         prompt: params.prompt,
+        prompt_provenance: params.promptProvenance ?? 'typed',
         custom_lora_ref: params.customLoraRef,
         control_video_path: params.controlVideoPath,
         skip_stage_2: params.skipStage2,
-        use_lora_in_stage_2: params.useLoraInStage2,
-        resolution: params.resolution,
         resolution_factor: params.resolutionFactor,
         audio_mode: params.audioMode,
         lora_strength: params.loraStrength,
@@ -118,7 +114,7 @@ export function useIcLora() {
           isGenerating: false,
           canCancel: false,
           status: '',
-          error: result.error.message,
+          error: { code: result.error.code, message: result.error.message },
           result: null,
         })
         return

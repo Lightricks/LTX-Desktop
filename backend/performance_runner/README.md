@@ -8,7 +8,7 @@ integrity (resolution/duration/fps/audio + file size/bitrate), and correctness �
 a local dashboard (or the CLI).
 
 Everything runs against the same backend the app uses, so what you measure is
-what ships. Because LTX Desktop runs on the *user's own* GPU and shares their
+what ships. Because LTX Desktop runs on the _user's own_ GPU and shares their
 machine, the harness leans on desktop-shaped questions: will a config fit a 12 GB
 card, does it leak into system RAM, how slow is the first generation after launch.
 
@@ -24,21 +24,22 @@ backend's `/api/gpu-info`) and hides whatever isn't measurable on your machine.
 - **Apple Silicon (MPS)** — Torch Compile and the cache patch are no-ops here, so those
   toggles and the patch/compile-specific runs (and the soak-trend chart) don't appear.
   What runs: the **scenario sweeps** and **cold-start**. There's no discrete VRAM, so the
-  memory signal is **unified / host RAM** — free RAM (the number that gates local
-  generation at server start), swap pressure, and how close the process sits to the MPS
-  memory ceiling (driver-allocated vs recommended-max). VRAM fit tiers, headroom %, and
-  the throttle heuristic need `nvidia-smi` and are CUDA-only.
+  memory signal is **unified / host RAM** — total RAM (the SKU number that gates
+  local generation at server start), free RAM, swap pressure, and how close the
+  process sits to the MPS memory ceiling (driver-allocated vs recommended-max).
+  VRAM fit tiers, headroom %, and the throttle heuristic need `nvidia-smi` and
+  are CUDA-only.
 
 ## What it does
 
-| Tool | Question it answers |
-|---|---|
-| **Soak** (`soak_test.py`) | Does memory leak across many back-to-back generations? Gates on a flat inter-generation VRAM **floor**; also tracks the host-RAM floor (spill), GPU temp/clock (throttle), throughput (× realtime), and energy per gen. |
-| **Correctness A/B** (`output_ab.py`) | Fixed seed, a setting OFF vs ON — do the outputs match? (decoded-frame PSNR). |
-| **Decompose** (`decompose.py`) | How much wall-time does a given optimization save per generation? |
-| **Cold-start** (`coldstart.py`) | How long is the first generation after a fresh backend launch (model load / disk read / build) vs the warm steady state? |
+| Tool                                            | Question it answers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Soak** (`soak_test.py`)                       | Does memory leak across many back-to-back generations? Gates on a flat inter-generation VRAM **floor**; also tracks the host-RAM floor (spill), GPU temp/clock (throttle), throughput (× realtime), and energy per gen.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **Correctness A/B** (`output_ab.py`)            | Fixed seed, a setting OFF vs ON — do the outputs match? (decoded-frame PSNR).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Decompose** (`decompose.py`)                  | How much wall-time does a given optimization save per generation?                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Cold-start** (`coldstart.py`)                 | How long is the first generation after a fresh backend launch (model load / disk read / build) vs the warm steady state?                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | **Sanity sweep** (`sanity.py` + `scenarios.py`) | Does the whole feature surface (t2v/i2v/a2v/ia2v/t2i/extend/retake/LoRA/IC-LoRA) still generate end-to-end? Records each scenario's **peak VRAM** (which card tier it fits + headroom %), **throughput** (× realtime), **energy**, and the output's resolution/size/bitrate, and reports an advisory **integrity** check (output vs request — never fails the sweep). Scenarios that need a LoRA/IC-LoRA are **skipped if it isn't downloaded** — availability is read from the app's own library (`/api/loras` + `/api/ic-loras`, the same source as `lora_catalog.json`), so a scenario references a catalog **id** and its weight path resolves from that listing. `--fast` caps to 540p/5s for a quick surface check. Collects each scenario's input + output into a viewer. |
-| **Dashboard** (`dashboard/`) | One local page to launch all of the above, flip toggles, watch logs, and chart trends. |
+| **Dashboard** (`dashboard/`)                    | One local page to launch all of the above, flip the same Settings controls (active LTX version, Fast decode, cache, Torch Compile), watch logs, and chart trends.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 Every gate tool exits non-zero on FAIL, so the same scripts can gate CI.
 
@@ -58,10 +59,9 @@ dashboard in a browser. Ctrl+C stops both.
 > loaded, open the app once to fetch a model, then re-run.
 
 > The runner measures **local** generation. The backend decides local-vs-API at
-> startup from the hardware available *at that moment* — on Apple Silicon, the **free**
-> (not total) unified RAM, since the GPU shares system memory. If it comes up in
-> API-only mode, `perf:dev` stops and asks you to free RAM (close memory-heavy apps)
-> and re-run, rather than opening a dashboard with no local work to measure.
+> startup from the hardware available _at that moment_ — on Apple Silicon, **total**
+> unified RAM (32 GiB minimum), not free RAM. If it comes up in API-only mode,
+> `perf:dev` stops because this machine is below the local-gen floor.
 
 > **`perf:dev` measures the dev backend** — the same interpreter `pnpm dev` uses, with
 > the app's generation env mirrored (auth, app-data dir, MPS CPU-fallback). On CUDA that's
@@ -70,6 +70,22 @@ dashboard in a browser. Ctrl+C stops both.
 > memory profile — can differ from the released Mac build; treat Mac `perf:dev` numbers as
 > indicative, and point `run_dashboard.py` at the **running app** for release-accurate Mac
 > readings (at the cost of the app's own GPU/RAM contention).
+
+### Starting the backend by hand (Apple Silicon)
+
+`pnpm perf:dev` and the app already do the right thing. If you launch `ltx2_server.py`
+yourself, put the venv's `bin/` first on `PATH`:
+
+```bash
+cd backend
+PATH="$PWD/.venv/bin:$PATH" LTX_APP_DATA_DIR=<dir> LTX_PORT=41954 LTX_AUTH_TOKEN=<token> \
+  .venv/bin/python ltx2_server.py
+```
+
+Without it `ninja` is not found, the zero-copy attention backend (`mpsgraph_zc`) fails to
+build, and the leaking `mpsgraph` fallback runs: driver memory climbs ~2 GB / 15 s and a
+48 GB Mac is killed within a couple of generations. Check the first log line says
+`picked=mpsgraph_zc active=True`. Details: `docs/mps-attention-memory-leak.md`.
 
 ### Against the running app
 
@@ -88,7 +104,7 @@ Then paste the backend token (copy it from the app's **Logs** footer — the fai
 
 - **Header** — backend/token status and live memory telemetry: on CUDA, GPU
   util / VRAM / temp / clock / power; on Apple Silicon, GPU name + unified-memory use,
-  free RAM (the local-gen gate), swap, and the MPS ceiling.
+  free RAM, swap, and the MPS ceiling.
 - **Token** — paste it once; the header shows `token: set`.
 - **Toggles** — reflect the backend's live settings (cache patch, Torch Compile);
   disabled while a run is in progress so they can't be flipped mid-run. Off CUDA
@@ -140,6 +156,7 @@ uv run python output_ab.py --seed 42 --run
 uv run python decompose.py --reps 5
 uv run python coldstart.py --warm 3        # run right after a fresh backend start
 uv run python sanity.py                    # wired scenarios; --only <key> / --include-unwired / --fast
+uv run python sanity.py --model-id 2.5 --use-conv-vae   # same as Settings → Base model + Fast decode
 ```
 
 Set `PERF_AUTH_TOKEN` (and optionally `LTX_PORT`) in the environment first. Each
@@ -164,6 +181,104 @@ pick it up automatically. For a scenario that needs a catalog LoRA/IC-LoRA, name
 library via **`catalog.py`**. Non-catalog control weights (canny/depth union-control,
 depth processor) go in `required_files` as paths relative to `models_dir`, checked on
 disk.
+
+## Live regression suite
+
+Run this by hand after any big change (LTX-2 bump, pipeline or runtime refactor,
+dependency upgrade) to confirm every core flow still generates **and still behaves
+correctly**. It needs real weights, a GPU/Apple Silicon box and a running backend, so it
+is not part of CI. Run it on each platform you ship (Mac, Windows).
+
+```bash
+cd backend/performance_runner
+uv run python sanity.py --tags smoke                # one small run per flow and code path
+uv run python sanity.py --tags smoke full bump      # + LoRAs, portrait, cancel on every route, full-size bump gate
+uv run python sanity.py --only smoke_retake_silent_source   # any single scenario
+```
+
+The dashboard has **regression: smoke** and **regression: full** buttons, and every
+scenario is in the single-scenario dropdown. Scenarios whose weights or model offering are
+missing are reported as SKIP, never as PASS.
+
+**Why smoke is small.** Local t2v at 270p/360p runs stage 1 only (the skip-stage-2 path);
+540p and up runs the two-stage pipeline, so smoke has one of each, and keyframes on both.
+Small canvases hide tiling/VRAM problems; the full-size `bump` scenarios cover those.
+
+**What passes means** (`checks.py`, on top of "the file exists"): it decodes end to end
+with the expected duration and audio, no frame is black, blown out, or frozen, the first
+and last keyframes appear in the output, A2V and video-only retakes carry the source
+soundtrack, retakes/extends keep the parts of the source they must keep, a different seed
+gives a different video, and the **same request re-run at the very end reproduces the
+first run** (catches state leaking from any flow in between: adapters, caches, cancel).
+
+| Flow | Scenarios |
+| --- | --- |
+| t2v, both pipeline paths, seed handling | `smoke_t2v_270p`, `smoke_t2v_270p_seed_b`, `smoke_t2v_540p_2s`, `smoke_t2v_270p_repeat` |
+| plain LoRA (`loras` in the request) | `smoke_lora_t2v` (Cozy Felt; skipped if not downloaded). Same request as the reference, so it must differ from it, and the final `_repeat` proves the adapter did not leak into later runs. Full: `lora_cozy_felt`, `lora_cozy_felt_openwheel` |
+| i2v, keyframes (each path) | `smoke_i2v_270p`, `smoke_mkf_270p`, `smoke_mkf_540p` |
+| audio-to-video | `smoke_a2v_270p`, `smoke_ia2v_270p` |
+| image | `smoke_t2i` |
+| extend / prepend | `smoke_extend_end`, `smoke_extend_start` |
+| retake: every mode, silent source | `smoke_retake_av`, `_video_only`, `_audio_only`, `_silent_source` |
+| IC-LoRA | `smoke_iclora_canny`, `_depth`, `_day_to_night` |
+| cancel and recovery | `smoke_cancel_extend`; full: `full_cancel_a2v`, `full_cancel_iclora` |
+| queued surface (smoke) | `smoke_q_t2v_270p`, `_i2v_end_270p`, `_a2v_270p`, `_extend_end`, `_retake_av`, `_batch_seeds` (3 jobs queued together), `_cancel_extend` |
+| queued surface (full) | `full_q_t2v_540p_2s`, `_i2v_270p`, `_i2v_end_540p`, `_ia2v_270p`, `_extend_start`, `_retake_video`, `_retake_audio`, `_retake_silent_source` |
+
+Notes:
+
+- **Sleep:** `sanity.py` keeps the machine and its display on for the whole sweep, so no sleep, screen saver or idle lock screen (macOS `caffeinate -d -i`, Windows `SetThreadExecutionState`; released when the process ends, even if killed). Closing a laptop lid still sleeps it; keep the lid open or use power plus an external display.
+- The thresholds in `checks.py` (frame/audio correlation, same-seed PSNR) are loose
+  heuristics. The first Windows (RTX 5090) and macOS (M5 Max) sweeps cleared them with
+  margin (see the `checks.py` docstring for the measured values). Each check reports its
+  measured value; tighten the constants if a regression slips through. A failure may be a
+  threshold, so read the detail before suspecting the app.
+- `reproduces` / `differs_from` compare against the run recorded earlier **in the same
+  sweep**. Run alone they **fail** ("no reference recorded"): an unverified comparison must not look
+  green. Run them together with the scenario that records the reference.
+- **Two surfaces.** The plain scenarios drive the synchronous GenSpace routes
+  (`/api/generate`, `/api/extend`, `/api/retake`, `/api/ic-lora/generate`,
+  `/api/generate-image`). The `*_q_*` scenarios (tag `queued`) drive the queued Home/Explore
+  surface (`/api/generations/...`) via `queued.py`: input files are ingested as assets, the
+  job is polled through the ledger, and cancel goes through `/generations/{id}/cancel`.
+  Both end in the same pipelines but not the same request schemas, edit executors or ledger.
+  Queued IC-LoRA and text-to-image have no queued route, so they are GenSpace-only. Run the
+  queued surface alone with `--tags queued`. Feature tags (`retake`, `a2v`, ...) also select the
+  older wired scenarios that carry them, not only the regression ones.
+- The queued and GenSpace surfaces are not compared pixel for pixel: with local text
+  encoding GenSpace rewrites the prompt and Explore sends it as typed (auto-enhance off), so
+  the same seed yields different videos by design. Queued same-seed determinism is covered by
+  `smoke_q_batch_seeds` (seed A, B, A).
+- Queued scenario bodies are validated against the backend's `Create*Request` models in CI
+  (`tests/test_perf_runner_queued.py`), so a schema change fails there first.
+- Derived assets: `reference_video_silent.mp4` (`ffmpeg -an`), `reference_video_2s.mp4`
+  (first 2 s), `reference_keyframe_b.jpg` (frame at 3.5 s), all from `reference_video.mp4`.
+
+## LTX-2 bump gate
+
+Use this sweep when bumping `ltx-core` / `ltx-pipelines`. `--fast` is **not** the
+bump gate: it forces 540p/5s and IC-LoRA `resolution_factor=1.0`, which hides the
+tiling/VRAM bugs these scenarios exist to catch.
+
+```bash
+cd backend/performance_runner
+uv run python sanity.py --tags bump --gate-integrity
+uv run python sanity.py --tags bump --model-id 2.5 --use-conv-vae --gate-integrity
+uv run python soak_test.py --n 3 --label bump_e4 --set-cache on   # E4 stage-cache floor
+```
+
+| Tag / key                           | Experiment                  | Watch                                  |
+| ----------------------------------- | --------------------------- | -------------------------------------- |
+| `t2v_540p_8s`, `t2v_1080p_5s`       | E1 decode VRAM              | completes (no hang at device capacity) |
+| those plus `last_frames_not_black`  | E2 MPS tail-frame zeroing   | each of last ~8 frames has non-zero luma (fails closed without ffmpeg) |
+| `iclora_stage2_on`                  | E3 two-stage IC-LoRA        | completes with `skip_stage_2=false` (stage 2 is not forced onto streaming) |
+| `soak_test.py --n 3 --set-cache on` | E4 stage-cache soak         | flat reserved-VRAM floor               |
+| `mkf_interpolation`                 | guiding-latent swap         | output exists                          |
+| `cancel_mid_denoise`                | interrupt hook              | generate returns `cancelled` after `phase=inference` |
+| `iclora_day_to_night`               | shipped skip_stage_2 tiling | no OOM / crawl                         |
+
+`--gate-integrity` fails a default-route scenario whose output duration/fps/requested
+audio does not match the request (those diffs are advisory on a normal sweep).
 
 ## Test assets
 

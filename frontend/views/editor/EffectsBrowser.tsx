@@ -13,27 +13,27 @@ export function EffectsBrowser({ onClose, selectedClip, addEffectToClip }: Effec
   const [effectsSearchQuery, setEffectsSearchQuery] = useState('')
 
   return (
-    <div className="w-56 flex-shrink-0 bg-zinc-950 border-r border-zinc-800/80 flex flex-col overflow-hidden">
+    <div className="w-56 flex-shrink-0 bg-surface-secondary border-r border-separator-secondary flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-zinc-800/80 bg-zinc-900/50">
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-separator-secondary bg-[color-mix(in_srgb,var(--semantic-bg-primary)_50%,transparent)]">
         <div className="w-5 h-5 rounded bg-blue-600/20 flex items-center justify-center">
           <Sparkles className="h-3 w-3 text-blue-400" />
         </div>
-        <span className="text-[11px] font-semibold text-zinc-200 flex-1">Effects</span>
-        <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors">
+        <span className="text-[11px] font-semibold text-fg-primary flex-1">Effects</span>
+        <button onClick={onClose} className="text-fg-tertiary hover:text-fg-secondary transition-colors">
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
       {/* Search */}
-      <div className="px-2.5 py-2 border-b border-zinc-800/60">
+      <div className="px-2.5 py-2 border-b border-separator-secondary">
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-zinc-600" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-fg-tertiary" />
           <input
             type="text"
             placeholder="Search effects..."
             value={effectsSearchQuery}
             onChange={(e) => setEffectsSearchQuery(e.target.value)}
-            className="w-full pl-7 pr-2 py-1.5 bg-zinc-800/70 rounded-md text-[11px] text-white placeholder-zinc-600 outline-none border border-zinc-700/40 focus:border-blue-500/50 focus:bg-zinc-800 transition-colors"
+            className="w-full pl-7 pr-2 py-1.5 bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_70%,transparent)] rounded-md text-[11px] text-fg-primary placeholder-fg-tertiary outline-none border border-separator-secondary focus:border-blue-500/50 focus:bg-action transition-colors"
           />
         </div>
       </div>
@@ -48,8 +48,8 @@ export function EffectsBrowser({ onClose, selectedClip, addEffectToClip }: Effec
           if (effects.length === 0) return null
           return (
             <div key={category} className="mb-1">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-bold text-zinc-500 uppercase tracking-[0.08em]">
-                <div className={`w-1 h-1 rounded-full ${categoryIcon === 'filter' ? 'bg-blue-400' : categoryIcon === 'stylize' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+              <div className="flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-bold text-fg-tertiary uppercase tracking-[0.08em]">
+                <div className={`w-1 h-1 rounded-full ${categoryIcon === 'filter' ? 'bg-blue-400' : categoryIcon === 'stylize' ? 'bg-warning' : 'bg-success'}`} />
                 {categoryLabel}
               </div>
               <div className="px-2 space-y-px">
@@ -68,8 +68,8 @@ export function EffectsBrowser({ onClose, selectedClip, addEffectToClip }: Effec
                   }
                   const filterColor: Record<string, string> = {
                     'blur': 'from-blue-500/20 to-blue-600/10 text-blue-400',
-                    'sharpen': 'from-cyan-500/20 to-cyan-600/10 text-cyan-400',
-                    'glow': 'from-amber-500/20 to-amber-600/10 text-amber-400',
+                    'sharpen': 'from-ext-teal/20 to-ext-teal/10 text-ext-teal',
+                    'glow': 'from-warning/20 to-warning/10 text-fg-warning',
                     'vignette': 'from-blue-500/20 to-blue-600/10 text-blue-400',
                     'grain': 'from-stone-500/20 to-stone-600/10 text-stone-400',
                   }
@@ -85,7 +85,7 @@ export function EffectsBrowser({ onClose, selectedClip, addEffectToClip }: Effec
                       onDoubleClick={() => {
                         if (selectedClip) addEffectToClip(selectedClip.id, type)
                       }}
-                      className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-zinc-800/80 transition-all cursor-grab active:cursor-grabbing group"
+                      className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_80%,transparent)] transition-all cursor-grab active:cursor-grabbing group"
                       title={`${def.name} — drag onto clip or double-click to apply`}
                     >
                       {/* Icon/swatch */}
@@ -95,12 +95,12 @@ export function EffectsBrowser({ onClose, selectedClip, addEffectToClip }: Effec
                           style={{ background: lutGradient[type] || 'linear-gradient(135deg, #333, #555)' }}
                         />
                       ) : (
-                        <div className={`w-7 h-7 rounded-md flex-shrink-0 bg-gradient-to-br ${filterColor[type] || 'from-zinc-700 to-zinc-800 text-zinc-400'} flex items-center justify-center ring-1 ring-white/5 group-hover:ring-white/15 transition-all`}>
+                        <div className={`w-7 h-7 rounded-md flex-shrink-0 bg-gradient-to-br ${filterColor[type] || 'from-action-hover to-action text-fg-secondary'} flex items-center justify-center ring-1 ring-white/5 group-hover:ring-white/15 transition-all`}>
                           <span className="text-[11px] font-black">{filterIcon[type] || 'F'}</span>
                         </div>
                       )}
                       {/* Label */}
-                      <span className="text-[11px] text-zinc-400 group-hover:text-zinc-200 transition-colors truncate">{def.name}</span>
+                      <span className="text-[11px] text-fg-secondary group-hover:text-fg-primary transition-colors truncate">{def.name}</span>
                     </button>
                   )
                 })}
@@ -110,8 +110,8 @@ export function EffectsBrowser({ onClose, selectedClip, addEffectToClip }: Effec
         })}
       </div>
       {/* Footer hint */}
-      <div className="px-3 py-2 border-t border-zinc-800/60 bg-zinc-900/30">
-        <p className="text-[9px] text-zinc-600 leading-relaxed">Drag onto a clip or double-click to apply to selection</p>
+      <div className="px-3 py-2 border-t border-separator-secondary bg-[color-mix(in_srgb,var(--semantic-bg-primary)_30%,transparent)]">
+        <p className="text-[9px] text-fg-tertiary leading-relaxed">Drag onto a clip or double-click to apply to selection</p>
       </div>
     </div>
   )

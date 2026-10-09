@@ -3,13 +3,18 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 
 from api_types import (
+    ActiveIcLoraDownloadResponse,
+    ActiveLoraDownloadResponse,
     CatalogDownloadStartResponse,
+    IcLoraDeleteRequest,
     IcLoraDownloadProgressResponse,
     IcLoraDownloadRequest,
     IcLoraListResponse,
+    LoraDeleteRequest,
     LoraDownloadProgressResponse,
     LoraDownloadRequest,
     LoraListResponse,
+    StatusResponse,
 )
 from app_handler import AppHandler
 from state import get_state_service
@@ -23,8 +28,11 @@ router = APIRouter(prefix="/api")
 
 # --- Plain LoRAs ---
 @router.get("/loras", response_model=LoraListResponse, tags=["loras"])
-def route_list_loras(handler: AppHandler = Depends(get_state_service)) -> LoraListResponse:
-    return handler.catalog.list_loras()
+def route_list_loras(
+    fresh: bool = Query(default=False),
+    handler: AppHandler = Depends(get_state_service),
+) -> LoraListResponse:
+    return handler.catalog.list_loras(fresh=fresh)
 
 
 @router.post("/loras/download", response_model=CatalogDownloadStartResponse, tags=["loras"])
@@ -45,10 +53,29 @@ def route_lora_download_progress(
     return handler.catalog.get_lora_download_progress(sessionId)
 
 
+@router.get("/loras/download/active", response_model=ActiveLoraDownloadResponse, tags=["loras"])
+def route_lora_download_active(
+    handler: AppHandler = Depends(get_state_service),
+) -> ActiveLoraDownloadResponse:
+    return handler.catalog.get_active_lora_download()
+
+
+@router.delete("/loras/installation", response_model=StatusResponse, tags=["loras"])
+def route_delete_lora_installation(
+    req: LoraDeleteRequest,
+    handler: AppHandler = Depends(get_state_service),
+) -> StatusResponse:
+    handler.catalog.delete_lora(req.lora_id, variant_id=req.variant_id)
+    return StatusResponse(status="ok")
+
+
 # --- IC-LoRAs ---
 @router.get("/ic-loras", response_model=IcLoraListResponse, tags=["ic-loras"])
-def route_list_ic_loras(handler: AppHandler = Depends(get_state_service)) -> IcLoraListResponse:
-    return handler.catalog.list_ic_loras()
+def route_list_ic_loras(
+    fresh: bool = Query(default=False),
+    handler: AppHandler = Depends(get_state_service),
+) -> IcLoraListResponse:
+    return handler.catalog.list_ic_loras(fresh=fresh)
 
 
 @router.post("/ic-loras/download", response_model=CatalogDownloadStartResponse, tags=["ic-loras"])
@@ -67,3 +94,21 @@ def route_ic_lora_download_progress(
     handler: AppHandler = Depends(get_state_service),
 ) -> IcLoraDownloadProgressResponse:
     return handler.catalog.get_ic_lora_download_progress(sessionId)
+
+
+@router.get(
+    "/ic-loras/download/active", response_model=ActiveIcLoraDownloadResponse, tags=["ic-loras"]
+)
+def route_ic_lora_download_active(
+    handler: AppHandler = Depends(get_state_service),
+) -> ActiveIcLoraDownloadResponse:
+    return handler.catalog.get_active_ic_lora_download()
+
+
+@router.delete("/ic-loras/installation", response_model=StatusResponse, tags=["ic-loras"])
+def route_delete_ic_lora_installation(
+    req: IcLoraDeleteRequest,
+    handler: AppHandler = Depends(get_state_service),
+) -> StatusResponse:
+    handler.catalog.delete_ic_lora(req.ic_lora_id, variant_id=req.variant_id)
+    return StatusResponse(status="ok")

@@ -107,14 +107,17 @@ export function videoGenerationModeFromInputs({
   keyframes,
   audioUrl,
   imageUrl,
+  lastImageUrl,
 }: {
   keyframes?: readonly unknown[] | null
   audioUrl?: string | null
   imageUrl?: string | null
+  lastImageUrl?: string | null
 }): 'multi-keyframe' | 'audio-to-video' | 'image-to-video' | 'text-to-video' {
+  // Same order as backend video_generation_feature.
   if (keyframes && keyframes.length > 0) return 'multi-keyframe'
   if (audioUrl) return 'audio-to-video'
-  if (imageUrl) return 'image-to-video'
+  if (imageUrl || lastImageUrl) return 'image-to-video'
   return 'text-to-video'
 }
 

@@ -5,6 +5,7 @@ description = "LTX-2 Video Generation Backend"
 requires-python = ">=3.12"
 dependencies = [
     "pillow>=12.3.0",
+    "av>=16.1.0",
     # macOS caps at <2.12: ltx-core imports torchaudio (audio VAE), torchaudio tops out at
     # 2.11.0 with empty torch metadata, so an uncapped torch resolves to 2.12.1 and the
     # torchaudio 2.11.0 ABI mismatch crashes `import torchaudio` on Apple Silicon. Pinning
@@ -16,17 +17,23 @@ dependencies = [
     "torchvision>=0.18.0",
     "huggingface-hub>=0.23.0",
     "tqdm>=4.66.0",
+    # Windows ships no IANA timezone database. ZoneInfo needs this for dashboard ranges.
+    "tzdata>=2024.1",
     "pynvml>=11.5.0; sys_platform != 'darwin'",
     "psutil>=5.9.0",
     "pydantic>=2.7.0",
-    # LTX-2 inference dependencies (v1.2.0 is the 2.5-capable release).
+    # LTX-2 inference dependencies (v1.4.1).
     # LLM: changing ltx-core / ltx-pipelines version or git tag requires re-checking
     # every monkey-patch in backend/services/patches/ (imported from ltx2_server.py).
     # Those rebind private upstream symbols; drop a patch only if upstream now includes
     # the fix (see each module's "Remove once ..." docstring) and its tests still pass.
-    "ltx-core==1.2.0",
-    "ltx-pipelines==1.2.0",
+    "ltx-core==1.4.1",
+    "ltx-pipelines==1.4.1",
     "diffusers>=0.39.0",
+    # ltx-core 1.4 imports colour-science. Without matplotlib, colour.plotting puts MagicMock
+    # objects in sys.modules["matplotlib"], and diffusers' importlib.util.find_spec("matplotlib")
+    # then raises "matplotlib.__spec__ is not set", so the backend dies at startup.
+    "matplotlib>=3.8",
     "ftfy>=6.0.0",
     "imageio>=2.37.2",
     "imageio-ffmpeg>=0.6.0",
@@ -77,23 +84,25 @@ torchvision = [
 # Linux keeps resolving sageattention from PyPI (no reported Blackwell crashes there yet).
 sageattention = { url = "https://github.com/woct0rdho/SageAttention/releases/download/v2.2.0-windows.post5/sageattention-2.2.0+cu128torch2.10.0andhigher.post5-cp310-abi3-win_amd64.whl", marker = "sys_platform == 'win32'" }
 natten = { url = "https://storage.googleapis.com/ltx-desktop-artifacts/wheels/natten-0.21.6+torch2100cu128-cp313-cp313-win_amd64.whl", marker = "sys_platform == 'win32'" }
-# Official LTX-2 v1.2.0 packages (not on PyPI). Same git+subdirectory pattern as
-# 2.3; the tag is the 2.5-capable release. We do not take ltx-core's own
+# Official LTX-2 v1.4.1 packages (not on PyPI). We do not take ltx-core's own
 # tool.uv.sources (cu132) — this app's pytorch-cu128 pin above owns torch.
+# Do not take ltx-core's natten extra (0.21.7+torch2130cu132 plus torch==2.13.0).
 # LLM: bumping this tag/version → re-verify backend/services/patches/ (see ltx2_server.py).
-ltx-core = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-core", tag = "v1.2.0" }
-ltx-pipelines = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-pipelines", tag = "v1.2.0" }
+ltx-core = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-core", tag = "v1.4.1" }
+ltx-pipelines = { git = "https://github.com/Lightricks/LTX-2.git", subdirectory = "packages/ltx-pipelines", tag = "v1.4.1" }
 
-# v1.2.0's library pyproject pins torch to a cu132 index. Static metadata lets uv
+# v1.4.1's library pyproject pins torch to a cu132 index. Static metadata lets uv
 # resolve without reading that table, so this app's cu128 pin above stays in charge.
 [[tool.uv.dependency-metadata]]
 name = "ltx-core"
-version = "1.2.0"
+version = "1.4.1"
 requires-dist = [
     "torch~=2.7",
     "torchaudio",
+    "torchvision",
     "einops",
     "numpy",
+    "colour-science",
     "av",
     "transformers>=5.8.0,<5.15",
     "safetensors",
@@ -104,13 +113,21 @@ requires-dist = [
 
 [[tool.uv.dependency-metadata]]
 name = "ltx-pipelines"
-version = "1.2.0"
+version = "1.4.1"
 requires-dist = ["ltx-core", "av", "tqdm", "pillow", "openimageio", "cloudpickle>=3.1"]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0", "requests>=2.34.2", "httpx>=0.27"]
+test = [
+    "pytest>=8.0",
+    "requests>=2.34.2",
+    "httpx>=0.27",
+    "pytest-split>=0.11.0",
+]
 dev = ["pyright>=1.1.380", "debugpy>=1.8"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "ci_os: needs the real Windows runner. Linux CI runs the full suite; Windows runs only this marker.",
+]

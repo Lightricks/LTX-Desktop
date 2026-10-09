@@ -1,0 +1,24 @@
+@use "../commonStyles.scss" as *;
+
+.itemActionInformative {
+  width: 100%;
+
+  @extend .actionStyles;
+}
+
+.mediaWrapper {
+  background-color: var(--semantic-bg-secondary);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-md);
+
+  svg {
+    width: 32px;
+    height: 32px;
+  }
+
+  &.thumbnail {
+    padding: var(--spacing-xxs);
+    width: fit-content;
+    background-color: transparent;
+  }
+}

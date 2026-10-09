@@ -1,8 +1,8 @@
 """CPU-only checks for the extend latent/frame math.
 
 The local extend path runs on CUDA/MPS and isn't exercised by the integration
-suite (which uses a fake pipeline). These guard the two pure pieces of logic that
-the real wrapper depends on: temporal zero-padding and seconds -> frame snapping.
+suite (which uses a fake pipeline). These guard audio latent zero-padding (video
+now freeze-pads pixels before the VAE) and seconds -> frame snapping.
 """
 
 from __future__ import annotations

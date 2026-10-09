@@ -239,7 +239,7 @@ export function RetakePanel({
           className="absolute top-1/2 pointer-events-none z-10"
           style={{ left: `${((selStartFrac + selEndFrac) / 2) * 100}%`, transform: 'translate(-50%, -50%)' }}
         >
-          <span className="text-[11px] font-mono text-zinc-700 bg-white/90 rounded px-2 py-0.5 font-semibold shadow">
+          <span className="text-[11px] font-mono text-fg-primary bg-surface-primary rounded px-2 py-0.5 font-semibold shadow">
             {formatTimecode(selEnd - selStart)}
           </span>
         </div>
@@ -250,7 +250,7 @@ export function RetakePanel({
   const renderLabels = useCallback(() => (
     <div className="flex justify-between mt-1.5">
       <span className="text-[10px] font-mono text-blue-400">{formatTimecode(selStart)}</span>
-      <span className="text-[10px] font-mono text-zinc-500">Duration: {formatTimecode(selEnd - selStart)}</span>
+      <span className="text-[10px] font-mono text-fg-tertiary">Duration: {formatTimecode(selEnd - selStart)}</span>
       <span className="text-[10px] font-mono text-blue-400">{formatTimecode(selEnd)}</span>
     </div>
   ), [selStart, selEnd])
