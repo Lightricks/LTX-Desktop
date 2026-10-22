@@ -1,4 +1,4 @@
-# LTX Desktop
+# LTX Desktop-2
 
 [Features](#features) | [Download](#install) | [System requirements](#system-requirements) | [Guides](#guides) | [FAQ](https://ltx.io/ltx-desktop) | [Development](docs/DEVELOPMENT.md)
 
