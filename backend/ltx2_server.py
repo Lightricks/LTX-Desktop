@@ -64,6 +64,8 @@ import services.patches.safetensors_loader_fix as _safetensors_loader_fix  # pyr
 del _safetensors_loader_fix
 import services.patches.disk_streaming_pread as _disk_streaming_pread  # Remove once ltx-core DiskTensorReader passes backend=pread on Darwin. No-op off Darwin.
 _disk_streaming_pread.install()
+import services.patches.disk_streaming_direct_read as _disk_streaming_direct_read  # Remove once ltx-core DiskBlockReader reads without holding the GIL. No-op off Darwin.
+_disk_streaming_direct_read.install()
 import services.patches.linux_disk_streaming_backend as _linux_disk_streaming_backend  # Remove once safetensors maps read-only (LTX-Desktop#163). No-op off Linux.
 _linux_disk_streaming_backend.install()
 import services.patches.safetensors_metadata_fix as _safetensors_metadata_fix  # pyright: ignore[reportUnusedImport]  # Remove once safetensors supports read-only mmap
@@ -112,6 +114,8 @@ _mps_prebuilt_ext.log_mps_backend_status()
 # install() ran before basicConfig, so its status log would have been dropped.
 _disk_streaming_pread.log_status()
 del _disk_streaming_pread
+_disk_streaming_direct_read.log_status()
+del _disk_streaming_direct_read
 _linux_disk_streaming_backend.log_status()
 del _linux_disk_streaming_backend
 
