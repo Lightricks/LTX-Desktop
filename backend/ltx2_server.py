@@ -184,6 +184,12 @@ if use_sage_attention:
 import services.patches.mps_sdpa_torch as _mps_sdpa_torch
 _mps_sdpa_torch.install()
 
+# Darwin: MPS conv3d runs at ~1/5 of conv2d throughput, which makes the conv VAE
+# decode ~4x slower than it needs to be. Run eligible Conv3d as per-tap conv2d.
+# Remove once torch MPS conv3d reaches conv2d throughput.
+import services.patches.mps_conv3d_as_conv2d as _mps_conv3d_as_conv2d
+_mps_conv3d_as_conv2d.install()
+
 # ============================================================
 # Constants & Paths
 # ============================================================
