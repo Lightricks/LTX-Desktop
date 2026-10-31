@@ -13,8 +13,8 @@ PSNR / 0.991 SSIM.
 MPS ``conv2d`` returns wrong values, with no error, when its weight or input is
 a strided view (torch 2.11): ``weight[:, :, i]``, or a channel slice of the
 decoder's ``channels_last_3d`` workspace. Both are copied to a dense layout
-before each call. Frames are processed in chunks so these copies stay small
-next to a decode tile (~7 GiB at 128 ch, 80 x 448 x 768).
+before each call. Frames are processed in ~512 MiB chunks to bound these
+copies: for a 540p/5s decode, peak MPS driver memory goes from 9.7 to 10.7 GiB.
 
 Any other Conv3d (non-MPS, stride, dilation, groups, temporal padding,
 non-zero padding mode) runs the original ``forward``.
