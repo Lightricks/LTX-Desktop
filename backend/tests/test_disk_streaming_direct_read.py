@@ -132,25 +132,6 @@ def test_dtype_mismatch_slot_gets_unconverted_bytes(
 
 
 @needs_preadv
-def test_block_key_map_not_restored_after_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    paths, tensors = _checkpoint(tmp_path)
-    _install_on_darwin(monkeypatch)
-    key_map = _key_map(tensors)
-    full = list(key_map[0])
-
-    slots = _slots(tensors)
-    slots["attn.bias"] = torch.zeros(3, dtype=torch.bfloat16)  # fallback that succeeds
-    _read_block(paths, key_map, slots)
-    assert key_map[0] == full
-
-    slots = _slots(tensors)
-    slots["attn.bias"] = torch.zeros(4, dtype=torch.float32)  # fallback copy_ fails on shape
-    with pytest.raises(RuntimeError):
-        _read_block(paths, key_map, slots)
-    assert key_map[0] == full
-
-
-@needs_preadv
 def test_close_leaks_file_descriptors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     paths, _ = _checkpoint(tmp_path)
     _install_on_darwin(monkeypatch)

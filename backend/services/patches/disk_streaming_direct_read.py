@@ -160,9 +160,8 @@ def install() -> None:
     def _read_into(self: DiskBlockReader, target: dict[str, torch.Tensor], block_idx: int) -> None:
         spans: dict[str, _FileSpan] = getattr(self._reader, "_direct_spans", {})  # pyright: ignore[reportPrivateUsage]
         blocks_prefix: str = self._blocks_prefix  # pyright: ignore[reportPrivateUsage]
-        key_map = self._block_key_map  # pyright: ignore[reportPrivateUsage]
         rest: list[tuple[str, str]] = []
-        for sft_key, param_name in key_map[block_idx]:
+        for sft_key, param_name in self._block_key_map[block_idx]:  # pyright: ignore[reportPrivateUsage]
             span = spans.get(sft_key)
             if (
                 _can_read_direct(span, target.get(param_name))
@@ -172,15 +171,11 @@ def install() -> None:
                 _read_span(span, target[param_name])
             else:
                 rest.append((sft_key, param_name))
-        if not rest:
-            return
-        # The original read_into takes its keys from _block_key_map. Give it only the rest.
-        # One BlockFetcher thread calls read_into, so nothing else reads the map meanwhile.
-        key_map[block_idx], full = rest, key_map[block_idx]
-        try:
-            _original_read_into(self, target, block_idx)
-        finally:
-            key_map[block_idx] = full
+        if rest:
+            # The original read_into takes its keys from the reader's block key map.
+            # A throwaway reader with only the fallback keys leaves this reader's map untouched.
+            fallback = DiskBlockReader(self._reader, {block_idx: rest}, self._sd_ops, blocks_prefix)  # pyright: ignore[reportPrivateUsage]
+            _original_read_into(fallback, target, block_idx)
 
     DiskTensorReader.__init__ = _reader_init  # type: ignore[method-assign]
     DiskTensorReader.close = _reader_close  # type: ignore[method-assign]
