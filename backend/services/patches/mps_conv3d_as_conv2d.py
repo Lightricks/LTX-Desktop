@@ -75,13 +75,15 @@ def _conv3d_as_conv2d(conv: nn.Conv3d, x: torch.Tensor) -> torch.Tensor:
     for start in range(0, t_out, step):
         end = min(start + step, t_out)
         frames = bsz * (end - start)
-        acc: torch.Tensor | None = None
-        for i, tap in enumerate(taps):
+
+        def tap_input(i: int) -> torch.Tensor:
+            # Frames start+i .. end+i, batched into N and copied dense: MPS conv2d misreads strided views.
             x_i = x[:, :, start + i : end + i].transpose(1, 2).reshape(frames, c_in, h, w)
-            x_i = x_i.contiguous(memory_format=torch.channels_last)
-            y_i = F.conv2d(x_i, tap, conv.bias if i == 0 else None, padding=(ph, pw))
-            acc = y_i if acc is None else acc.add_(y_i)
-        assert acc is not None
+            return x_i.contiguous(memory_format=torch.channels_last)
+
+        acc = F.conv2d(tap_input(0), taps[0], conv.bias, padding=(ph, pw))
+        for i in range(1, len(taps)):
+            acc.add_(F.conv2d(tap_input(i), taps[i], padding=(ph, pw)))
         out[:, :, start:end] = acc.reshape(bsz, end - start, conv.out_channels, h_out, w_out).transpose(1, 2)
     return out
 
