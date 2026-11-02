@@ -59,32 +59,36 @@ def _supported(conv: nn.Conv3d, x: torch.Tensor) -> bool:
 
 def _conv3d_as_conv2d(conv: nn.Conv3d, x: torch.Tensor) -> torch.Tensor:
     weight = conv.weight
-    taps = [weight[:, :, i].contiguous() for i in range(weight.shape[2])]
-    bsz, c_in, t_in, h, w = x.shape
-    t_out = t_in - len(taps) + 1
-    kh, kw = conv.kernel_size[1], conv.kernel_size[2]
-    ph, pw = conv.padding[1], conv.padding[2]
-    h_out, w_out = h + 2 * ph - kh + 1, w + 2 * pw - kw + 1
+    taps = [weight[:, :, tap].contiguous() for tap in range(weight.shape[2])]
+    batch, in_channels, in_frames, height, width = x.shape
+    out_frames = in_frames - len(taps) + 1
+    kernel_height, kernel_width = conv.kernel_size[1], conv.kernel_size[2]
+    pad_height, pad_width = conv.padding[1], conv.padding[2]
+    out_height = height + 2 * pad_height - kernel_height + 1
+    out_width = width + 2 * pad_width - kernel_width + 1
     memory_format = (
         torch.channels_last_3d if x.is_contiguous(memory_format=torch.channels_last_3d) else torch.contiguous_format
     )
     out = torch.empty(
-        (bsz, conv.out_channels, t_out, h_out, w_out), device=x.device, dtype=x.dtype, memory_format=memory_format
+        (batch, conv.out_channels, out_frames, out_height, out_width),
+        device=x.device,
+        dtype=x.dtype,
+        memory_format=memory_format,
     )
-    step = max(1, _CHUNK_BYTES // (bsz * c_in * h * w * x.element_size()))
-    for start in range(0, t_out, step):
-        end = min(start + step, t_out)
-        frames = bsz * (end - start)
+    frames_per_chunk = max(1, _CHUNK_BYTES // (batch * in_channels * height * width * x.element_size()))
+    for start in range(0, out_frames, frames_per_chunk):
+        end = min(start + frames_per_chunk, out_frames)
+        chunk_frames = batch * (end - start)
 
-        def tap_input(i: int) -> torch.Tensor:
-            # Frames start+i .. end+i, batched into N and copied dense: MPS conv2d misreads strided views.
-            x_i = x[:, :, start + i : end + i].transpose(1, 2).reshape(frames, c_in, h, w)
-            return x_i.contiguous(memory_format=torch.channels_last)
+        def tap_input(tap: int) -> torch.Tensor:
+            # Frames start+tap .. end+tap, batched into N and copied dense: MPS conv2d misreads strided views.
+            shifted = x[:, :, start + tap : end + tap].transpose(1, 2).reshape(chunk_frames, in_channels, height, width)
+            return shifted.contiguous(memory_format=torch.channels_last)
 
-        acc = F.conv2d(tap_input(0), taps[0], conv.bias, padding=(ph, pw))
-        for i in range(1, len(taps)):
-            acc.add_(F.conv2d(tap_input(i), taps[i], padding=(ph, pw)))
-        out[:, :, start:end] = acc.reshape(bsz, end - start, conv.out_channels, h_out, w_out).transpose(1, 2)
+        total = F.conv2d(tap_input(0), taps[0], conv.bias, padding=(pad_height, pad_width))
+        for tap in range(1, len(taps)):
+            total.add_(F.conv2d(tap_input(tap), taps[tap], padding=(pad_height, pad_width)))
+        out[:, :, start:end] = total.reshape(batch, end - start, conv.out_channels, out_height, out_width).transpose(1, 2)
     return out
 
 
