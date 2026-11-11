@@ -4,22 +4,25 @@ from __future__ import annotations
 
 import logging
 import sys
-from collections.abc import Iterator
 from contextlib import AbstractContextManager, nullcontext
 from typing import TYPE_CHECKING
 
 import torch
 
 from frame_math import AutoDurationSpec, compute_num_frames
-from runtime_config.fast_chunking import CARRY_FRAMES, is_chunked_canvas
-from runtime_config.video_job_budget import edit_job_stream_gib, fast_job_stream_gib, video_tokens
+from runtime_config.fast_chunking import CARRY_FRAMES, is_chunked_canvas, last_window_frames
+from runtime_config.video_job_budget import (
+    decode_tile_tokens,
+    edit_job_stream_gib,
+    fast_job_stream_gib,
+    video_tokens,
+)
 from services.ic_lora_pipeline.ic_lora_inference import (
     InferenceResult,
     close_streams,
-    encode_streamed_output,
     plan_chunks,
 )
-from services.ltx_pipeline_common import encode_video_output, video_chunks_number
+from services.ltx_pipeline_common import encode_segments_output, video_chunks_number
 from services.phase_log import measured_gpu_phase
 
 if TYPE_CHECKING:
@@ -71,9 +74,15 @@ def measured_windows(
         if not is_chunked_canvas(width, height):
             return nullcontext()
         frames = _longest_frames(num_frames, frame_rate)
+        last_frames = frames
         label = f"{width}x{height}, {frames} frames in one pass"
     else:
         frames = chunk_config.chunk_pixel_frames
+        last_frames = last_window_frames(
+            _longest_frames(num_frames, frame_rate),
+            frames,
+            chunk_config.next_video_carry_frames,
+        )
         label = (
             f"{width}x{height} in {window_count} window(s) of {frames} frames "
             f"(carry {chunk_config.next_video_carry_frames})"
@@ -87,6 +96,7 @@ def measured_windows(
             video_tokens(height, width, frames),
             windows=window_count,
             darwin=sys.platform == "darwin",
+            last_tokens=video_tokens(height, width, last_frames),
         ),
     )
 
@@ -101,7 +111,9 @@ def measured_edit(width: int, height: int, frames: int) -> AbstractContextManage
         device=torch.device("cuda"),
         prefix=LOG_PREFIX,
         estimate_gib=edit_job_stream_gib(
-            video_tokens(height, width, frames), darwin=sys.platform == "darwin"
+            video_tokens(height, width, frames),
+            darwin=sys.platform == "darwin",
+            decode_tokens=decode_tile_tokens(height, width, frames),
         ),
     )
 
@@ -109,18 +121,11 @@ def measured_edit(width: int, height: int, frames: int) -> AbstractContextManage
 def encode_result(result: InferenceResult, *, fps: int, output_path: str, streamed: bool) -> None:
     """Encode the video. A windowed job runs its windows while the encoder reads them."""
     try:
-        if streamed:
-            encode_streamed_output(
-                result.video, result.audio, result.audio_sampling_rate, fps=fps, output_path=output_path
-            )
-        else:
-            assert not isinstance(result.audio, Iterator)  # a one-pass job never streams audio
-            encode_video_output(
-                video=result.video,
-                audio=result.audio,
-                fps=fps,
-                output_path=output_path,
-                video_chunks_number_value=video_chunks_number(result.num_frames, result.tiling_config),
-            )
+        encode_segments_output(
+            result.segments,
+            fps=fps,
+            output_path=output_path,
+            video_chunks_number_value=None if streamed else video_chunks_number(result.num_frames, result.tiling_config),
+        )
     finally:
         close_streams(result)

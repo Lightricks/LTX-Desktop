@@ -6,7 +6,6 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from frame_math import compute_num_frames
-from runtime_config.ic_lora_job_budget import TWO_STAGE_OVER_MEASURED_MESSAGE
 from runtime_config.ic_lora_local_envelope import IC_LORA_SOURCE_TOO_LARGE, IC_LORA_V1_ENVELOPE_MESSAGE
 from runtime_config.video_job_budget import (
     LOCAL_GENERATION_UNSUPPORTED,
@@ -1013,7 +1012,7 @@ def test_ic_lora_fps_override_budgets_resampled_frames(
     assert fake_services.ic_lora_pipeline.last_streaming_prefetch_count == 2
 
 
-def test_ic_lora_two_stage_over_priced_ceiling_fenced_before_budget(
+def test_ic_lora_two_stage_past_priced_ceiling_refuses_with_curve_figures(
     client: TestClient,
     tmp_path: Path,
     create_fake_model_files,
@@ -1022,11 +1021,12 @@ def test_ic_lora_two_stage_over_priced_ceiling_fenced_before_budget(
     test_state,
 ):
     """Two-stage past the 14,880-token ceiling (1920x1080 source -> 960x512
-    stage-1 x 481 frames = 29,280 tokens): a 20s two-stage job 422s with the
-    fence message even where the budget would pass it (31 GB legacy)."""
+    stage-1 x 481 frames = 29,280 tokens) is priced on the curve, not fenced:
+    Cautious 422s with the figures it compared before the pipeline loads."""
     create_fake_model_files()
     create_fake_ic_lora_files()
     test_state.config.vram_gb = 31
+    test_state.state.app_settings.budget_mode = "cautious"
     src = tmp_path / "clip.mp4"
     src.write_bytes(b"\x00" * 100)
     frames = compute_num_frames(20, 24)
@@ -1045,7 +1045,10 @@ def test_ic_lora_two_stage_over_priced_ceiling_fenced_before_budget(
         fenced,
         status_code=422,
         code=VIDEO_JOB_TOO_LARGE,
-        message=TWO_STAGE_OVER_MEASURED_MESSAGE,
+        message=(
+            "This job needs 40.0 GB of GPU memory but this card has 31.0 GB. "
+            "Lower the resolution, duration, frame rate, or aspect width."
+        ),
     )
     assert fake_services.ic_lora_pipeline.create_count == 0
     single_stage = client.post(

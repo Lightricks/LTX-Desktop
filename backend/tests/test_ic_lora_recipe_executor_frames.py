@@ -21,6 +21,7 @@ from api_types import (
 )
 from services.features.video.ic_lora_recipe import IcLoraRecipeExecutor
 from services.generation_queue.types import OutputAllocation
+from tests.fakes.generation import FakeJobSession
 from services.media_probe import first_audio_codec, video_frame_count
 from services.records import AssetRecord, CapabilityFailedError, GenerationRecord
 from tests.lora_catalog_helpers import add_ic_lora
@@ -151,7 +152,9 @@ def _run(
     plan = executor.plan_outputs(generation)[0]
     output = tmp_path / "output.mp4"
     executor.execute(
-        generation, (OutputAllocation(plan=plan, asset_id="asset", dest_path=str(output)),)
+        generation,
+        (OutputAllocation(plan=plan, asset_id="asset", dest_path=str(output)),),
+        FakeJobSession(),
     )
     return output, model
 
@@ -203,14 +206,14 @@ _OVER_BET: dict[str, JsonValue] = {
 }
 
 
-def test_a_stored_over_bet_runs_the_snapped_up_count_after_a_switch_to_standard_mode(
+def test_a_stored_over_bet_runs_the_snapped_up_count_after_a_switch_to_cautious_mode(
     test_state, catalog, tmp_path: Path
 ) -> None:
     """The bug is the executor gating on the live mode: a queued job that create admitted fails."""
     limit = _first_refused_count(test_state)
     clip_frames = limit + 3  # both the snapped-down count and the snapped-up count are over
     source = write_pattern_clip(tmp_path / "source.mp4", frames=clip_frames)
-    test_state.state.app_settings.budget_mode = "standard"
+    test_state.state.app_settings.budget_mode = "cautious"
 
     output, model = _run(
         test_state, tmp_path, source, frames=clip_frames, audio=False, risk=_OVER_BET
@@ -220,14 +223,14 @@ def test_a_stored_over_bet_runs_the_snapped_up_count_after_a_switch_to_standard_
     assert video_frame_count(output) == clip_frames
 
 
-def test_a_job_stored_without_a_bet_is_refused_after_a_switch_to_reckless_mode(
+def test_a_job_stored_without_a_bet_is_refused_after_a_switch_to_brave_mode(
     test_state, catalog, tmp_path: Path
 ) -> None:
     """The bug is the executor gating on the live mode: it runs a job that create refused."""
     limit = _first_refused_count(test_state)
     clip_frames = limit + 3
     source = write_pattern_clip(tmp_path / "source.mp4", frames=clip_frames)
-    test_state.state.app_settings.budget_mode = "reckless"
+    test_state.state.app_settings.budget_mode = "brave"
 
     with pytest.raises(CapabilityFailedError):
         _run(test_state, tmp_path, source, frames=clip_frames, audio=False)

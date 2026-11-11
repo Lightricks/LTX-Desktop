@@ -93,7 +93,7 @@ def decide_local_generation_mode(
     Darwin (no fp8 path on MPS). ``macos_major`` below ``DARWIN_MIN_MACOS_MAJOR``
     is unsupported. ``None`` means the version is unknown, and it does not block.
 
-    Darwin always streams (mmap via OffloadMode.DISK, not CUDA's pinned-host
+    Darwin always streams (from disk via OffloadMode.DISK, not CUDA's pinned-host
     OffloadMode.CPU — see ``offload_mode_for_prefetch_count``). The original
     reason was corruption: on an M5 Max 128 GB, full-resident plus a LoRA
     decoded to green/gray frames. That was an unfenced MPS transfer in upstream
@@ -154,35 +154,55 @@ def decide_local_generation_mode(
 def windows_checkpoint_streams_from_disk(
     system: str, drive_type: DriveType | None
 ) -> bool:
-    """Windows + NVMe maps weights from disk; everything else pins from CPU.
+    """Whether Windows can stream checkpoint weights from disk (NVMe only).
 
-    Single source for the DISK path: the offload routing and the profile's
-    ``streams_from_disk`` both read this rule, so the RAM floors cannot drift
-    from the routing they price.
+    Single source for the Windows NVMe disk-streaming gate:
+    ``should_disk_stream_cuda_weights`` and ``HardwareProfile.streams_from_disk``
+    both read this rule, so the lower NVMe RAM floors only open when the drive
+    can actually take the disk path.
     """
     return system == "Windows" and drive_type == "nvme"
 
 
 def should_disk_stream_cuda_weights(
-    system: str, ram_gb: int | None, *, drive_type: DriveType | None
+    system: str,
+    ram_gb: int | None,
+    *,
+    drive_type: DriveType | None,
+    cpu_ram_floor_gb: int | None = CUDA_CPU_OFFLOAD_RAM_FLOOR_GB,
 ) -> bool:
-    """Whether CUDA streaming must mmap weights from disk instead of pinning them in RAM.
+    """Whether CUDA streaming must read weights from disk instead of pinning them in RAM.
 
     Linux actually succeeds at cudaHostRegister, so below the CPU-offload RAM
     floor (or when RAM is unknown) the pinned transformer cannot fit and weights
     stream from disk instead (LTX-Desktop#163). Drive class does not route Linux.
-    Windows routes by checkpoint-drive class instead of RAM: NVMe sustains the
-    ~70 GB per-generation mapped reads (~20 s); SATA (~130 s) does not earn the
-    switch, so non-NVMe and unknown drives stay on OffloadMode.CPU with its
-    pageable host buffers (pinned_pool_fix / LTX-Desktop#141).
+    Windows needs an NVMe checkpoint drive to stream from disk at all: SATA
+    (~130 s for the ~70 GB per-generation reads) does not earn the switch, so
+    non-NVMe and unknown drives stay on OffloadMode.CPU with its pageable host
+    buffers (pinned_pool_fix / LTX-Desktop#141). On Windows NVMe, ltx-core 1.6.0
+    has no os.preadv and opens a fresh unbuffered handle per 8 MiB chunk, making
+    disk streaming slower than CPU offload on Fast and IC-LoRA once host RAM
+    clears ``cpu_ram_floor_gb`` (40 GB for Fast, 64 GB for IC-LoRA). Below that
+    floor — or when ``cpu_ram_floor_gb`` is None (Edit, where full-resolution
+    stage-1 denoise hides the reads and disk stays faster) — NVMe streams from
+    disk.
     """
     if system == "Windows":
-        return windows_checkpoint_streams_from_disk(system, drive_type)
+        if not windows_checkpoint_streams_from_disk(system, drive_type):
+            return False
+        if cpu_ram_floor_gb is None or ram_gb is None:
+            return True
+        return ram_gb < cpu_ram_floor_gb
     if system != "Linux":
         return False
     if ram_gb is None:
         return True
-    return ram_gb < CUDA_CPU_OFFLOAD_RAM_FLOOR_GB
+    floor_gb = (
+        CUDA_CPU_OFFLOAD_RAM_FLOOR_GB
+        if cpu_ram_floor_gb is None
+        else cpu_ram_floor_gb
+    )
+    return ram_gb < floor_gb
 
 
 def streaming_prefetch_count_for_mode(mode: LocalGenerationMode) -> int | None:

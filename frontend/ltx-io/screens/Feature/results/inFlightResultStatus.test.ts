@@ -22,9 +22,31 @@ describe("inFlightResultStatus", () => {
 
   it("keeps cancellation copy instead of a percent", () => {
     assert.deepEqual(
-      inFlightResultStatus({ status: "cancelling", progressPercent: 40 }),
+      inFlightResultStatus({ status: "cancelling", progressPercent: 40, remainingSeconds: 90 }),
       {
         title: "Cancellation in progress",
+        showDots: false,
+      },
+    );
+  });
+
+  it("shows remaining time body while running and omits it when cancelling", () => {
+    assert.deepEqual(
+      inFlightResultStatus({ status: "running", progressPercent: 50, remainingSeconds: 120 }),
+      {
+        title: "50%",
+        body: "About 2 min left",
+        showDots: false,
+      },
+    );
+  });
+
+  it("shows Finishing when remainingSeconds reaches 0", () => {
+    assert.deepEqual(
+      inFlightResultStatus({ status: "running", progressPercent: 95, remainingSeconds: 0 }),
+      {
+        title: "95%",
+        body: "Finishing…",
         showDots: false,
       },
     );

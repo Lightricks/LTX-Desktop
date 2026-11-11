@@ -24,6 +24,26 @@ export type IpcResult<T extends z.ZodRawShape> = z.infer<ReturnType<typeof ipcRe
 
 const emptyResult = ipcResult({});
 
+/** Progress of an assets folder move. The main process sends it on "assets-move-progress". */
+const assetsMoveState = z.object({
+  phase: z.enum(["checking", "stopping", "copying", "restarting", "cleaning", "done"]),
+  filesDone: z.number(),
+  filesTotal: z.number(),
+  bytesDone: z.number(),
+  bytesTotal: z.number(),
+  /** Cancel works until the new folder is saved. */
+  canCancel: z.boolean(),
+  /** Only on phase "done". The backend restarted, so the renderer reloads when the user closes it. */
+  result: z
+    .object({
+      ok: z.boolean(),
+      message: z.string(),
+    })
+    .optional(),
+});
+
+export type AssetsMoveState = z.infer<typeof assetsMoveState>;
+
 const exportClip = z.object({
   path: z.string(),
   type: z.string(),
@@ -233,10 +253,7 @@ export const electronAPISchemas = {
   getPackagedSeedPath: {
     input: z.object({
       kind: z.enum(
-        PACKAGED_SEED_KINDS as unknown as [
-          PackagedSeedKind,
-          ...PackagedSeedKind[],
-        ],
+        PACKAGED_SEED_KINDS as unknown as [PackagedSeedKind, ...PackagedSeedKind[]],
       ),
     }),
     output: z.string(),
@@ -296,6 +313,29 @@ export const electronAPISchemas = {
     output: ipcResult({ path: z.string() }),
   },
 
+  // Asset store folder. The main process opens the folder dialog, so the renderer never
+  // sends a path. A user cancel returns { success: false, error: "cancelled" }.
+  getAssetsDir: {
+    input: z.object({}),
+    output: z.string(),
+  },
+  changeAssetsDir: {
+    input: z.object({}),
+    output: ipcResult({ path: z.string() }),
+  },
+  resetAssetsDir: {
+    input: z.object({}),
+    output: ipcResult({ path: z.string() }),
+  },
+  cancelAssetsMove: {
+    input: z.object({}),
+    output: z.void(),
+  },
+  getAssetsMoveState: {
+    input: z.object({}),
+    output: assetsMoveState.nullable(),
+  },
+
   // File dialogs & save
   showSaveDialog: {
     input: z.object({
@@ -327,12 +367,7 @@ export const electronAPISchemas = {
   diagnoseMicrophone: {
     input: z.object({}),
     output: ipcResult({
-      osMicrophone: z.enum([
-        "granted",
-        "denied",
-        "not-determined",
-        "unknown",
-      ]),
+      osMicrophone: z.enum(["granted", "denied", "not-determined", "unknown"]),
     }),
   },
   openMicrophoneSettings: {
@@ -350,6 +385,10 @@ export const electronAPISchemas = {
   checkFilesExist: {
     input: z.object({ filePaths: z.array(z.string()) }),
     output: z.record(z.string(), z.boolean()),
+  },
+  getLocalFileSize: {
+    input: z.object({ filePath: z.string() }),
+    output: z.number(),
   },
   showOpenFileDialog: {
     input: z.object({
@@ -506,6 +545,7 @@ export type ElectronAPI = InvokeAPI & {
   removePythonSetupProgress: () => void;
   onBackendHealthStatus: (cb: (data: BackendHealthStatus) => void) => () => void;
   onUpdateEvent: (cb: (data: UpdateStatePayload) => void) => () => void;
+  onAssetsMoveProgress: (cb: (data: AssetsMoveState) => void) => () => void;
   onDeepLink: (cb: (data: DeepLinkIntent) => void) => () => void;
   getPathForFile: (file: File) => string;
   platform: string;

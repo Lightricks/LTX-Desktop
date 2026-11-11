@@ -20,7 +20,7 @@ type RecipeContractEntry = {
   id: string;
   catalogId: string;
   kind: string;
-  requiresHighRes?: true;
+  highResWithoutFlag?: true;
 };
 
 /**
@@ -49,8 +49,8 @@ describe("ic-lora recipe registry", () => {
         id: recipe.id,
         catalogId: recipe.catalogId,
         kind: recipe.kind,
-        ...("requiresHighRes" in recipe && recipe.requiresHighRes === true
-          ? { requiresHighRes: true }
+        ...("highResWithoutFlag" in recipe && recipe.highResWithoutFlag === true
+          ? { highResWithoutFlag: true }
           : {}),
       })),
       SHARED_CONTRACT,

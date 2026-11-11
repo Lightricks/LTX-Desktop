@@ -21,7 +21,6 @@ export function useConfirmation(): UseConfirmationReturn {
   const [isVisible, setIsVisible] = useState(false);
   const [content, setContent] = useState<ReactNode>(null);
   const [name, setName] = useState<string>("");
-  const [shouldBeTopmost, setShouldBeTopmost] = useState<boolean>(false);
   const [confirmationClassName, setConfirmationClassName] = useState<
     string | undefined
   >();
@@ -31,9 +30,7 @@ export function useConfirmation(): UseConfirmationReturn {
       content,
       confirmationName,
       confirmationClassName,
-      shouldBeTopmost = false,
     }: ShowConfirmationProps) => {
-      setShouldBeTopmost(shouldBeTopmost);
       setIsVisible(true);
       setContent(content);
       setName(confirmationName);
@@ -47,7 +44,6 @@ export function useConfirmation(): UseConfirmationReturn {
     setContent(null);
     setName("");
     setConfirmationClassName(undefined);
-    setShouldBeTopmost(false);
   }, []);
 
   const ConfirmationComponent = (
@@ -55,8 +51,8 @@ export function useConfirmation(): UseConfirmationReturn {
       {isVisible && (
         <Modal
           className={clsx(styles.confirmation_children_container, confirmationClassName)}
+          backdropClassName={styles.modal_backdrop_topmost}
           onClose={hideConfirmation}
-          shouldBeTopmost={shouldBeTopmost}
         >
           {content}
         </Modal>

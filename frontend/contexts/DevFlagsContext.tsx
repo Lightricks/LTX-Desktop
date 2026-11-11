@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useState, useCallback } from 'react'
+import React, { createContext, useCallback, useContext, useState } from 'react'
+import { useAppSettings } from '../contexts/AppSettingsContext'
 import { useDevPanelShortcut } from '../hooks/use-dev-panel-shortcut'
 import { ApiClient } from '../lib/api-client'
 import { UNLOADED_FLAGS, type FeatureFlags } from '../lib/dev-flags'
+import { HardwareBudgetSection } from '../components/settings/HardwareBudgetSection'
 // eslint-disable-next-line no-restricted-imports
 import { DevPanel } from '@/ltx-io/components/DevPanel/DevPanel'
 // eslint-disable-next-line no-restricted-imports
@@ -17,13 +19,37 @@ const DevFlagsContext = createContext<{ flags: FeatureFlags } | null>(null)
 export function DevFlagsProvider({ children }: { children: React.ReactNode }) {
   const { data } = useFeatureFlags(ApiClient)
   const [isPanelOpen, setPanelOpen] = useState(false)
+  const {
+    settings,
+    updateSettings,
+    settingsSyncError,
+    setBudgetMode,
+    budgetModeSaving,
+    setNeverSplitIntoParts,
+    neverSplitSaving,
+  } = useAppSettings()
 
   useDevPanelShortcut(useCallback(() => setPanelOpen(prev => !prev), []))
 
   return (
     <DevFlagsContext.Provider value={{ flags: data ?? UNLOADED_FLAGS }}>
       {children}
-      <DevPanel api={ApiClient} open={isPanelOpen} onClose={() => setPanelOpen(false)} />
+      <DevPanel
+        api={ApiClient}
+        open={isPanelOpen}
+        onClose={() => setPanelOpen(false)}
+        budgetControls={
+          <HardwareBudgetSection
+            settings={settings}
+            saving={budgetModeSaving}
+            neverSplitSaving={neverSplitSaving}
+            syncError={settingsSyncError}
+            onSetCautious={cautious => void setBudgetMode(cautious ? 'cautious' : 'brave')}
+            onSetAskBeforeRisky={ask => updateSettings({ skipBudgetRiskConfirm: !ask })}
+            onSetNeverSplit={neverSplit => void setNeverSplitIntoParts(neverSplit)}
+          />
+        }
+      />
     </DevFlagsContext.Provider>
   )
 }

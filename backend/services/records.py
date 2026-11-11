@@ -131,6 +131,11 @@ class PairedDeviceRecord(_RecordModel):
     revoked_at: int | None = None
 
 
+# The lane that runs a job unless an executor picks another. Defined here, a leaf module,
+# so the store can name it without importing the queue package.
+LOCAL_LANE = "local"
+
+
 class GenerationRecord(_RecordModel):
     id: str = Field(min_length=1)
     feature: str = Field(min_length=1)
@@ -143,12 +148,25 @@ class GenerationRecord(_RecordModel):
     attempt_count: int = Field(ge=0)
     started_at: int | None = None
     finished_at: int | None = None
+    # Set once at insert. Names the capacity pool that runs this job.
+    lane: str = LOCAL_LANE
+    # The id of the newest attempt at its provider. Set when the provider accepts it. A retry
+    # moves it to the displaced file until a provider cancel of it succeeds.
+    provider_job_id: str | None = None
     outputs: tuple[AssetRecord, ...]
 
     @model_validator(mode="after")
     def _failed_has_error_code(self) -> GenerationRecord:
         require_failed_has_error_code(self.status, self.error_code)
         return self
+
+
+class ProviderOrphan(_RecordModel):
+    """A job that was running at a provider when the app stopped."""
+
+    generation_id: str = Field(min_length=1)
+    lane: str = Field(min_length=1)
+    provider_job_id: str = Field(min_length=1)
 
 
 class AssistantRunRecord(_RecordModel):

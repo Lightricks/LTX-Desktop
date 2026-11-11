@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Literal, cast
+from collections.abc import Sequence
+from typing import Literal, Protocol, cast
 
 from api_types import IcLoraCatalogItem, InstructionSection, LoraCatalogItem, PromptTemplateSpec, TriggerPlacement
 from services.prompt_enhancement.i2v_frames import VideoRole
@@ -18,7 +19,26 @@ from services.prompt_enhancement.i2v_frames import VideoRole
 _INCLUDED_KINDS = ("summary", "prompting")
 
 
-def _instruction_text(instructions: list[InstructionSection], kind: str) -> list[str]:
+class LoraPromptGuidance(Protocol):
+    """The prompt-enhancement fields of a catalog LoRA or a saved custom LoRA."""
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def instructions(self) -> Sequence[InstructionSection]: ...
+
+    @property
+    def trigger(self) -> str | None: ...
+
+    @property
+    def trigger_placement(self) -> TriggerPlacement | None: ...
+
+    @property
+    def enhancement_examples(self) -> Sequence[str]: ...
+
+
+def _instruction_text(instructions: Sequence[InstructionSection], kind: str) -> list[str]:
     texts: list[str] = []
     for instr in instructions:
         if instr.kind != kind:
@@ -27,7 +47,7 @@ def _instruction_text(instructions: list[InstructionSection], kind: str) -> list
     return texts
 
 
-def _trigger_instruction(item: LoraCatalogItem) -> str | None:
+def _trigger_instruction(item: LoraPromptGuidance) -> str | None:
     if item.trigger is None or item.trigger_placement is None:
         return None
     if item.trigger_placement == "first_token":
@@ -42,7 +62,7 @@ _EXAMPLES_LABEL = (
 )
 
 
-def render_catalog_item_block(item: LoraCatalogItem, *, include_trigger: bool = True) -> str:
+def render_catalog_item_block(item: LoraPromptGuidance, *, include_trigger: bool = True) -> str:
     """Render one LoRA/IC-LoRA's catalog metadata as a block of text for Gemma to read.
 
     Only `summary`/`prompting`-kind instructions are included — `tips`/`input` are human-facing
@@ -379,7 +399,7 @@ def build_conditioning_system_prompt(conditioning_type: Literal["canny", "depth"
     )
 
 
-def build_lora_enhancement_system_prompt(loras: list[LoraCatalogItem]) -> str:
+def build_lora_enhancement_system_prompt(loras: Sequence[LoraPromptGuidance]) -> str:
     """System prompt for the free-rewrite path with one or more selected plain LoRAs.
 
     Callers must not pass an item whose `prompt_template` is set — that item goes through the
@@ -454,7 +474,7 @@ def enforce_trigger_placement(text: str, trigger: str, placement: TriggerPlaceme
     return f"{text} {trigger}"
 
 
-def enforce_trigger_placements(text: str, items: list[LoraCatalogItem]) -> str:
+def enforce_trigger_placements(text: str, items: Sequence[LoraPromptGuidance]) -> str:
     """Apply `enforce_trigger_placement` for every selected item that has one.
 
     Only one trigger can lead a prompt — if more than one selected item wants
@@ -499,6 +519,28 @@ def build_template_fill_system_prompt(item: LoraCatalogItem) -> str:
 
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+
+
+_NEGATIVE_PROMPT_EXCLUSION_RULES = (
+    "The user turn includes a list of excluded elements (negative prompt). "
+    "Do NOT include, mention, describe, or imply any of those excluded elements, styles, or actions "
+    "in your rewritten prompt, even if they appear in a reference image or video frame. "
+    "Describe the scene without them, and do not write negative phrasing (like 'no X' or 'without X') — "
+    "only describe what IS present in the desired shot."
+)
+
+
+def with_negative_prompt_rules(system_prompt: str, negative_prompt: str) -> str:
+    if not negative_prompt.strip():
+        return system_prompt
+    return f"{system_prompt}\n\n{_NEGATIVE_PROMPT_EXCLUSION_RULES}"
+
+
+def with_user_negative_prompt(user_text: str, negative_prompt: str) -> str:
+    neg = negative_prompt.strip()
+    if not neg:
+        return user_text
+    return f"{user_text}\nExcluded elements (do not include or mention in the prompt): {neg}"
 
 
 def parse_template_fill_response(raw: str, placeholder_names: set[str]) -> dict[str, str]:

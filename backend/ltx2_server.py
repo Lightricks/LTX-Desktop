@@ -60,24 +60,22 @@ _mps_prebuilt_ext.setup_prebuilt_mps_extension()
 # ltx-core / ltx-pipelines / safetensors symbols. Delete-first: drop a patch if
 # upstream now includes the fix (see that file's "Remove once ..." docstring).
 # Do not reorder this block relative to mps_prebuilt_ext / MPS_SDPA_SKIP_CALIBRATION.
-import services.patches.safetensors_loader_fix as _safetensors_loader_fix  # pyright: ignore[reportUnusedImport]  # Remove once safetensors/PyTorch fix the mmap issue
-del _safetensors_loader_fix
-import services.patches.disk_streaming_pread as _disk_streaming_pread  # Remove once ltx-core DiskTensorReader passes backend=pread on Darwin. No-op off Darwin.
-_disk_streaming_pread.install()
-import services.patches.linux_disk_streaming_backend as _linux_disk_streaming_backend  # Remove once safetensors maps read-only (LTX-Desktop#163). No-op off Linux.
-_linux_disk_streaming_backend.install()
-import services.patches.safetensors_metadata_fix as _safetensors_metadata_fix  # pyright: ignore[reportUnusedImport]  # Remove once safetensors supports read-only mmap
+import services.patches.safetensors_metadata_fix as _safetensors_metadata_fix  # pyright: ignore[reportUnusedImport]  # Remove once safetensors supports read-only mmap or ltx-pipelines stops calling safe_open for metadata
 del _safetensors_metadata_fix
-import services.patches.pinned_pool_fix as _pinned_pool_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core alloc_buffer does not report pinned-host failure as CUDA VRAM OOM (LTX-Desktop#141)
+import services.patches.pinned_pool_fix as _pinned_pool_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core host_bytes works on Windows and a failed pin cannot poison CUDA (LTX-Desktop#141)
 del _pinned_pool_fix
 import services.patches.diffusion_stage_cache as _diffusion_stage_cache  # pyright: ignore[reportUnusedImport]  # EXPERIMENTAL: remove once DiffusionStage caches/reuses identical builds upstream
 del _diffusion_stage_cache
+import services.patches.mps_transfer_sync as _mps_transfer_sync  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core waits for queued MPS compute before a transfer and a 1080p stage 2 passes on a 48 GB Mac without it
+del _mps_transfer_sync
 import services.patches.diffvae_decode_vram as _diffvae_decode_vram  # pyright: ignore[reportUnusedImport]  # Remove once upstream decode tiling is confirmed sufficient (E1)
 del _diffvae_decode_vram
 import services.patches.natten_libnatten_gate as _natten_libnatten_gate  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core natten_available checks HAS_LIBNATTEN
 del _natten_libnatten_gate
 import services.patches.diffusion_interrupt as _diffusion_interrupt  # pyright: ignore[reportUnusedImport]  # Remove once ltx-pipelines denoiser/loop accepts an interrupt callback
 del _diffusion_interrupt
+import services.patches.nag_cross_attention as _nag_cross_attention  # pyright: ignore[reportUnusedImport]  # EXPERIMENTAL: remove once ltx-core supports a negative text context in the distilled path
+del _nag_cross_attention
 
 from state.app_settings import AppSettings
 
@@ -109,11 +107,6 @@ logger = logging.getLogger(__name__)
 # Now that logging is configured, report which mps-sdpa attention backend is live
 # (the setup call at import time logs too early to be captured). No-op off Darwin.
 _mps_prebuilt_ext.log_mps_backend_status()
-# install() ran before basicConfig, so its status log would have been dropped.
-_disk_streaming_pread.log_status()
-del _disk_streaming_pread
-_linux_disk_streaming_backend.log_status()
-del _linux_disk_streaming_backend
 
 # ============================================================
 # SageAttention Integration
@@ -184,6 +177,14 @@ if use_sage_attention:
 import services.patches.mps_sdpa_torch as _mps_sdpa_torch
 _mps_sdpa_torch.install()
 
+# Darwin: MPS conv3d runs at ~1/5 of conv2d throughput, which makes the conv VAE
+# decode ~4x slower than it needs to be. The hook is installed off; the experimental
+# Settings toggle turns it on per generation (GenerationHandler.start_generation).
+# Remove once torch MPS conv3d reaches conv2d throughput.
+import services.patches.mps_conv3d_as_conv2d as _mps_conv3d_as_conv2d
+_mps_conv3d_as_conv2d.install(enabled=False)
+del _mps_conv3d_as_conv2d
+
 # ============================================================
 # Constants & Paths
 # ============================================================
@@ -215,6 +216,11 @@ def _resolve_app_data_dir() -> Path:
 
 
 APP_DATA_DIR = _resolve_app_data_dir()
+
+# Optional. Electron sets it when the user picked an assets folder. The store does not
+# create it: the folder must exist and hold the .ltx-assets marker.
+_assets_dir_env = os.environ.get("LTX_ASSETS_DIR")
+ASSETS_DIR = Path(_assets_dir_env) if _assets_dir_env else None
 
 DEFAULT_MODELS_DIR = APP_DATA_DIR / "models"
 DEFAULT_MODELS_DIR.mkdir(parents=True, exist_ok=True)
@@ -322,6 +328,7 @@ HF_OAUTH_CLIENT_ID = "508843e5-65c3-4565-aeed-fb17e94cf394"
 runtime_config = RuntimeConfig(
     device=DEVICE,
     app_data_dir=APP_DATA_DIR,
+    assets_dir=ASSETS_DIR,
     default_models_dir=DEFAULT_MODELS_DIR,
     outputs_dir=OUTPUTS_DIR,
     settings_file=SETTINGS_FILE,
@@ -330,6 +337,7 @@ runtime_config = RuntimeConfig(
     camera_motion_prompts=CAMERA_MOTION_PROMPTS,
     default_negative_prompt=DEFAULT_NEGATIVE_PROMPT,
     dev_mode=os.environ.get("LTX_DEV_MODE") == "1",
+    parallel_queue_lanes=os.environ.get("LTX_PARALLEL_QUEUE_LANES", "1") != "0",
     hf_oauth_client_id=HF_OAUTH_CLIENT_ID,
     backend_port=int(os.environ.get("LTX_PORT", "") or PORT),
     lora_catalog_source=str(Path(__file__).parent / "runtime_config" / "lora_catalog.json"),

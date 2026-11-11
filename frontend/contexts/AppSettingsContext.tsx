@@ -7,7 +7,12 @@ import { useRemoteStatus } from '../hooks/use-remote-status'
 import { isRemoteExposureEnabled, type RemoteExposure } from '../lib/remote-exposure'
 import { shouldNotifyRemoteKeepAwake } from '../lib/remote-keep-awake-signal'
 import { readBudgetMode, type BudgetMode } from '../lib/budget-risk'
-import { RECKLESS_OFF_SAVE_ERROR, RECKLESS_ON_SAVE_ERROR } from '../lib/settings-sync'
+import {
+  CAUTIOUS_OFF_SAVE_ERROR,
+  CAUTIOUS_ON_SAVE_ERROR,
+  NEVER_SPLIT_OFF_SAVE_ERROR,
+  NEVER_SPLIT_ON_SAVE_ERROR,
+} from '../lib/settings-sync'
 
 type BackendSettings = ApiSuccessOf<'getSettings'>
 
@@ -17,6 +22,7 @@ type BackendSettings = ApiSuccessOf<'getSettings'>
 export interface AppSettings {
   useTorchCompile: boolean
   diffusionStageCacheEnabled: boolean
+  mpsConv3DAsConv2DEnabled: BackendSettings['mpsConv3DAsConv2DEnabled']
   hasLtxApiKey: boolean
   userPrefersLtxApiVideoGenerations: boolean
   hasFalApiKey: boolean
@@ -35,14 +41,22 @@ export interface AppSettings {
   promptEnhancerProviderPreference: 'local' | 'api' | null
   /** Home / Remote Explore: rewrite prompts automatically before Generate. */
   exploreAutoEnhancePrompts: boolean
+  /** Shows the Advanced section of Refine Details. Other features ignore it for now. */
+  advancedControls: boolean
   // The generation seed and its lock are deliberately not here: this state is re-POSTed to
   // /api/settings whole, so a stale copy would overwrite a seed another client just set.
   // They live behind useGenerationSeed (GET/POST /api/generation-seed).
   modelsDir: string
   useConvVae: boolean
+  nagScale: number
+  /** Show the per-run NAG strength row under the negative prompt (Desktop and paired devices). */
+  showNagStrengthControls: boolean
   remoteExposure: RemoteExposure
-  /** Echoed by the backend, which always runs reckless. Standard is a test-only mode. */
-  budgetMode: 'standard' | 'reckless'
+  /** Brave runs over-budget and untested jobs after a confirm; Cautious refuses them. */
+  budgetMode: BudgetMode
+  neverSplitIntoParts: boolean
+  /** Brave's "don't ask again": generate risky jobs without the confirm. */
+  skipBudgetRiskConfirm: boolean
 }
 
 export { DEFAULT_GEMINI_MODEL } from '../lib/gemini-model'
@@ -50,6 +64,7 @@ export { DEFAULT_GEMINI_MODEL } from '../lib/gemini-model'
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   useTorchCompile: false,
   diffusionStageCacheEnabled: false,
+  mpsConv3DAsConv2DEnabled: false,
   hasLtxApiKey: false,
   userPrefersLtxApiVideoGenerations: false,
   hasFalApiKey: false,
@@ -63,10 +78,15 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   promptEnhancerEnabled: true,
   promptEnhancerProviderPreference: null,
   exploreAutoEnhancePrompts: true,
+  advancedControls: false,
   modelsDir: '',
   useConvVae: false,
+  nagScale: 11,
+  showNagStrengthControls: false,
   remoteExposure: 'off',
-  budgetMode: 'reckless',
+  budgetMode: 'brave',
+  neverSplitIntoParts: false,
+  skipBudgetRiskConfirm: false,
 }
 
 type BackendProcessStatus = 'alive' | 'restarting' | 'dead'
@@ -99,11 +119,15 @@ interface AppSettingsContextValue {
   // without this they stay pinned to whatever was installed at app start.
   modelsVersion: number
   notifyModelsChanged: () => void
-  // Saves Reckless mode on its own and updates `settings.budgetMode` only after
+  // Saves the budget mode on its own and updates `settings.budgetMode` only after
   // the server accepts it. The document sync does not write this field.
   setBudgetMode: (mode: BudgetMode) => Promise<void>
   budgetModeSaving: boolean
+  // Same as the budget mode: specs are priced with it, so it saves on its own.
+  setNeverSplitIntoParts: (neverSplit: boolean) => Promise<void>
+  neverSplitSaving: boolean
   settingsSyncError: string | null
+  clearSettingsSyncError: () => void
   // Gemini model has its own save, like an API key. The document sync does not write it.
   saveGeminiModel: (model: string) => Promise<boolean>
 }
@@ -126,6 +150,7 @@ function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
   return {
     useTorchCompile: data.useTorchCompile ?? DEFAULT_APP_SETTINGS.useTorchCompile,
     diffusionStageCacheEnabled: data.diffusionStageCacheEnabled ?? DEFAULT_APP_SETTINGS.diffusionStageCacheEnabled,
+    mpsConv3DAsConv2DEnabled: data.mpsConv3DAsConv2DEnabled ?? DEFAULT_APP_SETTINGS.mpsConv3DAsConv2DEnabled,
     hasLtxApiKey: data.hasLtxApiKey ?? DEFAULT_APP_SETTINGS.hasLtxApiKey,
     userPrefersLtxApiVideoGenerations: data.userPrefersLtxApiVideoGenerations ?? DEFAULT_APP_SETTINGS.userPrefersLtxApiVideoGenerations,
     hasFalApiKey: data.hasFalApiKey ?? DEFAULT_APP_SETTINGS.hasFalApiKey,
@@ -140,10 +165,16 @@ function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
     promptEnhancerProviderPreference: data.promptEnhancerProviderPreference ?? DEFAULT_APP_SETTINGS.promptEnhancerProviderPreference,
     exploreAutoEnhancePrompts:
       data.exploreAutoEnhancePrompts ?? DEFAULT_APP_SETTINGS.exploreAutoEnhancePrompts,
+    advancedControls: data.advancedControls ?? DEFAULT_APP_SETTINGS.advancedControls,
     modelsDir: data.modelsDir ?? DEFAULT_APP_SETTINGS.modelsDir,
     useConvVae: data.useConvVae ?? DEFAULT_APP_SETTINGS.useConvVae,
+    nagScale: data.nagScale ?? DEFAULT_APP_SETTINGS.nagScale,
+    showNagStrengthControls:
+      data.showNagStrengthControls ?? DEFAULT_APP_SETTINGS.showNagStrengthControls,
     remoteExposure: data.remoteExposure === 'lan' ? 'lan' : DEFAULT_APP_SETTINGS.remoteExposure,
     budgetMode: readBudgetMode(data.budgetMode),
+    neverSplitIntoParts: data.neverSplitIntoParts ?? DEFAULT_APP_SETTINGS.neverSplitIntoParts,
+    skipBudgetRiskConfirm: data.skipBudgetRiskConfirm ?? DEFAULT_APP_SETTINGS.skipBudgetRiskConfirm,
   }
 }
 
@@ -157,6 +188,9 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const budgetModeSavingRef = useRef(false)
   const budgetModeRevisionRef = useRef(0)
   const [budgetModeSaving, setBudgetModeSaving] = useState(false)
+  const neverSplitSavingRef = useRef(false)
+  const neverSplitRevisionRef = useRef(0)
+  const [neverSplitSaving, setNeverSplitSaving] = useState(false)
   const [settingsSyncError, setSettingsSyncError] = useState<string | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
   const isLoadedRef = useRef(false)
@@ -269,6 +303,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
 
   const refreshSettings = useCallback(async () => {
     const revision = budgetModeRevisionRef.current
+    const neverSplitRevision = neverSplitRevisionRef.current
     const loaded = isLoadedRef.current
     const result = await ApiClient.getSettings()
     if (!result.ok) {
@@ -290,12 +325,16 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
             modelsDir: server.modelsDir,
             geminiModel: server.geminiModel,
             budgetMode: server.budgetMode,
+            neverSplitIntoParts: server.neverSplitIntoParts,
           }
         : server
       // A reload that overlaps the budget-mode request, or that started before
       // that request finished, must not move the switch.
       if (budgetModeSavingRef.current || budgetModeRevisionRef.current !== revision) {
         next.budgetMode = prev.budgetMode
+      }
+      if (neverSplitSavingRef.current || neverSplitRevisionRef.current !== neverSplitRevision) {
+        next.neverSplitIntoParts = prev.neverSplitIntoParts
       }
       settingsRef.current = next
       return next
@@ -346,7 +385,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     if (!isLoaded || backendProcessStatus !== 'alive') return
     const syncTimer = setTimeout(() => {
       // Omitted fields have their own writer. A document save must not put an
-      // older key flag, models dir, budget mode, or Gemini model back. The assistant
+      // older key flag, models dir, budget mode, Never split, or Gemini model back. The assistant
       // choice is omitted too: Remote can change it, and this would write a stale copy back.
       const {
         hasLtxApiKey: _a,
@@ -354,21 +393,27 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         hasGeminiApiKey: _c,
         modelsDir: _d,
         budgetMode: _e,
+        neverSplitIntoParts: _i,
         geminiModel: _f,
         assistantProvider: _g,
         assistantLocalModel: _h,
         ...syncPayload
       } = settings
-      void ApiClient.updateSettings(syncPayload)
+      void ApiClient.updateSettings(syncPayload).then((result) => {
+        if (result.ok) notifyModelsChanged()
+      })
     }, 150)
     return () => clearTimeout(syncTimer)
-  }, [backendProcessStatus, isLoaded, settings])
+  }, [backendProcessStatus, isLoaded, notifyModelsChanged, settings])
 
   const updateSettings = useCallback((patch: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)) => {
     setSettings((prev) => {
       const next = typeof patch === 'function' ? patch(prev) : { ...prev, ...patch }
-      // Reckless mode has its own save. A document edit must not move the switch.
-      const settled = next.budgetMode === prev.budgetMode ? next : { ...next, budgetMode: prev.budgetMode }
+      // The budget mode and Never split have their own saves. A document edit must not move them.
+      const settled =
+        next.budgetMode === prev.budgetMode && next.neverSplitIntoParts === prev.neverSplitIntoParts
+          ? next
+          : { ...next, budgetMode: prev.budgetMode, neverSplitIntoParts: prev.neverSplitIntoParts }
       settingsRef.current = settled
       return settled
     })
@@ -384,7 +429,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     budgetModeSavingRef.current = false
     setBudgetModeSaving(false)
     if (!result.ok) {
-      setSettingsSyncError(mode === 'reckless' ? RECKLESS_ON_SAVE_ERROR : RECKLESS_OFF_SAVE_ERROR)
+      setSettingsSyncError(mode === 'cautious' ? CAUTIOUS_ON_SAVE_ERROR : CAUTIOUS_OFF_SAVE_ERROR)
       return
     }
     budgetModeRevisionRef.current += 1
@@ -393,6 +438,31 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       settingsRef.current = next
       return next
     })
+  }, [])
+
+  const setNeverSplitIntoParts = useCallback(async (neverSplit: boolean) => {
+    if (neverSplitSavingRef.current) return
+    if (settingsRef.current.neverSplitIntoParts === neverSplit) return
+    neverSplitSavingRef.current = true
+    setNeverSplitSaving(true)
+    setSettingsSyncError(null)
+    const result = await ApiClient.updateSettings({ neverSplitIntoParts: neverSplit })
+    neverSplitSavingRef.current = false
+    setNeverSplitSaving(false)
+    if (!result.ok) {
+      setSettingsSyncError(neverSplit ? NEVER_SPLIT_ON_SAVE_ERROR : NEVER_SPLIT_OFF_SAVE_ERROR)
+      return
+    }
+    neverSplitRevisionRef.current += 1
+    setSettings((prev) => {
+      const next = { ...prev, neverSplitIntoParts: neverSplit }
+      settingsRef.current = next
+      return next
+    })
+  }, [])
+
+  const clearSettingsSyncError = useCallback(() => {
+    setSettingsSyncError(null)
   }, [])
 
   const applyAssistantSelection = useCallback((selection: AssistantSelection) => {
@@ -462,7 +532,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       setSettings((prev) => ({ ...prev, [flag]: false }))
     }
     await refreshSettings()
-  }, [refreshSettings])
+    notifyModelsChanged()
+  }, [notifyModelsChanged, refreshSettings])
 
   const saveLtxApiKey = useCallback((value: string) => writeApiKey('ltxApiKey', value), [writeApiKey])
   const saveFalApiKey = useCallback((value: string) => writeApiKey('falApiKey', value), [writeApiKey])
@@ -507,10 +578,13 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       notifyModelsChanged,
       setBudgetMode,
       budgetModeSaving,
+      setNeverSplitIntoParts,
+      neverSplitSaving,
       settingsSyncError,
+      clearSettingsSyncError,
       saveGeminiModel,
     }),
-    [assistantSelectionPending, budgetModeSaving, cudaAvailable, forceApiGenerations, isLoaded, localViable, modelsVersion, notifyModelsChanged, refreshSettings, runtimePolicyLoaded, selectAssistant, clearFalApiKey, clearGeminiApiKey, clearLtxApiKey, saveFalApiKey, saveGeminiApiKey, saveGeminiModel, saveLtxApiKey, setBudgetMode, settings, settingsSyncError, shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi, updateSettings],
+    [assistantSelectionPending, budgetModeSaving, clearSettingsSyncError, cudaAvailable, forceApiGenerations, isLoaded, localViable, modelsVersion, neverSplitSaving, notifyModelsChanged, refreshSettings, runtimePolicyLoaded, selectAssistant, clearFalApiKey, clearGeminiApiKey, clearLtxApiKey, saveFalApiKey, saveGeminiApiKey, saveGeminiModel, saveLtxApiKey, setBudgetMode, setNeverSplitIntoParts, settings, settingsSyncError, shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi, updateSettings],
   )
 
   return (

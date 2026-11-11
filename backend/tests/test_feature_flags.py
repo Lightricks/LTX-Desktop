@@ -9,7 +9,14 @@ from starlette.testclient import TestClient
 from api_types import FeatureFlags, FeatureFlagsPatch
 from remote.app import create_remote_app
 
-DEFAULTS = {"customIcLora": False, "advancedIcLoraControls": False, "highResVideoToVideo": False}
+DEFAULTS = {
+    "customIcLora": False,
+    "advancedIcLoraControls": False,
+    "highResVideoToVideo": False,
+    "createWithAi": False,
+    "showGenerationNegativePrompt": False,
+    "keyframes": False,
+}
 AUTH = {"Authorization": "Bearer pair-token"}
 
 

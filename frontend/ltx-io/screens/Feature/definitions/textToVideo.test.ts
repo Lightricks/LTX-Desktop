@@ -19,6 +19,7 @@ import { specFixture, specFixtureBothOfferings } from "./specFixture.ts";
 import { defaultOfferingId } from "../../../../lib/video-generation-model-specs.ts";
 import {
   TEXT_TO_VIDEO_DEFAULTS,
+  TEXT_TO_VIDEO_EXAMPLE_NEGATIVE_PROMPT,
   TEXT_TO_VIDEO_EXAMPLE_PROMPT,
   fromGeneration,
   textToVideoDefinition,
@@ -36,11 +37,13 @@ describe("textToVideo definition", () => {
   it("seeds the example prompt + local-valid fast / 540p / 24fps / 8s", () => {
     assert.deepEqual(textToVideoDefinition.defaults, {
       prompt: TEXT_TO_VIDEO_EXAMPLE_PROMPT,
+      negativePrompt: TEXT_TO_VIDEO_EXAMPLE_NEGATIVE_PROMPT,
       model: "ltx-2.5-fast",
       aspectRatio: "16:9",
       resolution: "540p",
       duration: 8,
       fps: 24,
+      passShape: null,
     });
     const promptField = textToVideoDefinition.form(values(), {
       specs: specFixture(),
@@ -57,6 +60,7 @@ describe("textToVideo definition", () => {
     const parsed = fromGeneration({
       params: {
         prompt: "a woman sips coffee",
+        negativePrompt: "blurry, watermark",
         model: "ltx-2.5-fast",
         aspectRatio: "9:16",
         resolution: "720p",
@@ -66,11 +70,13 @@ describe("textToVideo definition", () => {
     });
     assert.deepEqual(parsed, {
       prompt: "a woman sips coffee",
+      negativePrompt: "blurry, watermark",
       model: "ltx-2.5-fast",
       aspectRatio: "9:16",
       resolution: "720p",
       duration: 8,
       fps: 24,
+      passShape: null,
     });
   });
 
@@ -90,8 +96,12 @@ describe("textToVideo definition", () => {
     assert.deepEqual(validateTextToVideo(values({ prompt: "ok" })), []);
   });
 
-  it("builds a create body with hidden cameraMotion, negativePrompt, and loras", () => {
-    assert.deepEqual(toCreateBody(values({ prompt: "  hello  " })), {
+  it("builds a create body with hidden cameraMotion and loras, and trims negativePrompt", () => {
+    assert.deepEqual(
+      toCreateBody(values({ prompt: "  hello  ", negativePrompt: "  blur  " }), {
+        specs: specFixture(),
+      }),
+      {
       contract_version: 1,
       params: {
         prompt: "hello",
@@ -101,21 +111,116 @@ describe("textToVideo definition", () => {
         duration: 8,
         fps: 24,
         cameraMotion: "none",
-        negativePrompt: "",
+        negativePrompt: "blur",
         loras: [],
         promptProvenance: "typed",
+        passShape: "auto",
       },
-    });
+      },
+    );
+  });
+});
+
+describe("textToVideo pass shape", () => {
+  // 1080p 10 s runs in 3 parts with a one-pass alternative; 2 s is one pass inside the measured size.
+  function shapedSpecs() {
+    const specs = structuredClone(specFixture());
+    const ask = { fps: 24 as const, audio: false, confidence: "solid" as const, tight: false };
+    for (const item of [...specs.local_models, ...specs.downloaded_local_models]) {
+      item.spec.cell_asks = [
+        {
+          ...ask,
+          resolution: "1080p",
+          duration: 10,
+          ask_gib: 16,
+          windows: 3,
+          alternative: { ask_gib: 22.7, confidence: "solid", windows: 1, tight: false },
+        },
+        { ...ask, resolution: "1080p", duration: 2, ask_gib: 9.9, windows: 1 },
+      ];
+    }
+    return { ...specs, memory: { device: "gpu" as const, capacity_gib: 16 } };
+  }
+
+  it("a forced shape resets to auto when the toggle predicate turns false", () => {
+    const context = { specs: shapedSpecs() };
+    const forced = textToVideoDefinition.normalize(
+      values({ resolution: "1080p", duration: 10, passShape: "one_pass" }),
+      context,
+    );
+    assert.equal(toCreateBody(forced, context).params.passShape, "one_pass");
+    const shorter = textToVideoDefinition.normalize(
+      textToVideoDefinition.applyChange(
+        forced,
+        { kind: "options", fieldId: "duration", dataKey: "duration", value: 2 },
+        context,
+      ),
+      context,
+    );
+    assert.equal(shorter.passShape, null);
+    assert.equal(toCreateBody(shorter, context).params.passShape, "auto");
+    // A stored shape the specs stopped offering (a mode change) is not sent either.
+    const stale = values({ resolution: "1080p", duration: 2, passShape: "one_pass" });
+    assert.equal(toCreateBody(stale, context).params.passShape, "auto");
+  });
+
+  it("validate uses backend alternative risk instead of client-side copy and object identity", () => {
+    const specs = shapedSpecs();
+    for (const item of [...specs.local_models, ...specs.downloaded_local_models]) {
+      item.spec.cell_asks![0]!.alternative = {
+        ask_gib: 22.7,
+        confidence: "solid",
+        windows: 1,
+        tight: false,
+        risk: {
+          tier: "over",
+          message: "backend alternative over message",
+        },
+      };
+    }
+    const context = { specs };
+    assert.deepEqual(
+      textToVideoDefinition.validate(
+        values({ prompt: "hello", resolution: "1080p", duration: 10, passShape: null }),
+        context,
+      ),
+      [],
+    );
+    assert.deepEqual(
+      textToVideoDefinition.validate(
+        values({ prompt: "hello", resolution: "1080p", duration: 10, passShape: "parts" }),
+        context,
+      ),
+      [],
+    );
+    assert.deepEqual(
+      textToVideoDefinition.validate(
+        values({ prompt: "hello", resolution: "1080p", duration: 10, passShape: "one_pass" }),
+        context,
+      ),
+      [
+        {
+          id: "budget-risk",
+          fieldId: "generate",
+          message: "backend alternative over message",
+          alwaysRevealed: true,
+          blocksGenerate: false,
+          tone: "risk",
+          tier: "over",
+        },
+      ],
+    );
   });
 });
 
 describe("textToVideo setting fields", () => {
-  it("renders prompt then model, aspect, resolution, duration, and fps", () => {
+  it("renders prompt, negativePrompt, then model, aspect, resolution, duration, and fps", () => {
     const fields = textToVideoDefinition.form(values(), { specs: specFixture() }).fields;
     assert.deepEqual(
       fields.map((field) => ({ kind: field.kind, id: field.id, dataKey: field.dataKey })),
       [
         { kind: "textarea", id: "prompt", dataKey: "prompt" },
+        { kind: "textarea", id: "negativePrompt", dataKey: "negativePrompt" },
         { kind: "options", id: "model", dataKey: "model" },
         { kind: "options", id: "aspectRatio", dataKey: "aspectRatio" },
         { kind: "options", id: "resolution", dataKey: "resolution" },
@@ -245,6 +350,7 @@ describe("textToVideo setting fields", () => {
       })),
       [
         { kind: "textarea", dataKey: "prompt" },
+        { kind: "textarea", dataKey: "negativePrompt" },
         { kind: "options", dataKey: "model" },
         { kind: "options", dataKey: "aspectRatio" },
         { kind: "options", dataKey: "resolution" },
@@ -263,6 +369,7 @@ describe("textToVideo setting fields", () => {
       ),
       [
         { kind: "textarea", dataKey: "prompt" },
+        { kind: "textarea", dataKey: "negativePrompt" },
         {
           kind: "options",
           dataKeys: ["model", "aspectRatio", "resolution", "duration", "fps"],

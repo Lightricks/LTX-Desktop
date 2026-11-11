@@ -13,6 +13,7 @@ import LtxLogo from "@/assets/home/icons/LTX-logo.svg?react";
 
 import type { ImageToVideoSchema } from "./definitions/imageToVideo";
 import type { FeatureFormPresentationAdapter } from "./FeatureFormView";
+import { frameImageAssetAction } from "./createWithAiImageActions";
 import { orderImageToVideoOptionFields } from "./imageToVideoOptionFieldOrder";
 import type { FieldOption, OptionsFieldDef } from "./types";
 
@@ -31,8 +32,9 @@ function getAspectRatioIcon(value: string): ReactNode {
   return <AspectRatioLandscapeIcon aria-hidden />;
 }
 
-function getImageToVideoOptionIcon(
-  field: OptionsFieldDef<ImageToVideoSchema>,
+/** The icons of the video settings. Image to Video and Keyframes share them. */
+export function getVideoSettingsOptionIcon(
+  field: Pick<OptionsFieldDef<ImageToVideoSchema>, "dataKey">,
   option: FieldOption,
 ): ReactNode | undefined {
   if (field.dataKey === "model") return <LtxLogo aria-hidden />;
@@ -49,6 +51,7 @@ function getImageToVideoOptionIcon(
 
 export const imageToVideoFormPresentation: FeatureFormPresentationAdapter<ImageToVideoSchema> =
   {
-    getOptionIcon: getImageToVideoOptionIcon,
+    getOptionIcon: getVideoSettingsOptionIcon,
     orderOptionFields: orderImageToVideoOptionFields,
+    imageAssetAction: frameImageAssetAction,
   };

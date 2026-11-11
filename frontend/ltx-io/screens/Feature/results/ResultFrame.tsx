@@ -13,6 +13,8 @@ import { DotsLoader } from "../../../components/shared/DotsLoader/DotsLoader";
 import { LoadingPulse } from "../../../components/shared/LoadingPulse/LoadingPulse";
 import { VideoPlayer } from "../../../components/VideoView/VideoPlayer";
 import { useAssetDownload } from "../../../hooks/useAssetDownload";
+import { GENERATION_CANCEL_CONFIRMATION } from "../../../hooks/useCancelGeneration";
+import { useConfirmDeleteAction } from "../../../hooks/useConfirmDeleteAction";
 import { promptEmbeddingFailureNotice } from "../../../lib/promptEmbeddingFailure";
 import { staticFailureNotice } from "../../../lib/staticFailureNotices";
 import { rejectedLtxApiKeyNotice } from "../../../lib/rejectedLtxApiKey";
@@ -21,7 +23,10 @@ import { isInFlightGeneration, type Generation } from "../../../lib/resultsFeedM
 import { CutoutResult } from "./cutout/CutoutResult";
 import { pickPlayback } from "./cutout/cutoutOutput";
 import { inFlightResultStatus } from "./inFlightResultStatus";
-import { REMOVE_FROM_HISTORY_LABEL } from "./resultActionsCopy";
+import {
+  REMOVE_FROM_HISTORY_LABEL,
+  resultDeleteConfirmation,
+} from "./resultActionsCopy";
 import { resolveResultFileAction } from "./resultFileAction";
 import { ResultFileActionButton } from "./ResultFileActionButton";
 import { ResultMetaBar } from "./ResultMetaBar";
@@ -31,13 +36,21 @@ import styles from "./ResultFrame.module.scss";
 function InFlightProgress({
   status,
   progressPercent,
+  remainingSeconds,
 }: {
   status: string;
   progressPercent: number | undefined;
+  remainingSeconds?: number | null;
 }) {
-  const presentation = inFlightResultStatus({ status, progressPercent });
-  // A percent is plain text. A live region would announce every poll tick.
-  const announce = presentation.showDots || status === "cancelling";
+  const presentation = inFlightResultStatus({
+    status,
+    progressPercent,
+    remainingSeconds,
+  });
+  // A percent or countdown is plain text. A live region would announce every poll tick.
+  const announce =
+    (presentation.showDots && presentation.body == null) ||
+    status === "cancelling";
 
   return (
     <div
@@ -49,6 +62,8 @@ function InFlightProgress({
       <ResultStatus
         icon={presentation.showDots ? <DotsLoader /> : undefined}
         title={presentation.title}
+        body={presentation.body}
+        bodyClassName={styles.inFlightBody}
       />
     </div>
   );
@@ -87,6 +102,8 @@ export type ResultFrameProps = {
   onDelete: (id: string) => void;
   /** Determinate 0–95 progress for this generation, when the queue has reported it. */
   progressPercent?: number;
+  /** Live remaining seconds for this generation, when the queue has reported it. */
+  remainingSeconds?: number;
   /** The feature returns a cutout WebM, which plays over a backdrop. */
   isCutoutFeature?: boolean;
 };
@@ -97,10 +114,20 @@ export function ResultFrame({
   onRetry,
   onDelete,
   progressPercent,
+  remainingSeconds,
   isCutoutFeature = false,
 }: ResultFrameProps) {
   const runtime = useExploreRuntime();
+  const confirmDelete = useConfirmDeleteAction();
   const downloadResultFile = useAssetDownload();
+  const handleCancel = () =>
+    confirmDelete(GENERATION_CANCEL_CONFIRMATION, () => onCancel(generation.id));
+  const hasAsset =
+    generation.status !== "failed" && generation.status !== "cancelled";
+  const handleDelete = () =>
+    confirmDelete(resultDeleteConfirmation(hasAsset), () =>
+      onDelete(generation.id),
+    );
   const rejectedKey = rejectedLtxApiKeyNotice({
     errorCode: generation.error_code,
     usesLtxApiTextEncoding: runtime.usesLtxApiTextEncoding,
@@ -111,7 +138,10 @@ export function ResultFrame({
     usesLtxApiTextEncoding: runtime.usesLtxApiTextEncoding,
     canOpenSettings: runtime.openTextEncodingSettings != null,
   });
-  const staticFailure = staticFailureNotice({ errorCode: generation.error_code });
+  const staticFailure = staticFailureNotice({
+    errorCode: generation.error_code,
+    ranOnBet: generation.risk != null,
+  });
   const failureNotice = rejectedKey ?? embeddingFailed ?? staticFailure;
   const openFailureSettings = rejectedKey
     ? runtime.openLtxApiKeySettings
@@ -147,13 +177,14 @@ export function ResultFrame({
             <InFlightProgress
               status={generation.status}
               progressPercent={progressPercent}
+              remainingSeconds={remainingSeconds}
             />
             <div className={styles.overlayActions}>
               {generation.status !== "cancelling" ? (
                 <OverlayButton
                   label="Cancel"
                   icon={<CloseIcon />}
-                  onClick={() => onCancel(generation.id)}
+                  onClick={handleCancel}
                 />
               ) : null}
             </div>
@@ -186,7 +217,7 @@ export function ResultFrame({
               <OverlayButton
                 label={REMOVE_FROM_HISTORY_LABEL}
                 icon={<RemoveIcon />}
-                onClick={() => onDelete(generation.id)}
+                onClick={handleDelete}
               />
             </div>
           </>
@@ -197,7 +228,7 @@ export function ResultFrame({
               <OverlayButton
                 label={REMOVE_FROM_HISTORY_LABEL}
                 icon={<RemoveIcon />}
-                onClick={() => onDelete(generation.id)}
+                onClick={handleDelete}
               />
             </div>
           </>
@@ -212,7 +243,7 @@ export function ResultFrame({
               <OverlayButton
                 label={REMOVE_FROM_HISTORY_LABEL}
                 icon={<RemoveIcon />}
-                onClick={() => onDelete(generation.id)}
+                onClick={handleDelete}
               />
               {fileAction ? <ResultFileActionButton action={fileAction} /> : null}
             </div>

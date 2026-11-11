@@ -6,7 +6,7 @@ alwaysApply: false
 
 # LTX-2 bump → re-check `services.patches`
 
-Delete-first. If this change updates `ltx-core` or `ltx-pipelines` (version pin, git tag, or `tool.uv.dependency-metadata`), treat every module imported from `backend/services/patches/` in `backend/ltx2_server.py` as suspect — plus any out-of-directory swaps such as `distilled_keyframe_guiding`.
+Delete-first. If this change updates `ltx-core` or `ltx-pipelines` (version pin, git tag, or `tool.uv.dependency-metadata`), treat every module imported from `backend/services/patches/` in `backend/ltx2_server.py` as suspect, plus any out-of-directory swap of an upstream symbol.
 
 Those patches rebind private upstream symbols. A bump can rename the target (import-time assert should fail) or change the contract (assert still passes, behavior is wrong). Default is **delete** the patch; keep only what still fails on the new revision.
 
@@ -22,6 +22,7 @@ Forked pipeline classes copy upstream bodies, and a signature test does not catc
 - `TiledICLoraPipeline._video_conditionings` (`ic_lora_pipeline/tiled_ic_lora_pipeline.py`) copies upstream `ICLoraPipeline._video_conditionings`; keep the `apply_ic_lora` gate and only change `encode_tiling`.
 - `DistilledPipelineWithSkipStage2._call_stage_1_only` mirrors stage 1 of `DistilledPipeline`.
 - `DistilledA2VPipeline` and `LTXRetakePipeline` call `DiffusionStage` directly.
+- `NagDistilledMixin` (`fast_video_pipeline/nag_distilled.py`) wraps `DistilledPipeline._prepare_run` and `stream_chunks`. `nag_cross_attention` replaces `BasicAVTransformerBlock._apply_text_cross_attention`; diff it against upstream, including `apply_cross_attention_adaln` and `Attention.forward`.
 
 Size latents with `stage.video_scale_factors` (transformer geometry). `tiling_scale_factors_for_vae` is the decoder's tiling scale (2x8x8 on the 2.5 DiffVAE) and is only for `ensure_tiling_config`.
 

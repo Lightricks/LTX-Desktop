@@ -55,7 +55,7 @@ jobs:
 
       - name: Pyright type check
         working-directory: backend
-        run: uv run pyright
+        run: uv run --frozen pyright
 
       - name: OpenAPI contract check
         run: pnpm run openapi:check
@@ -101,7 +101,7 @@ jobs:
       # The full suite runs on Linux. Windows only runs tests that call the
       # real Win32 DLL APIs. `--` keeps `-m` from being read as a uv flag.
       - name: Run tests
-        run: uv run -- pytest -v --tb=short -m ci_os
+        run: uv run --frozen -- pytest -v --tb=short -m ci_os
 
   # One Linux pytest job was the wait. Four shards run together.
   # The matrix length and `--splits` below are the same number.
@@ -124,7 +124,7 @@ jobs:
       # least_duration deals tests round-robin when there is no durations file,
       # so a slow module is not collected entirely onto the first shard.
       - name: Run tests
-        run: uv run -- pytest -v --tb=short --splits 4 --group ${{ matrix.shard }} --splitting-algorithm least_duration
+        run: uv run --frozen -- pytest -v --tb=short --splits 4 --group ${{ matrix.shard }} --splitting-algorithm least_duration
 
   # Branch protection still looks for this name. It passes when every Linux shard passes.
   test-python-linux-gate:

@@ -15,6 +15,8 @@ import pytest
 
 from _routes._errors import HTTPError
 from api_types import ExtendParams, LTXLocalModelId, RetakeParams
+from runtime_config.budget_admission import RiskAllowance
+from runtime_config.device_calibration import JobEnvelope
 from runtime_config.video_job_budget import (
     LOCAL_GENERATION_RAM_SHORTFALL,
     VIDEO_JOB_TOO_LARGE,
@@ -22,6 +24,7 @@ from runtime_config.video_job_budget import (
 from services.features.video.extend import ExtendExecutor
 from services.features.video.retake import RetakeExecutor
 from services.generation_queue.types import OutputAllocation
+from tests.fakes.generation import FakeJobSession
 from services.records import CapabilityFailedError
 from services.sqlite_store import SqliteStore
 from tests.video_fixtures import write_mp4
@@ -120,7 +123,7 @@ def test_edit_budget_lines_carry_vram_triple(
             frames=369,
             queued_home=True,
         )
-    state = test_state.pipelines.load_retake_pipeline(
+    state, _ = test_state.pipelines.load_retake_pipeline(
         distilled=True,
         ltx_model_id=_LOCAL_2_5,
         width=1920,
@@ -171,7 +174,7 @@ def test_retake_prepare_shrinks_free_refused_window_instead_of_raising(
         7,
         tmp_path / "out.mp4",
         str(tmp_path / "out.window.mp4"),
-        allow_risk=allow_risk,
+        allowance=RiskAllowance(over=allow_risk, unmeasured=False),
     )
 
     assert prepared.window.encode_frames == 345
@@ -219,7 +222,7 @@ def test_extend_prepare_shrinks_free_refused_window_instead_of_raising(
         7,
         tmp_path / "out.mp4",
         str(tmp_path / "out.window.mp4"),
-        allow_risk=allow_risk,
+        allowance=RiskAllowance(over=allow_risk, unmeasured=False),
     )
 
     assert prepared.extend_frames == 96
@@ -266,7 +269,7 @@ def test_retake_prepare_refuses_when_selection_exceeds_free_fitting_window(
         7,
         tmp_path / "out.mp4",
         str(tmp_path / "out.window.mp4"),
-        allow_risk=allow_risk,
+        allowance=RiskAllowance(over=allow_risk, unmeasured=False),
     )
 
     assert exc_info.value.code == VIDEO_JOB_TOO_LARGE
@@ -306,7 +309,7 @@ def test_extend_prepare_shrinks_context_below_floor_instead_of_refusing(
         7,
         tmp_path / "out.mp4",
         str(tmp_path / "out.window.mp4"),
-        allow_risk=False,
+        allowance=RiskAllowance.none(),
     )
 
     assert prepared.extend_frames == 240
@@ -351,7 +354,7 @@ def test_extend_prepare_from_start_shrink_trims_tail_context(
         7,
         tmp_path / "out.mp4",
         str(tmp_path / "out.window.mp4"),
-        allow_risk=False,
+        allowance=RiskAllowance.none(),
     )
 
     assert prepared.extend_frames == 240
@@ -392,7 +395,7 @@ def test_extend_prepare_refuses_when_selection_exceeds_total_cap(
         7,
         tmp_path / "out.mp4",
         str(tmp_path / "out.window.mp4"),
-        allow_risk=allow_risk,
+        allowance=RiskAllowance(over=allow_risk, unmeasured=False),
     )
 
     assert exc_info.value.code == VIDEO_JOB_TOO_LARGE
@@ -441,7 +444,7 @@ def test_retake_prepare_refuses_when_free_gap_exceeds_shrink_limit(
             7,
             tmp_path / "out.mp4",
             str(tmp_path / "out.window.mp4"),
-            allow_risk=allow_risk,
+            allowance=RiskAllowance(over=allow_risk, unmeasured=False),
         )
 
     assert exc_info.value.status_code == 422
@@ -492,7 +495,7 @@ def test_extend_prepare_refuses_when_free_gap_exceeds_shrink_limit(
             7,
             tmp_path / "out.mp4",
             str(tmp_path / "out.window.mp4"),
-            allow_risk=allow_risk,
+            allowance=RiskAllowance(over=allow_risk, unmeasured=False),
         )
 
     assert exc_info.value.status_code == 422
@@ -544,7 +547,7 @@ def test_stored_over_still_runs_retake_ram_shortfall_shrink_cannot_salvage(
             7,
             tmp_path / "out.mp4",
             str(tmp_path / "out.window.mp4"),
-            allow_risk=False,
+            allowance=RiskAllowance.none(),
         )
     assert refused.value.code == LOCAL_GENERATION_RAM_SHORTFALL
     caplog.set_level(logging.INFO)
@@ -556,7 +559,7 @@ def test_stored_over_still_runs_retake_ram_shortfall_shrink_cannot_salvage(
         7,
         tmp_path / "out.mp4",
         str(tmp_path / "out.window.mp4"),
-        allow_risk=True,
+        allowance=RiskAllowance(over=True, unmeasured=False),
     )
     assert prepared.window.encode_frames == 481
     assert not any(
@@ -595,7 +598,7 @@ def test_stored_over_still_runs_extend_ram_shortfall_shrink_cannot_salvage(
             7,
             tmp_path / "out.mp4",
             str(tmp_path / "out.window.mp4"),
-            allow_risk=False,
+            allowance=RiskAllowance.none(),
         )
     assert refused.value.code == LOCAL_GENERATION_RAM_SHORTFALL
     caplog.set_level(logging.INFO)
@@ -607,7 +610,7 @@ def test_stored_over_still_runs_extend_ram_shortfall_shrink_cannot_salvage(
         7,
         tmp_path / "out.mp4",
         str(tmp_path / "out.window.mp4"),
-        allow_risk=True,
+        allowance=RiskAllowance(over=True, unmeasured=False),
     )
     assert prepared.extend_frames == 96
     assert prepared.window.context_frames + prepared.extend_frames == 505
@@ -617,11 +620,15 @@ def test_stored_over_still_runs_extend_ram_shortfall_shrink_cannot_salvage(
 
 
 class _Slot:
-    def start_generation(self, generation_id: str) -> None:
-        del generation_id
+    def start_generation(
+        self, generation_id: str, *, ran: JobEnvelope | None = None
+    ) -> None:
+        del generation_id, ran
 
-    def complete_generation(self, result: str | list[str] | None = None) -> None:
-        del result
+    def complete_generation(
+        self, result: str | list[str] | None = None, *, ran: JobEnvelope | None = None
+    ) -> None:
+        del result, ran
 
     def fail_generation(self, error: str) -> None:
         del error
@@ -667,6 +674,7 @@ def _execute_retake(test_state, store, generation) -> _RecordingRetake:
                 dest_path=str(generation.id) + ".mp4",
             ),
         ),
+        FakeJobSession(),
     )
     return executor
 

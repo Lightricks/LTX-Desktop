@@ -50,8 +50,8 @@ export interface TooltipProps {
   sideOffset?: number;
   /** Offset along the alignment axis (pixels) */
   alignOffset?: number;
-  /** Maximum width of the tooltip (pixels) */
-  maxWidth?: number;
+  /** Maximum width of the tooltip. A number is pixels. A string is a CSS length, so a tooltip can stay inside the viewport. */
+  maxWidth?: number | string;
   /** Additional CSS class name for the tooltip content */
   className?: string;
   /** Portal target; defaults to the `.ltx-io` theme root. Use `document.body` to escape local stacking contexts. */

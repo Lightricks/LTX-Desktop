@@ -61,6 +61,8 @@ export const IC_LORA_RECIPES = [
     description: "Relight a clip from day into night.",
     demoPrompt:
       "A realistic nighttime scene of a fisherman fishing in a lake under a dark midnight sky with a bright crescent moon casting a silvery reflection on the water. Cool blue ambient moonlight and deep natural shadows surround the serene landscape, with a single warm glow from a lantern nearby illuminating the water's edge. Only the lighting changes from day to night; identical composition, framing, camera movement and motion.",
+    demoNegativePrompt:
+      "daytime, bright sunlight, blue sky, harsh sun glare, overexposed water, pitch black crushed shadows, blurry fisherman, jittery motion",
     placeholder: "Describe the night light you want...",
     hiddenFields: [],
     cutout: false,
@@ -84,6 +86,7 @@ export const IC_LORA_RECIPES = [
     description: "Cut a subject out of a video without a green screen.",
     // AlphaGen takes no prompt. The model picks the foreground on its own.
     demoPrompt: "",
+    demoNegativePrompt: "",
     placeholder: "Leave empty. AlphaGen needs no prompt.",
     // The model needs no prompt, keeps the clip audio, and has one useful strength.
     hiddenFields: ["prompt", "audioMode", "loraStrength"],
@@ -109,6 +112,8 @@ export const IC_LORA_RECIPES = [
     description: "Restore a blurry clip to sharp focus.",
     demoPrompt:
       "DEBLUR The same scene in sharp focus with crisp detail and clean edges.",
+    demoNegativePrompt:
+      "blurry, out of focus, defocused, soft, hazy, smeared detail, oversharpened halos, ringing, jittery motion",
     placeholder: "Start with DEBLUR, then describe the sharp scene...",
     hiddenFields: [],
     cutout: false,
@@ -132,6 +137,8 @@ export const IC_LORA_RECIPES = [
     description: "Add natural color to a grayscale clip.",
     demoPrompt:
       "COLORIZE The tiger is colored with rich burnt-orange and golden-amber fur with deep black stripes, a keen amber eye. Dusty grey nose, prominent white whiskers catching the light, and creamy white facial markings on the muzzle. The background shows soft, blurred green and grey-brown foliage suggesting a natural habitat. The lighting is warm and directional.",
+    demoNegativePrompt:
+      "grayscale, black and white, monochrome, desaturated fur, sepia tint, neon unnatural colors, color bleeding across stripes, blurry whiskers",
     placeholder: "Start with COLORIZE, then describe the colors you want...",
     hiddenFields: [],
     cutout: false,
@@ -155,6 +162,8 @@ export const IC_LORA_RECIPES = [
     description: "Remove people and vehicles from a clip.",
     demoPrompt:
       "The source video, with no people and no vehicles anywhere in the frame.",
+    demoNegativePrompt:
+      "person, people, human, figure, pedestrian, vehicle, car, limb, shadow of a person, ghosting, semi-transparent remnants, blurry background",
     placeholder: "Describe the empty scene...",
     hiddenFields: [],
     cutout: false,
@@ -178,6 +187,8 @@ export const IC_LORA_RECIPES = [
     description: "Remove compression artifacts from a clip.",
     demoPrompt:
       "ENHANCE QUALITY The same scene restored to high quality with sharp detail, clean edges, and no compression artifacts.",
+    demoNegativePrompt:
+      "macroblocking, blocky compression, mosquito noise, chroma bleed, ringing, color banding, pixelated edges, smeared texture, blurry",
     placeholder: "Start with ENHANCE QUALITY, then describe the clean scene...",
     hiddenFields: [],
     cutout: false,
@@ -201,6 +212,8 @@ export const IC_LORA_RECIPES = [
     description: "Add rivers, rain and splashes to a clip.",
     demoPrompt:
       "ADD WATER A clear, meandering river winds through the middle distance of the wheat fields, its surface catching the golden hour light with amber and cream reflections. The water flows calm and steady, partially visible between the grain, with darker banks lined by reeds and grasses. The river curves gently toward the tree line, reflecting the warm overcast sky.",
+    demoNegativePrompt:
+      "deformed water, unnatural fluid, frozen water, dry cracked riverbed, flooded wheat stalks, warped horizon, jittery ripples, blurry",
     placeholder: "Start with ADD WATER, then describe the water you want...",
     hiddenFields: [],
     cutout: false,
@@ -225,6 +238,8 @@ export const IC_LORA_RECIPES = [
     // Replace with the ltx.io Layout to Render prompt when it is confirmed.
     demoPrompt:
       "A green locomotive pulls red and blue freight cars along a curved track through a snowy mountain valley, past snow-covered pines and over a stone viaduct, under an overcast sky.",
+    demoNegativePrompt:
+      "grey clay untextured mesh, wireframe, low-poly blockout, floating train cars, derailed wheels, melted viaduct arches, blurry, watermark",
     placeholder: "Describe the finished shot in one sentence...",
     hiddenFields: [],
     cutout: false,
@@ -260,6 +275,8 @@ export const IC_LORA_RECIPES = [
     // recipe exists there.
     demoPrompt:
       "a steam locomotive arriving at a small rural railway station in 1896, passengers in period coats and hats waiting on the platform, wooden station buildings, natural colour",
+    demoNegativePrompt:
+      "shipping containers, logos, signage, lettering, ladders, modern vehicles, graffiti, modern buildings, blocky compression, banding, mosquito noise, ringing, blurry, soft, plastic, smeared detail, oversharpened halos, warped faces",
     placeholder: "Describe the period, the place and the light...",
     hiddenFields: [],
     cutout: false,
@@ -299,6 +316,8 @@ export const IC_LORA_RECIPES = [
     // The catalog prompt template: panels first, then the action. It describes the packaged sheet.
     demoPrompt:
       "Reference sheet: Top Row Left (Character): A 3D animated orange fox with white fur on its snout, belly, and tail tip, large expressive brown eyes, and dark paws. It wears a small green neckerchief and is shown from multiple turnaround angles including front close-up, front full body, side, and back views. Top Row Right (Prop): A fishing rod with a cork handle, a spinning reel, a thin green fiberglass pole with metal eyelets, and a fishing line ending in a metal hook. Bottom Row Left (Setting): A serene outdoor park with a calm lake, a small wooden dock, lush green grass, leafy trees, and lily pads under a bright sunny sky with soft clouds. Bottom Row Right (Prop): A glossy bright red rain boot with pull loops at the top and a thick black grooved rubber sole, with water droplets scattered on its surface. Generated video: A bright, high-quality 3D animated scene set beside a serene, sunlit lake in a lush park. The camera frames a steady medium shot of the orange fox standing on the grassy bank near the water's edge, wearing its small green neckerchief and the bright red rain boot on one foot while holding the fishing rod with both paws. The fox stands facing the calm lake, holding the cork handle of the fishing rod, intently watching the water's surface as the fishing line dips near some lily pads. Suddenly, the fox's eyes widen in surprise as the rod bends sharply, indicating a heavy catch. With an eager and determined expression, the fox pulls the fishing rod upward with all its might, straining slightly. Breaking the surface of the water, it hoists up the glossy bright red rain boot attached to the hook, water droplets splashing around it. The fox blinks in sheer disbelief, staring at the boot dangling from the line. A playful, mischievous grin spreads across the fox's face, and it tosses its head back, opening its mouth wide in a burst of hearty, joyous laughter. The warm afternoon sunlight casts soft shadows across the grassy landscape, highlighting the shimmering ripples on the lake and the vibrant colors of the scene.",
+    demoNegativePrompt:
+      "split screen grid, reference sheet panels visible, inconsistent fox markings, missing green neckerchief, deformed fishing rod, blurry, jittery, distorted",
     placeholder: "Describe the scene that uses your images...",
     hiddenFields: [],
     cutout: false,
@@ -327,15 +346,23 @@ export const IC_LORA_RECIPES = [
     // The first example prompt of the model card. It describes the rendering, not the subject.
     demoPrompt:
       "Locked-off wide shot of a clear mountain stream running over mossy granite boulders under a beech forest canopy, thousands of individual leaves, sunlight dappled evenly across the scene, water sparkling with fine ripples, ferns and lichen in the foreground, deep focus, tack sharp everywhere, nature documentary, photoreal, 8K, sharp photographic detail, crisp faces and clothing texture, natural grain, high resolution footage",
+    demoNegativePrompt:
+      "blurry, soft focus, shallow depth of field, bokeh, motion blur, low resolution, plastic, smeared detail, oversharpened halos, painting, fog, haze, text, watermark",
     placeholder: "Describe the sharpness, texture and light...",
     hiddenFields: [],
     cutout: false,
     // The clip is scaled up to the cell with Lanczos. The clip size and the sizes above it are offered.
     upscalesSource: "source-and-above",
-    // No local run has been measured. The recipe is offered only with `highResVideoToVideo`.
-    requiresHighRes: true,
+    // The recipe offers 1440p and 4K without the `highResVideoToVideo` flag.
+    highResWithoutFlag: true,
+    tilingControls: true,
+    tilingTooltips: {
+      tileSize:
+        "A larger tile means fewer tiles and a shorter render. On a 16:9 frame this starts at 720p. At 540p and below the frame fits in one tile, so every size is the same. At 720p, Large and Extra large both cover the frame.\n\nIt needs more VRAM, so a size that does not fit is disabled. The LoRA is trained on the standard size. A larger tile can change the detail.",
+    },
     section: "post-production",
-    seed: icLoraSeed("refine-details"),
+    // Revision 2: the packaged clip is the real reference, not the Restore placeholder.
+    seed: icLoraSeed("refine-details", 2),
     listing: {
       blurb:
         "Add fine detail to a soft, compressed or upscaled clip. Texture, edges and grain come back, and the framing, the exposure and the colour stay the same. Raise the size up to 4K in one pass, for example from 1080p web video.",
@@ -357,6 +384,8 @@ export const IC_LORA_RECIPES = [
     // The ltx.io seed. The backend wraps it with the camera lock, so it names the scene only.
     demoPrompt:
       "The conductor frog smoothly but forcefully moves his baton-holding arm and hand along the provided motion track, precisely following the path from point to point. The shoulder, elbow, wrist, hand, and baton move together naturally in a powerful, commanding conducting gesture. He maintains a firm grip on the baton throughout. Sharp, energetic movements with controlled acceleration and natural joint articulation. The frog's body reacts subtly to the intensity of the conducting. The orchestra remains visually stable. Audio: violent, aggressive orchestral music with pounding percussion",
+    demoNegativePrompt:
+      "camera movement, zoom, panning, reframing, cuts, visible colored tracking dots, detached baton, extra frog arms, blurry orchestra",
     placeholder: "Describe the scene — object motion follows the tracks and trajectories you set.",
     hiddenFields: [],
     cutout: false,
@@ -386,6 +415,8 @@ export const IC_LORA_RECIPES = [
     // packaged pose clip, in the order of the catalog prompt template (scene, action, camera).
     demoPrompt:
       "A 3D animated lioness in a plush purple fur coat sits at a wooden table in a cozy cafe, with a purple textured wall, a framed picture, a tall palm plant and two iced drinks behind her. She rests her chin on her gloved hand and glances to the side with a gentle smile. Then she sits up, turns to the camera and speaks with lively, expressive hand gestures, her ears and eyes animated. The camera holds a steady medium shot at eye level.",
+    demoNegativePrompt:
+      "human face, flat 2D cartoon, extra paws, deformed gloves, floating cups, jerky head snap, camera shake, blurry fur, watermark",
     placeholder: "Describe your scene based on your image and reference video.",
     hiddenFields: [],
     cutout: false,
@@ -460,10 +491,22 @@ export type IcLoraRecipe = Exclude<
    */
   readonly upscalesSource?: boolean | "source-and-above";
   /**
-   * The recipe needs the `highResVideoToVideo` flag, in every cell. Home hides it without the
-   * flag. shared/ic-lora-recipes.json pins it, and a backend test pins the same set.
+   * The recipe offers 1440p and 4K without the `highResVideoToVideo` flag. Other recipes
+   * need the flag for these cells. shared/ic-lora-recipes.json pins it, and a backend test
+   * pins the same set.
    */
-  readonly requiresHighRes?: boolean;
+  readonly highResWithoutFlag?: boolean;
+  /** The form has an Advanced section with the tile overlap and the chunk carry. */
+  readonly tilingControls?: boolean;
+  /**
+   * Replaces the generic Advanced tooltip for this recipe. An omitted key keeps the generic text.
+   */
+  readonly tilingTooltips?: {
+    readonly overlap?: string;
+    readonly carry?: string;
+    readonly chunkLength?: string;
+    readonly tileSize?: string;
+  };
 };
 
 /**

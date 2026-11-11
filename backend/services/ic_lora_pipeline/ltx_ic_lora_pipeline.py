@@ -18,11 +18,14 @@ from numpy.typing import NDArray
 
 from api_types import ImageConditioningInput
 from runtime_config.ic_lora_chunking import ic_lora_carry_frames
-from runtime_config.ic_lora_tiling import IC_LORA_TILE_OVERLAP, IcLoraTiling
+from runtime_config.ic_lora_tiling import IcLoraTiling
+from services.fast_video_pipeline.nag_config import NagConfig
+from services.gpu_info.run_peak import fold_and_reset_cuda_peak
 from services.ic_lora_pipeline.ic_lora_inference import (
     InferenceResult,
     PipelineKwargs,
     encode_result,
+    inference_result_from_output,
     plan_chunks,
 )
 from services.ltx_pipeline_common import (
@@ -31,6 +34,7 @@ from services.ltx_pipeline_common import (
     is_decode_tile_shortage,
     resolve_cuda_decode_tiling_retry,
     resolve_tiling_config,
+    to_ltx_images,
 )
 from services.services_utils import PipelineTilingType, TilingConfigType, device_supports_fp8
 
@@ -92,7 +96,7 @@ class LTXIcLoraPipeline:
         stage_2_ic_lora: bool = False,
         tiling: IcLoraTiling | None = None,
     ) -> None:
-        from ltx_core.loader.primitives import LoraPathStrengthAndSDOps
+        from ltx_core.loader import LoraPathStrengthAndSDOps
         from ltx_core.loader.sd_ops import LTXV_LORA_COMFY_RENAMING_MAP
         from ltx_core.quantization.fp8_cast import build_policy as build_fp8_cast_policy
         from ltx_pipelines.ic_lora import DEFAULT_IC_LORA_STAGES
@@ -168,11 +172,14 @@ class LTXIcLoraPipeline:
         from ltx_pipelines.ic_lora import spatial_tiled_ic_lora_stages
 
         tile_width, tile_height = tiling.tile_size(stage_width, stage_height)
-        logger.info("[ic-lora] tiled: %dx%d tiles on %dx%d", tile_width, tile_height, stage_width, stage_height)
+        logger.info(
+            "[ic-lora] tiled: %dx%d tiles on %dx%d, overlap %.2f",
+            tile_width, tile_height, stage_width, stage_height, tiling.overlap_fraction,
+        )
         self.pipeline.stages = spatial_tiled_ic_lora_stages(
             tile_height=tile_height,
             tile_width=tile_width,
-            overlap_fraction=IC_LORA_TILE_OVERLAP,
+            overlap_fraction=tiling.overlap_fraction,
             apply_ic_lora=(True, False),
         )
 
@@ -254,11 +261,10 @@ class LTXIcLoraPipeline:
         skip_stage_2: bool,
         conditioning_attention_mask: torch.Tensor | None,
         chunk_config: ChunkConfig | None = None,
+        nag: NagConfig | None = None,
     ) -> InferenceResult:
         """Run the pipeline. A chunked job streams: ``__call__`` would collect every
         decoded window on the GPU first."""
-        from ltx_pipelines.utils.types import ImageConditioningInput as _LtxImageInput
-
         kwargs = PipelineKwargs(
             prompt=prompt,
             seed=seed,
@@ -266,23 +272,20 @@ class LTXIcLoraPipeline:
             width=width,
             num_frames=num_frames,
             frame_rate=frame_rate,
-            images=[_LtxImageInput(img.path, img.frame_idx, img.strength) for img in images],
+            images=to_ltx_images(images),
             video_conditioning=video_conditioning,
             tiling_config=tiling_config,
             skip_stage_2=skip_stage_2,
             conditioning_attention_mask=conditioning_attention_mask,
+            nag=nag,
         )
         if chunk_config is None:
             result = self.pipeline(**kwargs)
-            return InferenceResult(result.video, result.audio, result.num_frames, result.tiling_config)
-        from ltx_pipelines.chunks import split_decoded_chunks
-
+            return inference_result_from_output(result)
         chunks, resolved_frames, resolved_tiling = self.pipeline.stream_chunks(
             **kwargs, chunk_config=chunk_config
         )
-        video, audio, audio_sampling_rate = split_decoded_chunks(chunks)
-        streams = (video, chunks) if audio is None else (video, audio, chunks)
-        return InferenceResult(video, audio, resolved_frames, resolved_tiling, audio_sampling_rate, streams)
+        return InferenceResult(chunks, resolved_frames, resolved_tiling, (chunks,))
 
     def _load_mask_tensor(self, path: str, num_frames: int) -> torch.Tensor:
         """Load an outpaint mask video as a (1, 1, F, H, W) float tensor in [0, 1].
@@ -324,6 +327,7 @@ class LTXIcLoraPipeline:
         mute_audio: bool = False,
         conditioning_mask_path: str | None = None,
         chunk_pixel_frames: int | None = None,
+        nag: NagConfig | None = None,
     ) -> None:
         if use_lora_in_stage_2:
             logger.warning("[ic-lora] use_lora_in_stage_2 is deprecated and ignored (LTXP-514)")
@@ -379,7 +383,7 @@ class LTXIcLoraPipeline:
         cuda = torch.cuda.is_available() and self._device.type == "cuda"
         base_gb = 0.0
         if cuda:
-            torch.cuda.reset_peak_memory_stats(self._device)
+            fold_and_reset_cuda_peak(self._device)
             base_gb = torch.cuda.memory_allocated(self._device) / 1e9
             free_gb = torch.cuda.mem_get_info(self._device)[0] / 1e9
             if free_gb < 3.0:
@@ -406,6 +410,7 @@ class LTXIcLoraPipeline:
                         skip_stage_2=skip_stage_2,
                         conditioning_attention_mask=conditioning_attention_mask,
                         chunk_config=chunk_config,
+                        nag=nag,
                     )
                     encode_result(
                         result,

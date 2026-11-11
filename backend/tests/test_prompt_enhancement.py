@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import base64
+from contextlib import nullcontext
 import logging
 from io import BytesIO
+from pathlib import Path
 
+import ltx_pipelines.utils.gpu_model as ltx_gpu_model
 from PIL import Image
 from api_types import (
     InstructionSection,
@@ -17,6 +20,8 @@ from runtime_config.model_download_specs import resolve_model_path
 from services import generation_interrupt
 from services.gemini_text_client import DEFAULT_GEMINI_MODEL
 from services.prompt_enhancement import build_audio_visual_caption_system_prompt
+from services.prompt_enhancer_pipeline import ltx_prompt_enhancer_pipeline as ltx_mod
+from services.prompt_enhancer_pipeline.ltx_prompt_enhancer_pipeline import LtxPromptEnhancerPipeline
 from tests.fakes import FakeResponse
 from tests.http_error_assertions import assert_http_error
 from tests.lora_catalog_helpers import add_ic_lora, add_lora
@@ -179,6 +184,82 @@ class TestNoSelection:
         assert fake_services.prompt_enhancer_pipeline.enhance_i2v_calls[0]["keyframes"] == [
             (str(opening), 0, 0.7)
         ]
+
+    def test_keyframe_asset_ids_reach_enhance_i2v_as_paths_in_time_order(
+        self, client, fake_services, create_fake_model_files, make_test_image, tmp_path
+    ):
+        # Explore sends asset ids. A route that skipped them would enhance from text alone.
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        paths = [tmp_path / "late.png", tmp_path / "early.png"]
+        for path in paths:
+            path.write_bytes(make_test_image().getvalue())
+        late, early = (
+            client.post("/api/assets", json={"path": str(path)}).json()["id"] for path in paths
+        )
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "",
+                "duration": 5,
+                "fps": 24,
+                "keyframeAssets": [
+                    {"assetId": late, "frameIndex": 80, "strength": 0.5},
+                    {"assetId": early, "frameIndex": 0},
+                ],
+            },
+        )
+
+        assert r.status_code == 200, r.text
+        call = fake_services.prompt_enhancer_pipeline.enhance_i2v_calls[0]
+        # The asset store copies each file, so the paths are the stored copies.
+        sent = call["keyframes"]
+        assert [(frame, strength) for _, frame, strength in sent] == [(0, 1.0), (80, 0.5)]
+        assert len({path for path, _, _ in sent}) == 2
+        assert all(Path(path).is_file() for path, _, _ in sent)
+        assert call["duration"] == 5
+        assert call["fps"] == 24
+
+    def test_a_typed_prompt_and_the_keyframes_reach_one_rewrite_together(
+        self, client, fake_services, create_fake_model_files, make_test_image, tmp_path
+    ):
+        # The rewrite must use the typed text as its instruction, beside the stills.
+        # Dropping either one would turn it into a text-only or a stills-only rewrite.
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        paths = [tmp_path / "a.png", tmp_path / "b.png"]
+        for path in paths:
+            path.write_bytes(make_test_image().getvalue())
+        ids = [client.post("/api/assets", json={"path": str(path)}).json()["id"] for path in paths]
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "slow dolly in",
+                "duration": 5,
+                "fps": 24,
+                "keyframeAssets": [
+                    {"assetId": ids[0], "frameIndex": 0},
+                    {"assetId": ids[1], "frameIndex": 96},
+                ],
+            },
+        )
+
+        assert r.status_code == 200, r.text
+        calls = fake_services.prompt_enhancer_pipeline.enhance_i2v_calls
+        assert len(calls) == 1
+        assert calls[0]["prompt"] == "slow dolly in"
+        assert [frame[1] for frame in calls[0]["keyframes"]] == [0, 96]
+
+    def test_keyframes_and_keyframe_assets_cannot_both_be_sent(self, client):
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "a cat",
+                "keyframes": [{"imagePath": "/tmp/a.png", "frameIndex": 0}],
+                "keyframeAssets": [{"assetId": "asset-1", "frameIndex": 1}],
+            },
+        )
+        assert r.status_code == 422
 
     def test_keyframes_cannot_mix_with_first_frame(
         self, client, create_fake_model_files, make_test_image, tmp_path
@@ -1030,6 +1111,97 @@ class TestApiProvider:
         test_state.state.app_settings.gemini_api_key = "key"
         r = client.post("/api/enhance-prompt", json={"prompt": "x"})
         assert_http_error(r, status_code=409, code="LOCAL_TEXT_ENCODER_NOT_AVAILABLE")
+
+    def test_enhance_passes_negative_prompt_as_exclusion_constraint_on_positive_rewrite(
+        self, client, test_state
+    ):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_ok("a sharp fox in the snow"))
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "a fox", "negativePrompt": "blurry, watermark", "provider": "api"},
+        )
+        assert r.status_code == 200
+        assert r.json() == {"enhancedPrompt": "a sharp fox in the snow"}
+        payload = test_state.http.calls[-1].json_payload
+        assert (
+            "Excluded elements (do not include or mention in the prompt): blurry, watermark"
+            in payload["contents"][0]["parts"][0]["text"]
+        )
+        assert "Do NOT include, mention, describe, or imply" in payload["systemInstruction"]["parts"][0]["text"]
+
+        # Empty negativePrompt omits the exclusion constraint.
+        test_state.http.queue("post", _gemini_ok("a plain fox caption"))
+        r_empty = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "a fox", "negativePrompt": "", "provider": "api"},
+        )
+        assert r_empty.status_code == 200
+        assert r_empty.json() == {"enhancedPrompt": "a plain fox caption"}
+        empty_payload = test_state.http.calls[-1].json_payload
+        assert "Excluded elements" not in empty_payload["contents"][0]["parts"][0]["text"]
+        assert "Do NOT include, mention, describe, or imply" not in empty_payload["systemInstruction"]["parts"][0]["text"]
+
+    def test_template_fill_ic_lora_enhance_passes_negative_prompt_exclusion_to_enhancer(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        test_state.state.app_settings.use_local_text_encoder = True
+        add_ic_lora(
+            fake_services,
+            id="deblur",
+            name="Deblur",
+            prompt_template=PromptTemplateSpec(
+                template="Reference shows {reference}. DEBLUR {result}.",
+                placeholders={
+                    "reference": PromptTemplatePlaceholder(),
+                    "result": PromptTemplatePlaceholder(),
+                },
+            ),
+        )
+        fake_services.prompt_enhancer_pipeline.enhanced_prompt = (
+            '{"reference": "a blurry butterfly", "result": "a sharp butterfly"}'
+        )
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "sharpen the butterfly",
+                "negativePrompt": "haloing, ringing",
+                "icLoraId": "deblur",
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["enhancedPrompt"] == "Reference shows a blurry butterfly. DEBLUR a sharp butterfly."
+        call = fake_services.prompt_enhancer_pipeline.enhance_t2v_calls[-1]
+        assert call["negative_prompt"] == "haloing, ringing"
+
+    def test_ltx_prompt_enhancer_pipeline_includes_negative_prompt_exclusion_in_system_and_user_messages(
+        self, monkeypatch
+    ):
+        captured_messages: list[list[dict[str, object]]] = []
+
+        monkeypatch.setattr(ltx_gpu_model, "gpu_model", lambda enc: nullcontext(enc))
+        monkeypatch.setattr(LtxPromptEnhancerPipeline, "_build_text_encoder", lambda self: object())
+        monkeypatch.setattr(ltx_mod, "_default_system_prompt", lambda _enc, *, t2v: "default system")
+
+        def fake_generate(_enc, messages, *, image, seed, max_new_tokens_floor=None):
+            del image, seed, max_new_tokens_floor
+            captured_messages.append(messages)
+            return "a sharp fox in the snow"
+
+        monkeypatch.setattr(ltx_mod, "_generate", fake_generate)
+
+        pipe = LtxPromptEnhancerPipeline(gemma_root="/fake/gemma", device="cpu")
+        out = pipe.enhance_t2v("a fox", None, 42, negative_prompt="blurry, watermark")
+        assert out == "a sharp fox in the snow"
+        assert len(captured_messages) == 1
+        sys_msg, user_msg = captured_messages[0]
+        assert "Do NOT include, mention, describe, or imply" in str(sys_msg["content"])
+        assert "Excluded elements (do not include or mention in the prompt): blurry, watermark" in str(
+            user_msg["content"]
+        )
 
 
 class TestImageMediaType:

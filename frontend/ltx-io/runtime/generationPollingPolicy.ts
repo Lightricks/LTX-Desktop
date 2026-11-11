@@ -64,7 +64,7 @@ export function generationRefetchInterval(
 }
 
 export type QueuePollQueryState = {
-  data?: { active: unknown; queued: readonly unknown[] } | undefined;
+  data?: { active: readonly unknown[]; queued: readonly unknown[] } | undefined;
   error: unknown;
   fetchFailureCount: number;
 };
@@ -94,7 +94,7 @@ export function queueRefetchInterval(
     return policy.errorBackoffMs(state.fetchFailureCount);
   }
   const { data } = state;
-  if (data && data.active == null && data.queued.length === 0) {
+  if (data && data.active.length === 0 && data.queued.length === 0) {
     return IDLE_QUEUE_POLL_INTERVAL_MS;
   }
   return policy.queueActiveIntervalMs;

@@ -6,10 +6,7 @@ from pathlib import Path
 import pytest
 
 from api_model_specs import video_generation_feature
-from handlers.prompt_enhancement_handler import (
-    ResolvedGenerationPrompt,
-    prompt_provenance_label,
-)
+from handlers.resolved_generation_prompt import ResolvedGenerationPrompt, prompt_provenance_label
 from services.analytics import (
     ENDED_DETAIL_KEYS,
     AnalyticsService,
@@ -196,7 +193,7 @@ def test_started_detail_keys_match_the_shared_contract() -> None:
 
     A writer key missing from shared/generation-detail-keys.json is silently
     dropped from generate_started; a contract key nothing emits is dead.
-    outcome/runtime_ms/error_code/output_count are ended-only by design.
+    outcome/runtime_ms/error_code/output_count/prompt_rewrite are ended-only by design.
     """
     record = _home_record(
         feature="text-to-video",
@@ -224,7 +221,13 @@ def test_started_detail_keys_match_the_shared_contract() -> None:
     assert details is not None
     contract_path = Path(__file__).resolve().parents[2] / "shared" / "generation-detail-keys.json"
     contract = set(json.loads(contract_path.read_text()))
-    assert set(details) == contract - {"outcome", "runtime_ms", "error_code", "output_count"}
+    assert set(details) == contract - {
+        "outcome",
+        "runtime_ms",
+        "error_code",
+        "output_count",
+        "prompt_rewrite",
+    }
 
 
 def test_video_generation_feature_prefers_keyframes_then_audio() -> None:
@@ -486,6 +489,49 @@ def test_ended_event_keeps_load_and_offload_modes() -> None:
     assert isinstance(ended, dict)
     assert ended["load_mode"] == "streaming_models_loading"
     assert ended["offload_mode"] == "DISK"
+
+
+def test_a_fal_image_job_with_no_enhancer_is_auto_enhanced_by_fal_expansion() -> None:
+    # Bug caught: a fal job that fal expands is reported as raw when no local or Gemini rewrite exists.
+    no_enhancer = QueuedEnhancement(
+        explore_auto_enhance_prompts=True, prompt_enhancer_enabled=False, use_local_encoding=False
+    )
+    auto_off = QueuedEnhancement(
+        explore_auto_enhance_prompts=False, prompt_enhancer_enabled=False, use_local_encoding=False
+    )
+
+    def image(provider: str, provenance: str = "typed") -> GenerationRecord:
+        return _home_record(
+            feature="text-to-image",
+            params={"prompt": "a fox", "promptProvenance": provenance, "provider": provider},
+        )
+
+    def label(record: GenerationRecord, enhancement: QueuedEnhancement) -> object:
+        return (queued_generation_details(record, enhancement=enhancement) or {})["prompt_provenance"]
+
+    assert label(image("fal"), no_enhancer) == "auto-enhanced"
+    assert label(image("local"), no_enhancer) == "raw"
+    assert label(image("fal"), auto_off) == "raw"
+    assert label(image("fal", "enhanced"), no_enhancer) == "manually-enhanced"
+
+
+def test_ended_event_keeps_the_prompt_rewrite_source() -> None:
+    # Bug caught: the rewrite source is dropped by the ended allowlist, so fal expansion cost
+    # cannot be told apart from a free local or Gemini rewrite.
+    http = FakeHTTPClient()
+    http.queue("post", FakeResponse())
+    service = _service(http)
+    record = _home_record(feature="text-to-image", params={"prompt": "a fox"})
+    details = queued_generation_details(record, modes={"prompt_rewrite": "fal_expansion"})
+    assert details is not None
+
+    service.send_generation_ended(details, outcome="succeeded", runtime_ms=1000)
+
+    payload = http.calls[0].json_payload
+    assert payload is not None
+    ended = payload["extraDetails"]
+    assert isinstance(ended, dict)
+    assert ended["prompt_rewrite"] == "fal_expansion"
 
 
 def test_extend_with_gemini_video_enhance_is_auto_enhanced_even_with_api_text_encoding() -> None:

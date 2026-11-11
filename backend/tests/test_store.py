@@ -60,9 +60,10 @@ def test_fresh_db_applies_initial_schema(tmp_path: Path) -> None:
         "generations",
         "assets",
         "paired_devices",
+        "device_calibration_frontier",
     }
     version = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
-    assert version == 2
+    assert version == 4
     asset_columns = {
         row["name"] for row in conn.execute("PRAGMA table_info(assets)").fetchall()
     }
@@ -115,7 +116,7 @@ def test_second_open_is_noop(tmp_path: Path) -> None:
     apply_migrations(conn, MIGRATIONS_DIR)
     apply_migrations(conn, MIGRATIONS_DIR)
     count = conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0]
-    assert count == 2
+    assert count == 4
     conn.close()
 
 
@@ -129,7 +130,7 @@ def test_rerun_after_ddl_without_ledger_row_does_not_brick(tmp_path: Path) -> No
     conn.commit()
     apply_migrations(conn, MIGRATIONS_DIR)
     version = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
-    assert version == 2
+    assert version == 4
     tables = {
         row[0]
         for row in conn.execute(

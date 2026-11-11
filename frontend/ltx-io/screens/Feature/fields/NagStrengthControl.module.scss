@@ -1,0 +1,74 @@
+@import "@ds/styles/themes/mixins.module.scss";
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  width: 100%;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--semantic-fg-secondary);
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    color: var(--semantic-fg-primary);
+  }
+}
+
+.toggleLabel {
+  flex-shrink: 0;
+}
+
+/* The current preset, so a non-default strength shows while the row is collapsed. */
+.summary {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--semantic-fg-tertiary);
+
+  &::before {
+    content: "·";
+    margin-right: var(--spacing-xs);
+  }
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding-left: var(--spacing-lg);
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.description,
+.hint {
+  color: var(--semantic-fg-tertiary);
+}
+
+.knobs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.knob {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+}

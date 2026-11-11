@@ -85,6 +85,30 @@ describe("mergeDurationControlOptions", () => {
     assert.equal(byValue.get("8")?.tooltip, "still too large on these pixels");
   });
 
+  it("disables an over-budget preflight duration instead of warning it", () => {
+    const merged = mergeDurationControlOptions(
+      control({ options: [5], dropped_options: [dropped(8, "preview")] }),
+      labelFor,
+      [cell(5, true), { ...cell(8, false, "over budget"), tier: "over" }],
+    );
+    const over = merged.options.find((option) => option.value === "8");
+    assert.equal(over?.disabled, true);
+    assert.equal(over?.warning, undefined);
+  });
+
+  it("does not restore an all-dropped duration list", () => {
+    const merged = mergeDurationControlOptions(
+      control({
+        options: [],
+        dropped_options: [{ ...dropped(8, "over budget"), tier: "over" }],
+      }),
+      labelFor,
+      null,
+    );
+    assert.deepEqual(merged.options, []);
+    assert.equal(merged.emptyMessage, "over budget");
+  });
+
   it("names the backend reason when no option survived", () => {
     const merged = mergeDurationControlOptions(
       control({

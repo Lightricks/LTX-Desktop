@@ -3,6 +3,7 @@ import {
   type DownloadedLocalVideoGenerationModelSpecItem,
   type OfferingId,
 } from "../../../../lib/video-generation-model-specs.ts";
+import { preflightCellStatus, riskOptionFields } from "../../../../lib/budget-risk.ts";
 import { namedResolutionDisplayName } from "../../../../lib/video-resolution.ts";
 import { highResEditWarning, lowPerformanceResolutionWarning } from "../../../lib/lowPerformanceWarning.ts";
 import { readGenerationParams } from "../../../lib/resultsFeedModel.ts";
@@ -10,8 +11,8 @@ import type { VideoFeatureContext } from "../../../lib/videoFieldPolicy.ts";
 import {
   findPreflightCell,
   firstPassingResolutionKey,
+  blockedOptionFields,
   preflightFallbackMessage,
-  preflightStatus,
   resolutionPreflightStatus,
   type EditPreflightState,
 } from "../../../lib/editPreflight.ts";
@@ -97,19 +98,25 @@ export function editResolutionFieldOptions(
         option.value,
         preflight.minDuration,
       );
-      if (status.status === "blocked") {
+      if (status.status === "warned") {
         return {
           ...option,
-          disabledReason: preflightFallbackMessage(status),
+          ...riskOptionFields(
+            preflightFallbackMessage(status),
+            option.warning,
+          ),
           ...(status.readout ? { budget: status.readout } : {}),
         };
       }
-      return option;
+      return { ...option, ...blockedOptionFields(status) };
     },
   );
   if (
     withVerdicts.length > 1 ||
-    withVerdicts.some((option) => option.disabledReason !== undefined)
+    withVerdicts.some(
+      (option) =>
+        option.disabledReason !== undefined || option.warningTone === "risk",
+    )
   ) {
     return withVerdicts;
   }
@@ -213,7 +220,7 @@ export function resolvePreflightResolution(
 /**
  * Preflight issues for the current selection. A blocked minimum-duration
  * cell disables the resolution. A blocked duration cell disables that field.
- * A downgraded duration stays selectable with no issue.
+ * A downgraded duration stays selectable and carries its tier on Generate.
  * Retake attaches the duration issue to the trim field, extend to its
  * duration presets — hence the parameterized ids. Unknown stays silent.
  */
@@ -243,21 +250,34 @@ export function editPreflightIssues(options: {
       },
     ];
   }
-  const durationStatus = preflightStatus(
-    options.preflight,
+  const durationStatus = preflightCellStatus(
     findPreflightCell(
       options.preflight,
       options.resolution,
       options.duration,
     ),
   );
-  if (durationStatus.status !== "blocked") return [];
+  if (durationStatus.status === "clear") return [];
+  const message = preflightFallbackMessage(durationStatus);
+  if (durationStatus.status === "blocked") {
+    return [
+      {
+        id: options.durationIssueId,
+        fieldId: options.durationFieldId,
+        message,
+        alwaysRevealed: true,
+      },
+    ];
+  }
   return [
     {
       id: options.durationIssueId,
-      fieldId: options.durationFieldId,
-      message: preflightFallbackMessage(durationStatus),
+      fieldId: "generate",
+      message,
       alwaysRevealed: true,
+      blocksGenerate: false,
+      tone: "risk",
+      tier: durationStatus.tier,
     },
   ];
 }
@@ -362,3 +382,5 @@ export function readPrompt(spec: unknown): string {
   const params = readGenerationParams(spec);
   return typeof params?.prompt === "string" ? params.prompt : "";
 }
+
+export { readNegativePrompt } from "./negativePrompt.ts";

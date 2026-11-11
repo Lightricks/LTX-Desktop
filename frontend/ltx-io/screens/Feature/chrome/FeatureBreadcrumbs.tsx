@@ -17,7 +17,8 @@ export function FeatureBreadcrumbs({
 }: {
   trail: readonly FeatureCrumb[];
   detailsLabel: string;
-  onOpenDetails: () => void;
+  /** Leave it out when the page has no details to show: the "i" button is then hidden. */
+  onOpenDetails?: () => void;
   variant?: "default" | "topBar";
 }) {
   if (trail.length === 0) {
@@ -54,16 +55,18 @@ export function FeatureBreadcrumbs({
           </Fragment>
         );
       })}
-      <Button
-        appearance="neutral"
-        hierarchy="plain"
-        size="md"
-        isIconOnly
-        leftIcon={<InfoLineIcon />}
-        aria-label={detailsLabel}
-        className={styles.infoButton}
-        onClick={onOpenDetails}
-      />
+      {onOpenDetails != null ? (
+        <Button
+          appearance="neutral"
+          hierarchy="plain"
+          size="md"
+          isIconOnly
+          leftIcon={<InfoLineIcon />}
+          aria-label={detailsLabel}
+          className={styles.infoButton}
+          onClick={onOpenDetails}
+        />
+      ) : null}
     </nav>
   );
 }

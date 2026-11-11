@@ -14,7 +14,13 @@ class PromptEnhancerPipeline(Protocol):
     def create(gemma_root: str, device: str) -> "PromptEnhancerPipeline":
         ...
 
-    def enhance_t2v(self, prompt: str, system_prompt: str | None, seed: int) -> str:
+    def enhance_t2v(
+        self,
+        prompt: str,
+        system_prompt: str | None,
+        seed: int,
+        negative_prompt: str = "",
+    ) -> str:
         ...
 
     def enhance_i2v(
@@ -27,6 +33,7 @@ class PromptEnhancerPipeline(Protocol):
         keyframes: list[KeyframeStill] | None = None,
         duration: int | None = None,
         fps: int | None = None,
+        negative_prompt: str = "",
     ) -> str:
         ...
 
@@ -37,5 +44,6 @@ class PromptEnhancerPipeline(Protocol):
         system_prompt: str | None,
         seed: int,
         role: VideoRole,
+        negative_prompt: str = "",
     ) -> str:
         ...

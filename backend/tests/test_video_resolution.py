@@ -117,3 +117,17 @@ def test_correct_frame_count_trims_down_to_8k_plus_1():
 def test_correct_frame_count_rejects_too_short():
     with pytest.raises(HTTPError):
         correct_frame_count(8)
+
+
+def test_home_edit_size_snaps_odd_edges_to_even():
+    # The frontend sends 635x360 for a 360p retake of a 960x544 clip (360 * 960/544 = 635.3).
+    # libx264 with yuv420p cannot encode an odd edge, so the picture size comes back even.
+    assert resolve_home_edit_size(635, 360, 960, 544) == (636, 360)
+    assert resolve_home_edit_size(361, 203, 960, 544) == (362, 204)
+
+
+def test_home_edit_size_keeps_even_edges_and_the_source_bound():
+    assert resolve_home_edit_size(640, 360, 960, 544) == (640, 360)
+    assert resolve_home_edit_size(None, None, 960, 544) == (960, 544)
+    # Never larger than the (even) source.
+    assert resolve_home_edit_size(1920, 1088, 960, 544) == (960, 544)

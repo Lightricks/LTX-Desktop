@@ -36,7 +36,7 @@ from api_types import (
 from app_factory import create_app
 from app_handler import ServiceBundle
 from handlers.base import resolve_models_dir
-from runtime_config.ic_lora_high_res import HIGH_RES_ONLY_IC_LORAS
+from runtime_config.ic_lora_high_res import HIGH_RES_WITHOUT_FLAG_IC_LORAS
 from runtime_config.ltx_capabilities import budget_pixels, local_caps
 from runtime_config.model_download_specs import resolve_ic_lora_path
 from runtime_config.video_job_budget import VIDEO_JOB_TOO_LARGE
@@ -49,6 +49,7 @@ from services.features.video.ic_lora_recipe import ic_lora_video_filters
 from services.features.video.ic_lora_recipe import IcLoraRecipeExecutor
 from services.generation_interrupt import GenerationCancelledError
 from services.generation_queue.types import OutputAllocation, OutputPlan
+from tests.fakes.generation import FakeJobSession
 from services.media_probe import _stream_fps, probe_file
 from services.records import AssetRecord, CapabilityFailedError, GenerationRecord
 from services.sqlite_store import SqliteStore
@@ -1017,6 +1018,7 @@ def test_a_slower_rate_is_the_file_the_pipeline_receives(
                     dest_path=str(tmp_path / "output.mp4"),
                 ),
             ),
+            FakeJobSession(),
         )
     except GenerationCancelledError:
         pass
@@ -1041,10 +1043,10 @@ def test_ic_lora_recipe_table_matches_shared_json() -> None:
         recipe.recipe_id: (recipe.catalog_id, recipe.kind) for recipe in IC_LORA_RECIPES.values()
     }
     assert actual == expected
-    # The frontend hides these recipes without the flag. The backend refuses the same set.
+    # The frontend offers the high cells of these recipes without the flag. The backend allows the same set.
     assert {
-        entry["catalogId"] for entry in contract if entry.get("requiresHighRes") is True
-    } == HIGH_RES_ONLY_IC_LORAS
+        entry["catalogId"] for entry in contract if entry.get("highResWithoutFlag") is True
+    } == HIGH_RES_WITHOUT_FLAG_IC_LORAS
 
 
 _GIB = 1024**3

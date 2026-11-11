@@ -6,6 +6,7 @@ import {
   HOME_FEATURE_SECTIONS,
   HOME_FEATURES,
   isHomeFeatureId,
+  isHomeFeatureOffered,
   matchHomeFeature,
 } from './home-features.ts'
 import { IC_LORA_RECIPES } from './ic-lora-recipes.ts'
@@ -112,7 +113,7 @@ describe('home feature registry', () => {
     const icLoraIds = IC_LORA_RECIPES.map((recipe) => recipe.id)
     assert.deepEqual(
       HOME_FEATURES.map((feature) => feature.id),
-      ['text-to-video', 'image-to-video', 'audio-to-video', 'retake', 'extend', ...icLoraIds, ...recipeIds],
+      ['text-to-video', 'image-to-video', 'keyframes', 'audio-to-video', 'retake', 'extend', ...icLoraIds, ...recipeIds, 'custom-lora'],
     )
     assert.ok(isHomeFeatureId('cozy-felt'))
     assert.ok(isHomeFeatureId('dolly-in'))
@@ -148,7 +149,7 @@ describe('home feature sections', () => {
         section.features.map((feature) => feature.id),
       ]),
       [
-        ['Workflows', ['text-to-video', 'image-to-video', 'audio-to-video']],
+        ['Workflows', ['text-to-video', 'image-to-video', 'keyframes', 'audio-to-video']],
         ['VFX', ['alpha-gen', 'layout-to-render', 'restore', 'motion-track', 'video-guide']],
         [
           'Post production',
@@ -167,5 +168,14 @@ describe('home feature sections', () => {
         ['Marketing', ['ingredients']],
       ],
     )
+  })
+})
+
+describe('Keyframes flag', () => {
+  it('lists Keyframes only with its own flag, not the high-res video flag', () => {
+    assert.equal(isHomeFeatureOffered('keyframes'), false)
+    assert.equal(isHomeFeatureOffered('keyframes', {}), false)
+    assert.equal(isHomeFeatureOffered('keyframes', { keyframes: true }), true)
+    assert.equal(isHomeFeatureOffered('image-to-video'), true)
   })
 })

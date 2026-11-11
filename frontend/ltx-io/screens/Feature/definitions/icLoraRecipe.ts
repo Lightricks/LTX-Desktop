@@ -30,6 +30,14 @@ import {
   type IcLoraControlType,
 } from "../../../lib/icLoraControlType.ts";
 import { icLoraSelectedFps } from "./icLoraFps.ts";
+import {
+  AUTO_NUMBER,
+  AUTO_TILE,
+  isTileChoice,
+  overlapChoices,
+  type IcLoraTileChoice,
+} from "./icLoraTilingControls.ts";
+import type { IcLoraRecipeMemory } from "./icLoraMemory.ts";
 import { icLoraVariantId, normalizeIcLoraRecipeValues } from "./icLoraNormalize.ts";
 import {
   icLoraRecipeForm,
@@ -44,9 +52,11 @@ import {
   type IcLoraRecipeResolution,
 } from "./icLoraResolution.ts";
 import { validateIcLoraRecipe } from "./icLoraValidate.ts";
+import { swapDemoNegative } from "./negativePrompt.ts";
 import {
   hasAdvertisedCapability,
   readGenerationInputs,
+  readNegativePrompt,
   readPrompt,
   readVideoGenerationInput,
   resolveCapableModel,
@@ -54,12 +64,14 @@ import {
 } from "./videoFeature.ts";
 
 type CreateIcLoraRecipeRequest = components["schemas"]["CreateIcLoraRecipeRequest"];
+type IcLoraTilePreflightResponse = components["schemas"]["IcLoraTilePreflightResponse"];
 
 export type IcLoraRecipeSchema = {
   video: { kind: "video-asset"; value: AssetRef | null };
   /** The reference still of a recipe with a `referenceImage`. Null for the others. */
   image: { kind: "image-asset"; value: AssetRef | null };
   prompt: { kind: "textarea" };
+  negativePrompt: { kind: "textarea" };
   loraStrength: { kind: "slider"; value: number };
   model: { kind: "options"; value: OfferingId };
   variant: { kind: "options"; value: string };
@@ -68,6 +80,19 @@ export type IcLoraRecipeSchema = {
   audioMode: { kind: "options"; value: IcLoraRecipeAudioMode };
   /** How the guide clip is read. Only a recipe with `controlMode` shows and sends it. */
   controlType: { kind: "options"; value: IcLoraControlType };
+  /**
+   * The Advanced controls. Only a recipe with `tilingControls` shows and sends them. Null is Auto
+   * for the three numeric ones, and the backend picks the value. The tile size stores "auto".
+   *
+   * The share of a tile that the next tile covers.
+   */
+  tilingOverlap: { kind: "options"; value: number | null };
+  /** Frames carried from one chunk to the next. */
+  carryFrames: { kind: "options"; value: number | null };
+  /** The tile the model works on. Auto keeps the catalog tile. */
+  tilingSize: { kind: "options"; value: IcLoraTileChoice };
+  /** Frames in one chunk of a long clip. */
+  maxWindowFrames: { kind: "options"; value: number | null };
 };
 
 export type IcLoraRecipeValues = FeatureValues<IcLoraRecipeSchema>;
@@ -83,8 +108,16 @@ export type IcLoraRecipeContext = VideoInputContext & {
   highResCells?: readonly ("1440p" | "2160p")[];
   /** The pictures of the control modes. The screen owns the assets. */
   controlThumbnails?: Record<IcLoraControlType, string>;
+  /** The catalog entry picks its chunk window itself (`adaptive_window`). The Advanced section needs it. */
+  tilingAdaptive?: boolean;
+  /** The catalog tile, long side by short side. The Standard tile size is this. */
+  tilingTile?: { long: number; short: number } | null;
+  /** Verdicts for each tile, chunk and carry, plus the defaults a run uses. Null until they load. */
+  tilePreflight?: IcLoraTilePreflightResponse | null;
   /** The catalog entry keeps the IC-LoRA on stage 2. The form then offers cells up to 2x the source. */
   twoStage?: boolean;
+  /** Memory advice for the current cell and clip. Undefined or null while unknown. */
+  recipeMemory?: IcLoraRecipeMemory | null;
 };
 
 /** Fallback before the catalog loads. Catalog default_settings replaces it. */
@@ -95,6 +128,8 @@ export type IcLoraRecipeCatalogSettings = {
   audio_mode?: string | null;
   /** The catalog entry's `allows_empty_prompt`. A blank prompt is then valid. */
   allows_empty_prompt?: boolean | null;
+  /** Generic `default_negative_prompt` from the catalog entry, when present. */
+  default_negative_prompt?: string | null;
 };
 
 export function icLoraRecipeDefaults(
@@ -142,15 +177,55 @@ export function readStoredLora(
   return { scale, variantId };
 }
 
+/** A stored overlap that the control offers, else null (Auto). */
+function readTilingOverlap(value: unknown): number | null {
+  return typeof value === "number" && overlapChoices().includes(value) ? value : null;
+}
+
+/**
+ * The overrides the user chose. An Auto control sends nothing, and the backend picks its value.
+ * A choice is sent as it is: the body never depends on the advisory preflight.
+ */
+export function icLoraTilingParams(values: IcLoraRecipeValues) {
+  return {
+    ...(values.tilingOverlap != null ? { tilingOverlap: values.tilingOverlap } : {}),
+    ...(values.carryFrames != null ? { carryFrames: values.carryFrames } : {}),
+    ...(values.tilingSize !== AUTO_TILE ? { tilingSize: values.tilingSize } : {}),
+    ...(values.maxWindowFrames != null ? { maxWindowFrames: values.maxWindowFrames } : {}),
+  };
+}
+
+/** Auto is the value of an option, and the form stores it as null. */
+function withAutoAsNull(values: IcLoraRecipeValues): IcLoraRecipeValues {
+  const isAuto = (value: number | null) => value === AUTO_NUMBER;
+  if (
+    !isAuto(values.tilingOverlap) &&
+    !isAuto(values.carryFrames) &&
+    !isAuto(values.maxWindowFrames)
+  ) {
+    return values;
+  }
+  return {
+    ...values,
+    tilingOverlap: isAuto(values.tilingOverlap) ? null : values.tilingOverlap,
+    carryFrames: isAuto(values.carryFrames) ? null : values.carryFrames,
+    maxWindowFrames: isAuto(values.maxWindowFrames) ? null : values.maxWindowFrames,
+  };
+}
+
 function defaultsFor(
   recipe: IcLoraRecipe,
   settings?: IcLoraRecipeCatalogSettings | null,
 ): IcLoraRecipeValues {
   const catalog = icLoraRecipeDefaults(settings);
+  const promptHidden = isIcLoraFieldHidden(recipe, "prompt");
   return {
     video: null,
     image: null,
     prompt: recipe.demoPrompt,
+    negativePrompt: promptHidden
+      ? ""
+      : recipe.demoNegativePrompt || settings?.default_negative_prompt || "",
     loraStrength: catalog.loraStrength,
     model: "ltx-2.5-fast",
     variant: "",
@@ -161,6 +236,10 @@ function defaultsFor(
     fps: null,
     audioMode: catalog.audioMode,
     controlType: IC_LORA_CONTROL_TYPES[0],
+    tilingOverlap: null,
+    carryFrames: null,
+    tilingSize: AUTO_TILE,
+    maxWindowFrames: null,
   };
 }
 
@@ -205,6 +284,7 @@ export function createIcLoraRecipeDefinition(
         savedImage != null ? savedImage.image : context.imageSeed,
       ),
       prompt: readPrompt(spec),
+      negativePrompt: readNegativePrompt(spec),
       loraStrength: stored.scale,
       variant: stored.variantId,
       model: resolveCapableModel(params.model, context.specs, "ic_lora", defaults.model),
@@ -215,6 +295,10 @@ export function createIcLoraRecipeDefinition(
       ),
       audioMode: isAudioMode(params.audioMode) ? params.audioMode : defaults.audioMode,
       controlType: isIcLoraControlType(params.controlType) ? params.controlType : defaults.controlType,
+      tilingOverlap: readTilingOverlap(params.tilingOverlap),
+      carryFrames: typeof params.carryFrames === "number" ? params.carryFrames : null,
+      tilingSize: isTileChoice(params.tilingSize) ? params.tilingSize : AUTO_TILE,
+      maxWindowFrames: typeof params.maxWindowFrames === "number" ? params.maxWindowFrames : null,
     };
   }
 
@@ -235,6 +319,7 @@ export function createIcLoraRecipeDefinition(
       },
       params: {
         prompt: promptHidden ? defaults.prompt : values.prompt.trim(),
+        negativePrompt: promptHidden ? "" : values.negativePrompt.trim(),
         model: values.model,
         // Stored values skip normalize, so the source may no longer offer this cell.
         resolution: context
@@ -244,6 +329,7 @@ export function createIcLoraRecipeDefinition(
         audioMode: audioHidden ? defaults.audioMode : values.audioMode,
         scale: strengthHidden ? defaults.loraStrength : values.loraStrength,
         ...(recipe.controlMode ? { controlType: values.controlType } : {}),
+        ...(recipe.tilingControls ? icLoraTilingParams(values) : {}),
         ...(variantId ? { variantId } : {}),
         promptProvenance: "typed",
       },
@@ -257,8 +343,16 @@ export function createIcLoraRecipeDefinition(
     initialValues: seedValues,
     resetValues: seedValues,
     form: (values, context) => icLoraRecipeForm(recipe, values, context),
-    applyChange: (values, change: FeatureFieldChange<IcLoraRecipeSchema>) =>
-      applyFeatureFieldChange(values, change),
+    applyChange: (values, change: FeatureFieldChange<IcLoraRecipeSchema>) => {
+      const next = swapDemoNegative(values, applyFeatureFieldChange(values, change), {
+        demoNegative: recipe.demoNegativePrompt,
+        catalogDefault: promptHidden ? null : settings?.default_negative_prompt,
+        changed: (before, after) =>
+          (change.dataKey === "video" || change.dataKey === "prompt") &&
+          (after.video?.assetId !== before.video?.assetId || after.prompt !== before.prompt),
+      });
+      return withAutoAsNull(next);
+    },
     normalize: (values, context) =>
       normalizeIcLoraRecipeValues(values, context, defaults, upscalesSource),
     fromGeneration,

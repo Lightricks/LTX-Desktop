@@ -1,4 +1,14 @@
 import type { components } from "../../../../generated/backend-openapi";
+import { buildMemoryMeterModel } from "../../../../lib/memory-meter.ts";
+import {
+  isForcedPassShape,
+  meterCell,
+  passShapeToSend,
+  pricedCell,
+  withVisiblePassShape,
+  type ForcedPassShape,
+  type ImageSize,
+} from "../../../../lib/pass-shape.ts";
 import {
   restoreOfferingId,
   withDefaultOffering,
@@ -18,7 +28,9 @@ import {
 } from "../../../lib/videoFieldPolicy.ts";
 import {
   applyVideoSettingsChange,
+  createPassShapeFields,
   createVideoSettingsOptionFields,
+  fastBudgetIssues,
   isSupportedVideoDuration,
   isSupportedVideoFps,
   isSupportedVideoResolution,
@@ -31,6 +43,7 @@ import {
   type FeatureValues,
   type ValidationIssue,
 } from "../types.ts";
+import { negativePromptField, readNegativePrompt } from "./negativePrompt.ts";
 import { readAssetRef } from "./videoFeature.ts";
 
 type CreateImageToVideoRequest = components["schemas"]["CreateImageToVideoRequest"];
@@ -39,11 +52,13 @@ export type ImageToVideoAspectRatio = VideoFeatureAspectRatio;
 
 export type ImageToVideoSchema = {
   prompt: { kind: "textarea" };
+  negativePrompt: { kind: "textarea" };
   model: { kind: "options"; value: OfferingId };
   aspectRatio: { kind: "options"; value: ImageToVideoAspectRatio };
   resolution: { kind: "options"; value: VideoGenerationResolution };
   duration: { kind: "options"; value: VideoGenerationDuration };
   fps: { kind: "options"; value: VideoGenerationFps };
+  passShape: { kind: "options"; value: ForcedPassShape | null };
   startFrame: { kind: "image-asset"; value: AssetRef | null };
   endFrame: { kind: "image-asset"; value: AssetRef | null };
 };
@@ -52,10 +67,16 @@ export type ImageToVideoValues = FeatureValues<ImageToVideoSchema>;
 
 export type ImageToVideoContext = VideoFeatureContext & {
   seed: AssetRef | null;
+  /** The start image's size, for the ratio Auto runs at. Null while it loads. */
+  startFrameSize?: ImageSize | null;
 };
+
 
 /** Same copy as studio's I2V gallery example — empty-state form seed. */
 export const IMAGE_TO_VIDEO_EXAMPLE_PROMPT = "A young man plays the drums.";
+
+export const IMAGE_TO_VIDEO_EXAMPLE_NEGATIVE_PROMPT =
+  "extra drumsticks, floating sticks, deformed hands, extra fingers, warped drum kit, frozen motion, blurry face, watermark";
 
 /**
  * Empty state: example prompt + downloaded Fast offering at 540p / 24fps / 8s / Auto.
@@ -63,11 +84,13 @@ export const IMAGE_TO_VIDEO_EXAMPLE_PROMPT = "A young man plays the drums.";
  */
 export const IMAGE_TO_VIDEO_DEFAULTS: ImageToVideoValues = {
   prompt: IMAGE_TO_VIDEO_EXAMPLE_PROMPT,
+  negativePrompt: IMAGE_TO_VIDEO_EXAMPLE_NEGATIVE_PROMPT,
   model: "ltx-2.5-fast",
   aspectRatio: "auto",
   resolution: "540p",
   duration: 8,
   fps: 24,
+  passShape: null,
   startFrame: null,
   endFrame: null,
 };
@@ -102,6 +125,7 @@ export function fromGeneration(
 
   return {
     prompt: typeof params.prompt === "string" ? params.prompt : "",
+    negativePrompt: readNegativePrompt(spec),
     model: restoreOfferingId(params.model, context?.specs) ?? IMAGE_TO_VIDEO_DEFAULTS.model,
     aspectRatio: isAspectRatio(params.aspectRatio)
       ? params.aspectRatio
@@ -115,6 +139,7 @@ export function fromGeneration(
     fps: isSupportedVideoFps(params.fps)
       ? params.fps
       : IMAGE_TO_VIDEO_DEFAULTS.fps,
+    passShape: isForcedPassShape(params.passShape) ? params.passShape : null,
     startFrame: inputs.startFrame,
     endFrame: inputs.endFrame,
   };
@@ -122,6 +147,7 @@ export function fromGeneration(
 
 export function validateImageToVideo(
   values: ImageToVideoValues,
+  context?: ImageToVideoContext,
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   if (values.startFrame == null) {
@@ -138,11 +164,18 @@ export function validateImageToVideo(
       message: "End Frame requires a Start Frame.",
     });
   }
+  issues.push(
+    ...fastBudgetIssues(
+      context?.specs,
+      meterCell(context?.specs, values, context?.startFrameSize),
+    ),
+  );
   return issues;
 }
 
 export function toCreateBody(
   values: ImageToVideoValues,
+  context: ImageToVideoContext,
 ): CreateImageToVideoRequest {
   if (values.startFrame == null) {
     throw new Error("Start Frame is required.");
@@ -164,8 +197,9 @@ export function toCreateBody(
       duration: values.duration,
       fps: values.fps,
       cameraMotion: "none",
-      negativePrompt: "",
+      negativePrompt: values.negativePrompt.trim(),
       promptProvenance: "typed",
+      passShape: passShapeToSend(context.specs, values, context.startFrameSize),
     },
   };
 }
@@ -195,10 +229,22 @@ export function buildImageToVideoForm(
         dataKey: "prompt",
         placeholder: "The woman sips from a cup of coffee...",
       },
+      negativePromptField<ImageToVideoSchema>(),
       ...createVideoSettingsOptionFields<ImageToVideoSchema>(values, context.specs, {
         includeAuto: true,
+        memoryMeter: true,
+        startFrameSize: context.startFrameSize,
       }),
+      ...createPassShapeFields(
+        pricedCell(context.specs, values, context.startFrameSize),
+        context.specs,
+      ),
     ],
+    memory: buildMemoryMeterModel(
+      context.specs,
+      meterCell(context.specs, values, context.startFrameSize),
+      { fixFields: ["passShape", "duration", "resolution"] },
+    ),
   };
 }
 
@@ -243,12 +289,18 @@ export const imageToVideoDefinition: FeatureDefinition<
   resetValues: resetImageToVideoValues,
   form: buildImageToVideoForm,
   applyChange: applyImageToVideoChange,
-  normalize: (values, context) =>
-    clampVideoFields(
+  normalize: (values, context) => {
+    const clamped = clampVideoFields(
       values,
       context.specs,
       withDefaultOffering(context.specs, IMAGE_TO_VIDEO_DEFAULTS),
-    ),
+    );
+    return withVisiblePassShape(
+      context.specs,
+      clamped,
+      pricedCell(context.specs, clamped, context.startFrameSize),
+    );
+  },
   fromGeneration,
   validate: validateImageToVideo,
   toCreateBody,

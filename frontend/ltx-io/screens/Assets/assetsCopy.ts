@@ -15,10 +15,17 @@ export const ASSETS_IN_USE_TITLE = "This file can’t be deleted";
 export const ASSETS_IN_USE_DESCRIPTION = "It’s used as an input to another generation.";
 export const ASSETS_IN_USE_BUTTON = "Got it";
 
-export const ASSETS_DELETE_CONFIRM_TITLE = "Delete this file?";
+export const ASSETS_DELETE_CONFIRM_TITLE = "Are you sure you want to delete this file?";
 export const ASSETS_DELETE_CONFIRM_DESCRIPTION =
   "This removes the file from disk and the matching item from Results.";
 export const ASSETS_DELETE_CONFIRM_BUTTON = "Delete file";
+
+export const ASSETS_DELETE_CONFIRMATION = {
+  confirmationName: "asset-delete-confirm",
+  title: ASSETS_DELETE_CONFIRM_TITLE,
+  description: ASSETS_DELETE_CONFIRM_DESCRIPTION,
+  confirmLabel: ASSETS_DELETE_CONFIRM_BUTTON,
+} as const;
 
 export const ASSETS_SEARCH_DEBOUNCE_MS = 700;
 export const ASSETS_SKELETON_COUNT = 20;

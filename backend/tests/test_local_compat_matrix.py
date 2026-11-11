@@ -26,7 +26,7 @@ def test_windows_bands_cover_stream_and_ram_gate() -> None:
     assert "Windows streamed Fast needs **40** GiB total RAM" in md
     assert "ram_shortfall" in md
     assert "free VRAM" in md
-    assert "maps weights from disk and the RAM floor is **32** GiB" in md
+    assert "reads weights from disk and the RAM floor is **24** GiB" in md
 
 
 def test_darwin_keeps_ceiling_and_ic_lora_footnote() -> None:

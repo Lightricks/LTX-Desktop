@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 import torch
 
 from api_types import ImageConditioningInput
+from services.fast_video_pipeline.nag_config import NagConfig
 from services.fast_video_pipeline.windowed_run import encode_result, measured_windows, plan_windows
-from services.ic_lora_pipeline.ic_lora_inference import InferenceResult
+from services.ic_lora_pipeline.ic_lora_inference import InferenceResult, inference_result_from_output
 from services.ltx_pipeline_common import (
     build_model_paths,
     resolve_tiling_config,
+    to_ltx_images,
 )
-from services.services_utils import AudioOrNone, TilingConfigType, device_supports_fp8
+from services.services_utils import TilingConfigType, device_supports_fp8
 
 if TYPE_CHECKING:
     from ltx_pipelines.chunks import ChunkConfig
@@ -63,7 +64,7 @@ class LTXa2vPipeline:
         audio_vae_path: str | None = None,
         duration_head_path: str | None = None,
     ) -> None:
-        from ltx_core.loader.primitives import LoraPathStrengthAndSDOps
+        from ltx_core.loader import LoraPathStrengthAndSDOps
         from ltx_core.loader.sd_ops import LTXV_LORA_COMFY_RENAMING_MAP
         from ltx_core.quantization.fp8_cast import build_policy as build_fp8_cast_policy
 
@@ -86,7 +87,6 @@ class LTXa2vPipeline:
             loras=lora_entries,
             device=device,
             quantization=build_fp8_cast_policy(checkpoint_path) if device_supports_fp8(device) else None,
-            streaming_prefetch_count=streaming_prefetch_count,
             offload_mode=offload_mode,
         )
 
@@ -105,20 +105,23 @@ class LTXa2vPipeline:
         audio_start_time: float,
         audio_max_duration: float | None,
         tiling_config: TilingConfigType,
-    ) -> tuple[torch.Tensor | Iterator[torch.Tensor], AudioOrNone]:
-        return self.pipeline(
+        nag: NagConfig | None = None,
+    ) -> InferenceResult:
+        output = self.pipeline(
             prompt=prompt,
             seed=seed,
             height=height,
             width=width,
             num_frames=num_frames,
             frame_rate=frame_rate,
-            images=[(img.path, img.frame_idx, img.strength) for img in images],
+            images=to_ltx_images(images),
             audio_path=audio_path,
             audio_start_time=audio_start_time,
             audio_max_duration=audio_max_duration,
             tiling_config=tiling_config,
+            nag=nag,
         )
+        return inference_result_from_output(output)
 
     def _stream_windows(
         self,
@@ -135,9 +138,8 @@ class LTXa2vPipeline:
         audio_max_duration: float | None,
         tiling_config: TilingConfigType,
         chunk_config: ChunkConfig,
+        nag: NagConfig | None = None,
     ) -> InferenceResult:
-        from ltx_pipelines.chunks import split_decoded_chunks
-
         chunks = self.pipeline.stream_chunks(
             prompt=prompt,
             seed=seed,
@@ -145,16 +147,15 @@ class LTXa2vPipeline:
             width=width,
             num_frames=num_frames,
             frame_rate=frame_rate,
-            images=[(img.path, img.frame_idx, img.strength) for img in images],
+            images=to_ltx_images(images),
             audio_path=audio_path,
             chunk_config=chunk_config,
             audio_start_time=audio_start_time,
             audio_max_duration=audio_max_duration,
             tiling_config=tiling_config,
+            nag=nag,
         )
-        video, audio, audio_sampling_rate = split_decoded_chunks(chunks)
-        streams = (video, chunks) if audio is None else (video, audio, chunks)
-        return InferenceResult(video, audio, num_frames, tiling_config, audio_sampling_rate, streams)
+        return InferenceResult(chunks, num_frames, tiling_config, (chunks,))
 
     @torch.inference_mode()
     def generate(
@@ -173,6 +174,7 @@ class LTXa2vPipeline:
         audio_max_duration: float | None,
         output_path: str,
         chunk_pixel_frames: int | None = None,
+        nag: NagConfig | None = None,
     ) -> None:
         from services.denoising_progress import distilled_total_steps, track_denoising
 
@@ -193,7 +195,7 @@ class LTXa2vPipeline:
         )
         with track_denoising(distilled_total_steps() * chunk_count), measured:
             if chunk_config is None:
-                video, audio = self._run_inference(
+                result = self._run_inference(
                     prompt=prompt,
                     negative_prompt=negative_prompt,
                     seed=seed,
@@ -207,8 +209,8 @@ class LTXa2vPipeline:
                     audio_start_time=audio_start_time,
                     audio_max_duration=audio_max_duration,
                     tiling_config=tiling_config,
+                    nag=nag,
                 )
-                result = InferenceResult(video, audio, num_frames, tiling_config)
             else:
                 result = self._stream_windows(
                     prompt=prompt,
@@ -223,5 +225,6 @@ class LTXa2vPipeline:
                     audio_max_duration=audio_max_duration,
                     tiling_config=tiling_config,
                     chunk_config=chunk_config,
+                    nag=nag,
                 )
             encode_result(result, fps=int(frame_rate), output_path=output_path, streamed=chunk_config is not None)

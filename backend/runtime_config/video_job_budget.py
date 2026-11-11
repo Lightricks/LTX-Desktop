@@ -32,29 +32,60 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Literal, Protocol, assert_never
+from typing import TYPE_CHECKING, Final, Literal, assert_never
 
-from api_types import BudgetReadout, GenerationRisk, LTXLocalModelId
+from api_types import LTXLocalModelId
 from frame_math import compute_num_frames
+from runtime_config.budget_admission import (
+    Admission,
+    Admitted,
+    PricedJob,
+    Refused,
+    RiskAllowance,
+    admit,
+    priced_job,
+    unmeasured_refusal_message,
+)
+from runtime_config.budget_decision import (
+    LoadMode,
+    VideoJobDecision,
+    VideoJobLoad,
+    VideoJobReject,
+)
+from runtime_config.budget_evidence import (
+    Extrapolated,
+    Fitted,
+    GenericCurve,
+    JobShape,
+    PriceEvidence,
+)
+from runtime_config.device_calibration import (
+    EMPTY_CALIBRATION,
+    DeviceCalibration,
+    envelope_for,
+)
 from runtime_config.fast_chunking import (
+    MAX_WINDOW_TOKENS,
     PEAK_PLATEAU_WINDOWS,
     is_chunked_canvas,
     job_window_count,
+    last_window_frames,
     window_candidates,
     window_count,
 )
+from runtime_config.ic_lora_decode_window import DECODE_MAX_UNTILED_WINDOW
 from runtime_config.measured_cells import (
+    MEASURED_MAX_DECODE_TOKENS,
     BudgetFeature,
     BudgetRoute,
     is_unmeasured_high_res,
+    is_unmeasured_model,
     is_unmeasured_windowed_below_1440p,
-    window_fallback_measured,
 )
+from runtime_config.model_download_specs import ALL_LTX_LOCAL_MODEL_IDS, get_ltx_model_spec
 from runtime_config.reject_reasons import (
     BudgetMode,
-    JobRiskTier,
-    LoadRiskTier,
-    ShortfallKind,
+    PassShape,
     VideoJobRejectReason,
 )
 from runtime_config.runtime_policy import (
@@ -68,14 +99,12 @@ if TYPE_CHECKING:
     # Runtime import would cycle (local_runtime imports this module).
     from runtime_config.runtime_config import RuntimeConfig
 
-LoadMode = Literal["full_models_loading", "streaming_models_loading"]
-
 VIDEO_JOB_TOO_LARGE = "VIDEO_JOB_TOO_LARGE"
 VIDEO_JOB_TOO_LARGE_MESSAGE = (
     "This job is larger than this machine can run locally right now. "
     "Lower the resolution, duration, frame rate, or aspect width."
 )
-LOCAL_GENERATION_UNSUPPORTED = "LOCAL_GENERATION_UNSUPPORTED"
+LOCAL_GENERATION_UNSUPPORTED: Final = "LOCAL_GENERATION_UNSUPPORTED"
 LOCAL_GENERATION_UNSUPPORTED_MESSAGE = "This machine cannot run local generation."
 LOCAL_GENERATION_RAM_SHORTFALL = "LOCAL_GENERATION_RAM_SHORTFALL"
 LOCAL_GENERATION_RAM_SHORTFALL_MESSAGE = (
@@ -84,14 +113,17 @@ LOCAL_GENERATION_RAM_SHORTFALL_MESSAGE = (
 # Fixed copy for the MPS sequence fence: nothing was compared, so no figures.
 # Rides VIDEO_JOB_TOO_LARGE like the other fence verdicts.
 MPS_SEQUENCE_OVER_MESSAGE = (
-    "This job is too long for this Mac's GPU to run in one pass. "
+    "This job is too long for this Mac's GPU to run all at once. "
     "Lower the resolution, duration, frame rate, or aspect width."
 )
-# Fixed copy for a 1440p or 4K cell no run has confirmed. Nothing was compared, so no figures.
+# Fallback copy for an untested job the mode does not allow, when no basis rides
+# the reject. Admission always sets one; ``unmeasured_refusal_message`` names it.
 UNMEASURED_CELL_MESSAGE = (
-    "This resolution has not been measured on this machine, so it is not offered "
-    "yet. Lower the resolution."
+    "This job hasn't been tested on this machine, so Cautious mode blocks it. "
+    "Turn off Cautious mode to try it anyway, or make the job smaller."
 )
+ONE_PASS_UNAVAILABLE = "ONE_PASS_UNAVAILABLE"
+ONE_PASS_UNAVAILABLE_MESSAGE = "1440p and 4K clips longer than one part are always made in parts."
 # Total over VideoJobRejectReason: a new reason must add a row here. Codes come
 # from this table; messages come from reject_message_and_code (enriched with the
 # measured numbers) with these rows as the incoherent/unknown fallback — never
@@ -103,6 +135,7 @@ VIDEO_JOB_REJECT_ERRORS: dict[VideoJobRejectReason, tuple[str, str]] = {
     "stream_over": (VIDEO_JOB_TOO_LARGE_MESSAGE, VIDEO_JOB_TOO_LARGE),
     "mps_sequence_over": (MPS_SEQUENCE_OVER_MESSAGE, VIDEO_JOB_TOO_LARGE),
     "unmeasured_cell": (UNMEASURED_CELL_MESSAGE, VIDEO_JOB_TOO_LARGE),
+    "one_pass_unavailable": (ONE_PASS_UNAVAILABLE_MESSAGE, ONE_PASS_UNAVAILABLE),
 }
 
 # Default shrink-job advice for stream_over total-short and Darwin pool
@@ -113,7 +146,7 @@ _FULL_ACTION = "Lower the resolution, duration, frame rate, or aspect width."
 # Default free-short advice: closing GPU apps frees VRAM and a retry can
 # succeed. Queued Home callers override it — a Home re-pad makes retry
 # futile, so the advice is the same resolution-only shrink as total-short.
-_FREE_SHORT_ACTION = "Close other GPU apps and retry."
+_FREE_SHORT_ACTION = "Close other heavy apps (like games, browsers, or video editors) and retry."
 
 
 def reject_message_and_code(
@@ -145,11 +178,14 @@ def reject_message_and_code(
     required_gib = decision.stream_gib
     required_ram_bytes = decision.required_ram_bytes
     legacy, code = VIDEO_JOB_REJECT_ERRORS[reason]
-    if reason == "unsupported":
+    if reason == "unsupported" or reason == "one_pass_unavailable":
         return (legacy, code)
-    if reason == "mps_sequence_over" or reason == "unmeasured_cell":
+    if reason == "mps_sequence_over":
         # Fence verdict: the pool figures were never compared, so fixed copy.
         return (legacy, code)
+    if reason == "unmeasured_cell":
+        basis = decision.unmeasured_basis
+        return (unmeasured_refusal_message(basis) if basis is not None else legacy, code)
     if reason == "ram_shortfall":
         detected = job_filter.budget.total_ram_bytes
         if required_ram_bytes is None or detected is None:
@@ -171,7 +207,7 @@ def reject_message_and_code(
             f"{pool:.1f} GB. {action}",
             code,
         )
-    total = budget.total_vram_gib
+    total = budget.usable_vram_gib
     available = budget.available_vram_gib
     if total is None or available is None:
         return (legacy, code)
@@ -191,343 +227,6 @@ def reject_message_and_code(
             code,
         )
     return (legacy, code)
-
-
-def budget_readout_for_reject(
-    decision: VideoJobReject, job_filter: LocalJobFilter
-) -> BudgetReadout | None:
-    """Need and have for the same comparison ``reject_message_and_code`` prints.
-
-    None for a hard wall or when the gate compared no figure.
-    """
-    reason = decision.reason
-    if reason == "unmeasured_cell":
-        return untested_readout()
-    if reason == "unsupported" or reason == "mps_sequence_over":
-        return None
-    if reason == "ram_shortfall":
-        required = decision.required_ram_bytes
-        detected = job_filter.budget.total_ram_bytes
-        if required is None or detected is None:
-            return None
-        return BudgetReadout(
-            kind="ram",
-            need_gb=float(required // _GIB),
-            have_gb=float(detected // _GIB),
-        )
-    required_gib = decision.stream_gib
-    if job_filter.profile.system == "Darwin":
-        pool = job_filter.budget.mps_pool_gib
-        if pool is None:
-            return None
-        return BudgetReadout(kind="mac", need_gb=required_gib, have_gb=pool)
-    total = job_filter.budget.total_vram_gib
-    available = job_filter.budget.available_vram_gib
-    if total is None or available is None:
-        return None
-    if required_gib > total:
-        return BudgetReadout(kind="gpu", need_gb=required_gib, have_gb=total)
-    if required_gib > available:
-        return BudgetReadout(kind="gpu_busy", need_gb=required_gib, have_gb=available)
-    return None
-
-
-def tight_readout(ask_gib: float, available_gib: float) -> BudgetReadout:
-    return BudgetReadout(kind="tight", need_gb=ask_gib, have_gb=available_gib)
-
-
-def untested_readout() -> BudgetReadout:
-    return BudgetReadout(kind="untested")
-
-
-TIGHT_FIT_HEADROOM_GIB = 0.5
-TIGHT_FIT_HEADROOM_RATIO = 0.05
-
-
-def compared_available_gib(job_filter: LocalJobFilter) -> float | None:
-    """The figure the gate compared the ask against.
-
-    Single home for the figure-selection rule: the MPS pool on Darwin,
-    min(total, free) — or total under total_only — on CUDA. None means the
-    gate compared nothing (callers stay silent).
-    """
-    if job_filter.profile.system == "Darwin":
-        return job_filter.budget.mps_pool_gib
-    if job_filter.budget.total_vram_bytes is None:
-        return None
-    return job_filter.budget.available_vram_gib
-
-
-def load_headroom_gib(
-    decision: VideoJobLoad, job_filter: LocalJobFilter
-) -> float | None:
-    """Available minus ask on the compared figure. None when uncompared."""
-    available = compared_available_gib(job_filter)
-    if available is None:
-        return None
-    return available - decision.stream_gib
-
-
-def risk_allowed(allow_risk: bool | None, job_filter: LocalJobFilter) -> bool:
-    """Whether an over-budget verdict downgrades to allow-with-warning.
-
-    Tri-state: None follows the filter's live mode (every request-scoped gate
-    passes None); executors pass an explicit bool from the stored annotation so
-    a mode flip never re-gates a queued job. Named ``allow_risk`` (not
-    ``risk_allowance``): ``risk_allowance`` is the plain bool carried on
-    executor protocols from the stored spec annotation, while ``allow_risk``
-    is the tri-state gate input that defaults to the live mode when no stored
-    value exists.
-    """
-    return allow_risk if allow_risk is not None else job_filter.budget_mode == "reckless"
-
-
-def risk_if_allowed(
-    risk: GenerationRisk | None,
-    job_filter: LocalJobFilter,
-    allow_risk: bool | None,
-    *,
-    unmeasured_bet: bool = False,
-) -> GenerationRisk | None:
-    """The bet a refusal may run as, or None when the refusal stands.
-
-    An ``over`` bet runs only when risk is allowed (live mode, or the stored
-    allowance at execute). An ``unmeasured`` bet also runs when the stored
-    annotation was unmeasured: that note covers the unmeasured refusal it was
-    taken for, never a later VRAM or RAM miss, which still reports as ``over``.
-    """
-    if risk is None:
-        return None
-    if risk.tier == "unmeasured" and unmeasured_bet:
-        return risk
-    return risk if risk_allowed(allow_risk, job_filter) else None
-
-
-def load_risk_tier(
-    decision: VideoJobLoad,
-    job_filter: LocalJobFilter,
-    *,
-    feature: BudgetFeature,
-) -> LoadRiskTier | None:
-    """Warning tier for an admitted job, if any.
-
-    Legacy-route loads are unmeasured (admitted with no trustworthy model);
-    measured loads inside max(0.5 GiB, 5% of ask) are tight fits. Unknown
-    figures stay silent.
-    """
-    if budget_route(feature, job_filter.profile) == "legacy":
-        return "unmeasured"
-    headroom = load_headroom_gib(decision, job_filter)
-    if headroom is None:
-        return None
-    threshold = max(
-        TIGHT_FIT_HEADROOM_GIB, TIGHT_FIT_HEADROOM_RATIO * decision.stream_gib
-    )
-    return "tight" if headroom < threshold else None
-
-
-def reject_risk_tier(reason: VideoJobRejectReason) -> JobRiskTier | None:
-    """Measurement rejects are over-budget bets, an unmeasured cell is an
-    unmeasured bet; hard walls return None.
-
-    Allow-list: a new ``VideoJobRejectReason`` fails typecheck here until it
-    picks a tier. ``unsupported`` (no pipeline) and ``mps_sequence_over`` (the
-    Metal kernel SIGABRTs past the fence — uncatchable, not a bet) never
-    downgrade.
-    """
-    match reason:
-        case "stream_over" | "ram_shortfall":
-            return "over"
-        case "unmeasured_cell":
-            return "unmeasured"
-        case "unsupported" | "mps_sequence_over":
-            return None
-        case _ as unreachable:
-            assert_never(unreachable)
-
-
-def reject_over_gib(
-    decision: VideoJobReject, job_filter: LocalJobFilter
-) -> float | None:
-    """VRAM shortfall on a stream_over reject. None for any other reason —
-    RAM verdicts passed VRAM, so subtracting would print a negative lie."""
-    if decision.reason != "stream_over":
-        return None
-    available = compared_available_gib(job_filter)
-    if available is None:
-        return None
-    return decision.stream_gib - available
-
-
-def reject_over_ram_gb(
-    decision: VideoJobReject, job_filter: LocalJobFilter
-) -> int | None:
-    """RAM shortfall in whole GB, message-consistent (required//GiB minus
-    detected//GiB, the same ints the 422 prints)."""
-    if decision.reason != "ram_shortfall":
-        return None
-    required = decision.required_ram_bytes
-    detected = job_filter.budget.total_ram_bytes
-    if required is None or detected is None:
-        return None
-    return required // _GIB - detected // _GIB
-
-
-def reject_shortfall_kind(
-    decision: VideoJobReject, job_filter: LocalJobFilter
-) -> ShortfallKind | None:
-    """Which figure bound a CUDA stream_over reject.
-
-    "free" only when free strictly binds (free < total on exact floats —
-    min() returns its input, so equality with total is exact). Total-gated
-    lists, missing samples, and Darwin (pool gate, never free advice) all
-    report "total"/None respectively: Darwin returns None and the frontend
-    keys Darwin copy off platform, not kind.
-    """
-    if decision.reason != "stream_over":
-        return None
-    if job_filter.profile.system == "Darwin":
-        return None
-    total = job_filter.budget.total_vram_gib
-    available = job_filter.budget.available_vram_gib
-    if total is None or available is None:
-        return None
-    return "total" if available == total else "free"
-
-
-def tight_fit_message(ask_gib: float, available_gib: float, *, darwin: bool) -> str:
-    if darwin:
-        return (
-            f"Tight fit: this needs ~{ask_gib:.1f} GB of your Mac's "
-            f"{available_gib:.1f} GB memory allowance. It should run."
-        )
-    return (
-        f"Tight fit: this needs ~{ask_gib:.1f} GB and about "
-        f"{available_gib:.1f} GB is available. It should run, but close "
-        "other GPU apps first."
-    )
-
-
-def over_budget_message(
-    ask_gib: float,
-    available_gib: float,
-    *,
-    darwin: bool,
-    shortfall_kind: ShortfallKind | None,
-) -> str:
-    if darwin:
-        return (
-            f"Over budget: this needs {ask_gib:.1f} GB but this Mac allows "
-            f"{available_gib:.1f} GB. It may run out of memory or stall — "
-            "lower the resolution or duration to fit."
-        )
-    if shortfall_kind == "free":
-        return (
-            f"Over budget right now: this needs {ask_gib:.1f} GB but only "
-            f"{available_gib:.1f} GB is free. Close other GPU apps and retry, "
-            "or lower the resolution or duration."
-        )
-    return (
-        f"Over budget: this needs {ask_gib:.1f} GB but this machine's graphics "
-        f"card has {available_gib:.1f} GB. It may run out of memory or stall — "
-        "lower the resolution or duration to fit."
-    )
-
-
-def over_ram_message(required_gb: int, detected_gb: int) -> str:
-    return (
-        f"Over budget: this needs {required_gb} GB of system RAM but this machine "
-        f"has {detected_gb} GB. Close heavy programs; on desktops, more RAM "
-        "is the real fix."
-    )
-
-
-def unmeasured_message(
-    hint: Literal["mac_two_stage"] | None = None,
-) -> str:
-    if hint == "mac_two_stage":
-        return (
-            "Unmeasured: two-stage IC-LoRA isn't measured on Mac yet. "
-            "It may fail or stall."
-        )
-    return (
-        "Unmeasured: we haven't tested this setup on your hardware, so we "
-        "can't predict whether it fits. It may fail or stall."
-    )
-
-
-def unmeasured_load_risk(
-    decision: VideoJobLoad,
-    job_filter: LocalJobFilter,
-    *,
-    feature: BudgetFeature,
-    allow_risk: bool | None,
-) -> GenerationRisk | None:
-    """T3 annotation for a legacy load. Reckless only.
-
-    Tight fits stay unmarked. Standard stays unmarked. A stored unmeasured
-    note does not waive a later VRAM or RAM miss at execute.
-    """
-    if not risk_allowed(allow_risk, job_filter):
-        return None
-    if load_risk_tier(decision, job_filter, feature=feature) != "unmeasured":
-        return None
-    return GenerationRisk(
-        tier="unmeasured",
-        message=unmeasured_message(),
-        readout=untested_readout(),
-    )
-
-
-def risk_for_reject(
-    decision: VideoJobReject, job_filter: LocalJobFilter
-) -> GenerationRisk | None:
-    """Over-budget annotation for a measurement reject, if downgradable.
-
-    Returns None for unsupported (hard wall) and for uncompared figures.
-    Legacy-route rejects tier as over: the curve is rough, but a reject is
-    conservative by construction — the unmeasured bet is the legacy *load*.
-    """
-    tier = reject_risk_tier(decision.reason)
-    if tier is None:
-        return None
-    if tier == "unmeasured":
-        return GenerationRisk(
-            tier="unmeasured",
-            message=unmeasured_message(),
-            readout=untested_readout(),
-        )
-    darwin = job_filter.profile.system == "Darwin"
-    if decision.reason == "ram_shortfall":
-        required = decision.required_ram_bytes
-        detected = job_filter.budget.total_ram_bytes
-        if required is None or detected is None:
-            return None
-        required_gb = required // _GIB
-        detected_gb = detected // _GIB
-        return GenerationRisk(
-            tier="over",
-            shortfall_kind=None,
-            over_gib=None,
-            over_ram_gb=required_gb - detected_gb,
-            message=over_ram_message(required_gb, detected_gb),
-            readout=budget_readout_for_reject(decision, job_filter),
-        )
-    available = compared_available_gib(job_filter)
-    if available is None:
-        return None
-    kind = reject_shortfall_kind(decision, job_filter)
-    over = decision.stream_gib - available
-    return GenerationRisk(
-        tier="over",
-        shortfall_kind=kind,
-        over_gib=over,
-        over_ram_gb=None,
-        message=over_budget_message(
-            decision.stream_gib, available, darwin=darwin, shortfall_kind=kind
-        ),
-        readout=budget_readout_for_reject(decision, job_filter),
-    )
 
 
 def vram_snapshot_suffix(
@@ -578,23 +277,24 @@ _RAM_REPORTING_HEADROOM_BYTES = 1 * _GIB
 # Streamed jobs pin tens of GiB of transformer in host RAM. Shared with the
 # Linux CPU-offload floor: same working set, same number — only the consequence
 # differs (Linux streams from disk below it; Windows declines the cell on the
-# CPU path and maps from disk on NVMe).
+# CPU path and streams from disk on NVMe).
 WINDOWS_FAST_STREAMING_RAM_BYTES = CUDA_CPU_OFFLOAD_RAM_FLOOR_GB * _GIB
-# Disk-mapped streaming commits little host RAM, but the floor stays well above
-# that: with less room the page cache thins and mapped reads balloon per run.
-# 32 GB is the lowest figure the evidence supports. Below it stays refused
-# until measured.
-# Basis note: the low-RAM figures trace only to brief prose
-WINDOWS_FAST_DISK_STREAMING_RAM_GB = 32
+# Disk streaming on 1.6.0 reads blocks into four block-sized host buffers plus
+# two 64 MiB staging buckets (~5–6 GiB working set on Fast, zero swap at 24 GB).
+# Even though positional reads cycle the checkpoint through the OS file cache at
+# 32 and 24 GB (4–6x physical NVMe reads), NVMe prefetch holds wall time to
+# 1.16–1.30x of native 64 GB. 24 GB is the lowest figure measured.
+WINDOWS_FAST_DISK_STREAMING_RAM_GB = 24
 # Edit RAM floors: the CPU warm pin exceeds what a 48 GB machine can hold plus
-# the OS, so the CPU floor is 64; DISK holds 32 by the Fast precedent (less
-# degraded there than Fast at its own floor).
+# the OS, so the CPU floor is 64; DISK holds down to 24 GB on 1.6.0 (E3 working
+# set ~11 GiB, 1.15x wall time at 24 GB).
 WINDOWS_EDIT_CPU_STREAMING_RAM_GB = 64
-WINDOWS_EDIT_DISK_STREAMING_RAM_GB = 32
+WINDOWS_EDIT_DISK_STREAMING_RAM_GB = 24
 # IC-LoRA RAM floors: reference latents lift the CPU warm pin over Fast's, so
-# the CPU floor is 64; DISK degrades steeply at 40 but holds at 48.
+# the CPU floor is 64; DISK holds at 32 GB on 1.6.0 (L5 working set ~9.5–11.4 GiB,
+# 1.33–1.44x wall time at 32 GB with flat swap).
 WINDOWS_ICLORA_CPU_STREAMING_RAM_GB = 64
-WINDOWS_ICLORA_DISK_STREAMING_RAM_GB = 48
+WINDOWS_ICLORA_DISK_STREAMING_RAM_GB = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -658,6 +358,19 @@ _EDIT_STREAM = _StreamModel(
     intercept_gib=5.00,
     gib_per_token=2.77e-4,
 )
+# Windows edit VAE decode reserved law: DiffVAE splits the frame axis past 80 frames
+# (largest 8k+1 untiled window: DECODE_MAX_UNTILED_WINDOW = 73), so a single temporal
+# decode tile processes ``decode_tokens = video_tokens(H, W, min(F, 73))`` tokens.
+# Taking ``max(_EDIT_STREAM(tokens), _EDIT_DECODE_STREAM(decode_tokens))`` across both
+# phases prices the whole-run reserved peak continuously with no resolution-tier flags:
+# the two lines cross at 40,929 decode tokens (~4.2 Mpx at 73 frames), so <=1440p
+# (<=36,800 decode tokens) and 4K 81f+ (denoise 89,760t > decode 81,600t) stay on
+# _EDIT_STREAM while untiled 4K 49-73f (57,120-81,600 decode tokens) prices on decode.
+_EDIT_DECODE_STREAM = _StreamModel(
+    floor_gib=8.75,
+    intercept_gib=3.15,
+    gib_per_token=3.222e-4,
+)
 # Mac (Darwin) Fast stream requirement, same shape as Windows, Mac-native fit.
 # The per-token transient transfers from CUDA; the Mac surcharge is working set
 # only. An upper bound, not a floor.
@@ -686,6 +399,11 @@ def video_tokens(height: int, width: int, frames: int) -> float:
     """LTX-2 latent tokens: 8-frame temporal, 32 px spatial."""
     temporal = (max(1, frames) - 1) / 8.0 + 1.0
     return temporal * (height / 32.0) * (width / 32.0)
+
+
+def decode_tile_tokens(height: int, width: int, frames: int) -> float:
+    """Tokens in a single DiffVAE temporal decode tile (frame axis untiled up to 73 frames)."""
+    return video_tokens(height, width, min(frames, DECODE_MAX_UNTILED_WINDOW))
 
 
 def estimated_giB(mode: LoadMode, seq: float) -> float:
@@ -734,6 +452,7 @@ class HardwareProfile:
     # Native fp8 (compute capability >= 8.9). The measured laws were fit on
     # fp8; without it the budget takes the legacy curve.
     fp8_capable: bool = True
+    device_name: str | None = None
 
     @property
     def darwin(self) -> bool:
@@ -742,50 +461,31 @@ class HardwareProfile:
 
     @property
     def is_windows_fast(self) -> bool:
-        """2.5 measured; 2.3 shares those bands.
+        """Windows Fast routes through the measured bands whenever a model is set.
 
-        Same-clip pairs put 2.3 and 2.5 within a few hundredths of a GiB, the
-        same family-equivalence Mac Fast already routes on. Both 2.3 checkpoint
-        ids are included. Anything else on Windows stays on the generic curve.
+        Measured models (2.5 and 2.3) are Fitted; any new model id still uses
+        these bands and is tagged Extrapolated(basis="unmeasured_model").
         """
-        return self.system == "Windows" and self.model_id in (
-            "ltx-2.5-22b-distilled",
-            "ltx-2.3-22b-distilled",
-            "ltx-2.3-22b-distilled-1.1",
-        )
+        return self.system == "Windows" and self.model_id is not None
 
     # Darwin 2.3 routing evidence (for is_mac_fast below): the Windows pair
     # method plus the archived parity re-proofs.
     @property
     def is_mac_fast(self) -> bool:
-        """Darwin Fast routes 2.5 (measured) and 2.3 (family-equivalence extension).
+        """Darwin Fast routes through _MAC_FAST_STREAM whenever a model is set.
 
-        The 2.3-vs-2.5 equivalence is Windows-measured only; routing Darwin 2.3
-        through _MAC_FAST_STREAM is extrapolation. The alternative is the legacy
-        Darwin branch, which never refuses at all. A future model id fails
-        closed via assert_never until it is priced — it must never fall through
-        to the legacy never-reject branch silently.
+        Measured models (2.5 and 2.3) are Fitted; any new model id still prices
+        on _MAC_FAST_STREAM and is tagged Extrapolated(basis="unmeasured_model")
+        instead of crashing or falling through to the legacy never-reject branch.
         """
-        if self.system != "Darwin":
-            return False
-        if self.model_id is None:
-            return False
-        match self.model_id:
-            case (
-                "ltx-2.5-22b-distilled"
-                | "ltx-2.3-22b-distilled"
-                | "ltx-2.3-22b-distilled-1.1"
-            ):
-                return True
-            case _ as unreachable:
-                assert_never(unreachable)
+        return self.system == "Darwin" and self.model_id is not None
 
     @property
     def streams_from_disk(self) -> bool:
-        """Windows + NVMe maps weights from disk; everything else pins from CPU.
+        """Whether Windows + NVMe can fall back to disk streaming below the CPU floor.
 
-        Reads the shared rule, so the RAM floors below price exactly the
-        DISK path the offload routing takes.
+        Reads the shared rule, so the lower NVMe RAM floors below open only
+        when the drive can actually take the disk path.
         """
         return windows_checkpoint_streams_from_disk(self.system, self.drive_type)
 
@@ -795,9 +495,9 @@ class HardwareProfile:
 
         Single source of truth shared by the budget gate and the reported
         ``local_unavailable_required_ram_gb``: both read the floor from the
-        profile that produced the verdict. Mirrors the offload routing — the
-        gate only runs for streaming-selected jobs, so Windows + NVMe here is
-        exactly the DISK path there, and everything else pins from CPU.
+        profile that produced the verdict. Mirrors the offload routing —
+        Windows + NVMe falls back to DISK below the 40 GB CPU floor down to
+        this 24 GB floor, while everything else requires the 40 GB CPU floor.
         """
         if self.streams_from_disk:
             return WINDOWS_FAST_DISK_STREAMING_RAM_GB * _GIB
@@ -807,8 +507,8 @@ class HardwareProfile:
     def windows_edit_required_ram_bytes(self) -> int:
         """RAM floor gating this profile's streamed Windows edit jobs.
 
-        See the WINDOWS_EDIT_* constants: Windows + NVMe maps from disk,
-        everything else pins from CPU. Read only by decide_edit_job's Windows
+        See the WINDOWS_EDIT_* constants: Windows + NVMe streams from disk,
+        everything else uses CPU offload. Read only by decide_edit_job's Windows
         gate.
         """
         if self.streams_from_disk:
@@ -819,9 +519,9 @@ class HardwareProfile:
     def windows_iclora_required_ram_bytes(self) -> int:
         """RAM floor gating this profile's streamed Windows IC-LoRA jobs.
 
-        See the WINDOWS_ICLORA_* constants: Windows + NVMe maps from disk,
-        everything else pins from CPU. Read only by decide_ic_lora_job's
-        Windows gate.
+        See the WINDOWS_ICLORA_* constants: Windows + NVMe falls back to disk
+        below the 64 GB CPU floor down to 32 GB, while everything else requires
+        the 64 GB CPU floor. Read only by decide_ic_lora_job's Windows gate.
         """
         if self.streams_from_disk:
             return WINDOWS_ICLORA_DISK_STREAMING_RAM_GB * _GIB
@@ -833,9 +533,10 @@ def budget_route(feature: BudgetFeature, profile: HardwareProfile) -> BudgetRout
 
     Single place that selects the stream curve. Route names carry the
     measured flag explicitly: ``mac_measured`` / ``windows_measured`` take
-    fitted curves, ``legacy`` takes the generic path.     Fast on Darwin
-    consults ``is_mac_fast`` (unknown model ids fail closed there);
-    Fast on Windows is 2.5 and 2.3 via ``is_windows_fast``; edit and IC-LoRA
+    fitted curves, ``legacy`` takes the generic path. Fast on Darwin and
+    Windows consults ``is_mac_fast`` / ``is_windows_fast`` (known models are
+    Fitted; any new model id still prices on the curve and is tagged
+    ``unmeasured_model`` via ``is_unmeasured_model``); edit and IC-LoRA
     are measured on Windows and Darwin for any model. Process floors
     (``CUDA_VRAM_FLOOR_GB``, ``CUDA_FULL_VRAM_GB``, ``DARWIN_*``) and the
     per-feature RAM floors stay where they are — this route only selects
@@ -919,8 +620,9 @@ def _mps_pool_gib(mps_pool_bytes: int | None) -> float | None:
 class MemoryBudget:
     """VRAM + RAM figures plus their precedence, evaluated once per use.
 
-    Sampling: VRAM total is startup-frozen device bytes; free VRAM is sampled
-    fresh per request via ``GpuInfo.get_free_cuda_vram_bytes``; RAM total is the
+    Sampling: VRAM total is startup-frozen device bytes; ``usable_vram_bytes`` is
+    free VRAM sampled once at backend startup before any model loads; ``free_vram_bytes``
+    is sampled fresh per request via ``GpuInfo.get_free_cuda_vram_bytes``; RAM total is the
     startup-frozen machine total via ``psutil.virtual_memory().total``; the
     MPS pool is sampled fresh per request via
     ``GpuInfo.get_mps_pool_bytes``. ``memory_gb`` is the coarse floored
@@ -928,12 +630,12 @@ class MemoryBudget:
     Precedence lives here so no caller re-derives it: the constructors above
     own the typed fail-mode asymmetry (free-None opens to total, pool-None
     closes, both-None closes), and unknown-everything fails closed at the
-    call site. ``total_only`` gates CUDA availability on total ("will it ever
-    fit") instead of min(total, free): queued creates and list-time display
-    admit total-fitting cells while free is momentarily depressed, and the
-    execute-time re-check — still free-gated — refuses genuine drift. It is
-    not free-None (unmeasured): the sample is still taken, and the flag names
-    the policy. Mac pool gating is unchanged.
+    call site. ``total_only`` gates CUDA availability on ``usable_vram_gib``
+    (``min(total, startup_free)``, "will it ever fit") instead of ``min(total, free)``:
+    queued creates and list-time display admit usable-fitting cells while free is
+    momentarily depressed, and the execute-time re-check — still free-gated — refuses
+    genuine drift. It is not free-None (unmeasured): the sample is still taken, and the
+    flag names the policy. Mac pool gating is unchanged.
     """
 
     total_vram_bytes: int | None
@@ -942,6 +644,7 @@ class MemoryBudget:
     memory_gb: float | None
     mps_pool_bytes: int | None
     total_only: bool = False
+    usable_vram_bytes: int | None = None
 
     @property
     def total_vram_gib(self) -> float | None:
@@ -949,10 +652,15 @@ class MemoryBudget:
         return _total_vram_gib(self.total_vram_bytes, self.memory_gb)
 
     @property
+    def usable_vram_gib(self) -> float | None:
+        """Idle-machine consumable ceiling: min(total, startup_free), or total when unprobed."""
+        return _available_vram_gib(self.total_vram_gib, self.usable_vram_bytes)
+
+    @property
     def available_vram_gib(self) -> float | None:
-        """What a new job may actually consume: min(total, free), or total when total_only."""
+        """What a new job may actually consume: min(total, free), or usable when total_only."""
         if self.total_only:
-            return self.total_vram_gib
+            return self.usable_vram_gib
         return _available_vram_gib(self.total_vram_gib, self.free_vram_bytes)
 
     def streaming_ram_state(
@@ -979,12 +687,25 @@ class LocalJobFilter:
 
     profile: HardwareProfile
     budget: MemoryBudget
-    # Live budget mode at build time. Gates read this (never global state)
-    # to decide raise-vs-annotate; decide_* stays pure and mode-blind.
-    budget_mode: BudgetMode = "standard"
+    # Live budget mode at build time. Admission reads it (never global state)
+    # through RiskAllowance; pricing stays mode-blind.
+    budget_mode: BudgetMode = "cautious"
+    # What this device has run cleanly. Empty keeps pricing on the lab tables.
+    calibration: DeviceCalibration = EMPTY_CALIBRATION
+    # How a Fast job is cut: the live "Never split" setting for request-time
+    # gates and specs, or the shape a queued job stored at create. Every range
+    # and refusal priced from this filter follows it, so a flip never re-cuts or
+    # re-sizes a queued job.
+    pass_shape: PassShape = "auto"
+    # Settings -> Fast decode resolved for this device. Only the wall-time estimate reads it.
+    conv_vae: bool = False
 
-    def decide(self, width: int, height: int, frames: int) -> VideoJobDecision:
-        return decide_video_job(width, height, frames, job_filter=self)
+
+def resolve_pass_shape(requested: PassShape, *, never_split: bool) -> PassShape:
+    """An explicit shape wins, even over the switch; ``auto`` follows the switch."""
+    if requested != "auto":
+        return requested
+    return "one_pass" if never_split else "auto"
 
 
 def build_local_job_filter(
@@ -994,7 +715,10 @@ def build_local_job_filter(
     free_vram_bytes: int | None,
     mps_pool_bytes: int | None,
     total_only: bool = False,
-    budget_mode: BudgetMode = "standard",
+    budget_mode: BudgetMode = "cautious",
+    calibration: DeviceCalibration = EMPTY_CALIBRATION,
+    pass_shape: PassShape = "auto",
+    conv_vae: bool = False,
 ) -> LocalJobFilter:
     """One construction idiom for request filters. Callers sample probes first.
 
@@ -1027,6 +751,7 @@ def build_local_job_filter(
             process_mode=config.local_generations_mode,
             drive_type=config.checkpoint_drive_type,
             fp8_capable=config.fp8_capable,
+            device_name=config.gpu_device_name,
         ),
         budget=MemoryBudget(
             total_vram_bytes=config.vram_bytes,
@@ -1039,41 +764,13 @@ def build_local_job_filter(
             ),
             mps_pool_bytes=mps_pool_bytes,
             total_only=total_only,
+            usable_vram_bytes=config.usable_vram_bytes,
         ),
         budget_mode=budget_mode,
+        calibration=calibration,
+        pass_shape=pass_shape,
+        conv_vae=conv_vae,
     )
-
-
-@dataclass(frozen=True, slots=True)
-class VideoJobLoad:
-    mode: LoadMode
-    seq: float
-    full_gib: float
-    stream_gib: float
-    # Window length in pixel frames when the job runs in windows, else None (one pass).
-    # ``seq`` and the GiB figures then describe one window. The pipeline runs this value.
-    chunk_pixel_frames: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class VideoJobReject:
-    seq: float
-    full_gib: float
-    stream_gib: float
-    reason: VideoJobRejectReason = "stream_over"
-    # RAM floor the gate compared, set only on ram_shortfall (its sole
-    # producer is _streaming_ram_reject, which holds the figure). Message
-    # builders read this — never re-derive the floor from the profile, or a
-    # wrong property prints a number the gate did not compare.
-    required_ram_bytes: int | None = None
-    # Set by IC-LoRA and by a Fast canvas that runs in windows, to the window the
-    # pricing tried. A reckless downgrade must run that window: ``None`` is one
-    # unchunked pass, which costs more than the over-budget figure the user
-    # confirmed. Edit leaves it None.
-    chunk_pixel_frames: int | None = None
-
-
-VideoJobDecision = VideoJobLoad | VideoJobReject
 
 
 def decide_from_fits(
@@ -1174,71 +871,135 @@ def decide_load_mode(
     )
 
 
-def gate_unmeasured_cell(
-    decision: VideoJobDecision,
-    *,
-    feature: BudgetFeature,
-    width: int,
-    height: int,
-    frames: int,
-    job_filter: LocalJobFilter,
-) -> VideoJobDecision:
-    """Refuse a priced load inside a windowed job no run has confirmed (1440p, 4K, or a smaller
-    canvas that fell back to windows).
-
-    Runs after pricing so the refusal carries the figures and the window the
-    price tried, and so a reckless downgrade runs that window. A reject keeps
-    its own reason: it already says why the job fails.
-    """
-    if isinstance(decision, VideoJobReject):
-        return decision
-    route = budget_route(feature, job_filter.profile)
-    windows = job_window_count(frames, decision.chunk_pixel_frames)
-    if is_unmeasured_high_res(
-        feature, route, width, height, windows=windows
-    ) or is_unmeasured_windowed_below_1440p(feature, route, width, height, windows=windows):
-        return unmeasured_cell_reject(decision)
-    return decision
-
-
-class PricedLoad(Protocol):
-    """What a Fast or IC-LoRA load carries into an unmeasured-cell refusal."""
-
-    @property
-    def seq(self) -> float: ...
-    @property
-    def full_gib(self) -> float: ...
-    @property
-    def stream_gib(self) -> float: ...
-    @property
-    def chunk_pixel_frames(self) -> int | None: ...
-
-
-def unmeasured_cell_reject(load: PricedLoad) -> VideoJobReject:
-    return VideoJobReject(
-        seq=load.seq,
-        full_gib=load.full_gib,
-        stream_gib=load.stream_gib,
-        reason="unmeasured_cell",
-        chunk_pixel_frames=load.chunk_pixel_frames,
-    )
-
-
 def decide_video_job(
     width: int,
     height: int,
     frames: int,
     *,
     job_filter: LocalJobFilter,
-) -> VideoJobDecision:
-    """Fast t2v/i2v/a2v: the priced verdict, refused inside an unmeasured 1440p or 4K cell."""
-    return gate_unmeasured_cell(
-        _decide_priced_video_job(width, height, frames, job_filter=job_filter),
-        feature="fast",
+    allowance: RiskAllowance | None = None,
+) -> Admission:
+    """Fast t2v/i2v/a2v: price the job, then admit it under the allowance.
+
+    ``allowance=None`` follows the filter's live mode (request-time gates);
+    executors pass the stored allowance so a mode flip never re-gates a queued job.
+    """
+    allowance = allowance if allowance is not None else RiskAllowance.for_mode(job_filter.budget_mode)
+    return admit(
+        price_video_job(width, height, frames, job_filter=job_filter, allowance=allowance),
+        allowance,
+    )
+
+
+def price_video_job(
+    width: int,
+    height: int,
+    frames: int,
+    *,
+    job_filter: LocalJobFilter,
+    allowance: RiskAllowance | None = None,
+) -> PricedJob:
+    """Pick the window and price it in the filter's ``pass_shape``. Under ``auto``,
+    ``allowance`` decides whether a one-pass job past the fitted window size runs as one
+    pass (it may take an unmeasured bet) or in windows. ``one_pass`` and ``parts`` price
+    that shape whatever it costs, so admission turns an over one pass into a Brave over
+    bet and a Cautious refusal."""
+    allowance = allowance if allowance is not None else RiskAllowance.for_mode(job_filter.budget_mode)
+    decision = _decide_priced_video_job(
+        width,
+        height,
+        frames,
+        job_filter=job_filter,
+        allow_unfitted_pass=allowance.unmeasured,
+        shape=job_filter.pass_shape,
+    )
+    return _priced_canvas_job(
+        "fast",
+        decision,
         width=width,
         height=height,
-        frames=frames,
+        windows=job_window_count(frames, decision.chunk_pixel_frames),
         job_filter=job_filter,
+    )
+
+
+def _priced_canvas_job(
+    feature: Literal["fast", "edit"],
+    decision: VideoJobDecision,
+    *,
+    width: int,
+    height: int,
+    windows: int,
+    decode_tokens: float | None = None,
+    job_filter: LocalJobFilter,
+) -> PricedJob:
+    """Tag a Fast or edit verdict: extrapolated in an unmeasured high-res or windowed cell."""
+    route = budget_route(feature, job_filter.profile)
+    evidence: PriceEvidence
+    if is_unmeasured_high_res(
+        feature,
+        route,
+        width,
+        height,
+        windows=windows,
+        decode_tokens=decode_tokens,
+    ):
+        evidence = Extrapolated(basis="high_res_cell")
+    elif is_unmeasured_windowed_below_1440p(
+        feature,
+        route,
+        width,
+        height,
+        windows=windows,
+        window_tokens=decision.seq,
+    ):
+        evidence = Extrapolated(basis="windowed_range")
+    elif feature == "fast" and _is_pass_past_fitted_tokens(decision, windows=windows, route=route):
+        evidence = Extrapolated(basis="pass_tokens")
+    elif route == "legacy":
+        evidence = GenericCurve()
+    elif is_unmeasured_model(job_filter.profile.model_id):
+        evidence = Extrapolated(basis="unmeasured_model")
+    else:
+        evidence = Fitted()
+    return priced_job(
+        feature,
+        decision,
+        evidence,
+        _canvas_job_shape(feature, decision, width=width, height=height, windows=windows, job_filter=job_filter),
+        job_filter=job_filter,
+    )
+
+
+def _canvas_job_shape(
+    feature: Literal["fast", "edit"],
+    decision: VideoJobDecision,
+    *,
+    width: int,
+    height: int,
+    windows: int,
+    job_filter: LocalJobFilter,
+) -> JobShape:
+    return JobShape(
+        feature=feature,
+        model_id=job_filter.profile.model_id or "",
+        adapter_id="",
+        stage_mode="",
+        tiled=False,
+        chunked=decision.chunk_pixel_frames is not None,
+        seq=decision.seq,
+        canvas_px=width * height,
+        windows=windows,
+    )
+
+
+def _is_pass_past_fitted_tokens(decision: VideoJobDecision, *, windows: int, route: BudgetRoute) -> bool:
+    """A one-pass load larger than any window the laws were fitted on, on a measured route."""
+    return (
+        isinstance(decision, VideoJobLoad)
+        and windows == 1
+        and route != "legacy"
+        and decision.seq > MAX_WINDOW_TOKENS
     )
 
 
@@ -1248,22 +1009,61 @@ def _decide_priced_video_job(
     frames: int,
     *,
     job_filter: LocalJobFilter,
+    allow_unfitted_pass: bool,
+    shape: PassShape = "auto",
 ) -> VideoJobDecision:
     """Fast t2v/i2v/a2v: advertised (stage-2) pixels, no ×2, no spatial cap.
 
-    A 1440p or 4K clip longer than one window runs in windows and prices one window: the
-    longest window that loads, as ``VideoJobLoad.chunk_pixel_frames``. When none loads, the
-    verdict is the reject of the shortest window, so the figures name the smallest ask.
+    A clip runs in one pass when the machine loads it, and in overlapping windows when it
+    does not. A 1440p or 4K clip longer than one window always runs in windows. Any other
+    canvas windows once one pass cannot fit the machine at all (``_windows_help``), so a long
+    or high-fps clip at 720p or 540p runs in as many windows as it needs, with no cap on the
+    count: the budget prices one window, so the window count never grows the ask past the
+    plateau. The window is the longest that loads, as ``VideoJobLoad.chunk_pixel_frames``.
+    When none loads, the verdict is the reject of the shortest window, so the figures name the
+    smallest ask and a Brave downgrade runs that window.
+
+    A one-pass load past the largest fitted window is an unmeasured bet (``pass_tokens``). When the
+    allowance takes no unmeasured bet and this device has not run that pass cleanly, the clip
+    runs in windows at the ceiling instead.
+
+    ``one_pass`` skips the window fallback; a 1440p or 4K clip longer than one window is
+    ``one_pass_unavailable``. ``parts`` skips one pass whenever the clip is longer than the
+    shortest window.
     """
+    match shape:
+        case "one_pass":
+            single_pass = _decide_fast_pass(width, height, frames, windows=1, job_filter=job_filter)
+            if is_chunked_canvas(width, height) and frames > window_candidates(width, height)[0]:
+                return VideoJobReject(
+                    seq=single_pass.seq,
+                    full_gib=single_pass.full_gib,
+                    stream_gib=single_pass.stream_gib,
+                    reason="one_pass_unavailable",
+                )
+            return single_pass
+        case "parts":
+            windowed = _decide_windowed_video_job(width, height, frames, job_filter=job_filter)
+            if windowed is not None:
+                return windowed
+            return _decide_fast_pass(width, height, frames, windows=1, job_filter=job_filter)
+        case "auto":
+            pass
+        case _ as unreachable:
+            assert_never(unreachable)
     if not is_chunked_canvas(width, height):
         single_pass = _decide_fast_pass(width, height, frames, windows=1, job_filter=job_filter)
-        if not _one_pass_cannot_fit_card(single_pass, job_filter):
+        if isinstance(single_pass, VideoJobLoad):
+            if allow_unfitted_pass or not _is_unproven_pass_past_fit(
+                single_pass, width, height, job_filter
+            ):
+                return single_pass
+            windowed = _decide_windowed_video_job(width, height, frames, job_filter=job_filter)
+            return windowed if isinstance(windowed, VideoJobLoad) else single_pass
+        if not _windows_help(single_pass, job_filter):
             return single_pass
-        # No bare card of this size runs the clip in one pass, so run it in windows. When no window
-        # loads either, the single-pass reject stays the verdict, so nothing else about the
-        # refusal (its figures, a reckless downgrade running one pass) changes.
         windowed = _decide_windowed_video_job(width, height, frames, job_filter=job_filter)
-        return windowed if isinstance(windowed, VideoJobLoad) else single_pass
+        return windowed if windowed is not None else single_pass
     decision: VideoJobDecision | None = None
     if frames <= window_candidates(width, height)[0]:
         decision = _decide_fast_pass(width, height, frames, windows=1, job_filter=job_filter)
@@ -1276,22 +1076,36 @@ def _decide_priced_video_job(
     return decision
 
 
-def _one_pass_cannot_fit_card(single_pass: VideoJobDecision, job_filter: LocalJobFilter) -> bool:
-    """A one-pass refusal that no empty card of this size would pass, on a card a run covers.
-
-    Only the GPU refusal, and only when its ask is over the card's total VRAM: a window does not
-    shorten a RAM shortfall, a fence or an unsupported process. An ask that fits an empty card is a
-    busy or warm card, which frees up: it keeps its refusal, so the evict-and-retry and the
-    close-other-apps message stay in charge and a clip that runs in one pass is not windowed.
-    """
-    if isinstance(single_pass, VideoJobLoad) or single_pass.reason != "stream_over":
+def _is_unproven_pass_past_fit(
+    single_pass: VideoJobLoad, width: int, height: int, job_filter: LocalJobFilter
+) -> bool:
+    """A one-pass load past the fitted window size that this device has not run cleanly."""
+    route = budget_route("fast", job_filter.profile)
+    if not _is_pass_past_fitted_tokens(single_pass, windows=1, route=route):
         return False
-    total = job_filter.budget.total_vram_gib
-    return (
-        total is not None
-        and single_pass.stream_gib > total
-        and window_fallback_measured("fast", budget_route("fast", job_filter.profile), total)
-    )
+    shape = _canvas_job_shape("fast", single_pass, width=width, height=height, windows=1, job_filter=job_filter)
+    envelope = envelope_for(shape, single_pass.mode, single_pass.stream_gib)
+    return job_filter.calibration.covering(envelope) is None
+
+
+def _windows_help(single_pass: VideoJobDecision, job_filter: LocalJobFilter) -> bool:
+    """A one-pass refusal that windows can lift: the pass is past the machine's ceiling.
+
+    ``mps_sequence_over`` is a per-forward fence, so a window under it clears it. A
+    ``stream_over`` qualifies only when its ask is over the whole card (the MPS pool on a Mac):
+    an ask that fits an empty card is a busy or warm card, which frees up, so it keeps its
+    refusal and the evict-and-retry and close-other-apps messages stay in charge. A RAM
+    shortfall or an unsupported process is not shortened by a window.
+    """
+    if isinstance(single_pass, VideoJobLoad):
+        return False
+    if single_pass.reason == "mps_sequence_over":
+        return True
+    if single_pass.reason != "stream_over":
+        return False
+    budget = job_filter.budget
+    ceiling = budget.mps_pool_gib if job_filter.profile.darwin else budget.usable_vram_gib
+    return ceiling is not None and single_pass.stream_gib > ceiling
 
 
 def _decide_windowed_video_job(
@@ -1303,7 +1117,7 @@ def _decide_windowed_video_job(
 ) -> VideoJobDecision | None:
     """The longest window that loads, as ``chunk_pixel_frames``.
 
-    When none loads, the reject of the shortest window, so a reckless downgrade runs that
+    When none loads, the reject of the shortest window, so a Brave downgrade runs that
     window and the figures name the smallest ask. None when the clip is no longer than the
     shortest window, so there is nothing to chunk.
     """
@@ -1318,12 +1132,14 @@ def _decide_windowed_video_job(
             height,
             window,
             windows=window_count(frames, window),
+            last_frames=last_window_frames(frames, window),
             job_filter=job_filter,
         )
         if isinstance(decision, VideoJobLoad):
             return replace(decision, chunk_pixel_frames=chunk_pixel_frames)
     if decision is None:
         return None
+    # A Brave downgrade of this reject runs the shortest window, not one pass.
     return replace(decision, chunk_pixel_frames=chunk_pixel_frames)
 
 
@@ -1333,19 +1149,27 @@ def _decide_fast_pass(
     frames: int,
     *,
     windows: int,
+    last_frames: int | None = None,
     job_filter: LocalJobFilter,
 ) -> VideoJobDecision:
     """One pass of ``frames`` frames, inside a job of ``windows`` windows."""
     seq = video_tokens(height, width, frames)
+    last_tokens = (
+        seq
+        if last_frames is None or last_frames == frames
+        else video_tokens(height, width, last_frames)
+    )
     route = budget_route("fast", job_filter.profile)
     if route == "mac_measured":
         return decide_mac_job(
             seq,
-            fast_job_stream_gib(seq, windows=windows, darwin=True),
+            fast_job_stream_gib(seq, windows=windows, darwin=True, last_tokens=last_tokens),
             job_filter=job_filter,
         )
     if route == "windows_measured":
-        return _decide_windows_fast_job(seq, windows=windows, job_filter=job_filter)
+        return _decide_windows_fast_job(
+            seq, windows=windows, last_tokens=last_tokens, job_filter=job_filter
+        )
     return decide_load_mode(
         seq,
         memory_gb=job_filter.budget.memory_gb,
@@ -1356,18 +1180,15 @@ def _decide_fast_pass(
 
 @dataclass(frozen=True, slots=True)
 class FastDurationOutcome:
-    """Per-cell verdicts: kept durations plus why each dropped cell died."""
+    """Per-cell admissions in duration order, so the specs layer can message,
+    tier, and figure every cell without re-deciding."""
 
-    kept: list[int]
-    rejected: dict[int, VideoJobRejectReason]
-    # Full decisions for dropped cells, so the specs layer can message them
-    # without re-deciding. Unsupported carries fixed copy (figures ignored).
-    rejects: dict[int, VideoJobReject] = field(
-        default_factory=dict[int, VideoJobReject]
-    )
-    # Full decisions for kept cells, so the specs layer can tier them
-    # (tight/unmeasured) without re-deciding.
-    loads: dict[int, VideoJobLoad] = field(default_factory=dict[int, VideoJobLoad])
+    admitted: dict[int, Admitted] = field(default_factory=dict[int, Admitted])
+    refused: dict[int, Refused] = field(default_factory=dict[int, Refused])
+
+    @property
+    def kept(self) -> list[int]:
+        return list(self.admitted)
 
 
 def decide_fast_durations(
@@ -1378,30 +1199,58 @@ def decide_fast_durations(
     *,
     job_filter: LocalJobFilter,
 ) -> FastDurationOutcome:
-    """Decide every cell, keeping loads and naming each rejection's reason."""
-    kept: list[int] = []
-    rejected: dict[int, VideoJobRejectReason] = {}
-    rejects: dict[int, VideoJobReject] = {}
-    loads: dict[int, VideoJobLoad] = {}
+    """Admit every cell under the filter's live mode."""
+    outcome = FastDurationOutcome()
     for duration in durations:
-        decision = decide_video_job(
+        admission = decide_video_job(
             width,
             height,
             compute_num_frames(duration, fps),
             job_filter=job_filter,
         )
-        if isinstance(decision, VideoJobLoad):
-            kept.append(duration)
-            loads[duration] = decision
+        if isinstance(admission, Admitted):
+            outcome.admitted[duration] = admission
         else:
-            rejected[duration] = decision.reason
-            rejects[duration] = decision
-    return FastDurationOutcome(
-        kept=kept,
-        rejected=rejected,
-        rejects=rejects,
-        loads=loads,
+            outcome.refused[duration] = admission
+    return outcome
+
+
+def price_alternative_pass(
+    width: int,
+    height: int,
+    frames: int,
+    *,
+    job_filter: LocalJobFilter,
+    auto: PricedJob,
+) -> PricedJob | None:
+    """The other shape a Brave user may pick for this clip, priced as create would run it.
+
+    None wherever the "Make it" toggle stays hidden: Cautious (it picks for the user), the
+    "Never split" switch or any other fixed shape (never means never), 1440p and 4K (always
+    windows past one), a one pass inside the fitted range (windows buy nothing there), a clip
+    too short to split, and a shape that a wall refuses even in Brave (the Mac sequence fence).
+    """
+    if job_filter.budget_mode != "brave" or job_filter.pass_shape != "auto" or is_chunked_canvas(width, height):
+        return None
+    route = budget_route("fast", job_filter.profile)
+    if auto.chunk_pixel_frames is None:
+        decision = auto.decision
+        if not isinstance(decision, VideoJobLoad) or not _is_pass_past_fitted_tokens(
+            decision, windows=1, route=route
+        ):
+            return None
+        other: PassShape = "parts"
+    else:
+        other = "one_pass"
+    brave = RiskAllowance.for_mode("brave")
+    priced = price_video_job(
+        width, height, frames, job_filter=replace(job_filter, pass_shape=other), allowance=brave
     )
+    if other == "parts" and priced.chunk_pixel_frames is None:
+        return None
+    if isinstance(admit(priced, brave), Refused):
+        return None
+    return priced
 
 
 def decide_edit_job(
@@ -1410,16 +1259,38 @@ def decide_edit_job(
     frames: int,
     *,
     job_filter: LocalJobFilter,
-) -> VideoJobDecision:
-    """Retake/extend: the priced verdict, refused inside an unmeasured 1440p or 4K cell."""
-    return gate_unmeasured_cell(
+    allowance: RiskAllowance | None = None,
+) -> Admission:
+    """Retake/extend: price the job, then admit it under the allowance."""
+    return admit(
+        price_edit_job(width, height, frames, job_filter=job_filter),
+        allowance if allowance is not None else RiskAllowance.for_mode(job_filter.budget_mode),
+    )
+
+
+def price_edit_job(
+    width: int,
+    height: int,
+    frames: int,
+    *,
+    job_filter: LocalJobFilter,
+) -> PricedJob:
+    return _priced_canvas_job(
+        "edit",
         _decide_priced_edit_job(width, height, frames, job_filter=job_filter),
-        feature="edit",
         width=width,
         height=height,
-        frames=frames,
+        windows=1,
+        decode_tokens=decode_tile_tokens(height, width, frames),
         job_filter=job_filter,
     )
+
+
+def video_job_reject(refused: Refused) -> VideoJobReject:
+    """The reject of a Fast or edit refusal: their pricing never yields an IC-LoRA reject."""
+    reject = refused.reject
+    assert isinstance(reject, VideoJobReject)
+    return reject
 
 
 def _decide_priced_edit_job(
@@ -1447,10 +1318,11 @@ def _decide_priced_edit_job(
     trims 1080p windows to the pool instead of approving the full cap.
     """
     seq = video_tokens(height, width, frames)
+    decode_tokens = decode_tile_tokens(height, width, frames)
     route = budget_route("edit", job_filter.profile)
     if route == "windows_measured":
         return decide_measured_job(
-            required_gib=_edit_stream_required_gib(seq),
+            required_gib=_edit_stream_required_gib(seq, decode_tokens=decode_tokens),
             required_ram_bytes=job_filter.profile.windows_edit_required_ram_bytes,
             seq=seq,
             full_headroom_gib=_EDIT_FULL_HEADROOM_GIB,
@@ -1474,21 +1346,34 @@ def max_edit_frames_that_load(
     height: int,
     *,
     frame_cap: int,
+    min_frames: int = 1,
     job_filter: LocalJobFilter,
 ) -> int:
-    """Largest frame count at or below ``frame_cap`` that ``decide_edit_job`` loads.
+    """Largest frame count at or below ``frame_cap`` that edit pricing loads.
 
     1920x1088x505 asks about 41 GiB on the measured reserved curve and 422s
     everywhere at or under 40 GB.
     That canvas is the letterbox of a 1080p picture. Home passes this cap
     into the encode window so that 1080p job runs at the longest window that
-    fits. When nothing fits, return ``frame_cap`` and let the loader 422.
+    fits. Single-tile decode tokens stay within ``MEASURED_MAX_DECODE_TOKENS``
+    so automatic context padding never grows a short 4K retake into the
+    73-frame WDDM paging zone; in Brave mode an explicit selection above that
+    ceiling (``min_frames``) can still reach the VRAM cap as an unmeasured bet.
+    When nothing fits, return ``frame_cap`` and let the loader 422.
     """
     if frame_cap < 1:
         return frame_cap
+    route = budget_route("edit", job_filter.profile)
+    max_decode_tokens = MEASURED_MAX_DECODE_TOKENS.get(("edit", route))
 
     def loads(frames: int) -> bool:
-        # Priced, not gated: shortening a window answers memory. The unmeasured-cell gate does not move with length.
+        if (
+            max_decode_tokens is not None
+            and (job_filter.budget_mode == "cautious" or frames > min_frames)
+            and decode_tile_tokens(height, width, frames) > max_decode_tokens
+        ):
+            return False
+        # Priced, not admitted: shortening a window answers memory.
         decision = _decide_priced_edit_job(
             width,
             height,
@@ -1520,7 +1405,7 @@ def advertised_fast_durations(
     *,
     job_filter: LocalJobFilter,
 ) -> list[int]:
-    """Keep Fast cells that ``decide_video_job`` would load. Not a full-mode envelope.
+    """Keep Fast cells that ``decide_video_job`` admits. Not a full-mode envelope.
 
     Filtering with ``fits(..., "full_models_loading")`` would hide 720p/20s on a
     5090 that streams it. Darwin never compares free RAM to the CUDA stream curve
@@ -1541,21 +1426,29 @@ def advertised_fast_durations(
 # window over-asked the small 41-frame windows, which refuses jobs a 16 GB card loads, and
 # under-asked 1440p's 129-frame windows. The coefficients keep a small margin over the 4K
 # points; lowering either leaves the 4K cells at zero margin.
-_WINDOWED_PLATEAU_GIB_PER_TOKEN = 1.05e-4
+WINDOWED_PLATEAU_GIB_PER_TOKEN = 1.05e-4
+_WINDOWED_PLATEAU_GIB_PER_TOKEN = WINDOWED_PLATEAU_GIB_PER_TOKEN
 
 # Two windows pay most of the plateau step when the second window is full (1440p at 10 s and
-# 24 fps is exactly that: 129 frames then 112 more). A short last window grows much less, and
-# the job budget does not see the last window's length, so every two-window job pays the full
-# step. That over-asks a short last window (4K at 3 s) until a run measures it.
-_WINDOWED_TWO_WINDOW_GIB_PER_TOKEN = 6.5e-5
+# 24 fps is 129 frames then 112 new + 17 carry = 129: G1 peaked at 25.58 GiB vs 26.58 ask).
+# When the second window is shorter (G2a 4K 73f has a 41f second window and peaked at 21.80
+# GiB; G2b 1440p 145f has a 33f second window and peaked at 21.88 GiB, with window 2 at 18.52
+# GiB), window 2's own working set scales with its tokens ``last_tokens`` while still carrying
+# window 1's overlap state (``_WINDOWED_TWO_WINDOW_GIB_PER_TOKEN * tokens``), and the job peak
+# is ``max(base_law(t1), base_law(t2) + c_2w * t1)``.
+WINDOWED_TWO_WINDOW_GIB_PER_TOKEN = 6.5e-5
+_WINDOWED_TWO_WINDOW_GIB_PER_TOKEN = WINDOWED_TWO_WINDOW_GIB_PER_TOKEN
 
 
-def _windows_windowed_extra_gib(windows: int, tokens: float) -> float:
+def windows_windowed_extra_gib(windows: int, tokens: float) -> float:
     if windows >= PEAK_PLATEAU_WINDOWS:
-        return _WINDOWED_PLATEAU_GIB_PER_TOKEN * tokens
+        return WINDOWED_PLATEAU_GIB_PER_TOKEN * tokens
     if windows == 2:
-        return _WINDOWED_TWO_WINDOW_GIB_PER_TOKEN * tokens
+        return WINDOWED_TWO_WINDOW_GIB_PER_TOKEN * tokens
     return 0.0
+
+
+_windows_windowed_extra_gib = windows_windowed_extra_gib
 
 
 # Mac (MPS) windowed price above the single-pass law, per token of one window, on the same
@@ -1563,17 +1456,20 @@ def _windows_windowed_extra_gib(windows: int, tokens: float) -> float:
 # peak, which holds cache the cap would force out. The carry and the earlier windows leave
 # allocator state behind that grows with the window's tokens, and the peak climbs for two
 # windows past the first and then holds. The Mac price sits above the Windows one because
-# the 4K cap runs landed above where the Windows coefficient would put them. A fixed figure
-# under-asks the 4K cap edge and the 1440p windows; lowering either coefficient re-opens the
-# 4K edge, which the 4K price covers by about 0.1 GiB.
-_MAC_WINDOWED_PLATEAU_GIB_PER_TOKEN = 1.30e-4
+# the 4K and 1440p cap runs landed above where the Windows coefficient would put them.
+# A fixed figure under-asks the 4K cap edge and the 1440p windows; the plateau price
+# (1.15e-4) clears the 4K 7-window edge in (28.4, 29.2] by +0.06..+0.86 GiB (29.26 ask;
+# +0.19 above the 29.07 peak at cap 29.2) and the 1440p 5-window edge in (30.7, 31.7] by
+# +0.01..+1.01 GiB (31.71 ask; +0.41 above the 31.30 peak at cap 31.7).
+_MAC_WINDOWED_PLATEAU_GIB_PER_TOKEN = 1.15e-4
 
-# Two windows pay most of the plateau step when the second window is full (1440p at 10 s and
-# 24 fps). A short last window grows much less (4K at 3 s), and the job budget does not see
-# the last window's length, so every two-window job pays the full step. That over-asks the
-# 4K 3 s cell by about 3 GiB until a run prices a last window of that length on the Mac.
-# The 1440p two-window step is read off native runs, not a capped one.
-_MAC_WINDOWED_TWO_WINDOW_GIB_PER_TOKEN = 7.5e-5
+# Two windows pay ``max(base_law(t1), base_law(t2) + _MAC_WINDOWED_TWO_WINDOW_GIB_PER_TOKEN * t1)``,
+# matching the Windows rule: a full second window at 1440p (10 s at 24 fps, 241f) asks 29.52 GiB
+# (+0.27 above its 29.25 passing cap; 7.5e-5 sat 0.05 under it; 4K 81f full last asks 27.26 vs
+# <= 26.0 passing cap), while a short second window asks 24.53 GiB at 4K 73f (41f last, +1.13
+# above its 23.4 passing cap) and 24.51 GiB at 1440p 145f (33f last, where window 1 binds above
+# its 23.2 passing cap).
+_MAC_WINDOWED_TWO_WINDOW_GIB_PER_TOKEN = 8.0e-5
 
 
 def _mac_windowed_extra_gib(windows: int, tokens: float) -> float:
@@ -1584,20 +1480,51 @@ def _mac_windowed_extra_gib(windows: int, tokens: float) -> float:
     return 0.0
 
 
-def fast_job_stream_gib(tokens: float, *, windows: int, darwin: bool) -> float:
+def _fast_base_stream_gib(tokens: float, *, darwin: bool) -> float:
+    if darwin:
+        return _mac_fast_stream_required_gib(tokens)
+    return max(
+        _windows_fast_stream_required_gib(tokens),
+        _windows_fast_reserved_required_gib(tokens),
+    )
+
+
+def fast_job_stream_gib(
+    tokens: float,
+    *,
+    windows: int,
+    darwin: bool,
+    last_tokens: float | None = None,
+) -> float:
     """The stream ask of one Fast pass inside a job of ``windows`` windows. Run logs print it
     next to the measured peak, so a refit has both numbers."""
+    base_t1 = _fast_base_stream_gib(tokens, darwin=darwin)
+    if windows == 2:
+        t2 = tokens if last_tokens is None else last_tokens
+        base_t2 = _fast_base_stream_gib(t2, darwin=darwin)
+        extra = (
+            _mac_windowed_extra_gib(2, tokens)
+            if darwin
+            else _windows_windowed_extra_gib(2, tokens)
+        )
+        return max(base_t1, base_t2 + extra)
     if darwin:
-        return _mac_fast_stream_required_gib(tokens) + _mac_windowed_extra_gib(windows, tokens)
+        return base_t1 + _mac_windowed_extra_gib(windows, tokens)
     return max(
         _windows_fast_stream_required_gib(tokens),
         _windows_fast_reserved_required_gib(tokens) + _windows_windowed_extra_gib(windows, tokens),
     )
 
 
-def edit_job_stream_gib(tokens: float, *, darwin: bool) -> float:
+def edit_job_stream_gib(
+    tokens: float, *, darwin: bool, decode_tokens: float | None = None
+) -> float:
     """The stream ask of one Retake or Extend window. Run logs print it next to the peak."""
-    return _mac_edit_stream_required_gib(tokens) if darwin else _edit_stream_required_gib(tokens)
+    return (
+        _mac_edit_stream_required_gib(tokens)
+        if darwin
+        else _edit_stream_required_gib(tokens, decode_tokens=decode_tokens)
+    )
 
 
 def _windows_fast_stream_required_gib(tokens: float) -> float:
@@ -1620,9 +1547,14 @@ def _mac_fast_stream_required_gib(tokens: float) -> float:
     return _MAC_FAST_STREAM.required_gib(tokens)
 
 
-def _edit_stream_required_gib(tokens: float) -> float:
-    """Edit stream requirement on the reserved-basis row."""
-    return _EDIT_STREAM.required_gib(tokens)
+def _edit_stream_required_gib(
+    tokens: float, *, decode_tokens: float | None = None
+) -> float:
+    """Edit stream requirement: max of denoise and single-tile decode reserved laws."""
+    base = _EDIT_STREAM.required_gib(tokens)
+    if decode_tokens is None:
+        return base
+    return max(base, _EDIT_DECODE_STREAM.required_gib(decode_tokens))
 
 
 def _mac_edit_stream_required_gib(tokens: float) -> float:
@@ -1667,6 +1599,7 @@ def _decide_windows_fast_job(
     seq: float,
     *,
     windows: int = 1,
+    last_tokens: float | None = None,
     job_filter: LocalJobFilter,
 ) -> VideoJobDecision:
     """Windows Fast (2.3 and 2.5) availability from the continuous model, then full-vs-stream pick.
@@ -1695,7 +1628,9 @@ def _decide_windows_fast_job(
         estimated_giB("full_models_loading", seq),
         _windows_fast_full_reserved_required_gib(seq),
     )
-    stream_gib = fast_job_stream_gib(seq, windows=windows, darwin=False)
+    stream_gib = fast_job_stream_gib(
+        seq, windows=windows, darwin=False, last_tokens=last_tokens
+    )
 
     available = job_filter.budget.available_vram_gib
     total = job_filter.budget.total_vram_gib
@@ -1755,6 +1690,29 @@ def _decide_windows_fast_job(
 # limit (64-bit indexing), so the fence is Darwin-only by construction.
 _MPS_TRANSFORMER_TOKEN_FENCE = 116_000
 
+# ltx-core's disk-streaming read buffers: host_buffers + prefetch_depth (2 + 2 at the
+# StreamingConfig defaults Desktop runs), each sized to the largest streamed block, plus
+# DeviceStager's two 64 MiB buckets. On MPS they are ordinary host memory outside
+# recommended_max, so the Mac ask carries them. Re-check both on an ltx-core bump.
+_MAC_DISK_STREAM_HOST_BUFFERS: Final = 4
+_MAC_DEVICE_STAGER_BYTES: Final = 2 * (64 << 20)
+
+
+def mac_disk_stream_host_gib(model_id: LTXLocalModelId | None) -> float:
+    """Host memory the Mac disk-streaming loader holds outside the MPS pool.
+
+    An unset or future model id (budget pricing outlives the spec table) prices the
+    largest known block, so it is never under-charged and never crashes the lookup.
+    """
+    if model_id in ALL_LTX_LOCAL_MODEL_IDS:
+        unit_bytes = get_ltx_model_spec(model_id).disk_stream_unit_bytes
+    else:
+        unit_bytes = max(
+            get_ltx_model_spec(known).disk_stream_unit_bytes
+            for known in ALL_LTX_LOCAL_MODEL_IDS
+        )
+    return (_MAC_DISK_STREAM_HOST_BUFFERS * unit_bytes + _MAC_DEVICE_STAGER_BYTES) / _GIB
+
 
 # Full-resident policy evidence (for decide_mac_job below): interleaved
 # DISK-vs-NONE runs. Per-feature bracket evidence lives with each curve
@@ -1774,17 +1732,22 @@ def decide_mac_job(
     profiles replace. Full resident stays unselectable (interleaved
     DISK-vs-NONE comparison: full resident only modestly faster at several
     times the pool — never the better pick on shared unified memory).
-    Unknown pool fails closed to unsupported. No RAM gate: Mac DISK
-    streaming maps from disk with no separate pinned set (that pin is
-    CUDA-offload-specific); the pool lives inside total RAM, so the pool
-    comparison already covers memory. Process mode flows through, so
-    unsupported still rejects first.
+    Unknown pool fails closed to unsupported. The ask adds the
+    disk-streaming loader's host read buffers (``mac_disk_stream_host_gib``,
+    about 3 GiB for a 22B bf16 transformer): they sit in ordinary memory
+    outside the pool, and recommended_max leaves the rest of RAM to the OS, so
+    the pool pays for them. There is no separate RAM gate. Process mode flows
+    through, so unsupported still rejects first.
 
-    Callers supply the feature's stream requirement; this core owns only the
-    pool comparison and the never-full policy. The MPS sequence fence runs
-    before the pool comparison (a fence verdict never prints pool figures),
-    after unsupported (a dead machine reports unsupported, not the fence).
+    Callers supply the feature's MPS stream requirement; this core adds the
+    host buffers once, then owns the pool comparison and the never-full
+    policy. Every verdict carries the charged ask, so readouts, tight-fit and
+    over figures compare the same number the gate did. The MPS sequence fence
+    runs before the pool comparison (a fence verdict never prints pool
+    figures), after unsupported (a dead machine reports unsupported, not the
+    fence).
     """
+    stream_gib += mac_disk_stream_host_gib(job_filter.profile.model_id)
     full_gib = estimated_giB("full_models_loading", seq)
 
     if (

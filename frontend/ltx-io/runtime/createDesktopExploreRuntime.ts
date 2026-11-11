@@ -1,21 +1,25 @@
+import {
+  EXPLORE_LORA_RECIPE_SEED_FILES,
+  type ExploreLoraRecipeSeedId,
+  PACKAGED_SEED_KINDS,
+  type PackagedSeedKind,
+} from "../../../shared/explore-seed-filenames.ts";
 import type { EnhanceProvider } from "../../hooks/use-prompt-enhancer-provider";
 import { ApiClient } from "../../lib/api-client.ts";
 import { type BackendFetch, backendFetch, backendWsUrl } from "../../lib/backend.ts";
+import type { BudgetMode } from "../../lib/budget-risk.ts";
 import { pathToFileUrl } from "../../lib/file-url.ts";
 import type { PackagedExploreSeedId } from "../assets/packaged-explore-assets";
-import {
-  EXPLORE_LORA_RECIPE_SEED_FILES,
-  PACKAGED_SEED_KINDS,
-  type ExploreLoraRecipeSeedId,
-  type PackagedSeedKind,
-} from "../../../shared/explore-seed-filenames.ts";
 import { ApiResultError, unwrapApiResult } from "../lib/unwrapApiResult.ts";
-import { AUDIO_FILE_PATH_UNREADABLE_MESSAGE } from "../screens/Feature/fields/audioAssetInput.ts";
-import { isSupportedDroppedVideo } from "../screens/Feature/fields/videoAssetInput.ts";
-import { DROPPED_FILE_PATH_UNREADABLE_MESSAGE } from "../screens/Feature/fields/imageAssetInput.ts";
-
 import { createLiveMicrophoneAccess } from "../media/microphone/liveAccess.ts";
 import type { OsMicrophoneStatus } from "../media/microphone/types.ts";
+import { AUDIO_FILE_PATH_UNREADABLE_MESSAGE } from "../screens/Feature/fields/audioAssetInput.ts";
+import {
+  DROPPED_FILE_PATH_UNREADABLE_MESSAGE,
+  IMAGE_EXTENSIONS,
+} from "../screens/Feature/fields/imageAssetInput.ts";
+import { isSupportedDroppedVideo } from "../screens/Feature/fields/videoAssetInput.ts";
+
 import type {
   ExploreApi,
   ExploreAsset,
@@ -39,6 +43,7 @@ export type DesktopExploreHost = {
     properties?: string[];
   }) => Promise<string[] | null>;
   getPathForFile: (file: File) => string;
+  getLocalFileSize: (input: { filePath: string }) => Promise<number>;
   showItemInFolder: (input: { filePath: string }) => void;
   getExploreLoraRecipeSeedPath: (input: {
     seedId: ExploreLoraRecipeSeedId;
@@ -65,6 +70,7 @@ function desktopHost(): DesktopExploreHost {
   return {
     showOpenFileDialog: (input) => window.electronAPI.showOpenFileDialog(input),
     getPathForFile: (file) => window.electronAPI.getPathForFile(file),
+    getLocalFileSize: (input) => window.electronAPI.getLocalFileSize(input),
     showItemInFolder: (input) => {
       void window.electronAPI.showItemInFolder(input);
     },
@@ -88,8 +94,7 @@ function desktopHost(): DesktopExploreHost {
       return result.osMicrophone;
     },
     openMicrophoneSettings:
-      window.electronAPI.platform === "win32" ||
-      window.electronAPI.platform === "darwin"
+      window.electronAPI.platform === "win32" || window.electronAPI.platform === "darwin"
         ? async () => {
             const result = await window.electronAPI.openMicrophoneSettings();
             if (!result.success) {
@@ -177,10 +182,7 @@ export function createDesktopMediaInput(
         return null;
       }
       const picked = { name: selected, type: "" };
-      if (
-        isSupportedDroppedVideo(picked) &&
-        requestExtractsAudioFromVideo(request)
-      ) {
+      if (isSupportedDroppedVideo(picked) && requestExtractsAudioFromVideo(request)) {
         // A2V import affordance: a video pick on an audio field that also
         // accepts video resolves to its extracted audio track.
         const video = await ingestPath(selected);
@@ -259,18 +261,28 @@ export function createDesktopExploreRuntime(
     autoEnhancePrompts?: boolean;
     onGeminiKeyRequired?: () => void;
     usesLtxApiTextEncoding?: boolean;
+    nagUnavailableReason?: string | null;
+    showNagStrengthControls?: boolean;
     openLtxApiKeySettings?: () => void;
     openTextEncodingSettings?: () => void;
-    budgetMode?: "standard" | "reckless";
+    budgetMode?: BudgetMode;
     budgetModeSaving?: boolean;
+    advancedControls?: boolean;
+    neverSplitIntoParts?: boolean;
+    neverSplitSaving?: boolean;
+    budgetRiskConfirm?: ExploreRuntime["budgetRiskConfirm"];
   },
 ): ExploreRuntime & { modelsVersion: number } {
   const api = options?.api ?? ApiClient;
   const host = options?.host ?? desktopHost();
   return {
     modelsVersion,
-    budgetMode: options?.budgetMode ?? "standard",
+    budgetMode: options?.budgetMode ?? "brave",
     budgetModeSaving: options?.budgetModeSaving ?? false,
+    advancedControls: options?.advancedControls ?? false,
+    neverSplitIntoParts: options?.neverSplitIntoParts ?? false,
+    neverSplitSaving: options?.neverSplitSaving ?? false,
+    budgetRiskConfirm: options?.budgetRiskConfirm,
     api,
     wsUrl: options?.wsUrl ?? backendWsUrl,
     mediaInput: createDesktopMediaInput(api, host),
@@ -280,17 +292,40 @@ export function createDesktopExploreRuntime(
     },
     ingestRecordedFile: createDesktopRecordedFileIngest(api, host),
     microphoneAccess: createLiveMicrophoneAccess({
-      diagnoseOsMicrophone:
-        host.diagnoseOsMicrophone ?? (async () => "unknown"),
+      diagnoseOsMicrophone: host.diagnoseOsMicrophone ?? (async () => "unknown"),
       openMicrophoneSettings: host.openMicrophoneSettings ?? null,
     }),
     ingestDroppedVideoAudio: createDesktopDroppedVideoAudio(api, host),
     catalogInstall: {
       openHuggingFaceAuth: (params) => host.openHuggingFaceAuth(params),
     },
-    audioSourceUrl: createDesktopAudioSourceUrl(
-      options?.fetchBackend ?? backendFetch,
-    ),
+    customLoraImport: {
+      pickWeightsFile: async () => {
+        const paths = await host.showOpenFileDialog({
+          title: "Choose LoRA weights",
+          filters: [{ name: "LoRA weights", extensions: ["safetensors"] }],
+          properties: ["openFile"],
+        });
+        return paths?.[0] ?? null;
+      },
+      pickCoverFile: async () => {
+        const paths = await host.showOpenFileDialog({
+          title: "Choose a cover image",
+          filters: [{ name: "Images", extensions: [...IMAGE_EXTENSIONS] }],
+          properties: ["openFile"],
+        });
+        return paths?.[0] ?? null;
+      },
+      pathForDroppedFile: (file) => pathForDroppedFile(host, file),
+      fileSize: async (filePath) => {
+        try {
+          return await host.getLocalFileSize({ filePath });
+        } catch {
+          return null;
+        }
+      },
+    },
+    audioSourceUrl: createDesktopAudioSourceUrl(options?.fetchBackend ?? backendFetch),
     mediaUrlForAsset: (asset) =>
       asset.path && asset.path.length > 0 ? pathToFileUrl(asset.path) : null,
     thumbUrlForAsset: (asset) =>
@@ -303,6 +338,7 @@ export function createDesktopExploreRuntime(
       const blob = await response.blob();
       return URL.createObjectURL(blob);
     },
+    host: "desktop",
     revealInFolder: (filePath) => {
       host.showItemInFolder({ filePath });
     },
@@ -315,6 +351,8 @@ export function createDesktopExploreRuntime(
     autoEnhancePrompts: options?.autoEnhancePrompts,
     onGeminiKeyRequired: options?.onGeminiKeyRequired,
     usesLtxApiTextEncoding: options?.usesLtxApiTextEncoding,
+    nagUnavailableReason: options?.nagUnavailableReason,
+    showNagStrengthControls: options?.showNagStrengthControls,
     openLtxApiKeySettings: options?.openLtxApiKeySettings,
     openTextEncodingSettings: options?.openTextEncodingSettings,
   };

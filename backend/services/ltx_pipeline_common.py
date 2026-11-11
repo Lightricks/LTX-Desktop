@@ -2,23 +2,40 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 import logging
 from typing import TYPE_CHECKING
 
 import torch
 
 from runtime_config.runtime_policy import CUDA_CPU_OFFLOAD_RAM_FLOOR_GB, should_disk_stream_cuda_weights
-from services.services_utils import AudioOrNone, PipelineTilingType, TilingConfigType
+from services.services_utils import PipelineTilingType, TilingConfigType
 from services.storage_info.storage_info import DriveType
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from api_types import ImageConditioningInput
     from ltx_core.components.guiders import MultiModalGuiderParams
     from ltx_core.model.video_vae.transformer.config import DiffVAEMode
+    from ltx_pipelines.utils.media_io import PlaybackSegment
     from ltx_pipelines.utils.model_paths import ModelPaths
+    from ltx_pipelines.utils.types import ImageConditioningInput as LtxImageInput
     from ltx_pipelines.utils.types import OffloadMode
+
+
+def to_ltx_images(images: Sequence[ImageConditioningInput], *, guide_all: bool = False) -> list[LtxImageInput]:
+    """Desktop stills as ltx-pipelines inputs, with the CRF left to the checkpoint default.
+
+    A still at frame 0 replaces that frame and a later one guides. A negative index (the
+    IC-LoRA reference token) is a guide. ``guide_all`` also guides frame 0, which multi-keyframe
+    interpolation needs so that the first still stays a keyframe instead of a replacement.
+    """
+    from ltx_pipelines.utils.types import ImageConditioningInput as LtxImageInput
+
+    if guide_all:
+        return [LtxImageInput.guide(img.path, img.frame_idx, img.strength) for img in images]
+    return [LtxImageInput.at(img.path, img.frame_idx, img.strength) for img in images]
 
 
 def auto_tiling_config() -> PipelineTilingType:
@@ -212,17 +229,34 @@ def video_chunks_number(num_frames: int, tiling_config: TilingConfigType | None)
     return int(get_video_chunks_number(num_frames, tiling_config))
 
 
-def _disk_stream_reason(system: str, ram_gb: int | None) -> str:
+def _disk_stream_reason(
+    system: str, ram_gb: int | None, cpu_ram_floor_gb: int | None
+) -> str:
     if system == "Windows":
-        return "checkpoint volume is NVMe on Windows CUDA"
+        if cpu_ram_floor_gb is None:
+            return "checkpoint volume is NVMe on Windows CUDA (edit pipeline)"
+        if ram_gb is None:
+            return (
+                "host RAM unknown on Windows CUDA NVMe; failing closed below the "
+                f"{cpu_ram_floor_gb} GiB CPU-streaming floor"
+            )
+        return (
+            f"host RAM {ram_gb} GiB on Windows CUDA NVMe is below the "
+            f"{cpu_ram_floor_gb} GiB CPU-streaming floor"
+        )
+    floor_gb = (
+        CUDA_CPU_OFFLOAD_RAM_FLOOR_GB
+        if cpu_ram_floor_gb is None
+        else cpu_ram_floor_gb
+    )
     if ram_gb is None:
         return (
             "host RAM unknown on Linux CUDA; failing closed below the "
-            f"{CUDA_CPU_OFFLOAD_RAM_FLOOR_GB} GiB pinned-CPU floor (LTX-Desktop#163)"
+            f"{floor_gb} GiB pinned-CPU floor (LTX-Desktop#163)"
         )
     return (
         f"host RAM {ram_gb} GiB on Linux CUDA is below the "
-        f"{CUDA_CPU_OFFLOAD_RAM_FLOOR_GB} GiB floor for pinned CPU streaming (LTX-Desktop#163)"
+        f"{floor_gb} GiB floor for pinned CPU streaming (LTX-Desktop#163)"
     )
 
 
@@ -233,6 +267,7 @@ def offload_mode_for_prefetch_count(
     drive_type: DriveType | None,
     system: str,
     ram_bytes: int | None,
+    cpu_ram_floor_gb: int | None = CUDA_CPU_OFFLOAD_RAM_FLOOR_GB,
 ) -> OffloadMode:
     """Translate the desktop's streaming_prefetch_count knob to ltx_pipelines' OffloadMode.
 
@@ -241,18 +276,23 @@ def offload_mode_for_prefetch_count(
     CUDA streaming kind. Callers pass frozen startup facts — no platform or
     psutil reads inside, so the verdict is stable and trivially testable.
 
-    - CUDA: system RAM is separate from VRAM, so OffloadMode.CPU pins the blocks in host
-      RAM and streams them to the smaller VRAM — the fast streaming path. On Linux,
-      that pin is unswappable and needs ~36 GB host RAM; 32 GB machines (the advertised
-      local-gen floor) must use OffloadMode.DISK instead (LTX-Desktop#163). On Windows,
-      the checkpoint drive routes instead: NVMe maps ~70 GB per generation in ~20 s
-      (and commits ~5 GB host RAM against ~34 pinned), so NVMe streams from DISK while
-      SATA and unknown drives stay on CPU.
+    - CUDA: system RAM is separate from VRAM, so OffloadMode.CPU holds the blocks in host
+      RAM and streams them to the smaller VRAM — the fast streaming path when RAM fits. On
+      Linux, that buffer is page-locked (unswappable) and needs ~36 GB host RAM; 32 GB
+      machines (the advertised local-gen floor) must use OffloadMode.DISK instead
+      (LTX-Desktop#163). On Windows, non-NVMe and unknown drives stay on OffloadMode.CPU
+      (SATA takes ~130 s for ~70 GB of reads per generation). On Windows NVMe, ltx-core
+      1.6.0 has no os.preadv and opens an unbuffered handle per 8 MiB chunk, making disk
+      streaming slower than CPU offload on Fast and IC-LoRA once RAM clears
+      ``cpu_ram_floor_gb`` (40 GB for Fast, 64 GB for IC-LoRA); below that floor (or when
+      ``cpu_ram_floor_gb`` is None, as on Edit where full-resolution stage-1 denoise hides
+      the reads and disk stays faster), NVMe streams from DISK.
     - MPS (Apple Silicon): CPU-pinned weights live in the *same* unified RAM as the GPU,
       so OffloadMode.CPU (which pins every block, ~46 GB for the bf16 transformer) OOMs.
-      OffloadMode.DISK mmaps blocks from the checkpoint through a small pinned buffer
-      (~5 GB), the only memory-safe streaming path on unified memory. This is the "mmap
-      streaming" the upstream MPS-support work validated on an M4 Pro.
+      OffloadMode.DISK reads blocks from the checkpoint with positional reads into block-sized
+      host buffers (2 plus the prefetch depth) and two 64 MiB staging buckets, all unpinned
+      on MPS, the only memory-safe streaming path on unified memory. Measurements taken
+      before ltx-core 1.6.0 describe the older mmap path.
     """
     from ltx_pipelines.utils.types import OffloadMode
 
@@ -261,26 +301,36 @@ def offload_mode_for_prefetch_count(
     if device.type == "mps":
         return OffloadMode.DISK
     if device.type == "cuda":
-        ram_gb = ram_bytes // (1024**3) if ram_bytes is not None else None
-        if should_disk_stream_cuda_weights(system, ram_gb, drive_type=drive_type):
-            logger.info("Using OffloadMode.DISK: %s", _disk_stream_reason(system, ram_gb))
+        ram_gb = (
+            (ram_bytes + 1024**3 - 1) // (1024**3)
+            if ram_bytes is not None
+            else None
+        )
+        if should_disk_stream_cuda_weights(
+            system,
+            ram_gb,
+            drive_type=drive_type,
+            cpu_ram_floor_gb=cpu_ram_floor_gb,
+        ):
+            logger.info(
+                "Using OffloadMode.DISK: %s",
+                _disk_stream_reason(system, ram_gb, cpu_ram_floor_gb),
+            )
             return OffloadMode.DISK
     return OffloadMode.CPU
 
 
-def encode_video_output(
-    video: torch.Tensor | Iterator[torch.Tensor],
-    audio: AudioOrNone,
+def encode_segments_output(
+    segments: Iterator[PlaybackSegment],
     fps: int,
     output_path: str,
-    video_chunks_number_value: int,
+    video_chunks_number_value: int | None,
 ) -> None:
-    from ltx_pipelines.utils.media_io import encode_video
+    from ltx_pipelines.utils.media_io import encode_media_segments
 
-    encode_video(
-        video=video,
+    encode_media_segments(
+        segments,
         fps=fps,
-        audio=audio,
         output_path=output_path,
         video_chunks_number=video_chunks_number_value,
     )

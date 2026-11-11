@@ -72,7 +72,6 @@ export function SettingsPanel({
       hasAudio,
       minimumDuration,
       durationSelection: hideDuration ? 'smallest_valid' : 'preserve',
-      budgetMode: 'reckless',
     })
   }, [hasAudio, hideDuration, isImageMode, minimumDuration, settings, videoModelSpecs])
 
@@ -82,7 +81,6 @@ export function SettingsPanel({
       hasAudio,
       minimumDuration,
       durationSelection: hideDuration ? 'smallest_valid' : 'preserve',
-      budgetMode: 'reckless',
     })
     if (!sanitized) return
     if (!areVideoGenerationSettingsEquivalent(settings, sanitized)) {
@@ -102,7 +100,6 @@ export function SettingsPanel({
       hasAudio,
       minimumDuration,
       durationSelection: hideDuration ? 'smallest_valid' : 'preserve',
-      budgetMode: 'reckless',
     })
     if (sanitized) {
       onSettingsChange(sanitized)

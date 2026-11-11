@@ -12,6 +12,7 @@ import { readWireMotionPath, toEditorPath, toWireMotionPath } from "../../../lib
 import { readGenerationParams } from "../../../lib/resultsFeedModel.ts";
 import { isLocalVideoSelectionReady } from "../../../lib/videoFieldPolicy.ts";
 import { applyVideoSettingsChange } from "../../../lib/videoSettingsControls.ts";
+import { buildMemoryMeterModel } from "../../../../lib/memory-meter.ts";
 import {
   type AssetRef, type FeatureDefinition, type FeatureFormModel, type FeatureValues, type ValidationIssue,
 } from "../types.ts";
@@ -22,6 +23,7 @@ import {
   type SynthesizedIcLoraCatalogSettings, type SynthesizedIcLoraContext,
   synthesizedIcLoraVideoOptionFields,
 } from "./icLoraSynthesizedCommon.ts";
+import { negativePromptField, swapDemoNegative } from "./negativePrompt.ts";
 import { readAssetRef } from "./videoFeature.ts";
 
 type CreateIcLoraTrackRequest = components["schemas"]["CreateIcLoraTrackRequest"];
@@ -32,6 +34,7 @@ export type IcLoraTrackSchema = {
   /** The tracks. The wire body holds them as `inputs.paths`. */
   paths: { kind: "motion-path"; value: MotionPath[] };
   prompt: { kind: "textarea" };
+  negativePrompt: { kind: "textarea" };
   model: { kind: "options"; value: OfferingId };
   variant: { kind: "options"; value: string };
   /** Never shown. The backend takes the closest ratio from the image, so the form clamps as for Auto. */
@@ -71,6 +74,7 @@ function defaultsFor(
     startFrame: null,
     paths: [],
     prompt: recipe.demoPrompt,
+    negativePrompt: recipe.demoNegativePrompt || settings?.default_negative_prompt || "",
     model: "ltx-2.5-fast",
     variant: "",
     aspectRatio: "auto",
@@ -212,6 +216,7 @@ export function createIcLoraTrackDefinition(
       },
       params: {
         prompt: values.prompt.trim(),
+        negativePrompt: values.negativePrompt.trim(),
         model: values.model,
         resolution: values.resolution,
         duration: values.duration,
@@ -251,8 +256,14 @@ export function createIcLoraTrackDefinition(
           dataKey: "prompt",
           placeholder: recipe.placeholder,
         },
+        negativePromptField<IcLoraTrackSchema>(),
         ...tail,
       ],
+      memory: buildMemoryMeterModel(
+        context.specs,
+        { ...values, aspectRatio: trackAspectRatio(context) },
+        { fixFields: ["duration", "resolution"] },
+      ),
     };
   }
 
@@ -278,7 +289,14 @@ export function createIcLoraTrackDefinition(
         context.specs,
         withDefaultOffering(context.specs, defaults),
       );
-      return normalize(reconcilePathOnEdit(values, applied), context);
+      return swapDemoNegative(values, normalize(reconcilePathOnEdit(values, applied), context), {
+        demoNegative: recipe.demoNegativePrompt,
+        catalogDefault: settings?.default_negative_prompt,
+        changed: (before, after) =>
+          (change.dataKey === "startFrame" || change.dataKey === "prompt") &&
+          (after.startFrame?.assetId !== before.startFrame?.assetId ||
+            after.prompt !== before.prompt),
+      });
     },
     normalize,
     fromGeneration,

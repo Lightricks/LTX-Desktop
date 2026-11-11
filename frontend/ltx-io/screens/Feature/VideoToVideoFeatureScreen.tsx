@@ -272,7 +272,7 @@ export function useVideoToVideoFeature<
     >,
     context,
     contextReady,
-    generateEnabled: specsQuery.budgetModeReady,
+    generateEnabled: specsQuery.budgetSettingsReady,
     resourceError,
     createGeneration,
     EmptyStateAdapter,

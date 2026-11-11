@@ -9,6 +9,7 @@ import { registerDeepLinkProtocolClient } from './deep-link-protocol'
 import { registerExportHandlers } from './export/export-handler'
 import { stopExportProcess } from './export/ffmpeg-utils'
 import { registerAppHandlers } from './ipc/app-handlers'
+import { registerAssetsHandlers } from './ipc/assets-handlers'
 import { registerFileHandlers } from './ipc/file-handlers'
 import { registerMediaHandlers } from './ipc/media-handlers'
 import { registerLogHandlers } from './ipc/log-handlers'
@@ -130,6 +131,7 @@ if (!gotLock) {
     onSetupCompleted: () => sendLaunched('setup-completed'),
   })
   registerFileHandlers()
+  registerAssetsHandlers()
   registerMediaHandlers()
   registerLogHandlers()
   registerExportHandlers()

@@ -458,6 +458,16 @@ export function registerFileHandlers(): void {
     return seedPaths
   })
 
+  // Size only. The path must already be an allowed root or a file the user just picked.
+  handle('getLocalFileSize', ({ filePath }) => {
+    const normalizedPath = validatePath(filePath, getAllowedRoots())
+    const stat = fs.statSync(normalizedPath)
+    if (!stat.isFile()) {
+      throw new Error('Path is not a file')
+    }
+    return stat.size
+  })
+
   handle('showOpenFileDialog', async ({ title, filters, properties }) => {
     const mainWindow = getMainWindow()
     if (!mainWindow) return null

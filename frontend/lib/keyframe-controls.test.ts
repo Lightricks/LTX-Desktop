@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { applyTimecode, nudgeKeyframe } from './keyframe-controls.ts'
+import { applySeconds, applyTimecode, nudgeKeyframe } from './keyframe-controls.ts'
 
 const keyframes = [
   { id: 'opening', frameIndex: 10 },
@@ -27,6 +27,24 @@ describe('nudgeKeyframe', () => {
 
   it('returns null for an unknown keyframe', () => {
     assert.equal(nudgeKeyframe(keyframes, 'missing', 1, 30), null)
+  })
+})
+
+describe('applySeconds', () => {
+  it('converts typed seconds to the nearest frame', () => {
+    assert.equal(applySeconds(keyframes, 'opening', '0.52', 25, 30), 13)
+  })
+
+  it('moves a time that lands on another keyframe to the nearest free frame', () => {
+    assert.equal(applySeconds(keyframes, 'opening', '0.44', 25, 30), 12)
+  })
+
+  it('keeps a time past the clip on the last free frame', () => {
+    assert.equal(applySeconds(keyframes, 'opening', '9', 25, 30), 30)
+  })
+
+  it('returns null for text that is not seconds', () => {
+    assert.equal(applySeconds(keyframes, 'opening', '00:01', 25, 30), null)
   })
 })
 

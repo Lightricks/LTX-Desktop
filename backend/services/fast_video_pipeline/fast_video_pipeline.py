@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal, Protocol
 
 from api_types import ImageConditioningInput
 from frame_math import AutoDurationSpec
+from services.fast_video_pipeline.nag_config import NagConfig
 
 if TYPE_CHECKING:
     import torch
@@ -45,6 +46,7 @@ class FastVideoPipeline(Protocol):
         guide_all_images: bool = False,
         skip_stage_2: bool = False,
         chunk_pixel_frames: int | None = None,
+        nag: NagConfig | None = None,
     ) -> None:
         ...
 

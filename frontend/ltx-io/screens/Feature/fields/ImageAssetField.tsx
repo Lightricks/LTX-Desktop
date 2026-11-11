@@ -3,78 +3,72 @@ import { Button } from "@ds/Button/Button";
 import { Text } from "@ds/Text/Text";
 import PhotoIcon from "@ds/assets/Icons/Photo.svg?react";
 import { clsx } from "clsx";
+import type { ReactNode } from "react";
 
-import { isImageAsset } from "../../../hooks/assetQueryKeys";
+import type { ExploreAsset } from "@/lib/explore-contract";
+
 import formStyles from "../FeatureFormView.module.scss";
 import type { AssetRef, ValidationIssue } from "../types";
-import {
-  IMAGE_ACCEPT,
-  IMAGE_EXTENSIONS,
-  imageIngestErrorMessage,
-  imageLookupErrorMessage,
-  isSupportedDroppedImage,
-  UNSUPPORTED_IMAGE_MESSAGE,
-} from "./imageAssetInput";
 import dropStyles from "./ImageDropzone.module.scss";
 import styles from "./ImageAssetField.module.scss";
-import { useMediaAssetField } from "./useMediaAssetField";
+import { useImageAssetField } from "./useImageAssetField";
 
 export function ImageAssetField({
   field,
   value,
   naturalPreview = false,
   issue,
+  action,
   onChange,
 }: {
   field: { id: string; label: string };
+  /** Beside the label: a way to make the image instead of uploading it. */
+  action?: (input: { setAsset: (asset: ExploreAsset) => void }) => ReactNode;
   /** Show the whole image at its own aspect ratio, not in a fixed-height box. */
   naturalPreview?: boolean;
   value: AssetRef | null;
   issue?: ValidationIssue;
   onChange: (value: AssetRef | null) => void;
 }) {
-  const media = useMediaAssetField({
+  const media = useImageAssetField({
     value,
     issue,
     onChange,
-    accept: IMAGE_ACCEPT,
-    extensions: IMAGE_EXTENSIONS,
     chooserTitle: field.label,
-    isSupportedDropped: isSupportedDroppedImage,
-    isExpectedAsset: isImageAsset,
-    unsupportedMessage: UNSUPPORTED_IMAGE_MESSAGE,
-    ingestErrorMessage: imageIngestErrorMessage,
-    lookupErrorMessage: imageLookupErrorMessage,
   });
 
   return (
     <div className={formStyles.field}>
-      <Text as="span" variant="body" size="md" className={formStyles.fieldLabel}>
-        {field.label}
-      </Text>
+      <div className={styles.labelRow}>
+        <Text as="span" variant="body" size="md" className={formStyles.fieldLabel}>
+          {field.label}
+        </Text>
+        {action?.({ setAsset: media.acceptAsset })}
+      </div>
+      {/* Outside the dropzone: the Remote chooser clicks it, and that click must not reopen the library. */}
+      <input
+        ref={media.fileInputRef}
+        className={dropStyles.hiddenInput}
+        type="file"
+        accept={media.accept}
+      />
       <div
         className={clsx(dropStyles.dropzone, media.isDragOver && dropStyles.dragOver)}
         onDragEnter={media.dragHandlers.handleDragEnter}
         onDragOver={media.dragHandlers.handleDragOver}
         onDragLeave={media.dragHandlers.handleDragLeave}
         onDrop={media.dragHandlers.handleDrop}
-        onClick={media.dragHandlers.handleInputClick}
+        onClick={media.openLibrary}
         role="button"
         tabIndex={0}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            media.dragHandlers.handleInputClick();
+            media.openLibrary();
           }
         }}
         aria-label={field.label}
       >
-        <input
-          ref={media.fileInputRef}
-          className={dropStyles.hiddenInput}
-          type="file"
-          accept={media.accept}
-        />
         {media.previewUrl ? (
           <img
             className={clsx(
@@ -106,7 +100,7 @@ export function ImageAssetField({
           label={value ? "Replace" : "Browse"}
           onClick={(event) => {
             event.stopPropagation();
-            media.choose();
+            media.openLibrary();
           }}
         />
         {value ? (

@@ -38,9 +38,14 @@ export function selectRemoteHomeFeatureScreens(
 
 export type HomeFeatureRouteHandle = { readonly homeFeatureId: HomeFeatureId };
 
+/**
+ * `extraChildren` are pages that sit under the same layout as the feature pages but are not a
+ * feature of their own, such as the page of one saved custom LoRA.
+ */
 export function createHomeFeatureRoutes(
   components: Partial<Record<HomeFeatureId, ComponentType>>,
   layout: ComponentType,
+  extraChildren: readonly RouteObject[] = [],
 ): RouteObject[] {
   const children = HOME_FEATURES.flatMap((feature) => {
     const Component = components[feature.id];
@@ -58,5 +63,5 @@ export function createHomeFeatureRoutes(
   if (children.length === 0) {
     return [];
   }
-  return [{ element: createElement(layout), children }];
+  return [{ element: createElement(layout), children: [...children, ...extraChildren] }];
 }

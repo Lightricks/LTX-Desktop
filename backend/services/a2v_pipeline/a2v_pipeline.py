@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 from api_types import ImageConditioningInput
+from services.fast_video_pipeline.nag_config import NagConfig
 
 if TYPE_CHECKING:
     import torch
@@ -43,4 +44,5 @@ class A2VPipeline(Protocol):
         audio_max_duration: float | None,
         output_path: str,
         chunk_pixel_frames: int | None = None,
+        nag: NagConfig | None = None,
     ) -> None: ...

@@ -12,14 +12,18 @@ from typing import TYPE_CHECKING, Concatenate, ParamSpec, TypeVar
 
 from _routes._errors import HTTPError
 from runtime_config.model_download_specs import resolve_active_ltx_model_id
-from runtime_config.runtime_policy import streaming_prefetch_count_for_mode
+from runtime_config.runtime_policy import (
+    CUDA_CPU_OFFLOAD_RAM_FLOOR_GB,
+    streaming_prefetch_count_for_mode,
+)
 from runtime_config.video_job_budget import (
     LOCAL_GENERATION_UNSUPPORTED,
     LOCAL_GENERATION_UNSUPPORTED_MESSAGE,
     build_local_job_filter,
+    resolve_pass_shape,
 )
 from services.ltx_pipeline_common import offload_mode_for_prefetch_count
-from state.app_settings import MAX_GENERATION_SEED
+from state.app_settings import MAX_GENERATION_SEED, resolved_use_conv_vae
 from state.app_state_types import AppState
 
 if TYPE_CHECKING:
@@ -27,6 +31,7 @@ if TYPE_CHECKING:
 
     from api_types import LTXLocalModelId
     from runtime_config.runtime_config import RuntimeConfig
+    from runtime_config.reject_reasons import PassShape
     from runtime_config.runtime_policy import LocalGenerationMode
     from runtime_config.video_job_budget import LocalJobFilter
     from services.gpu_info.gpu_info import GpuInfo
@@ -95,28 +100,45 @@ class StateHandlerBase:
         *,
         model_id: LTXLocalModelId | None = None,
         total_only: bool = False,
+        pass_shape: PassShape | None = None,
     ) -> LocalJobFilter:
         """Profile + budget for this request. Built once per public method so
         free VRAM and the MPS pool are sampled a single time per request,
-        never per check. Single source for every budget gate."""
+        never per check. Single source for every budget gate.
+
+        ``pass_shape=None`` follows the live "Never split" setting; a queued job
+        passes the shape it resolved at create."""
+        with self._lock:
+            settings = self.state.app_settings
+            calibration = self.state.device_calibration
+        if pass_shape is None:
+            pass_shape = resolve_pass_shape(
+                "auto", never_split=settings.never_split_into_parts
+            )
         return build_local_job_filter(
             self.config,
             model_id=(
                 model_id
                 if model_id is not None
                 else resolve_active_ltx_model_id(
-                    self.models_dir, self.state.app_settings.active_ltx_model_id
+                    self.models_dir, settings.active_ltx_model_id
                 )
             ),
             free_vram_bytes=self._gpu.get_free_cuda_vram_bytes(),
             mps_pool_bytes=self._gpu.get_mps_pool_bytes(),
             total_only=total_only,
-            # Lock-free like active_ltx_model_id above: a str attribute read
-            # is atomic, and settings are replaced wholesale, never mutated.
-            budget_mode=self.state.app_settings.budget_mode,
+            budget_mode=settings.budget_mode,
+            calibration=calibration,
+            pass_shape=pass_shape,
+            conv_vae=resolved_use_conv_vae(settings, system=self.config.system),
         )
 
-    def _offload_mode(self, load_mode: LocalGenerationMode) -> OffloadMode:
+    def _offload_mode(
+        self,
+        load_mode: LocalGenerationMode,
+        *,
+        cpu_ram_floor_gb: int | None = CUDA_CPU_OFFLOAD_RAM_FLOOR_GB,
+    ) -> OffloadMode:
         """Weight-streaming kind for a pipeline load. Computed once per load from
         frozen config facts; pipelines take the verdict, never the raw triple."""
         return offload_mode_for_prefetch_count(
@@ -125,6 +147,7 @@ class StateHandlerBase:
             drive_type=self.config.checkpoint_drive_type,
             system=self.config.system,
             ram_bytes=self.config.total_ram_bytes,
+            cpu_ram_floor_gb=cpu_ram_floor_gb,
         )
 
     def _require_local_generation_possible(self, *, api_key: str | None = None) -> None:

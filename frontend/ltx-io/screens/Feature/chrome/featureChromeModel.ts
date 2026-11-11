@@ -1,13 +1,13 @@
 import {
-  getHomeFeature,
   type HomeFeatureDefinition,
   type HomeFeatureId,
   type HomeFeatureListing,
+  getHomeFeature,
 } from "../../../../lib/home-features.ts";
 import {
+  type LoraRecipeListing,
   getLoraRecipe,
   isLoraRecipeId,
-  type LoraRecipeListing,
 } from "../../../../lib/lora-recipes.ts";
 import { paths } from "../../../../paths.ts";
 
@@ -57,12 +57,14 @@ export type FeatureDetails = {
   readonly externalLink: FeatureDetailsExternalLink | null;
 };
 
+/** `title` replaces the feature title, for the page of one saved custom LoRA. */
 export function featureCrumbTrail(
   feature: HomeFeatureDefinition,
+  title: string = feature.title,
 ): readonly FeatureCrumb[] {
   return [
     { id: "home", label: "Home", to: paths.home },
-    { id: feature.id, label: feature.title, to: null },
+    { id: feature.id, label: title, to: null },
   ];
 }
 
@@ -78,9 +80,7 @@ function baseModelRow(value: string): FeatureDetailsRow {
   return { id: "base-model", label: "Base Model", value, href: null };
 }
 
-function firstClassListing(
-  feature: HomeFeatureDefinition,
-): HomeFeatureListing {
+function firstClassListing(feature: HomeFeatureDefinition): HomeFeatureListing {
   if (!("listing" in feature)) {
     throw new Error(`Missing listing for Home feature: ${feature.id}`);
   }

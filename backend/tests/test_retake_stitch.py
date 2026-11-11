@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import av
 import imageio_ffmpeg
 import numpy as np
 import pytest
@@ -20,7 +21,7 @@ from services.ffmpeg import (
     STITCH_TIMEOUT_CAP_SECONDS,
     timeout_for_source_duration,
 )
-from services.retake_pipeline.rgb_stitch import iter_span
+from services.retake_pipeline.rgb_stitch import iter_span, write_rgb_video
 from services.retake_pipeline.window import (
     MAX_FADE_FRAMES,
     denoised_frame_span,
@@ -406,3 +407,24 @@ def test_late_rgb_span_matches_when_timestamps_do_not_start_at_zero(tmp_path: Pa
     full = list(iter_span(str(shifted), 0, 180, 16, 16))
     late = list(iter_span(str(shifted), 100, 108, 16, 16))
     assert np.array_equal(late, full[100:108])
+
+
+def test_write_rgb_video_closes_the_frame_source_when_the_encode_fails(tmp_path: Path):
+    # An odd width makes libx264 refuse to open. The frame generator must still be closed, or
+    # on Windows it keeps its source file open and blocks the caller's cleanup (WinError 32).
+    closed: list[bool] = []
+
+    def frames():
+        try:
+            yield np.zeros((360, 635, 3), dtype=np.uint8)
+        finally:
+            closed.append(True)
+
+    try:
+        write_rgb_video(tmp_path / "out.mp4", frames(), fps=24.0, width=635, height=360)
+    except av.error.FFmpegError:
+        # Checked while the exception is still being handled, which is when the caller's cleanup
+        # runs (the traceback still references the generator, so GC cannot close it for us).
+        assert closed == [True]
+    else:
+        pytest.fail("an odd width should not encode")

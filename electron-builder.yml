@@ -48,7 +48,8 @@ extraResources:
       - "!models/**"
       - "!tests/**"
   # The backend reads these files at import time (services/features/ic_lora_recipes.py,
-  # services/features/video/motion_path.py, runtime_config/ic_lora_local_envelope.py).
+  # services/features/video/motion_path.py, runtime_config/ic_lora_local_envelope.py,
+  # runtime_config/ic_lora_tiling.py).
   # Name each file. Do not use a glob.
   - from: shared
     to: shared
@@ -56,6 +57,7 @@ extraResources:
       - ic-lora-input-cap.json
       - motion-path.json
       - ic-lora-stage-2-upscale.json
+      - ic-lora-tiling-controls.json
   - from: python-deps-hash.txt
     to: python-deps-hash.txt
 

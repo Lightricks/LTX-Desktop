@@ -115,3 +115,26 @@
 .disabledOptionTrigger {
   display: block;
 }
+
+.memoryCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.memoryLabel {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--semantic-fg-tertiary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.memoryLabelOver {
+  color: var(--semantic-extended-orange-enabled);
+}
+
+.partsTooltipTrigger {
+  text-decoration: underline dotted currentColor;
+  text-underline-offset: 2px;
+}

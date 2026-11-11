@@ -61,6 +61,7 @@ export const DASHBOARD_INFO = {
 export const ACTIVITY_SERIES = [
   { id: "text-to-video", label: "Text to video" },
   { id: "image-to-video", label: "Image to video" },
+  { id: "keyframes", label: "Keyframes" },
   { id: "audio-to-video", label: "Audio to video" },
   { id: "lora", label: "LoRA" },
   { id: "retake", label: "Retake" },

@@ -14,6 +14,7 @@ from PIL import Image
 from frame_math import AutoDurationSpec
 from ltx_pipelines.utils.types import OffloadMode
 from api_types import (
+    ApiActivityStatus,
     ExtendMode,
     ImageConditioningInput,
     InstructionSection,
@@ -29,10 +30,16 @@ from api_types import (
     RetakeMode,
     VideoCameraMotion,
 )
+from runtime_config.custom_lora_urls import HuggingFaceRepo
 from runtime_config.ic_lora_tiling import IcLoraTiling
+from services.fast_video_pipeline.nag_config import NagConfig
+from services.generation_interrupt import GenerationCancelledError
+from services.http_client import HttpBodyTooLargeError
 from services.interfaces import VideoInfoPayload
 from services.ltx_api_client.ltx_api_client import LTXRetakeResult
 from services.prompt_enhancement.i2v_frames import SceneFrame, VideoRole
+from services.url_downloader import UrlDownloadError
+from services.zit_api_client.zit_api_client import ZitQueuedImage
 from tests.fakes.assistant import FakeAssistantModels, FakeAssistantProvider
 from tests.fakes.fake_gpu_info import FakeGpuInfo
 
@@ -68,6 +75,7 @@ class HttpCall:
     json_payload: dict[str, Any] | None
     data: Any
     timeout: int
+    max_bytes: int | None = None
 
 
 class FakeHTTPClient:
@@ -107,9 +115,13 @@ class FakeHTTPClient:
         url: str,
         headers: dict[str, str] | None = None,
         timeout: int = 30,
+        max_bytes: int | None = None,
     ) -> FakeResponse:
-        self.calls.append(HttpCall("get", url, headers, None, None, timeout))
-        return self._dequeue("get")
+        self.calls.append(HttpCall("get", url, headers, None, None, timeout, max_bytes))
+        response = self._dequeue("get")
+        if max_bytes is not None and len(response.content) > max_bytes:
+            raise HttpBodyTooLargeError(f"Response is larger than {max_bytes} bytes")
+        return response
 
     def put(
         self,
@@ -144,6 +156,50 @@ class FakeTaskRunner:
             self.errors.append(exc)
             if on_error is not None:
                 on_error(exc)
+
+
+class FakeUrlDownloader:
+    """Writes ``payload`` to the destination. Set ``error`` to refuse the download.
+
+    ``repo_files`` is what a Hugging Face repo lists. Set ``list_error`` to refuse the listing.
+    ``card_text`` is the README. Set ``card_error`` to refuse it.
+    """
+
+    def __init__(self) -> None:
+        self.payload: bytes = b""
+        self.error: UrlDownloadError | None = None
+        self.repo_files: list[str] = []
+        self.list_error: UrlDownloadError | None = None
+        self.card_text: str = ""
+        self.card_error: UrlDownloadError | None = None
+
+    def fetch_hugging_face_card(self, repo: HuggingFaceRepo, *, hf_token: str | None) -> str:
+        del repo, hf_token
+        if self.card_error is not None:
+            raise self.card_error
+        return self.card_text
+
+    def list_hugging_face_files(self, repo: HuggingFaceRepo, *, hf_token: str | None) -> list[str]:
+        del hf_token
+        if self.list_error is not None:
+            raise self.list_error
+        return list(self.repo_files)
+
+    def download(
+        self,
+        url: str,
+        dest: Path,
+        *,
+        hf_token: str | None,
+        max_bytes: int,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> None:
+        del url, hf_token, max_bytes
+        if self.error is not None:
+            raise self.error
+        dest.write_bytes(self.payload)
+        if on_progress is not None:
+            on_progress(len(self.payload), len(self.payload))
 
 
 class FakeLTXAPIClient:
@@ -335,6 +391,15 @@ class FakeZitAPIClient:
         self.raise_on_text_to_image: Exception | None = None
         self.fail_text_to_image_after: int | None = None  # raise once len(calls) exceeds this
         self.text_to_image_result = b"fake-zit-api-image"
+        # Queued requests stay open until `queued_release` is set. Set it by default.
+        self.queued_entered = threading.Event()
+        self.queued_release = threading.Event()
+        self.queued_release.set()
+        self.queued_provider_prompt: str | None = None
+        # Requests the client cancelled at the provider, and the ids a boot asked to cancel.
+        self.cancelled_request_ids: list[str] = []
+        self.cancel_queued_calls: list[str] = []
+        self.raise_on_cancel_queued: Exception | None = None
         self.image_to_image_calls: list[dict[str, Any]] = []
         self.raise_on_image_to_image: Exception | None = None
         self.fail_image_to_image_after: int | None = None  # raise once len(calls) exceeds this
@@ -353,6 +418,60 @@ class FakeZitAPIClient:
         seed: int,
         num_inference_steps: int,
     ) -> bytes:
+        self._record_text_to_image(
+            api_key, prompt, width, height, seed, num_inference_steps, enable_prompt_expansion=False
+        )
+        return self.text_to_image_result
+
+    def generate_text_to_image_queued(
+        self,
+        *,
+        api_key: str,
+        prompt: str,
+        width: int,
+        height: int,
+        seed: int,
+        num_inference_steps: int,
+        enable_prompt_expansion: bool,
+        on_status: Callable[[ApiActivityStatus], None],
+        on_submitted: Callable[[str], bool],
+        wait_cancelled: Callable[[float], bool],
+    ) -> ZitQueuedImage:
+        self._record_text_to_image(
+            api_key, prompt, width, height, seed, num_inference_steps, enable_prompt_expansion
+        )
+        request_id = f"fake-fal-{len(self.text_to_image_calls)}"
+        if not on_submitted(request_id):
+            self.cancelled_request_ids.append(request_id)
+            raise RuntimeError("FAL request id was not stored, so the request was cancelled")
+        self.queued_entered.set()
+        on_status("pending")
+        # Hold the request open until the test releases it or the job is cancelled.
+        while not self.queued_release.is_set():
+            if wait_cancelled(0.01):
+                raise GenerationCancelledError()
+        on_status("processing")
+        return ZitQueuedImage(
+            image_bytes=self.text_to_image_result,
+            prompt=self.queued_provider_prompt,
+        )
+
+    def cancel_queued(self, *, api_key: str, request_id: str) -> None:
+        del api_key
+        self.cancel_queued_calls.append(request_id)
+        if self.raise_on_cancel_queued is not None:
+            raise self.raise_on_cancel_queued
+
+    def _record_text_to_image(
+        self,
+        api_key: str,
+        prompt: str,
+        width: int,
+        height: int,
+        seed: int,
+        num_inference_steps: int,
+        enable_prompt_expansion: bool,
+    ) -> None:
         self.text_to_image_calls.append(
             {
                 "api_key": api_key,
@@ -361,12 +480,12 @@ class FakeZitAPIClient:
                 "height": height,
                 "seed": seed,
                 "num_inference_steps": num_inference_steps,
+                "enable_prompt_expansion": enable_prompt_expansion,
             }
         )
         if self.raise_on_text_to_image is not None:
             if self.fail_text_to_image_after is None or len(self.text_to_image_calls) > self.fail_text_to_image_after:
                 raise self.raise_on_text_to_image
-        return self.text_to_image_result
 
     def generate_image_to_image(
         self,
@@ -909,6 +1028,7 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
         guide_all_images: bool = False,
         skip_stage_2: bool = False,
         chunk_pixel_frames: int | None = None,
+        nag: NagConfig | None = None,
     ) -> None:
         payload = {
             "prompt": prompt,
@@ -922,6 +1042,7 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
             "guide_all_images": guide_all_images,
             "skip_stage_2": skip_stage_2,
             "chunk_pixel_frames": chunk_pixel_frames,
+            "nag": nag,
         }
         if self.inference_steps:
             from services.generation_interrupt import raise_if_requested
@@ -1027,8 +1148,21 @@ class FakePromptEnhancerPipeline:
         self.raise_on_enhance: Exception | None = None
         self.enhanced_prompt: str = "enhanced prompt"
 
-    def enhance_t2v(self, prompt: str, system_prompt: str | None, seed: int) -> str:
-        self.enhance_t2v_calls.append({"prompt": prompt, "system_prompt": system_prompt, "seed": seed})
+    def enhance_t2v(
+        self,
+        prompt: str,
+        system_prompt: str | None,
+        seed: int,
+        negative_prompt: str = "",
+    ) -> str:
+        self.enhance_t2v_calls.append(
+            {
+                "prompt": prompt,
+                "negative_prompt": negative_prompt,
+                "system_prompt": system_prompt,
+                "seed": seed,
+            }
+        )
         if self.raise_on_enhance is not None:
             raise self.raise_on_enhance
         return self.enhanced_prompt
@@ -1043,10 +1177,12 @@ class FakePromptEnhancerPipeline:
         keyframes: list[tuple[str, int, float]] | None = None,
         duration: int | None = None,
         fps: int | None = None,
+        negative_prompt: str = "",
     ) -> str:
         self.enhance_i2v_calls.append(
             {
                 "prompt": prompt,
+                "negative_prompt": negative_prompt,
                 "image_path": image_path,
                 "last_image_path": last_image_path,
                 "keyframes": keyframes,
@@ -1067,11 +1203,13 @@ class FakePromptEnhancerPipeline:
         system_prompt: str | None,
         seed: int,
         role: VideoRole,
+        negative_prompt: str = "",
     ) -> str:
         # The frame files are temporary, so a test reads what they were while the call runs.
         self.enhance_video_frames_calls.append(
             {
                 "prompt": prompt,
+                "negative_prompt": negative_prompt,
                 "frame_times": [frame.time_seconds for frame in frames],
                 "frame_paths": [frame.path for frame in frames],
                 "look_images": sum(1 for frame in frames if frame.is_reference),
@@ -1380,6 +1518,7 @@ class FakeServices:
     video_processor: FakeVideoProcessor = field(default_factory=FakeVideoProcessor)
     text_encoder: FakeTextEncoder = field(default_factory=FakeTextEncoder)
     task_runner: FakeTaskRunner = field(default_factory=FakeTaskRunner)
+    url_downloader: FakeUrlDownloader = field(default_factory=FakeUrlDownloader)
     ltx_api_client: FakeLTXAPIClient = field(default_factory=FakeLTXAPIClient)
     zit_api_client: FakeZitAPIClient = field(default_factory=FakeZitAPIClient)
     fast_video_pipeline: FakeFastVideoPipeline = field(default_factory=FakeFastVideoPipeline)

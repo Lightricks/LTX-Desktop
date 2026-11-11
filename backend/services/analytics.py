@@ -9,11 +9,12 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Literal, TypedDict, cast
 
-from api_types import PipelineOffloadMode, PromptProvenance, VideoLoadMode
+from api_types import PipelineOffloadMode, PromptProvenance, PromptRewriteSource, VideoLoadMode
 from services.features.ic_lora_recipes import (
     get_ic_lora_recipe,
     ic_lora_skips_prompt_enhancement,
 )
+from services.features.image.feature_id import FEATURE as TEXT_TO_IMAGE_FEATURE
 from services.features.lora_recipes import get_lora_recipe
 from services.http_client.http_client import HTTPClient, HttpTransportError
 from services.records import GenerationRecord
@@ -43,6 +44,7 @@ ENDED_DETAIL_KEYS = (
     "error_code",
     "load_mode",
     "offload_mode",
+    "prompt_rewrite",
 )
 _ENDED_LINK_KEYS = ("generation_id", "attempt")
 
@@ -180,6 +182,24 @@ def queued_prompt_provenance(
         return unenhanced_prompt_provenance(provenance)
     prompt = params.get("prompt")
     prompt_text = prompt if isinstance(prompt, str) else ""
+    if generation.feature == TEXT_TO_IMAGE_FEATURE:
+        # Image jobs have no text-encoding path: only a rewrite can enhance them. A fal job
+        # always has one, as fal expands the prompt when no local or Gemini rewrite runs.
+        enhancer_exists = (
+            params.get("provider") == "fal"
+            or enhancement.local_enhancer_available
+            or enhancement.gemini_video_enhance
+        )
+        rewrites = (
+            enhancement.explore_auto_enhance_prompts
+            and enhancer_exists
+            and bool(prompt_text.strip())
+        )
+        return prompt_provenance_label(
+            provenance,
+            enhanced_locally=provenance == "typed" and rewrites,
+            enhance_via_api=False,
+        )
     resolved = resolution_for_provenance(
         provenance,
         prompt=prompt_text,
@@ -243,6 +263,7 @@ class QueuedExecutionModes(TypedDict, total=False):
 
     load_mode: VideoLoadMode | None
     offload_mode: PipelineOffloadMode | None
+    prompt_rewrite: PromptRewriteSource | None
 
 
 def queued_generation_details(
@@ -272,6 +293,12 @@ def queued_generation_details(
     params = generation.spec.get("params")
     if not isinstance(params, dict):
         return details
+    if generation.feature == TEXT_TO_IMAGE_FEATURE:
+        details["kind"] = "image"
+        details["execution"] = "fal_api" if params.get("provider") == "fal" else "local"
+        width, height = params.get("width"), params.get("height")
+        if isinstance(width, int) and isinstance(height, int):
+            details["resolution"] = pixel_resolution(width, height)
     for source, target in (
         ("model", "model"),
         ("duration", "duration_sec"),
@@ -335,6 +362,9 @@ def queued_generation_details(
         offload_mode = modes.get("offload_mode")
         if offload_mode is not None:
             details["offload_mode"] = offload_mode
+        prompt_rewrite = modes.get("prompt_rewrite")
+        if prompt_rewrite is not None:
+            details["prompt_rewrite"] = prompt_rewrite
     return details
 
 

@@ -5,26 +5,32 @@ from __future__ import annotations
 import random
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Protocol, TypeGuard, TypeVar
+from typing import Protocol, TypeVar
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from api_types import (
-    GenerationRisk,
     IcLoraRecipeResolution,
     IcLoraSynthesizedStoredParams,
     LTXLocalModelId,
     LTXVideoGenAspectRatio,
     OfferingId,
 )
-from runtime_config.ic_lora_high_res import high_res_cell
 from _routes._errors import HTTPError
+from runtime_config.budget_admission import (
+    RiskAllowance,
+    stored_generation_risk as stored_generation_risk,
+)
+from runtime_config.ic_lora_high_res import high_res_cell
 from runtime_config.ltx_capabilities import LtxCapabilityFeature, budget_pixels, local_caps, supports
+from runtime_config.reject_reasons import PassShape
 from runtime_config.offerings import resolve_offering_local_model_id
 from services.records import AssetRecord, CapabilityFailedError
 from state.app_settings import MAX_GENERATION_SEED
 
 INPUT_ASSET_NOT_FOUND = "INPUT_ASSET_NOT_FOUND"
+# Private spec key beside ``_risk``: the Fast shape create resolved.
+PASS_SHAPE_SPEC_KEY = "_passShape"
 
 TModel = TypeVar("TModel", bound=BaseModel)
 
@@ -66,40 +72,31 @@ def model_from_spec(
     return model.model_validate(value)
 
 
-def _is_str_object_dict(value: object) -> TypeGuard[dict[str, object]]:
-    return isinstance(value, dict)
+def spec_risk_allowance(spec: Mapping[str, object]) -> RiskAllowance:
+    """The stored bet as a RiskAllowance.
 
-
-def stored_generation_risk(spec: Mapping[str, object]) -> GenerationRisk | None:
-    """The stored bet, or None when it is missing or junk.
-
-    Junk fails closed: execute must not waive a limit off a corrupt row.
+    Only ``over`` waives a later memory shortfall; ``unmeasured`` waives an
+    untested fence without covering a VRAM or RAM miss. A missing field or junk
+    fails closed. Executors pass this — never the live mode — so switching to
+    Cautious does not cancel a job already in the queue.
     """
-    risk = spec.get("_risk")
-    if not _is_str_object_dict(risk):
-        return None
-    try:
-        return GenerationRisk.model_validate(risk)
-    except ValidationError:
-        return None
+    return RiskAllowance.from_stored(spec)
 
 
-def spec_risk_allowance(spec: Mapping[str, object]) -> bool:
-    """Whether the stored bet waives a later memory shortfall.
+def spec_pass_shape(spec: Mapping[str, object]) -> PassShape:
+    """The shape create resolved, as stored.
 
-    Only ``over`` does. ``unmeasured`` means the route had no fitted curve,
-    not that a VRAM or RAM miss may run. A missing field or junk fails closed.
-    Executors pass this — never the live mode — so turning Reckless off does
-    not cancel an over-budget job already in the queue.
+    Executors pass this, never the live "Never split" setting, so a flip does
+    not re-cut a queued job. A missing field (jobs queued before shapes were
+    stored) or junk means ``auto``.
     """
-    risk = stored_generation_risk(spec)
-    return risk is not None and risk.tier == "over"
-
-
-def spec_unmeasured_bet(spec: Mapping[str, object]) -> bool:
-    """Whether the stored bet is an unmeasured route, not a memory shortfall."""
-    risk = stored_generation_risk(spec)
-    return risk is not None and risk.tier == "unmeasured"
+    match spec.get(PASS_SHAPE_SPEC_KEY):
+        case "one_pass":
+            return "one_pass"
+        case "parts":
+            return "parts"
+        case _:
+            return "auto"
 
 
 def resolve_generation_seed(seed: int | None) -> int:

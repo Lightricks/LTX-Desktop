@@ -50,9 +50,11 @@ def test_budget_shrinks_as_windows_pile_up_and_saturates() -> None:
     assert budgets[2] <= 20.9
 
 
-def _choose(frames: int, window: int | None, size: tuple[int, int], vram: float = _RTX_5090_GIB):
+def _choose(
+    frames: int, window: int | None, size: tuple[int, int], vram: float = _RTX_5090_GIB, carry: int = 17
+):
     return choose_decode_window(
-        frames=frames, window=window, width=size[0], height=size[1], total_vram_gib=vram, carry_frames=17
+        frames=frames, window=window, width=size[0], height=size[1], total_vram_gib=vram, carry_frames=carry
     )
 
 
@@ -60,6 +62,14 @@ def test_4k_73_frame_windows_do_not_fit_a_third_window_on_a_5090() -> None:
     choice = _choose(137, 73, _4K)
     assert choice.fits
     assert choice.window == 49
+
+
+def test_4k_cap_under_the_shortest_window_of_a_long_carry_refuses_instead_of_running_it() -> None:
+    # A carry of 41 needs a window of 89 frames or more. The 4K cap of 73 breaks that, even
+    # on a card with memory to spare.
+    assert not _choose(300, 97, _4K, vram=80, carry=41).fits
+    assert not _choose(300, None, _4K, vram=80, carry=41).fits
+    assert _choose(300, 97, _4K, vram=80, carry=17).fits
 
 
 def test_4k_longer_clips_keep_the_same_window() -> None:
@@ -94,6 +104,25 @@ def test_1440p_keeps_a_97_frame_window() -> None:
     choice = _choose(193, 97, _1440P)
     assert choice.fits
     assert choice.window == 97
+
+
+def test_1440p_budget_leaves_room_for_41f_and_steps_73f_or_97f_down_to_41f_on_16gb() -> None:
+    """C2/C3 measured 12.8–15.0 GiB decode budget under a 16.0 GiB cap at 1440p;
+    using the 4K 11.0 GiB reserve would refuse 1440p 41f (need+margin 11.02 > 5.0)
+    and fail to step 73f/97f down to 41f on 16 GB cards."""
+    assert decode_budget_gib(16.0, 5, width=2560, height=1472) == pytest.approx(11.20)
+    assert decode_budget_gib(15.9, 5, width=2560, height=1472) == pytest.approx(11.10)
+    for vram in (16.0, 15.9):
+        water = _choose(137, 41, _1440P, vram=vram)
+        assert water.fits
+        assert water.window == 41
+        refine = _choose(241, 73, _1440P, vram=vram)
+        assert refine.fits
+        assert refine.window == 41
+        restore = _choose(137, 97, _1440P, vram=vram)
+        assert restore.fits
+        assert restore.window == 41
+
 
 
 def test_no_window_fits_a_card_with_too_little_memory() -> None:

@@ -374,21 +374,13 @@ def budget_shape(
     *,
     mode: CanvasMode,
 ) -> tuple[int, int]:
-    """Denoised shape: the 16:9 anchor widened to the selected ratio.
+    """Denoised shape for the selected resolution and aspect ratio.
 
-    The shared duration/picker lists are the anchor; only a wider frame can
-    exceed it. Single source for every budget call site (generate, estimate,
-    queue preflights, specs). Unsnapped by design: the 64-grid snap prices
-    display pixels, and every call site prices this same anchor so verdicts
-    agree with each other. The unsnapped-vs-snapped delta (up to ~0.6 GiB on
-    legacy 270p/360p at 48-50 fps) applies identically on both sides of every
-    create/execute comparison, so it cannot skew them.
+    Single source for every budget call site (generate, estimate, queue
+    preflights, specs) so list-time per-aspect duration tables, queue
+    preflights, and execute-time admission price the exact same canvas.
     """
-    anchor_width, anchor_height = budget_size(local_canvas(resolution, mode=mode))
-    selected_width, selected_height = budget_pixels(caps, resolution, aspect, mode=mode)
-    if selected_width * selected_height > anchor_width * anchor_height:
-        return selected_width, selected_height
-    return anchor_width, anchor_height
+    return budget_pixels(caps, resolution, aspect, mode=mode)
 
 
 def pixels_for(

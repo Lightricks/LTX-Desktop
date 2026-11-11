@@ -753,6 +753,7 @@ def test_every_queued_feature_lands_in_a_chart_series(tmp_path: Path) -> None:
     plain = {
         "text-to-video",
         "image-to-video",
+        "keyframes",
         "audio-to-video",
         "retake",
         "extend",
@@ -779,6 +780,7 @@ def test_every_queued_feature_lands_in_a_chart_series(tmp_path: Path) -> None:
     assert set(snapshot.activity[-1].counts) == {
         "text-to-video",
         "image-to-video",
+        "keyframes",
         "audio-to-video",
         "lora",
         "retake",

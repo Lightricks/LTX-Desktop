@@ -1,22 +1,27 @@
 """Tests for the diffusion_stage_cache patch (experiment/diffusion-stage-cache).
 
-Uses the real (but cheap-to-construct, side-effect-free) SingleGPUModelBuilder /
-StreamingModelBuilder classes from ltx_core as data holders, and a minimal fake
+Uses the real (but cheap-to-construct, side-effect-free) SimpleBuilder /
+StreamingBuilder classes from ltx_core as data holders, and a minimal fake
 DiffusionStage duck-typing only the private surface diffusion_stage_cache.py reads
 (_is_streaming, _prepared_builder, _build_transformer, _quantization,
-_compilation_config, _dtype, _device) -- no mocking library, no real GPU, no real
-checkpoint files. The cache's own internal functions are exercised directly rather
+_compilation_config, _dtype, _device), plus the ``_transformer_lifetime``
+members the upstream ``_transformer_ctx`` reads when the cache is bypassed -- no mocking
+library, no real GPU, no real checkpoint files. The cache's own internal functions are exercised directly rather
 than through the real (monkeypatched) DiffusionStage._transformer_ctx, so these
 tests do not depend on the patch actually being installed on the class.
 """
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
+from pathlib import Path
+
 import pytest
 
-from ltx_core.block_streaming import StreamingModelBuilder
-from ltx_core.loader.single_gpu_model_builder import SingleGPUModelBuilder
+from ltx_core.loader.simple_builder import LoRARequest, SimpleBuilder
+from ltx_core.loader.streaming_builder import StreamingBuilder, StreamingConfig
 from ltx_core.allocator_trim_strategy import AllocatorTrimStrategy
+from ltx_pipelines.utils.gpu_model import gpu_model
 from services.patches import diffusion_stage_cache as dsc
 
 
@@ -63,9 +68,12 @@ class _FakeStage:
         self.build_count += 1
         return _FakeModel()
 
+    def _transformer_lifetime(self, transformer: _FakeModel) -> AbstractContextManager[_FakeModel]:
+        return gpu_model(transformer, alloc_trim_strategy=self._alloc_trim_strategy)
 
-def _single_gpu_builder(model_path: str, loras: tuple[object, ...] = ()) -> SingleGPUModelBuilder:
-    return SingleGPUModelBuilder(model_class_configurator=object, model_path=model_path, loras=loras)
+
+def _single_gpu_builder(model_path: str, loras: tuple[LoRARequest, ...] = ()) -> SimpleBuilder:
+    return SimpleBuilder(object, (Path(model_path),), loras=loras)  # type: ignore[arg-type]
 
 
 @pytest.fixture(autouse=True)
@@ -108,7 +116,7 @@ def test_cache_miss_on_different_checkpoint_evicts_old_model() -> None:
 
 def test_different_loras_are_treated_as_a_different_config() -> None:
     stage_a = _FakeStage(_single_gpu_builder("ckpt.safetensors", loras=()))
-    stage_b = _FakeStage(_single_gpu_builder("ckpt.safetensors", loras=(("lora.safetensors", 1.0),)))
+    stage_b = _FakeStage(_single_gpu_builder("ckpt.safetensors", loras=(LoRARequest((Path("lora.safetensors"),), 1.0),)))
 
     with dsc._cached_transformer_ctx(stage_a):
         pass
@@ -120,7 +128,9 @@ def test_different_loras_are_treated_as_a_different_config() -> None:
 
 
 def test_cacheable_returns_false_for_a_streaming_stage() -> None:
-    streaming_builder = StreamingModelBuilder(model_class_configurator=object, model_path="ckpt.safetensors")
+    streaming_builder = StreamingBuilder(
+        _single_gpu_builder("ckpt.safetensors"), StreamingConfig("transformer_blocks", "disk")
+    )
     streaming_stage = _FakeStage(streaming_builder, is_streaming=True)
 
     assert dsc._cacheable(streaming_stage) is False
@@ -133,15 +143,15 @@ def test_cacheable_skips_when_model_wrapper_is_set() -> None:
 
 
 class _OtherBuilder:
-    """Stand-in for a non-SingleGPUModelBuilder, non-streaming builder (e.g. a multi-GPU tiled builder)."""
+    """Stand-in for a non-SimpleBuilder, non-streaming builder (e.g. a multi-GPU tiled builder)."""
 
-    model_path = "ckpt.safetensors"
-    model_sd_ops = None
+    paths = (Path("ckpt.safetensors"),)
+    sd_ops: tuple[object, ...] = ()
     module_ops: tuple[object, ...] = ()
     loras: tuple[object, ...] = ()
 
 
-def test_non_single_gpu_builder_bypasses_cache_and_evicts_resident_model() -> None:
+def test_non_simple_builder_bypasses_cache_and_evicts_resident_model() -> None:
     cacheable_stage = _FakeStage(_single_gpu_builder("ckpt.safetensors"))
     with dsc._cached_transformer_ctx(cacheable_stage) as cached_model:
         pass
@@ -269,3 +279,16 @@ def test_set_enabled_false_while_in_use_raises() -> None:
             dsc.set_enabled(False)
         # Evict runs before the flag flips, so a rejected toggle stays un-applied.
         assert dsc._enabled is True, "failed toggle-off must not half-apply"
+
+
+def test_patch_is_installed_on_a_real_stage_that_the_cache_accepts() -> None:
+    """A rename of ``_transformer_ctx`` or of a private attribute the cache reads turns the cache off silently."""
+    import torch
+    from ltx_pipelines.utils.blocks import DiffusionStage
+
+    stage = DiffusionStage.from_checkpoint("ckpt.safetensors", torch.bfloat16, torch.device("cpu"))
+    twin = DiffusionStage.from_checkpoint("ckpt.safetensors", torch.bfloat16, torch.device("cpu"))
+
+    assert DiffusionStage._transformer_ctx is dsc._cached_transformer_ctx  # noqa: SLF001
+    assert dsc._cacheable(stage)  # noqa: SLF001
+    assert dsc._cache_key(stage) == dsc._cache_key(twin)  # noqa: SLF001

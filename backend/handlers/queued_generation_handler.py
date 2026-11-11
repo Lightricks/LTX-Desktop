@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 from collections.abc import Callable, Collection
+from dataclasses import dataclass
 from pathlib import Path
 from threading import RLock
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 
-from pydantic import JsonValue, ValidationError
+from pydantic import BaseModel, JsonValue, ValidationError
 
 from api_types import (
+    CreateCustomLoraRequest,
     CreateIcLoraRecipeRequest,
     CreateIcLoraSheetRequest,
     CreateIcLoraTrackRequest,
@@ -18,17 +21,26 @@ from api_types import (
     CreateAudioToVideoParams,
     CreateAudioToVideoRequest,
     CreateImageToVideoRequest,
+    CreateKeyframesRequest,
     CreateLoraRecipeRequest,
     CreateExtendRequest,
     CreateRetakeRequest,
+    CreateTextToImageRequest,
+    ImageGenerationStatusResponse,
     CreateTextToVideoRequest,
     EditPreflightRequest,
     EditPreflightResponse,
+    IcLoraCatalogItem,
+    IcLoraTilePreflightRequest,
+    IcLoraTilePreflightResponse,
+    IcLoraVideoRecipeStoredParams,
     ExtendParams,
     Generation,
-    GenerationProgressResponse,
+    ApiActivityStatus,
     GenerationRisk,
     IcLoraRecipeStoredParams,
+    ImageToVideoInputs,
+    ImageToVideoRecipeParams,
     LTXQueuedAspectRatio,
     LTXVideoGenFps,
     LTXVideoGenResolution,
@@ -37,6 +49,7 @@ from api_types import (
     QueueProgress,
     QueueSnapshot,
     RetakeParams,
+    TextToVideoParams,
 )
 from _routes._errors import HTTPError
 from handlers.base import resolve_models_dir
@@ -44,23 +57,32 @@ from handlers.hf_auth_utils import optional_hf_token
 from runtime_config.accelerator import accelerator_backend
 from runtime_config.ic_lora_high_res import (
     HIGH_RES_NOT_ENABLED,
-    HIGH_RES_ONLY_IC_LORAS,
     high_res_cell,
+    high_res_flag_satisfied,
     high_res_source_large_enough,
 )
 from runtime_config.ic_lora_stage_mode import IcLoraStageMode
+from runtime_config.reject_reasons import PassShape
 from runtime_config.video_job_budget import (
     LOCAL_GENERATION_UNSUPPORTED,
     LOCAL_GENERATION_UNSUPPORTED_MESSAGE,
+    resolve_pass_shape,
 )
 from runtime_config.ltx_capabilities import LtxCapabilityFeature
 from runtime_config.model_download_specs import local_aspect_ratios
+from services.features.image.feature_id import FEATURE as TEXT_TO_IMAGE_FEATURE
+from services.features.image.text_to_image import resolve_text_to_image_params
 from services.features.video.job_common import (
+    PASS_SHAPE_SPEC_KEY,
     high_res_unsupported_error,
     require_capable_local_model,
     stored_generation_risk,
 )
 from services.aspect_ratio import find_closest_aspect_ratio_option
+from services.fast_video_pipeline.nag_config import (
+    DEFAULT_SCALE as DEFAULT_NAG_SCALE,
+    decide_nag,
+)
 from services.media_probe import MAX_VIDEO_BYTES, video_fps
 from services.features.ic_lora_recipes import (
     IC_LORA_RECIPES,
@@ -68,6 +90,10 @@ from services.features.ic_lora_recipes import (
     ic_lora_input_cap_message,
     resolve_ic_lora_recipe_create,
     resolve_synthesized_ic_lora_create,
+)
+from services.features.custom_loras import (
+    CustomLoraCreateError,
+    resolve_custom_lora_create,
 )
 from services.features.lora_recipes import RecipeCreateError, resolve_recipe_create
 from services.lora_catalog import LoraCatalogProvider
@@ -89,12 +115,17 @@ from services.generation_queue.control import (
     cancel_queued_generation,
 )
 from services.generation_queue.finished_tray import FinishedTray
+from services.generation_queue.orphans import (
+    cancel_provider_orphans_in_background,
+    forget_in,
+)
 from services.generation_queue.registry import ExecutorRegistry
 from services.features.video import (
     AUDIO_TO_VIDEO_FEATURE,
     EXTEND_FEATURE,
     FEATURE as TEXT_TO_VIDEO_FEATURE,
     IMAGE_TO_VIDEO_FEATURE,
+    KEYFRAMES_FEATURE,
     RETAKE_FEATURE,
 )
 from state.app_state_types import AppState
@@ -110,12 +141,8 @@ AnalyticsRequestedBy = Literal["assistant"]
 
 logger = logging.getLogger(__name__)
 
-# Recipe ids (the generation `feature`) of the catalog IC-LoRAs that need highResVideoToVideo.
-_HIGH_RES_ONLY_RECIPE_IDS = frozenset(
-    recipe.recipe_id
-    for recipe in IC_LORA_RECIPES.values()
-    if recipe.catalog_id in HIGH_RES_ONLY_IC_LORAS
-)
+# Error code of a Keyframes create while the `keyframes` feature flag is off.
+KEYFRAMES_NOT_ENABLED = "KEYFRAMES_NOT_ENABLED"
 
 
 def _generation_to_api(record: GenerationRecord) -> Generation:
@@ -123,6 +150,7 @@ def _generation_to_api(record: GenerationRecord) -> Generation:
     spec = dict(record.spec)
     spec.pop("_analytics", None)
     spec.pop("_risk", None)
+    spec.pop(PASS_SHAPE_SPEC_KEY, None)
     payload["spec"] = spec
     # Junk fails closed on read the same way execute does. A strict validate
     # of the raw dict raises on list, get, queue, retry, and cancel.
@@ -139,12 +167,39 @@ QueuedFastPreflight = Callable[..., GenerationRisk | None]
 QueuedA2VPreflight = Callable[..., GenerationRisk | None]
 
 
+class LocalA2VDeriver(Protocol):
+    """Frames from the audio, sized for the resolved shape. Raises HTTPError."""
+
+    def __call__(
+        self,
+        params: CreateAudioToVideoParams,
+        audio_duration_ms: int,
+        *,
+        pass_shape: PassShape,
+    ) -> AudioToVideoParams: ...
+
+
 # Create-time edit window + budget gate. Raises HTTPError; returns the bet annotation.
 QueuedEditPreflight = Callable[..., GenerationRisk | None]
 
 
 # Create-time IC-LoRA recipe budget gate. Raises HTTPError; returns the bet annotation.
 QueuedIcLoraRecipePreflight = Callable[..., GenerationRisk | None]
+
+
+# Advisory verdict per tile size of a recipe create. Per-size failures are returned, never raised.
+IcLoraTileSizePreflight = Callable[..., IcLoraTilePreflightResponse]
+
+
+@dataclass(frozen=True)
+class _PreparedIcLoraRecipe:
+    """A recipe create that passed every check before the budget."""
+
+    recipe: IcLoraRecipe
+    item: IcLoraCatalogItem
+    stored: IcLoraVideoRecipeStoredParams
+    video: AssetRecord
+    source_fps: float
 
 
 # Advisory per-cell verdicts for edit pickers. Per-cell failures are returned, never raised.
@@ -166,10 +221,9 @@ class QueuedGenerationHandler:
         self,
         store: Store,
         executor_registry: ExecutorRegistry,
-        derive_local_a2v: Callable[[CreateAudioToVideoParams, int], AudioToVideoParams],
+        derive_local_a2v: LocalA2VDeriver,
         queue_control: QueueControl | None = None,
         *,
-        progress_reader: Callable[[], GenerationProgressResponse] | None = None,
         config: "RuntimeConfig | None" = None,
         lora_catalog_provider: LoraCatalogProvider | None = None,
         state: AppState | None = None,
@@ -180,7 +234,11 @@ class QueuedGenerationHandler:
         preflight_edit_matrix: EditMatrixPreflight,
         preflight_queued_ic_lora_recipe: QueuedIcLoraRecipePreflight,
         preflight_queued_synthesized_ic_lora: QueuedIcLoraRecipePreflight,
+        preflight_ic_lora_tile_sizes: IcLoraTileSizePreflight,
         high_res_enabled: Callable[[], bool] | None = None,
+        keyframes_enabled: Callable[[], bool] | None = None,
+        should_use_local_encoding: Callable[[], bool] | None = None,
+        image_generation_status: Callable[[], ImageGenerationStatusResponse] | None = None,
     ) -> None:
         self._db = store
         self._executor_registry = executor_registry
@@ -191,10 +249,10 @@ class QueuedGenerationHandler:
         self._preflight_edit_matrix = preflight_edit_matrix
         self._preflight_queued_ic_lora_recipe = preflight_queued_ic_lora_recipe
         self._preflight_queued_synthesized_ic_lora = preflight_queued_synthesized_ic_lora
+        self._preflight_ic_lora_tile_sizes = preflight_ic_lora_tile_sizes
         self._queue_control = (
             NoOpQueueControl() if queue_control is None else queue_control
         )
-        self._progress_reader = progress_reader
         # LoRA-recipe create needs the models dir, the catalog, and HF-auth state to
         # resolve a catalog id to an installed path and to gate typed misses before
         # enqueue. Optional so tests that only exercise the plain t2v/i2v create paths
@@ -204,10 +262,71 @@ class QueuedGenerationHandler:
         self._state = state
         self._lock = lock
         self._high_res_enabled = high_res_enabled or (lambda: False)
+        self._keyframes_enabled = keyframes_enabled or (lambda: False)
+        self._should_use_local_encoding = should_use_local_encoding
+        self._image_generation_status = image_generation_status
         self._finished = FinishedTray()
 
     def recover_on_boot(self) -> None:
+        lanes = self._executor_registry.lanes
         self._db.fail_running_on_boot()
+        self._db.reassign_unknown_lanes(lanes.ids)
+        # A row keeps its provider job id until a cancel succeeds. A failure here, or a stop
+        # before the cancel ends, leaves the id for the next boot.
+        orphans = self._db.list_provider_orphans()
+        cancel_provider_orphans_in_background(orphans, lanes.spec, forget_in(self._db))
+
+    def _dump_fast_params(
+        self,
+        params: BaseModel,
+        *,
+        exclude: set[str] | None = None,
+        uses_torch_compile: bool = True,
+    ) -> dict[str, JsonValue]:
+        payload: dict[str, JsonValue] = params.model_dump(mode="json", exclude=exclude)
+        default_scale = DEFAULT_NAG_SCALE
+        compile_on = False
+        local_encoding_on = True
+        if self._state is not None and self._lock is not None:
+            with self._lock:
+                settings = self._state.app_settings
+                default_scale = settings.nag_scale
+                compile_on = (
+                    uses_torch_compile
+                    and settings.use_torch_compile
+                    and not (
+                        self._config is not None and self._config.use_sage_attention
+                    )
+                )
+                if self._should_use_local_encoding is not None:
+                    local_encoding_on = self._should_use_local_encoding()
+                else:
+                    local_encoding_on = not (
+                        bool(settings.ltx_api_key.strip())
+                        and not settings.use_local_text_encoder
+                    )
+        negative_prompt = getattr(params, "negativePrompt", "")
+        explicit_scale = getattr(params, "nagScale", None)
+        decision = decide_nag(
+            negative_prompt if isinstance(negative_prompt, str) else "",
+            os.environ,
+            scale=explicit_scale,
+            alpha=getattr(params, "nagAlpha", None),
+            tau=getattr(params, "nagTau", None),
+            default_scale=default_scale,
+            local_encoding=local_encoding_on,
+            compiled=compile_on,
+        )
+        if decision.config is not None:
+            payload["nagScale"] = decision.config.scale
+            payload["nagAlpha"] = decision.config.alpha
+            payload["nagTau"] = decision.config.tau
+        else:
+            for key in ("nagScale", "nagAlpha", "nagTau"):
+                payload.pop(key, None)
+            if isinstance(explicit_scale, (int, float)) and explicit_scale <= 0.0:
+                payload["nagScale"] = 0.0
+        return payload
 
     def create_text_to_video(
         self,
@@ -218,15 +337,17 @@ class QueuedGenerationHandler:
         generation_id: str | None = None,
     ) -> Generation:
         spec: dict[str, JsonValue] = {
-            "params": req.params.model_dump(mode="json"),
+            "params": self._dump_fast_params(req.params),
             "inputs": {},
         }
+        pass_shape = self._resolve_pass_shape(req.params.passShape)
         risk = self._preflight_fast_params(
             offering=req.params.model,
             resolution=req.params.resolution,
             aspect_ratio=req.params.aspectRatio,
             duration=req.params.duration,
             fps=req.params.fps,
+            pass_shape=pass_shape,
         )
         return self._enqueue_generation(
             TEXT_TO_VIDEO_FEATURE,
@@ -236,6 +357,7 @@ class QueuedGenerationHandler:
             analytics_requested_by=analytics_requested_by,
             generation_id=generation_id,
             risk=risk,
+            pass_shape=pass_shape,
         )
 
     def create_image_to_video(
@@ -250,9 +372,10 @@ class QueuedGenerationHandler:
         if req.inputs.endFrame is not None:
             self._require_image_asset(req.inputs.endFrame.assetId, slot="endFrame")
         spec: dict[str, JsonValue] = {
-            "params": req.params.model_dump(mode="json"),
+            "params": self._dump_fast_params(req.params),
             "inputs": req.inputs.model_dump(mode="json", exclude_none=True),
         }
+        pass_shape = self._resolve_pass_shape(req.params.passShape)
         risk = self._preflight_fast_params(
             offering=req.params.model,
             resolution=req.params.resolution,
@@ -261,6 +384,7 @@ class QueuedGenerationHandler:
             ),
             duration=req.params.duration,
             fps=req.params.fps,
+            pass_shape=pass_shape,
         )
         return self._enqueue_generation(
             IMAGE_TO_VIDEO_FEATURE,
@@ -270,6 +394,78 @@ class QueuedGenerationHandler:
             analytics_requested_by=analytics_requested_by,
             generation_id=generation_id,
             risk=risk,
+            pass_shape=pass_shape,
+        )
+
+    def create_keyframes(
+        self,
+        req: CreateKeyframesRequest,
+        *,
+        analytics_client: AnalyticsClient | None = None,
+        analytics_requested_by: AnalyticsRequestedBy | None = None,
+        generation_id: str | None = None,
+    ) -> Generation:
+        # The flag is the backend gate. Hiding the feature on Home does not stop a direct request.
+        if not self._keyframes_enabled():
+            raise HTTPError(422, KEYFRAMES_NOT_ENABLED, code=KEYFRAMES_NOT_ENABLED)
+        stills = [
+            (keyframe, self._require_image_asset(keyframe.assetId, slot="keyframe"))
+            for keyframe in req.inputs.keyframes
+        ]
+        self._require_offering_capability(
+            req.params.model,
+            "multi_keyframe",
+            code="UNSUPPORTED_MULTI_KEYFRAME",
+            message="Keyframes are not supported for the selected LTX model.",
+        )
+        # Auto follows the first still on the timeline. Execute picks the same one.
+        _, first_still = min(stills, key=lambda pair: pair[0].frameIndex)
+        spec: dict[str, JsonValue] = {
+            "params": self._dump_fast_params(req.params),
+            "inputs": req.inputs.model_dump(mode="json"),
+        }
+        pass_shape = self._resolve_pass_shape(req.params.passShape)
+        risk = self._preflight_fast_params(
+            offering=req.params.model,
+            resolution=req.params.resolution,
+            aspect_ratio=self._resolve_queued_preflight_aspect(
+                req.params.aspectRatio, req.params.resolution, first_still
+            ),
+            duration=req.params.duration,
+            fps=req.params.fps,
+            pass_shape=pass_shape,
+        )
+        return self._enqueue_generation(
+            KEYFRAMES_FEATURE,
+            spec,
+            contract_version=req.contract_version,
+            analytics_client=analytics_client,
+            analytics_requested_by=analytics_requested_by,
+            generation_id=generation_id,
+            risk=risk,
+            pass_shape=pass_shape,
+        )
+
+    def create_text_to_image(
+        self,
+        req: CreateTextToImageRequest,
+        *,
+        analytics_client: AnalyticsClient | None = None,
+        generation_id: str | None = None,
+    ) -> Generation:
+        if self._image_generation_status is None:
+            raise HTTPError(500, "Image generation status is not configured")
+        params = resolve_text_to_image_params(req.params, self._image_generation_status())
+        spec: dict[str, JsonValue] = {
+            "params": params.model_dump(mode="json"),
+            "inputs": {},
+        }
+        return self._enqueue_generation(
+            TEXT_TO_IMAGE_FEATURE,
+            spec,
+            contract_version=req.contract_version,
+            analytics_client=analytics_client,
+            generation_id=generation_id,
         )
 
     def create_lora_recipe(
@@ -305,6 +501,60 @@ class QueuedGenerationHandler:
         except RecipeCreateError as exc:
             raise HTTPError(422, str(exc), code=exc.code) from exc
 
+        return self._enqueue_resolved_lora_run(
+            feature,
+            params,
+            inputs,
+            contract_version=req.contract_version,
+            analytics_client=analytics_client,
+            analytics_requested_by=analytics_requested_by,
+            generation_id=generation_id,
+        )
+
+    def create_custom_lora(
+        self,
+        req: CreateCustomLoraRequest,
+        *,
+        analytics_client: AnalyticsClient | None = None,
+        analytics_requested_by: AnalyticsRequestedBy | None = None,
+        generation_id: str | None = None,
+    ) -> Generation:
+        """Create a queued generation for a saved custom LoRA.
+
+        The client sends the custom LoRA id + scale, never a filesystem path.
+        :func:`resolve_custom_lora_create` reads the LoRA's saved mode and weights path, and
+        validates the Start Frame rules, before anything is queued. The row is stored under the
+        ``custom-lora`` feature.
+        """
+        self._require_local_generation_possible()
+        try:
+            feature, params, inputs = resolve_custom_lora_create(
+                req, models_dir=self._models_dir()
+            )
+        except CustomLoraCreateError as exc:
+            raise HTTPError(exc.status, str(exc), code=exc.code) from exc
+        return self._enqueue_resolved_lora_run(
+            feature,
+            params,
+            inputs,
+            contract_version=req.contract_version,
+            analytics_client=analytics_client,
+            analytics_requested_by=analytics_requested_by,
+            generation_id=generation_id,
+        )
+
+    def _enqueue_resolved_lora_run(
+        self,
+        feature: str,
+        params: TextToVideoParams | ImageToVideoRecipeParams,
+        inputs: ImageToVideoInputs | None,
+        *,
+        contract_version: int,
+        analytics_client: AnalyticsClient | None,
+        analytics_requested_by: AnalyticsRequestedBy | None,
+        generation_id: str | None,
+    ) -> Generation:
+        """Check the input frames, run the Fast budget gate, and enqueue a resolved LoRA run."""
         if inputs is not None:
             start_frame = self._require_image_asset(
                 inputs.startFrame.assetId, slot="startFrame"
@@ -313,10 +563,11 @@ class QueuedGenerationHandler:
                 self._require_image_asset(inputs.endFrame.assetId, slot="endFrame")
         else:
             start_frame = None
-        # Same Fast budget gate as the plain t2v/i2v creates: the recipe's params
+        # Same Fast budget gate as the plain t2v/i2v creates: the run's params
         # carry the client's offering, and execute budgets via that same field,
         # so preflighting here admits exactly what the run budgets. i2v auto
         # resolves from the start frame; t2v never sends auto.
+        pass_shape = self._resolve_pass_shape(params.passShape)
         risk = self._preflight_fast_params(
             offering=params.model,
             resolution=params.resolution,
@@ -325,10 +576,11 @@ class QueuedGenerationHandler:
             ),
             duration=params.duration,
             fps=params.fps,
+            pass_shape=pass_shape,
         )
 
         spec: dict[str, JsonValue] = {
-            "params": params.model_dump(mode="json"),
+            "params": self._dump_fast_params(params),
             "inputs": (
                 inputs.model_dump(mode="json", exclude_none=True) if inputs is not None else {}
             ),
@@ -336,11 +588,12 @@ class QueuedGenerationHandler:
         return self._enqueue_generation(
             feature,
             spec,
-            contract_version=req.contract_version,
+            contract_version=contract_version,
             analytics_client=analytics_client,
             analytics_requested_by=analytics_requested_by,
             generation_id=generation_id,
             risk=risk,
+            pass_shape=pass_shape,
         )
 
     def _require_local_generation_possible(self) -> None:
@@ -406,9 +659,11 @@ class QueuedGenerationHandler:
                 req.inputs.startFrame.assetId, slot="startFrame"
             )
         )
+        pass_shape = self._resolve_pass_shape(req.params.passShape)
         params = self._derive_local_a2v(
             req.params,
             audio.metadata.metadata.durationMs,
+            pass_shape=pass_shape,
         )
         # budget_shape, the same canvas as a fully dropped row. Auto resolves
         # from the start frame first; a missing frame falls back to 16:9.
@@ -419,9 +674,10 @@ class QueuedGenerationHandler:
                 params.aspectRatio, params.resolution, start_frame, is_a2v=True
             ),
             num_frames=params.numFrames,
+            pass_shape=pass_shape,
         )
         spec: dict[str, JsonValue] = {
-            "params": params.model_dump(mode="json"),
+            "params": self._dump_fast_params(params, uses_torch_compile=False),
             "inputs": req.inputs.model_dump(mode="json", exclude_none=True),
         }
         return self._enqueue_generation(
@@ -432,6 +688,7 @@ class QueuedGenerationHandler:
             analytics_requested_by=analytics_requested_by,
             generation_id=generation_id,
             risk=risk,
+            pass_shape=pass_shape,
         )
 
     def create_retake(
@@ -472,10 +729,58 @@ class QueuedGenerationHandler:
                 recipe_id, req, analytics_client=analytics_client, analytics_requested_by=analytics_requested_by,
                 generation_id=generation_id,
             )
+        prepared = self._prepare_ic_lora_recipe(recipe_id, req)
+        risk = self._preflight_queued_ic_lora_recipe(
+            item=prepared.item,
+            video=prepared.video,
+            stored=prepared.stored,
+            source_fps=prepared.source_fps,
+            upscale=prepared.recipe.upscales_to_cell,
+            cutout=prepared.recipe.cutout,
+        )
+        return self._enqueue_ic_lora_recipe(
+            prepared.recipe,
+            prepared.stored,
+            req,
+            risk=risk,
+            analytics_client=analytics_client,
+            analytics_requested_by=analytics_requested_by,
+            generation_id=generation_id,
+        )
+
+    def preflight_ic_lora_tile_sizes(
+        self, recipe_id: str, req: IcLoraTilePreflightRequest
+    ) -> IcLoraTilePreflightResponse:
+        """Advisory verdict per tile size and window. Every check before the budget is the create's own."""
+        prepared = self._prepare_ic_lora_recipe(
+            recipe_id,
+            CreateIcLoraRecipeRequest(params=req.params, inputs=req.inputs),
+            require_prompt=False,
+        )
+        return self._preflight_ic_lora_tile_sizes(
+            item=prepared.item,
+            video=prepared.video,
+            stored=prepared.stored,
+            source_fps=prepared.source_fps,
+            upscale=prepared.recipe.upscales_to_cell,
+            cutout=prepared.recipe.cutout,
+            tile_sizes=req.tileSizes,
+            max_windows=req.maxWindows,
+            carries=req.carries,
+        )
+
+    def _prepare_ic_lora_recipe(
+        self, recipe_id: str, req: CreateIcLoraRecipeRequest, *, require_prompt: bool = True
+    ) -> _PreparedIcLoraRecipe:
+        """Every create check that runs before the budget. Raises the create's own 422.
+
+        The tile preflight sets ``require_prompt`` false. An empty prompt must not turn every
+        verdict into "Prompt is required." Create still refuses an empty prompt.
+        """
         self._require_local_generation_possible()
         high_res = high_res_cell(req.params.resolution)
-        if high_res is not None and not self._high_res_enabled():
-            raise HTTPError(422, HIGH_RES_NOT_ENABLED, code=HIGH_RES_NOT_ENABLED)
+        if high_res is not None:
+            self._require_high_res_cell(recipe_id)
         video = self._require_asset(
             req.inputs.video.assetId,
             slot="video",
@@ -502,11 +807,10 @@ class QueuedGenerationHandler:
                 models_dir=self._models_dir(),
                 hf_authenticated=self._hf_authenticated(),
                 source_fps=source_fps,
+                require_prompt=require_prompt,
             )
         except RecipeCreateError as exc:
             raise _ic_lora_create_error(exc) from exc
-        if item.id in HIGH_RES_ONLY_IC_LORAS and not self._high_res_enabled():
-            raise HTTPError(422, HIGH_RES_NOT_ENABLED, code=HIGH_RES_NOT_ENABLED)
         # A high cell runs one tiled stage. An IC-LoRA that keeps its LoRA on stage 2 has no
         # such run, and its look still cannot go through the tiled path.
         if high_res is not None and item.default_settings.stage_mode is IcLoraStageMode.STAGE_2_LORA:
@@ -536,23 +840,18 @@ class QueuedGenerationHandler:
                 "or a larger clip.",
                 code="IC_LORA_SOURCE_TOO_SMALL",
             )
-        risk = self._preflight_queued_ic_lora_recipe(
-            item=item,
-            video=video,
-            stored=stored,
-            source_fps=source_fps,
-            upscale=recipe.upscales_to_cell,
-            cutout=recipe.cutout,
-        )
-        return self._enqueue_ic_lora_recipe(
-            recipe,
-            stored,
-            req,
-            risk=risk,
-            analytics_client=analytics_client,
-            analytics_requested_by=analytics_requested_by,
-            generation_id=generation_id,
-        )
+        return _PreparedIcLoraRecipe(recipe, item, stored, video, source_fps)
+
+    def _require_high_res_cell(self, recipe_id: str) -> None:
+        """422 for a 1440p or 2160p cell of a recipe the highResVideoToVideo flag still gates.
+
+        An unknown id is not treated as a catalog id. The create path reports that id itself.
+        """
+        recipe = IC_LORA_RECIPES.get(recipe_id)
+        if recipe is None:
+            return
+        if not high_res_flag_satisfied(recipe.catalog_id, flag_enabled=self._high_res_enabled()):
+            raise HTTPError(422, HIGH_RES_NOT_ENABLED, code=HIGH_RES_NOT_ENABLED)
 
     def _create_synthesized_ic_lora(
         self,
@@ -604,7 +903,9 @@ class QueuedGenerationHandler:
         generation_id: str | None = None,
     ) -> Generation:
         spec: dict[str, JsonValue] = {
-            "params": stored.model_dump(mode="json", exclude={"scale", "variantId"}),
+            "params": self._dump_fast_params(
+                stored, exclude={"scale", "variantId"}, uses_torch_compile=False
+            ),
             "inputs": req.inputs.model_dump(mode="json", exclude_none=True),
         }
         return self._enqueue_generation(
@@ -686,7 +987,7 @@ class QueuedGenerationHandler:
         risk = self._preflight_edit_params(
             feature, asset_path=video.path, params=req.params
         )
-        params_payload = req.params.model_dump(mode="json")
+        params_payload = self._dump_fast_params(req.params, uses_torch_compile=False)
         spec: dict[str, JsonValue] = {
             "params": params_payload,
             "inputs": req.inputs.model_dump(mode="json", exclude_none=True),
@@ -709,6 +1010,7 @@ class QueuedGenerationHandler:
         aspect_ratio: LTXQueuedAspectRatio,
         duration: int | None,
         fps: LTXVideoGenFps,
+        pass_shape: PassShape,
     ) -> GenerationRisk | None:
         return self._preflight_queued_fast(
             offering=offering,
@@ -716,7 +1018,12 @@ class QueuedGenerationHandler:
             aspect_ratio=aspect_ratio,
             duration=duration,
             fps=fps,
+            pass_shape=pass_shape,
         )
+
+    def _resolve_pass_shape(self, requested: PassShape) -> PassShape:
+        never_split = self._state is not None and self._state.app_settings.never_split_into_parts
+        return resolve_pass_shape(requested, never_split=never_split)
 
     @staticmethod
     def _resolve_queued_preflight_aspect(
@@ -863,6 +1170,7 @@ class QueuedGenerationHandler:
         analytics_requested_by: AnalyticsRequestedBy | None = None,
         generation_id: str | None = None,
         risk: GenerationRisk | None = None,
+        pass_shape: PassShape | None = None,
     ) -> Generation:
         try:
             self._executor_registry.validate_params(
@@ -882,6 +1190,8 @@ class QueuedGenerationHandler:
             ) from exc
         if risk is not None:
             spec = {**spec, "_risk": risk.model_dump(mode="json")}
+        if pass_shape is not None:
+            spec = {**spec, PASS_SHAPE_SPEC_KEY: pass_shape}
         if analytics_client is not None:
             analytics: dict[str, JsonValue] = {"client": analytics_client}
             if analytics_requested_by is not None:
@@ -893,6 +1203,7 @@ class QueuedGenerationHandler:
                 spec,
                 contract_version=contract_version,
                 generation_id=generation_id,
+                lane=self._executor_registry.lane_for(feature, spec),
             )
         except UnavailableError as exc:
             raise HTTPError(503, "STORE_UNAVAILABLE") from exc
@@ -905,7 +1216,9 @@ class QueuedGenerationHandler:
 
     def retry_generation(self, generation_id: str) -> Generation:
         try:
-            record = self._db.retry_generation(generation_id)
+            record = self._db.retry_generation(
+                generation_id, lane=self._lane_for_stored(generation_id)
+            )
         except UnavailableError as exc:
             raise HTTPError(503, "STORE_UNAVAILABLE") from exc
         except KeyError as exc:
@@ -916,12 +1229,31 @@ class QueuedGenerationHandler:
         self._queue_control.wake()
         return _generation_to_api(record)
 
+    def _lane_for_stored(self, generation_id: str) -> str | None:
+        """The lane a stored job runs on now. None keeps the stored lane.
+
+        The registry can differ from the one at insert (the kill switch, a removed provider).
+        """
+        try:
+            stored = self._db.get_generation(generation_id)
+        except UnavailableError:
+            return None
+        if stored is None:
+            return None
+        try:
+            return self._executor_registry.lane_for(stored.feature, stored.spec)
+        except ValueError:
+            # The spec or the feature is no longer valid. The job fails when it runs.
+            # It still needs a lane that has a runner.
+            return self._executor_registry.lanes.resolve(stored.lane)
+
     def cancel_generation(self, generation_id: str) -> Generation:
         try:
             record = cancel_queued_generation(
                 self._db,
                 generation_id,
                 self._queue_control.interrupt,
+                uncancellable_lanes=self._executor_registry.lanes.uncancellable_ids,
             )
         except UnavailableError as exc:
             raise HTTPError(503, "STORE_UNAVAILABLE") from exc
@@ -939,19 +1271,11 @@ class QueuedGenerationHandler:
         except UnavailableError as exc:
             raise HTTPError(503, "STORE_UNAVAILABLE") from exc
 
-        active_record = next(
-            (
-                entry
-                for entry in entries
-                if entry.generation.status in {"running", "cancelling"}
-            ),
-            None,
-        )
-        active = (
-            self._queue_entry(active_record, self._active_progress(active_record))
-            if active_record is not None
-            else None
-        )
+        active = [
+            self._active_entry(entry)
+            for entry in entries
+            if entry.generation.status in {"running", "cancelling"}
+        ]
         queued = [
             self._queue_entry(entry, None)
             for entry in entries
@@ -1018,24 +1342,24 @@ class QueuedGenerationHandler:
         self._queue_control.wake()
         return self.get_queue_snapshot()
 
-    def _active_progress(
-        self, active: QueueGenerationRecord
-    ) -> QueueProgress | None:
-        if self._progress_reader is None:
-            return None
-        progress = self._progress_reader()
-        if progress.id != active.generation.id:
-            return None
-        return QueueProgress(
-            phase=progress.phase,
-            progress=progress.progress,
-            currentStep=progress.currentStep,
-            totalSteps=progress.totalSteps,
+    def _active_entry(self, entry: QueueGenerationRecord) -> QueueEntry:
+        live = self._queue_control.live_state(entry.generation.id)
+        if live is None:
+            return self._queue_entry(entry, None)
+        return self._queue_entry(
+            entry,
+            live.progress,
+            cancellable=live.cancellable,
+            api_status=live.api_status,
         )
 
     @staticmethod
     def _queue_entry(
-        entry: QueueGenerationRecord, progress: QueueProgress | None
+        entry: QueueGenerationRecord,
+        progress: QueueProgress | None,
+        *,
+        cancellable: bool = True,
+        api_status: ApiActivityStatus | None = None,
     ) -> QueueEntry:
         return QueueEntry(
             generation=_generation_to_api(entry.generation),
@@ -1044,6 +1368,8 @@ class QueuedGenerationHandler:
                 for asset in entry.input_assets
             ],
             progress=progress,
+            cancellable=cancellable,
+            api_status=api_status,
         )
 
     def list_generations(self, feature: str | None = None, *, limit: int | None = None) -> list[Generation]:
@@ -1056,10 +1382,10 @@ class QueuedGenerationHandler:
     def list_recent_features(
         self, *, limit: int, allowed: Collection[str] | None = None
     ) -> list[str]:
-        if allowed is not None and not self._high_res_enabled():
-            # Drop the hidden recipes before the store applies the limit, so they do
+        if allowed is not None and not self._keyframes_enabled():
+            # Drop the hidden feature before the store applies the limit, so it does
             # not take a slot from an older feature that is offered.
-            allowed = [name for name in allowed if name not in _HIGH_RES_ONLY_RECIPE_IDS]
+            allowed = [name for name in allowed if name != KEYFRAMES_FEATURE]
         try:
             return self._db.list_recent_features(limit=limit, allowed=allowed)
         except UnavailableError as exc:

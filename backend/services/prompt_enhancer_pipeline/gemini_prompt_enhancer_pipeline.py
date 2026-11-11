@@ -19,6 +19,8 @@ from services.prompt_enhancement import (
     resolve_i2v_frames,
     resolve_video_frames,
     video_role_max_output_tokens,
+    with_negative_prompt_rules,
+    with_user_negative_prompt,
     with_video_role_rules,
 )
 from services.prompt_enhancement.i2v_frames import KeyframeStill, SceneFrame, VideoRole
@@ -45,9 +47,19 @@ class GeminiPromptEnhancerPipeline:
     def __init__(self, http: HTTPClient) -> None:
         self._http = http
 
-    def enhance_t2v(self, prompt: str, system_prompt: str | None, seed: int, *, api_key: str, model: str) -> str:
-        contents: list[JSONValue] = [{"role": "user", "parts": [{"text": prompt}]}]
-        return self._call(contents, system_prompt, seed, api_key, model)
+    def enhance_t2v(
+        self,
+        prompt: str,
+        system_prompt: str | None,
+        seed: int,
+        *,
+        api_key: str,
+        model: str,
+        negative_prompt: str = "",
+    ) -> str:
+        user_text = with_user_negative_prompt(prompt, negative_prompt)
+        contents: list[JSONValue] = [{"role": "user", "parts": [{"text": user_text}]}]
+        return self._call(contents, system_prompt, seed, api_key, model, negative_prompt=negative_prompt)
 
     def enhance_i2v(
         self,
@@ -62,6 +74,7 @@ class GeminiPromptEnhancerPipeline:
         keyframes: list[KeyframeStill] | None = None,
         duration: int | None = None,
         fps: int | None = None,
+        negative_prompt: str = "",
     ) -> str:
         frames = resolve_i2v_frames(image_path, last_image_path, keyframes, fps=fps)
         image_parts = self._inline_image_parts(frames)
@@ -79,6 +92,7 @@ class GeminiPromptEnhancerPipeline:
             user_text = prompt.strip() or build_i2v_user_prompt_text(prompt, has_last=True)
         else:
             user_text = prompt if prompt.strip() else build_i2v_user_prompt_text(prompt, has_last=False)
+        user_text = with_user_negative_prompt(user_text, negative_prompt)
 
         # Single unlabeled still keeps the original Gemini turn (caption, then image).
         # Labeled first/last and keyframe sequences interleave a label before each still.
@@ -92,7 +106,7 @@ class GeminiPromptEnhancerPipeline:
                 parts.append(image_part)
             parts.append({"text": user_text})
         contents: list[JSONValue] = [{"role": "user", "parts": parts}]
-        return self._call(contents, system_prompt, seed, api_key, model)
+        return self._call(contents, system_prompt, seed, api_key, model, negative_prompt=negative_prompt)
 
     def enhance_with_video_frames(
         self,
@@ -104,6 +118,7 @@ class GeminiPromptEnhancerPipeline:
         *,
         api_key: str,
         model: str,
+        negative_prompt: str = "",
     ) -> str:
         # Each still is preceded by its label, then the typed prompt closes the turn.
         parts: list[JSONValue] = []
@@ -113,8 +128,11 @@ class GeminiPromptEnhancerPipeline:
         has_look_reference = any(frame.is_reference for frame in frames)
         parts.append(
             {
-                "text": build_video_user_prompt_text(
-                    prompt, role=role, has_look_reference=has_look_reference
+                "text": with_user_negative_prompt(
+                    build_video_user_prompt_text(
+                        prompt, role=role, has_look_reference=has_look_reference
+                    ),
+                    negative_prompt,
                 )
             }
         )
@@ -130,6 +148,7 @@ class GeminiPromptEnhancerPipeline:
             api_key,
             model,
             max_output_tokens=video_role_max_output_tokens(role) or _DEFAULT_MAX_OUTPUT_TOKENS,
+            negative_prompt=negative_prompt,
         )
 
     def _inline_image_parts(
@@ -184,11 +203,14 @@ class GeminiPromptEnhancerPipeline:
         model: str,
         *,
         max_output_tokens: int = _DEFAULT_MAX_OUTPUT_TOKENS,
+        negative_prompt: str = "",
     ) -> str:
         # Unlike the local Gemma pipeline, Gemini has no implicit default system prompt of its
         # own — omitting systemInstruction entirely gets a chatty, markdown-formatted essay
         # instead of a rewritten prompt. Always resolve to something.
-        resolved_system_prompt = system_prompt or build_default_free_rewrite_system_prompt()
+        resolved_system_prompt = with_negative_prompt_rules(
+            system_prompt or build_default_free_rewrite_system_prompt(), negative_prompt
+        )
         return call_gemini_generate_content(
             self._http,
             api_key=api_key,

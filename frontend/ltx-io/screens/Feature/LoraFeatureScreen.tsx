@@ -11,6 +11,7 @@ import {
 import { useCreateLoraRecipe } from "../../hooks/useCreateLoraRecipe";
 import { useExploreLoraRecipeSeed } from "../../hooks/useExploreLoraRecipeSeed";
 import { useExploreRuntime } from "../../runtime/ExploreRuntime";
+import { useImageAssetSize } from "../../hooks/useAsset";
 import { useGenerations } from "../../hooks/useGenerations";
 import { useVideoGenerationModelSpecs } from "../../hooks/useVideoGenerationModelSpecs";
 import { useFeatureFormStore } from "../../stores/featureFormStore";
@@ -68,13 +69,18 @@ export function LoraFeatureScreen({ recipeId }: { recipeId: LoraRecipeId }) {
   });
 
   const definition = useMemo(() => createLoraRecipeDefinition(recipe), [recipe]);
+  const startFrameId = useFeatureFormStore(
+    (state) => state.getValues(recipe.id)?.startFrame?.assetId ?? null,
+  );
+  const startFrameSize = useImageAssetSize(startFrameId);
   const context = useMemo<LoraRecipeContext>(
     () => ({
       specs: specsQuery.data,
       seed: seedQuery.data ?? null,
       endSeed: endSeedQuery.data ?? null,
+      startFrameSize,
     }),
-    [endSeedQuery.data, seedQuery.data, specsQuery.data],
+    [endSeedQuery.data, seedQuery.data, specsQuery.data, startFrameSize],
   );
   const ExampleEmptyState = useMemo(() => {
     const media = LORA_RECIPE_EXAMPLE_MEDIA[recipe.id];
@@ -113,6 +119,7 @@ export function LoraFeatureScreen({ recipeId }: { recipeId: LoraRecipeId }) {
             ...context,
             catalogVariants: controls.variants,
             supportedModels: catalogItem?.lora.supported_models,
+            defaultNegativePrompt: controls.defaultNegativePrompt,
           }}
           contextReady={contextReady}
           resourceError={resourceError}
@@ -123,7 +130,7 @@ export function LoraFeatureScreen({ recipeId }: { recipeId: LoraRecipeId }) {
           generateLabel={controls.generateLabel}
           generateHint={controls.generateHint}
           generateBusy={controls.generateBusy}
-          generateEnabled={controls.generateEnabled && specsQuery.budgetModeReady}
+          generateEnabled={controls.generateEnabled && specsQuery.budgetSettingsReady}
           actionError={controls.actionError}
           interceptGenerate={controls.interceptGenerate}
           onCancelGenerate={controls.onCancelGenerate}

@@ -13,6 +13,8 @@ from typing import Any, NamedTuple
 import pytest
 
 from api_types import ExtendParams, RetakeParams
+from runtime_config.budget_admission import RiskAllowance
+from runtime_config.device_calibration import JobEnvelope
 from services.features.video.edit_executor import VideoEditExecutor
 from services.features.video.extend import ExtendExecutor
 from services.features.video.retake import RetakeExecutor
@@ -27,21 +29,35 @@ _ENHANCED = "a long caption of the scene, the character turns around"
 
 
 class _Slot:
-    def start_generation(self, generation_id: str) -> None: ...
+    def start_generation(
+        self, generation_id: str, *, ran: JobEnvelope | None = None
+    ) -> None: ...
 
-    def complete_generation(self, result: str | list[str] | None = None) -> None: ...
+    def complete_generation(
+        self, result: str | list[str] | None = None, *, ran: JobEnvelope | None = None
+    ) -> None: ...
 
     def fail_generation(self, error: str) -> None: ...
 
 
+class _Prepared(NamedTuple):
+    dest: Path
+    ran: JobEnvelope | None = None
+
+
 class _Text:
-    def __init__(self) -> None:
+    def __init__(self, *, local_encoding: bool = True) -> None:
         self.encoded: list[tuple[str, bool]] = []
+        self.local_encoding = local_encoding
 
     def prepare_text_encoding(self, prompt: str, enhance_prompt: bool, model_id: Any = None) -> None:
         self.encoded.append((prompt, enhance_prompt))
 
     def clear_api_embeddings(self) -> None: ...
+
+    def should_use_local_encoding(self, model_id: Any = None) -> bool:
+        del model_id
+        return self.local_encoding
 
 
 class _StubbedGpuRetake(RetakeExecutor):
@@ -49,18 +65,22 @@ class _StubbedGpuRetake(RetakeExecutor):
     fail_in_gpu_stage = False
 
     def prepare(
-        self, generation: Any, params: RetakeParams, *rest: Any, allow_risk: bool = False, unmeasured_bet: bool = False
+        self,
+        generation: Any,
+        params: RetakeParams,
+        *rest: Any,
+        allowance: RiskAllowance = RiskAllowance.none(),
     ) -> Any:
-        del allow_risk, unmeasured_bet
+        del allowance
         self.prepared_prompts = [*getattr(self, "prepared_prompts", []), params.prompt]
-        return rest[3]
+        return _Prepared(rest[3])
 
     def generate(self, prepared: Any) -> None:
         if self.fail_in_gpu_stage:
             raise RuntimeError("gpu stage failed")
 
     def stitch(self, prepared: Any) -> None:
-        write_mp4(Path(prepared), seconds=1)
+        write_mp4(prepared.dest, seconds=1)
 
 
 class _StubbedGpuExtend(ExtendExecutor):
@@ -68,18 +88,22 @@ class _StubbedGpuExtend(ExtendExecutor):
     fail_in_gpu_stage = False
 
     def prepare(
-        self, generation: Any, params: ExtendParams, *rest: Any, allow_risk: bool = False, unmeasured_bet: bool = False
+        self,
+        generation: Any,
+        params: ExtendParams,
+        *rest: Any,
+        allowance: RiskAllowance = RiskAllowance.none(),
     ) -> Any:
-        del allow_risk, unmeasured_bet
+        del allowance
         self.prepared_prompts = [*getattr(self, "prepared_prompts", []), params.prompt]
-        return rest[3]
+        return _Prepared(rest[3])
 
     def generate(self, prepared: Any) -> None:
         if self.fail_in_gpu_stage:
             raise RuntimeError("gpu stage failed")
 
     def stitch(self, prepared: Any) -> None:
-        write_mp4(Path(prepared), seconds=1)
+        write_mp4(prepared.dest, seconds=1)
 
 
 _EXECUTORS: dict[str, tuple[type[VideoEditExecutor[Any, Any, Any]], dict[str, object]]] = {
@@ -104,16 +128,18 @@ def _run(
     create_fake_model_files,
     tmp_path: Path,
     typed_prompt: str = _TYPED,
+    negative_prompt: str = "",
+    local_encoding: bool = True,
     fail_in_gpu_stage: bool = False,
 ) -> _Result:
     create_fake_model_files(include_prompt_enhancer=True)
-    test_state.state.app_settings.use_local_text_encoder = True
+    test_state.state.app_settings.use_local_text_encoder = local_encoding
     asset = client.post(
         "/api/assets", json={"path": str(write_mp4(tmp_path / "source.mp4", seconds=6))}
     ).json()
     executor_class, feature_params = _EXECUTORS[feature]
     store = SqliteStore(test_state.config.app_data_dir)
-    text = _Text()
+    text = _Text(local_encoding=local_encoding)
     executor = executor_class(
         test_state.pipelines,
         store,
@@ -129,6 +155,7 @@ def _run(
         {
             "params": {
                 "prompt": typed_prompt,
+                "negativePrompt": negative_prompt,
                 "model": "ltx-2.5-fast",
                 "promptProvenance": provenance,
                 **feature_params,
@@ -302,3 +329,41 @@ def test_an_extend_samples_the_whole_clip_because_it_replaces_no_part_of_it(
 
     times = fake_services.prompt_enhancer_pipeline.enhance_video_frames_calls[0]["frame_times"]
     assert min(times) < 1
+
+
+@pytest.mark.parametrize("feature", ["retake", "extend"])
+def test_edit_executor_passes_negative_prompt_to_enhancer_only_when_local_encoding_is_active(
+    feature, client, test_state, fake_services, create_fake_model_files, tmp_path
+):
+    fake_services.prompt_enhancer_pipeline.enhanced_prompt = _ENHANCED
+
+    _run(
+        feature,
+        provenance="typed",
+        client=client,
+        test_state=test_state,
+        create_fake_model_files=create_fake_model_files,
+        tmp_path=tmp_path,
+        negative_prompt="blurry, flicker",
+        local_encoding=True,
+    )
+    assert (
+        fake_services.prompt_enhancer_pipeline.enhance_video_frames_calls[-1]["negative_prompt"]
+        == "blurry, flicker"
+    )
+
+    _run(
+        feature,
+        provenance="typed",
+        client=client,
+        test_state=test_state,
+        create_fake_model_files=create_fake_model_files,
+        tmp_path=tmp_path,
+        negative_prompt="blurry, flicker",
+        local_encoding=False,
+    )
+    assert (
+        fake_services.prompt_enhancer_pipeline.enhance_video_frames_calls[-1]["negative_prompt"]
+        == ""
+    )
+

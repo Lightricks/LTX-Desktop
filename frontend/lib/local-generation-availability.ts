@@ -1,4 +1,3 @@
-import { type BudgetMode, hasDowngradableDrop } from "./budget-risk.ts";
 import type { VideoGenerationModelSpecsResponse } from "./video-generation-model-specs.ts";
 
 /**
@@ -21,20 +20,11 @@ export function localUnavailableMessage(
   // OS platform (`window.electronAPI.platform`): a pool-refused Mac must
   // hear pool/allowance wording, never "graphics card".
   platform: string | null,
-  // The mode this surface actually renders. Callers pass it explicitly so a
-  // reckless payload cannot hide an empty standard grid.
-  budgetMode: BudgetMode,
 ): string | null {
   // A missing response belongs to the loading/error branches, and a non-empty
-  // grid needs no explanation even if a reason field is present.
+  // grid needs no explanation even if a reason field is present. Brave keeps
+  // its bets in the grid, so the server's map is the whole answer.
   if (specs === null || hasAnyLocalCell(specs)) return null;
-  // Reckless still has a form when every cell is a downgradable bet.
-  if (
-    budgetMode === "reckless" &&
-    specs.local_models.some((item) => hasDowngradableDrop(item.spec.dropped_cells))
-  ) {
-    return null;
-  }
   const reason = specs.local_unavailable_reason ?? null;
   switch (reason) {
     case "ram_shortfall": {
@@ -50,7 +40,7 @@ export function localUnavailableMessage(
     }
     case "stream_over":
       if (platform === "darwin") {
-        return "This Mac's memory allowance can't run any of the available settings.";
+        return "Memory available for video on this Mac can't run any of the available settings.";
       }
       return "This machine's graphics card can't run any of the available settings.";
     case "unsupported":

@@ -39,6 +39,7 @@ import {
   type IcLoraRecipeAudioMode,
 } from "./icLoraRecipeForm.ts";
 import { IC_LORA_RESOLUTIONS } from "./icLoraResolution.ts";
+import { readNegativePrompt } from "./negativePrompt.ts";
 import { hasAdvertisedCapability, resolveCapableModel } from "./videoFeature.ts";
 
 /** A recipe that makes its own control clip has no source clip, so it has no Source audio. */
@@ -46,6 +47,7 @@ export type IcLoraAudioMode = Exclude<IcLoraRecipeAudioMode, "source">;
 
 export type SynthesizedIcLoraSchemaBase = FeatureFieldSchema & {
   prompt: { kind: "textarea" };
+  negativePrompt: { kind: "textarea" };
   model: { kind: "options"; value: OfferingId };
   variant: { kind: "options"; value: string };
   aspectRatio: { kind: "options"; value: VideoFeatureAspectRatio };
@@ -64,6 +66,7 @@ export type SynthesizedIcLoraContext = VideoFeatureContext & {
 
 export type SynthesizedIcLoraCatalogSettings = {
   audio_mode?: string | null;
+  default_negative_prompt?: string | null;
 };
 
 export const AUDIO_OPTIONS = IC_LORA_AUDIO_OPTIONS.filter(
@@ -97,6 +100,7 @@ export function readSynthesizedCommonParams(
   const stored = readStoredLora(params, defaults.loraStrength);
   return {
     prompt: typeof params.prompt === "string" ? params.prompt : "",
+    negativePrompt: readNegativePrompt({ params }),
     model: resolveCapableModel(params.model, context.specs, "ic_lora", defaults.model),
     variant: stored.variantId,
     resolution: isSupportedVideoResolution(params.resolution)

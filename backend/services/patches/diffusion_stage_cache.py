@@ -2,7 +2,7 @@
 calls within one generation when nothing about its config actually changed.
 
 ``DiffusionStage`` "builds on each call, frees on exit" (ltx_pipelines/utils/
-blocks.py) unconditionally -- it rebuilds the transformer from the checkpoint
+blocks/diffusion_stage.py) unconditionally -- it rebuilds the transformer from the checkpoint
 file (disk read + fp8 cast + H2D copy) on *every* call and tears it down
 (or ``.to("meta")`` + reclaim) on exit, regardless of whether the checkpoint/
 LoRAs/quantization are identical to the previous call. For a two-stage
@@ -22,13 +22,12 @@ both call sites.
 Scoped to the standard (non-streaming, non-multi-GPU) build path: caching only
 applies when ``self._is_streaming`` is False (i.e. ``local_generations_mode ==
 "full_models_loading"`` -- high-VRAM cards where holding one build resident is
-affordable) AND the prepared builder is a plain ``SingleGPUModelBuilder``.
+affordable) AND the prepared builder is a plain ``SimpleBuilder``.
 Streaming instances (the low-VRAM path) are untouched -- forcing residency
 there would defeat the point of streaming. Multi-GPU tiled builders are also
 excluded: they use ``video_tools`` to shard identically-shaped work across
-devices, whereas ``SingleGPUModelBuilder.build()`` ignores all extra kwargs
-(``**kwargs: object,  # noqa: ARG002`` in single_gpu_model_builder.py) --
-confirmed inert for the path we cache, not assumed.
+devices, whereas ``DiffusionStage._build_transformer`` drops ``video_tools`` for a
+``SimpleBuilder`` -- confirmed inert for the path we cache, not assumed.
 
 GENERATION-SCOPED, not session-scoped (found live on an RTX 5090): letting the
 cache survive PAST the generation that built it collides with every other
@@ -101,7 +100,7 @@ any setting is pushed -- e.g. for headless/dev runs.
 EXPERIMENTAL: depends on DiffusionStage's private ``_is_streaming``,
 ``_prepared_builder()``, ``_build_transformer()``, ``_quantization``,
 ``_compilation_config``, ``_dtype``, ``_device`` staying as-is, and on
-``__call__`` continuing to route through ``_transformer_ctx`` -- re-verify
+``__call__`` continuing to route through ``_transformer_ctx`` (1.6.0 verified) -- re-verify
 against ltx_pipelines.utils.blocks.DiffusionStage on rev bumps.
 
 Usage:
@@ -119,7 +118,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 from ltx_core.devices import synchronize_device
-from ltx_core.loader.single_gpu_model_builder import SingleGPUModelBuilder
+from ltx_core.loader.simple_builder import SimpleBuilder
 from ltx_pipelines.utils.blocks import DiffusionStage
 from ltx_pipelines.utils.helpers import cleanup_memory
 
@@ -171,9 +170,12 @@ def set_enabled(value: bool) -> None:
 def _cacheable(stage: DiffusionStage) -> bool:
     # Desktop constructs DiffusionStage with bare CompilationConfig() (capture=False,
     # mode=None) and never calls with_model_wrapper. A set _model_wrapper is an
-    # uncovered cache key — 1.3.0 through 1.4.1 apply it after _transformer_ctx yields. Skip the
+    # uncovered cache key — 1.3.0 through 1.6.0 apply it after _transformer_ctx yields. Skip the
     # cache (do not raise): a live generate must degrade to uncached, not crash.
     # python -O would also strip an assert here and silently reuse wrong weights.
+    # 1.6.0 adds DiffusionStage ``active_weights`` (a shared transformer allocation released by
+    # release_transformer). Desktop never passes it, so the cache does not read it. A Desktop
+    # path that adopts it must decide who owns the transformer lifetime first.
     if getattr(stage, "_model_wrapper", None) is not None:
         global _logged_wrapper_skip
         if not _logged_wrapper_skip:
@@ -183,14 +185,14 @@ def _cacheable(stage: DiffusionStage) -> bool:
             )
             _logged_wrapper_skip = True
         return False
-    return not stage._is_streaming and isinstance(stage._prepared_builder(), SingleGPUModelBuilder)  # noqa: SLF001
+    return not stage._is_streaming and isinstance(stage._prepared_builder(), SimpleBuilder)  # noqa: SLF001
 
 
 def _cache_key(stage: DiffusionStage) -> _CacheKey:
     builder = stage._prepared_builder()  # noqa: SLF001
     return (
-        builder.model_path,
-        builder.model_sd_ops,
+        builder.paths,
+        builder.sd_ops,
         builder.module_ops,
         builder.loras,
         # Policy objects aren't structurally comparable; identity is safe here

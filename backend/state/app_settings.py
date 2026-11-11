@@ -9,6 +9,7 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstr
 
 from api_types import LTXLocalModelId, LocalAssistantModel
 from runtime_config.reject_reasons import BudgetMode
+from services.fast_video_pipeline.nag_config import DEFAULT_SCALE as DEFAULT_NAG_SCALE, MAX_SCALE as MAX_NAG_SCALE
 
 RemoteExposure = Literal["off", "lan"]
 DashboardRange = Literal["7d", "30d", "all"]
@@ -23,8 +24,12 @@ def _parse_remote_exposure(value: object) -> RemoteExposure:
 RemoteExposureSetting = Annotated[RemoteExposure, BeforeValidator(_parse_remote_exposure)]
 
 
-def _parse_budget_mode(value: object) -> BudgetMode:
-    return "standard" if value == "standard" else "reckless"
+def _parse_budget_mode(value: object) -> object:
+    """None passes through, so a settings patch without a mode leaves the saved
+    one alone. Legacy spellings ("standard", "reckless") and junk map to Brave."""
+    if value is None:
+        return None
+    return "cautious" if value == "cautious" else "brave"
 
 
 BudgetModeSetting = Annotated[BudgetMode, BeforeValidator(_parse_budget_mode)]
@@ -68,6 +73,11 @@ class SettingsPatchModel(SettingsBaseModel):
         extra="forbid",
     )
 
+    @field_validator("budget_mode", mode="before", check_fields=False)
+    @classmethod
+    def _fold_legacy_budget_mode(cls, value: object) -> object:
+        return _parse_budget_mode(value)
+
 
 SelectionValues = list[Annotated[str, StringConstraints(max_length=64)]]
 
@@ -99,7 +109,14 @@ class GenerationSeedUpdate(SettingsBaseModel):
 class AppSettings(SettingsBaseModel):
     use_torch_compile: bool = False
     diffusion_stage_cache_enabled: bool = False
-    budget_mode: BudgetModeSetting = "reckless"
+    # EXPERIMENTAL (Apple Silicon): decode the conv VAE with per-tap conv2d instead of MPS conv3d.
+    mps_conv3d_as_conv2d_enabled: bool = False
+    budget_mode: BudgetModeSetting = "brave"
+    # Brave's generate-time risk confirm. Turning "Ask before risky generate"
+    # back on in Settings is the reset.
+    skip_budget_risk_confirm: bool = False
+    # Fast clips run in one pass, never in windows (parts), unless a request asks for parts.
+    never_split_into_parts: bool = False
     ltx_api_key: str = ""
     user_prefers_ltx_api_video_generations: bool = False
     fal_api_key: str = ""
@@ -111,6 +128,8 @@ class AppSettings(SettingsBaseModel):
     prompt_enhancer_enabled: bool = True
     # Home / Remote Explore: automatic prompt rewrite before Generate. Gen Space is unchanged.
     explore_auto_enhance_prompts: bool = True
+    # Shows the Advanced section of Refine Details. Other features ignore it for now.
+    advanced_controls: bool = False
     # The user's explicit choice, persisted so it survives restarts. None means no active choice
     # has been made yet — the UI defaults to whichever provider is available, preferring local,
     # without writing that default back here. Only an explicit user pick (not an automatic
@@ -131,11 +150,22 @@ class AppSettings(SettingsBaseModel):
     active_ltx_model_id: LTXLocalModelId | None = None
     # None = platform default (Mac on, CUDA/Linux off). An explicit bool is a user override.
     use_conv_vae: bool | None = None
+    nag_scale: float = DEFAULT_NAG_SCALE
+    # Show the "Negative prompt strength" row (presets and raw NAG scale, alpha, tau) under
+    # the negative prompt on Home features. Off by default. Remote follows it through the
+    # prompt enhancer status, so the phone shows the row only when the Desktop does.
+    show_nag_strength_controls: bool = False
     # Remote client HTTP server. Serving only when this is not off. Default off so a leftover
     # settings.json cannot expose the engine after an upgrade. Unknown values (PoC tunnel modes)
     # coerce to off.
     remote_exposure: RemoteExposureSetting = "off"
     activity_dashboard_selections: DashboardSelection = Field(default_factory=DashboardSelection)
+
+    @field_validator("budget_mode", mode="before")
+    @classmethod
+    def _stored_null_budget_mode_is_brave(cls, value: object) -> object:
+        """A stored null must not fail the whole settings load."""
+        return "brave" if value is None else value
 
     @field_validator("prompt_cache_size", mode="before")
     @classmethod
@@ -146,6 +176,14 @@ class AppSettings(SettingsBaseModel):
     @classmethod
     def _clamp_locked_seed(cls, value: Any) -> int:
         return _clamp_int(value, minimum=0, maximum=MAX_GENERATION_SEED, default=42)
+
+    @field_validator("nag_scale", mode="before")
+    @classmethod
+    def _clamp_nag_scale(cls, value: Any) -> float:
+        if value is None:
+            return DEFAULT_NAG_SCALE
+        parsed = float(value)
+        return max(0.0, min(MAX_NAG_SCALE, parsed))
 
     @field_validator("activity_dashboard_selections", mode="before")
     @classmethod
@@ -206,7 +244,10 @@ UpdateSettingsRequest = AppSettingsPatch
 class SettingsResponse(SettingsBaseModel):
     use_torch_compile: bool = False
     diffusion_stage_cache_enabled: bool = False
-    budget_mode: BudgetModeSetting = "reckless"
+    mps_conv3d_as_conv2d_enabled: bool = False
+    budget_mode: BudgetMode = "brave"
+    skip_budget_risk_confirm: bool = False
+    never_split_into_parts: bool = False
     has_ltx_api_key: bool = False
     user_prefers_ltx_api_video_generations: bool = False
     has_fal_api_key: bool = False
@@ -215,6 +256,7 @@ class SettingsResponse(SettingsBaseModel):
     prompt_cache_size: int = 100
     prompt_enhancer_enabled: bool = True
     explore_auto_enhance_prompts: bool = True
+    advanced_controls: bool = False
     prompt_enhancer_provider_preference: Literal["local", "api"] | None = None
     has_gemini_api_key: bool = False
     gemini_model: str = ""
@@ -226,6 +268,8 @@ class SettingsResponse(SettingsBaseModel):
     models_dir: str = ""
     active_ltx_model_id: LTXLocalModelId | None = None
     use_conv_vae: bool = False
+    nag_scale: float = DEFAULT_NAG_SCALE
+    show_nag_strength_controls: bool = False
     remote_exposure: RemoteExposureSetting = "off"
     activity_dashboard_selections: DashboardSelection = Field(default_factory=DashboardSelection)
 
@@ -234,10 +278,12 @@ def remote_is_on(exposure: RemoteExposure) -> bool:
     return exposure != "off"
 
 
-def resolved_use_conv_vae(settings: AppSettings) -> bool:
+def resolved_use_conv_vae(settings: AppSettings, *, system: str | None = None) -> bool:
     """Effective Fast decode setting: user override, else Mac on / CUDA off."""
     if settings.use_conv_vae is not None:
         return settings.use_conv_vae
+    if system is not None:
+        return system == "Darwin"
     return sys.platform == "darwin"
 
 

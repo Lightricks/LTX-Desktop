@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import { planExploreImageToVideoSeed } from "../../hooks/exploreImageToVideoSeed.ts";
+import { useImageAssetSize } from "../../hooks/useAsset";
 import { useCreateImageToVideo } from "../../hooks/useCreateImageToVideo";
 import { useExploreImageToVideoSeed } from "../../hooks/useExploreImageToVideoSeed";
 import { useGenerations } from "../../hooks/useGenerations";
@@ -31,9 +32,13 @@ export function ImageToVideoFeatureScreen() {
     enabled: seedPlan === "ingest",
   });
   const createGeneration = useCreateImageToVideo();
+  const startFrameId = useFeatureFormStore(
+    (state) => state.getValues("image-to-video")?.startFrame?.assetId ?? null,
+  );
+  const startFrameSize = useImageAssetSize(startFrameId);
   const context = useMemo<ImageToVideoContext>(
-    () => ({ specs: specsQuery.data, seed: seedQuery.data ?? null }),
-    [seedQuery.data, specsQuery.data],
+    () => ({ specs: specsQuery.data, seed: seedQuery.data ?? null, startFrameSize }),
+    [seedQuery.data, specsQuery.data, startFrameSize],
   );
 
   const contextReady =
@@ -53,7 +58,7 @@ export function ImageToVideoFeatureScreen() {
       definition={imageToVideoDefinition}
       context={context}
       contextReady={contextReady}
-      generateEnabled={specsQuery.budgetModeReady}
+      generateEnabled={specsQuery.budgetSettingsReady}
       resourceError={resourceError}
       createGeneration={createGeneration}
       ResultFrameAdapter={ResultFrame}

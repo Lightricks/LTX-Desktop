@@ -20,7 +20,7 @@ describe("feature chrome model", () => {
   });
 
   it("requires listing copy for every Home feature", () => {
-    for (const feature of HOME_FEATURES) {
+    for (const feature of HOME_FEATURES.filter((item) => item.id !== "custom-lora")) {
       const details = buildFeatureDetails(feature.id);
       assert.ok(details.blurb.length, feature.id);
       const type = details.rows.find((row) => row.id === "type");

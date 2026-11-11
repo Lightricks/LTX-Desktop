@@ -14,6 +14,7 @@ import {
   type VideoFeatureAspectRatio,
 } from "../../../lib/videoFieldPolicy.ts";
 import { applyVideoSettingsChange } from "../../../lib/videoSettingsControls.ts";
+import { buildMemoryMeterModel } from "../../../../lib/memory-meter.ts";
 import {
   type AssetRef,
   type FeatureDefinition,
@@ -33,6 +34,7 @@ import {
   type SynthesizedIcLoraContext,
   synthesizedIcLoraVideoOptionFields,
 } from "./icLoraSynthesizedCommon.ts";
+import { negativePromptField, swapDemoNegative } from "./negativePrompt.ts";
 import { readAssetRef } from "./videoFeature.ts";
 
 type CreateIcLoraSheetRequest = components["schemas"]["CreateIcLoraSheetRequest"];
@@ -40,6 +42,7 @@ type CreateIcLoraSheetRequest = components["schemas"]["CreateIcLoraSheetRequest"
 export type IcLoraSheetSchema = {
   images: { kind: "image-assets"; value: AssetRef[] };
   prompt: { kind: "textarea" };
+  negativePrompt: { kind: "textarea" };
   model: { kind: "options"; value: OfferingId };
   variant: { kind: "options"; value: string };
   aspectRatio: { kind: "options"; value: VideoFeatureAspectRatio };
@@ -67,6 +70,7 @@ function defaultsFor(
   return {
     images: [],
     prompt: recipe.demoPrompt,
+    negativePrompt: recipe.demoNegativePrompt || settings?.default_negative_prompt || "",
     model: "ltx-2.5-fast",
     variant: "",
     aspectRatio: "16:9",
@@ -150,6 +154,7 @@ export function createIcLoraSheetDefinition(
       inputs: { images: values.images.map(({ assetId }) => ({ assetId })) },
       params: {
         prompt: values.prompt.trim(),
+        negativePrompt: values.negativePrompt.trim(),
         model: values.model,
         aspectRatio: values.aspectRatio,
         resolution: values.resolution,
@@ -185,9 +190,13 @@ export function createIcLoraSheetDefinition(
           dataKey: "prompt",
           placeholder: recipe.placeholder,
         },
+        negativePromptField<IcLoraSheetSchema>(),
         aspectRatio,
         ...tail,
       ],
+      memory: buildMemoryMeterModel(context.specs, values, {
+        fixFields: ["duration", "resolution"],
+      }),
     };
   }
 
@@ -203,14 +212,24 @@ export function createIcLoraSheetDefinition(
     resetValues: seedValues,
     form,
     applyChange: (values, change, context) =>
-      normalize(
-        applyVideoSettingsChange<IcLoraSheetSchema>(
-          values,
-          change,
-          context.specs,
-          withDefaultOffering(context.specs, defaults),
+      swapDemoNegative(
+        values,
+        normalize(
+          applyVideoSettingsChange<IcLoraSheetSchema>(
+            values,
+            change,
+            context.specs,
+            withDefaultOffering(context.specs, defaults),
+          ),
+          context,
         ),
-        context,
+        {
+          demoNegative: recipe.demoNegativePrompt,
+          catalogDefault: settings?.default_negative_prompt,
+          changed: (before, after) =>
+            (change.dataKey === "images" || change.dataKey === "prompt") &&
+            (after.images !== before.images || after.prompt !== before.prompt),
+        },
       ),
     normalize,
     fromGeneration,

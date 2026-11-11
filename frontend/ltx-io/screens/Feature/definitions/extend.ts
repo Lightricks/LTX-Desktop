@@ -4,10 +4,12 @@ import {
   withDefaultOffering,
   type OfferingId,
 } from "../../../../lib/video-generation-model-specs.ts";
+import { preflightCellStatus, riskOptionFields } from "../../../../lib/budget-risk.ts";
 import {
+  blockedOptionFields,
   findPreflightCell,
+  preflightEstimatedTimeText,
   preflightFallbackMessage,
-  preflightStatus,
 } from "../../../lib/editPreflight.ts";
 import { roundDurationSeconds } from "../../../lib/roundDuration.ts";
 import { readGenerationParams } from "../../../lib/resultsFeedModel.ts";
@@ -21,6 +23,7 @@ import {
   type FieldOption,
   type ValidationIssue,
 } from "../types.ts";
+import { negativePromptField } from "./negativePrompt.ts";
 import {
   capabilityModelOptions,
   editPreflightIssues,
@@ -30,6 +33,7 @@ import {
   type EditResolutionKey,
   hasAdvertisedCapability,
   normalizeEditResolution,
+  readNegativePrompt,
   readPrompt,
   readVideoGenerationInput,
   resolveCapableModel,
@@ -49,6 +53,7 @@ const EXTEND_MIN_DURATION_SECONDS = EXTEND_DURATION_PRESETS[0];
 export type ExtendSchema = {
   video: { kind: "video-asset"; value: AssetRef | null };
   prompt: { kind: "textarea" };
+  negativePrompt: { kind: "textarea" };
   model: { kind: "options"; value: OfferingId };
   resolution: { kind: "options"; value: EditResolutionKey };
   mode: { kind: "options"; value: ExtendMode };
@@ -60,6 +65,8 @@ export type ExtendValues = FeatureValues<ExtendSchema>;
 export type ExtendContext = VideoInputContext;
 
 export const EXTEND_EXAMPLE_PROMPT = "The camera pulls back as the scene continues";
+export const EXTEND_EXAMPLE_NEGATIVE_PROMPT =
+  "zoom in, push forward, frozen frame, abrupt cut, seam jump, blurry background, flicker";
 
 const MODE_OPTIONS: FieldOption<ExtendMode>[] = [
   { value: "start", label: "Before the clip" },
@@ -73,6 +80,7 @@ const DURATION_OPTIONS: FieldOption<ExtendDuration>[] = EXTEND_DURATION_PRESETS.
 export const EXTEND_DEFAULTS: ExtendValues = {
   video: null,
   prompt: EXTEND_EXAMPLE_PROMPT,
+  negativePrompt: EXTEND_EXAMPLE_NEGATIVE_PROMPT,
   model: "ltx-2.5-fast",
   resolution: "original",
   mode: "end",
@@ -122,6 +130,7 @@ export function fromGeneration(
   return {
     video: inputs.video,
     prompt: readPrompt(spec),
+    negativePrompt: readNegativePrompt(spec),
     model: restoreOfferingId(params.model, context.specs) ?? EXTEND_DEFAULTS.model,
     resolution: editResolutionKeyFromParams(params),
     mode: isExtendMode(params.mode) ? params.mode : EXTEND_DEFAULTS.mode,
@@ -194,6 +203,7 @@ export function toCreateBody(
     inputs: { video: { assetId: values.video.assetId } },
     params: {
       prompt: values.prompt.trim(),
+      negativePrompt: values.negativePrompt.trim(),
       model: values.model,
       duration: roundDurationSeconds(values.duration),
       mode: values.mode,
@@ -227,16 +237,18 @@ export function buildExtendForm(
     context.highResVideoToVideo,
   );
   const durationOptions = DURATION_OPTIONS.map((option) => {
-    const status = preflightStatus(
-      context.preflight,
+    const status = preflightCellStatus(
       findPreflightCell(context.preflight, values.resolution, option.value),
     );
-    if (status.status !== "blocked") return option;
-    return {
-      ...option,
-      disabledReason: preflightFallbackMessage(status),
-      ...(status.readout ? { budget: status.readout } : {}),
-    };
+    if (status.status === "clear") return option;
+    if (status.status === "warned") {
+      return {
+        ...option,
+        ...riskOptionFields(preflightFallbackMessage(status), undefined),
+        ...(status.readout ? { budget: status.readout } : {}),
+      };
+    }
+    return { ...option, ...blockedOptionFields(status) };
   });
   return {
     fields: [
@@ -253,6 +265,7 @@ export function buildExtendForm(
         dataKey: "prompt",
         placeholder: "Describe what should happen in the extension...",
       },
+      negativePromptField<ExtendSchema>(),
       {
         kind: "options",
         id: "duration",
@@ -288,6 +301,14 @@ export function buildExtendForm(
         options: extendModelOptions(context.specs),
       },
     ],
+    estimatedTimeText:
+      values.video == null
+        ? null
+        : preflightEstimatedTimeText(
+            context.preflight,
+            values.resolution,
+            values.duration,
+          ),
   };
 }
 
@@ -304,14 +325,12 @@ function resolvePreflightDuration(
   context: ExtendContext,
 ): ExtendDuration {
   if (context.preflight == null) return current;
-  const currentStatus = preflightStatus(
-    context.preflight,
+  const currentStatus = preflightCellStatus(
     findPreflightCell(context.preflight, resolution, current),
   );
   if (currentStatus.status !== "blocked") return current;
   const passing = EXTEND_DURATION_PRESETS.filter((preset) => {
-    const candidate = preflightStatus(
-      context.preflight,
+    const candidate = preflightCellStatus(
       findPreflightCell(context.preflight, resolution, preset),
     );
     return candidate.status !== "blocked";

@@ -1,0 +1,10 @@
+.card {
+  position: relative;
+}
+
+.closeButton {
+  position: absolute;
+  top: var(--spacing-md);
+  right: var(--spacing-md);
+  z-index: 1;
+}

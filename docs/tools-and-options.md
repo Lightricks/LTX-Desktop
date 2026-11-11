@@ -22,7 +22,7 @@ Every tool in LTX Desktop, with the settings each one offers. For prompt rewriti
 
 ## Generation options
 
-The forms share one set of video settings. The app lists only the options that your downloaded models and your hardware can run. Longer clips and higher resolutions are hidden on machines that cannot run them (see [`local-compat-matrix.md`](local-compat-matrix.md)).
+The forms share one set of video settings. The app lists only the options that your downloaded models and your hardware can run. Longer clips and higher resolutions are greyed out, with the reason, on machines that cannot run them (see [`hardware-compatibility.md`](hardware-compatibility.md)).
 
 ### Text to Video, Image to Video, and LoRA tools
 

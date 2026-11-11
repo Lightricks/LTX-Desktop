@@ -2,6 +2,7 @@ export const paths = {
   home: '/',
   textToVideo: '/text-to-video',
   imageToVideo: '/image-to-video',
+  keyframes: '/keyframes',
   audioToVideo: '/audio-to-video',
   retake: '/retake',
   extend: '/extend',
@@ -38,9 +39,16 @@ export const paths = {
   openwheelTCam: '/openwheel-t-cam',
   transition: '/transition',
   vbvr: '/vbvr',
+  customLora: '/custom-lora',
+  customLoraRun: '/custom-lora/:customLoraId',
   projects: '/projects',
   project: '/projects/:projectId',
 } as const
+
+/** The page of one saved custom LoRA. Its entry in the sidebar goes here. */
+export function customLoraRunPath(customLoraId: string): string {
+  return `${paths.customLora}/${encodeURIComponent(customLoraId)}`
+}
 
 export function assistantChatPath(chatId: string): string {
   return `${paths.assistant}/${encodeURIComponent(chatId)}`

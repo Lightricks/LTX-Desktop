@@ -20,6 +20,7 @@ import {
   type SettingsLegacyScrollAnchor,
   type SettingsTabId,
 } from '../lib/settings-navigation'
+import { AssetsMoveOverlay } from './settings/AssetsMoveOverlay'
 import { SettingsScreen } from './SettingsModal'
 import { UpdateAvailableModal } from './UpdateAvailableModal'
 import { LtxioToastHost } from '../ltx-io/components/shared/Toast/LtxioToastHost'
@@ -387,6 +388,7 @@ export function AppShell() {
       </AnimatePresence>
 
       {restartingOverlay}
+      <AssetsMoveOverlay />
       <LtxioToastHost />
     </div>
     </AppChromeContext.Provider>

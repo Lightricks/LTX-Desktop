@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from threading import Condition, Event, RLock
 from typing import TYPE_CHECKING, Literal
@@ -18,11 +18,19 @@ from api_types import (
     WallTimeEstimateResponse,
 )
 from handlers.base import StateHandlerBase, with_state_lock
-from runtime_config.eta import WallTimeEstimate
+from handlers.calibration_handler import CalibrationHandler
+from runtime_config.device_calibration import JobEnvelope, RunMemoryBaseline, RunMemoryEnd
+from runtime_config.eta import (
+    WallTimeEstimate,
+    default_machine_factor,
+    estimate_envelope_wall_time,
+    remaining_wall_time_s,
+)
 from services import generation_interrupt
 from services.generation_interrupt import GenerationCancelledError
 from services.generation_queue.control import GenerationSlotWaitAborted
-from services.patches import diffusion_stage_cache
+from services.patches import diffusion_stage_cache, mps_conv3d_as_conv2d
+from state.app_settings import resolved_use_conv_vae
 from state.app_state_types import (
     ApiGeneration,
     AppState,
@@ -48,8 +56,16 @@ _SLOT_WAIT_POLL_S = 0.05
 
 
 class GenerationHandler(StateHandlerBase):
-    def __init__(self, state: AppState, lock: RLock, config: RuntimeConfig) -> None:
+    def __init__(
+        self,
+        state: AppState,
+        lock: RLock,
+        config: RuntimeConfig,
+        *,
+        calibration: CalibrationHandler | None = None,
+    ) -> None:
         super().__init__(state, lock, config)
+        self._calibration = calibration
         self._generation_slot = Condition(self._lock)
         self._queue_yields = 0
         from services.denoising_progress import configure_sink
@@ -154,6 +170,35 @@ class GenerationHandler(StateHandlerBase):
                 self._generation_slot.notify_all()
 
     @contextmanager
+    def try_lease_idle_gpu(self, *, local_lane_idle: Callable[[], bool]) -> Iterator[bool]:
+        """Hold the GPU for a short job of another lane, without waiting. Yields True when held.
+
+        The lease succeeds only when the GPU is free: no running job, no reservation, nobody
+        waiting for it (assistant), and the local lane has no running or queued job. The last
+        check keeps an outside job from taking the GPU between two local jobs and evicting the
+        warm pipeline of the next one. The reservation does not expire while held. A granted
+        lease starts with the diffusion stage cache evicted.
+        """
+        # The idle check reads SQLite, so it runs before the state lock is taken. The lock is
+        # shared by every handler, and a slow read must not stall them (busy_timeout is 5 s).
+        # Enqueue and claim do not take this lock, so holding it would not make the check exact.
+        leased = False
+        if local_lane_idle():
+            with self._generation_slot:
+                leased = self._queue_yields == 0 and self.try_reserve_generation_start(
+                    persistent=True
+                )
+        try:
+            if leased:
+                # A local job cancelled before decode can leave its transformer cached. The
+                # borrower loads its own model next, so free the cache first. The slot is held.
+                diffusion_stage_cache.evict()
+            yield leased
+        finally:
+            if leased:
+                self.release_generation_start_reservation()
+
+    @contextmanager
     def reserved_generation_start(self, *, persistent: bool = False) -> Iterator[None]:
         """Guarantees the reservation is released on ANY exit — a normal return, a validation
         HTTPError raised before start_generation() is ever reached, or an unexpected exception —
@@ -174,7 +219,11 @@ class GenerationHandler(StateHandlerBase):
 
     @with_state_lock
     def start_generation(
-        self, generation_id: str, *, estimated: WallTimeEstimate | None = None
+        self,
+        generation_id: str,
+        *,
+        estimated: WallTimeEstimate | None = None,
+        ran: JobEnvelope | None = None,
     ) -> None:
         if self.is_generation_running():
             raise RuntimeError("Generation already in progress")
@@ -189,6 +238,7 @@ class GenerationHandler(StateHandlerBase):
                 state=GenerationCancelled(id=generation_id)
             )
             raise GenerationCancelledError()
+        starting_since = self.state.generation_starting_since
         self.state.generation_starting_since = None
 
         # EXPERIMENTAL: push the live Settings toggle, then drop any transformer
@@ -197,17 +247,47 @@ class GenerationHandler(StateHandlerBase):
         # build, double-booking VRAM. See that module's GENERATION-SCOPED
         # docstring section for the RTX 5090 repro (~42GB reported on a 32GB card).
         diffusion_stage_cache.set_enabled(self.state.app_settings.diffusion_stage_cache_enabled)
+        # EXPERIMENTAL (Apple Silicon): same live-push pattern. No-op off Darwin. The Settings
+        # toggle only shows under Fast decode, so the patch only runs while Fast decode is on.
+        app_settings = self.state.app_settings
+        conv_vae = resolved_use_conv_vae(app_settings, system=self.config.system)
+        mps_conv3d_as_conv2d.set_enabled(app_settings.mps_conv3d_as_conv2d_enabled and conv_vae)
         diffusion_stage_cache.evict()
         generation_interrupt.clear()
         from services.denoising_progress import configure_sink
 
         configure_sink(self._on_denoise_step)
 
+        resolved_estimated = estimated
+        if resolved_estimated is None and ran is not None:
+            calibrated = self.state.device_calibration.machine_factor
+            factor = (
+                calibrated
+                if calibrated is not None
+                else default_machine_factor(self.config.gpu_device_name)
+            )
+            system = (
+                self.config.system
+                if self.config.system in ("Windows", "Linux", "Darwin")
+                else "Windows"
+            )
+            resolved_estimated = estimate_envelope_wall_time(
+                ran, system=system, machine_factor=factor, conv_vae=conv_vae
+            )
+
         self.state.active_generation = GpuGeneration(
             state=GenerationRunning(
                 id=generation_id,
                 progress=GenerationProgress(phase="", progress=0, current_step=0, total_steps=0),
-                estimated=estimated,
+                estimated=resolved_estimated,
+                # After the evict above, so the baseline is the room this run starts with.
+                memory_baseline=(
+                    self._calibration.open_run() if self._calibration is not None else None
+                ),
+                started_monotonic=(
+                    starting_since if starting_since is not None else time.monotonic()
+                ),
+                conv_vae=conv_vae,
             )
         )
         logger.info("Generation %s started (gpu)", generation_id)
@@ -350,6 +430,24 @@ class GenerationHandler(StateHandlerBase):
         running.progress.progress = progress
         running.progress.current_step = current_step
         running.progress.total_steps = total_steps
+        if (
+            current_step is not None
+            and total_steps is not None
+            and total_steps > 1
+            and current_step >= total_steps
+        ):
+            if running.decode_started_monotonic is None:
+                running.decode_started_monotonic = time.monotonic()
+        else:
+            running.decode_started_monotonic = None
+
+    @with_state_lock
+    def _close_run_watch(
+        self, running: GenerationRunning
+    ) -> tuple[RunMemoryBaseline, RunMemoryEnd] | None:
+        if running.memory_baseline is None or self._calibration is None:
+            return None
+        return running.memory_baseline, self._calibration.close_run()
 
     @with_state_lock
     def cancel_generation(self) -> CancelResponse:
@@ -357,6 +455,7 @@ class GenerationHandler(StateHandlerBase):
         if running_generation is not None:
             generation_interrupt.request()
             slot, running = running_generation
+            self._close_run_watch(running)
             self._set_generation_state(slot, GenerationCancelled(id=running.id))
             return CancelCancellingResponse(status="cancelling", id=running.id)
 
@@ -375,15 +474,47 @@ class GenerationHandler(StateHandlerBase):
         # arming the Event.
         return CancelNoActiveGenerationResponse(status="no_active_generation")
 
+    def complete_generation(
+        self, result: str | list[str] | None = None, *, ran: JobEnvelope | None = None
+    ) -> None:
+        """``ran`` is the admitted shape at the frames that actually ran; a clean run records it.
+
+        A cancelled run is no longer running here, so it records nothing.
+        """
+        finished = self._finish_running(result)
+        if finished is None or ran is None or self._calibration is None:
+            return
+        generation_id, measured, wall_s, conv_vae = finished
+        if measured is not None:
+            baseline, end = measured
+            self._calibration.record_if_clean(
+                ran,
+                baseline,
+                end,
+                generation_id=generation_id,
+                wall_s=wall_s,
+                conv_vae=conv_vae,
+            )
+
     @with_state_lock
-    def complete_generation(self, result: str | list[str] | None = None) -> None:
+    def _finish_running(
+        self, result: str | list[str] | None
+    ) -> tuple[str, tuple[RunMemoryBaseline, RunMemoryEnd] | None, float | None, bool] | None:
         running_generation = self._running_generation()
         if running_generation is None:
-            return
+            return None
 
         slot, running = running_generation
+        # Sampled before the slot frees, since the next run's watch resets this run's peak.
+        measured = self._close_run_watch(running)
+        wall_s = (
+            max(0.001, time.monotonic() - running.started_monotonic)
+            if running.started_monotonic is not None
+            else None
+        )
         self._set_generation_state(slot, GenerationComplete(id=running.id, result=result))
         logger.info("Generation %s complete (%s)", running.id, slot)
+        return running.id, measured, wall_s, running.conv_vae
 
     @with_state_lock
     def fail_generation(self, error: str) -> None:
@@ -394,6 +525,7 @@ class GenerationHandler(StateHandlerBase):
         running_generation = self._running_generation()
         if running_generation is not None:
             slot, running = running_generation
+            self._close_run_watch(running)
             logger.error("Generation %s failed: %s", running.id, error)
             self._set_generation_state(slot, GenerationError(id=running.id, error=error))
             return
@@ -444,7 +576,18 @@ class GenerationHandler(StateHandlerBase):
         match gen:
             case GenerationRunning(
                 id=generation_id, progress=progress, estimated=estimated
-            ):
+            ) as running:
+                now = time.monotonic()
+                elapsed_s = (
+                    max(0.0, now - running.started_monotonic)
+                    if running.started_monotonic is not None
+                    else 0.0
+                )
+                decode_elapsed_s = (
+                    max(0.0, now - running.decode_started_monotonic)
+                    if running.decode_started_monotonic is not None
+                    else None
+                )
                 return GenerationProgressResponse(
                     status="running",
                     phase=progress.phase,
@@ -460,6 +603,13 @@ class GenerationHandler(StateHandlerBase):
                     )
                     if estimated
                     else None,
+                    remainingSeconds=remaining_wall_time_s(
+                        estimated,
+                        elapsed_s=elapsed_s,
+                        current_step=progress.current_step,
+                        total_steps=progress.total_steps,
+                        decode_elapsed_s=decode_elapsed_s,
+                    ),
                 )
             case GenerationComplete(id=generation_id, result=result):
                 return GenerationProgressResponse(

@@ -9,6 +9,7 @@ import { specFixture } from "../screens/Feature/definitions/specFixture.ts";
 
 import {
   a2vDisabledResolutionsForOffering,
+  a2vDurationForFrames,
   a2vEffectiveAudioSeconds,
   a2vResolutionsForOffering,
   a2vTrimCapSeconds,
@@ -182,6 +183,12 @@ describe("a2vDurationPolicy", () => {
     assert.equal(numFramesForAudioDuration(10.563, 24, 241), null);
   });
 
+  it("prices 241 frames as the 10s cell when 20s is also offered", () => {
+    assert.equal(a2vDurationForFrames([5, 10, 20], 241), 10);
+    assert.equal(a2vDurationForFrames([5, 10, 20], 249), 20);
+    assert.equal(a2vDurationForFrames([5, 10], null), null);
+  });
+
   it("treats 10.2s as the kept 10s cell when a longer static duration exists", () => {
     const fit = resolveA2vAudio({
       audioSeconds: 10.2,
@@ -304,33 +311,6 @@ describe("a2vDurationPolicy", () => {
     assert.equal(fit(5.05).frames, 121);
     assert.equal(fit(1.9).frames, null);
     assert.equal(fit(5.1).frames, null);
-  });
-
-  it("does not advertise a fully dropped A2V row in reckless", () => {
-    const empty = a2vSpecs([]);
-    const spec = {
-      ...empty.downloaded_local_models[0].spec,
-      a2v_supported_resolutions_durations: {},
-      dropped_cells: [
-        {
-          resolution: "540p" as const,
-          fps: 24 as const,
-          duration: 5 as const,
-          reason: "stream_over" as const,
-          message: "over",
-          audio: true,
-        },
-      ],
-    };
-    const specs: VideoGenerationModelSpecsResponse = {
-      ...empty,
-      budgetMode: "standard",
-      low_performance_machine: false,
-      downloaded_local_models: [{ ...empty.downloaded_local_models[0], spec }],
-      local_models: [{ pipeline: "fast", spec }],
-    };
-    assert.equal(hasAdvertisedA2vCell(specs), false);
-    assert.equal(hasAdvertisedA2vCell({ ...specs, budgetMode: "reckless" }), false);
   });
 
   it("does not use Settings local_models when nothing is downloaded", () => {

@@ -138,9 +138,9 @@ describe("open queue panel polling", () => {
   });
 
   it("slows down once a loaded queue has nothing active or queued", () => {
-    const loadedEmpty = { data: { active: null, queued: [] }, error: null, fetchFailureCount: 0 };
-    const running = { data: { active: {}, queued: [] }, error: null, fetchFailureCount: 0 };
-    const waiting = { data: { active: null, queued: [{}] }, error: null, fetchFailureCount: 0 };
+    const loadedEmpty = { data: { active: [], queued: [] }, error: null, fetchFailureCount: 0 };
+    const running = { data: { active: [{}], queued: [] }, error: null, fetchFailureCount: 0 };
+    const waiting = { data: { active: [], queued: [{}] }, error: null, fetchFailureCount: 0 };
 
     assert.equal(
       queueRefetchInterval(DESKTOP_GENERATION_POLLING_POLICY, loadedEmpty, true),

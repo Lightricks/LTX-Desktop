@@ -10,7 +10,7 @@ from _routes._analytics import (
     pixel_resolution,
     run_tracked_generation,
 )
-from api_types import GenerateImageRequest, GenerateImageResponse
+from api_types import GenerateImageRequest, GenerateImageResponse, ImageGenerationStatusResponse
 from state import get_state_service
 from app_handler import AppHandler
 
@@ -40,3 +40,13 @@ def route_generate_image(
         lambda: handler.image_generation.generate(req),
     )
 
+
+status_router = APIRouter(prefix="/api", tags=["image"])
+
+
+@status_router.get("/image-generation/status", response_model=ImageGenerationStatusResponse)
+def route_image_generation_status(
+    handler: AppHandler = Depends(get_state_service),
+) -> ImageGenerationStatusResponse:
+    """Mounted on both Desktop and Remote: the phone cannot read Settings."""
+    return handler.image_generation.get_status()

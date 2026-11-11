@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { HOME_SIDEBAR_FEATURED_FEATURES } from "../../lib/home-features.ts";
-import { paths } from "../../paths.ts";
+import { customLoraRunPath, paths } from "../../paths.ts";
 
 import {
   type HomeSidebarActions,
@@ -42,7 +42,7 @@ describe("planHomeSidebarItems", () => {
 });
 
 describe("planHomeSidebarNavItems", () => {
-  it("orders pages (Home, Assets, Remote, GenSpace) before Featured tools for a viable Desktop plan", () => {
+  it("orders pages (Home, Assets, Remote, GenSpace, Add custom LoRA) before Featured tools for a viable Desktop plan", () => {
     const plan = planHomeSidebarItems({ host: "desktop", localViable: true });
     assert.deepEqual(
       planHomeSidebarNavItems(plan).map((item) => ({
@@ -55,6 +55,7 @@ describe("planHomeSidebarNavItems", () => {
         { id: "assets", path: paths.assets },
         { id: "remote", path: paths.remote },
         { id: "projects", path: paths.projects },
+        { id: "custom-lora", path: paths.customLora },
         ...HOME_SIDEBAR_FEATURED_FEATURES.map((feature) => ({
           id: feature.id,
           path: feature.path,
@@ -68,7 +69,12 @@ describe("planHomeSidebarNavItems", () => {
     const items = planHomeSidebarNavItems(plan);
     assert.deepEqual(
       items.map((item) => item.id),
-      ["home", "assistant", "assets", ...HOME_SIDEBAR_FEATURED_FEATURES.map((feature) => feature.id)],
+      [
+        "home",
+        "assistant",
+        "assets",
+        ...HOME_SIDEBAR_FEATURED_FEATURES.map((feature) => feature.id),
+      ],
     );
     for (const item of items) {
       assert.equal(item.path.includes("?"), false);
@@ -119,6 +125,7 @@ describe("planHomeSidebarNavItems", () => {
       "assets",
       "remote",
       "projects",
+      "custom-lora",
       "featured",
       ...HOME_SIDEBAR_FEATURED_FEATURES.map((feature) => feature.id),
     ]);
@@ -133,9 +140,11 @@ describe("planHomeSidebarNavItems", () => {
 
   it("lists recent Gen Space projects under the Gen Space nav item", () => {
     const plan = planHomeSidebarItems({ host: "desktop", localViable: true });
-    const kinds = planHomeSidebarNavEntries(plan, [], [
-      { id: "p1", name: "My timeline" },
-    ]).map((entry) =>
+    const kinds = planHomeSidebarNavEntries(
+      plan,
+      [],
+      [{ id: "p1", name: "My timeline" }],
+    ).map((entry) =>
       entry.kind === "item"
         ? entry.item.id
         : entry.kind === "recent-project"
@@ -148,6 +157,7 @@ describe("planHomeSidebarNavItems", () => {
       "assets",
       "remote",
       "projects",
+      "custom-lora",
       "recent-projects",
       "project:p1",
       "featured",
@@ -161,16 +171,16 @@ describe("planHomeSidebarNavItems", () => {
 
   it("lists Recent workflows before Featured and omits recent tools from Featured", () => {
     const plan = planHomeSidebarItems({ host: "desktop", localViable: true });
-    const kinds = planHomeSidebarNavEntries(plan, [
-      "cozy-felt",
-      "text-to-video",
-    ]).map((entry) => (entry.kind === "item" ? entry.item.id : entry.id));
+    const kinds = planHomeSidebarNavEntries(plan, ["cozy-felt", "text-to-video"]).map(
+      (entry) => (entry.kind === "item" ? entry.item.id : entry.id),
+    );
     assert.deepEqual(kinds, [
       "home",
       "assistant",
       "assets",
       "remote",
       "projects",
+      "custom-lora",
       "recent",
       "cozy-felt",
       "text-to-video",
@@ -199,6 +209,90 @@ describe("sidebar Featured list", () => {
     );
     assert.equal(kinds.filter((id) => id === "day-to-night").length, 1);
     assert.ok(kinds.indexOf("day-to-night") < kinds.indexOf("featured"));
+  });
+});
+
+describe("sidebar saved custom LoRAs", () => {
+  const plan = planHomeSidebarItems({ host: "desktop", localViable: true });
+  const saved = [
+    { id: "ink", name: "Ink" },
+    { id: "wash", name: "Wash" },
+  ];
+  const labels = (
+    recentFeatureIds: Parameters<typeof planHomeSidebarNavEntries>[1],
+    recentIds: string[],
+    entryPlan = plan,
+  ) =>
+    planHomeSidebarNavEntries(entryPlan, recentFeatureIds, [], {
+      saved,
+      recentIds,
+    }).map((entry) =>
+      entry.kind === "item"
+        ? entry.item.label
+        : entry.kind === "section"
+          ? `[${entry.label}]`
+          : "",
+    );
+
+  it("puts Add custom LoRA right under Gen Space on a viable Desktop plan only", () => {
+    const result = labels([], []);
+    const genSpaceAt = result.indexOf("Gen Space");
+    assert.ok(genSpaceAt >= 0);
+    assert.equal(result[genSpaceAt + 1], "Add custom LoRA");
+
+    const notViable = planHomeSidebarItems({ host: "desktop", localViable: false });
+    assert.ok(!labels([], [], notViable).includes("Add custom LoRA"));
+    const remote = planHomeSidebarItems({ host: "remote", localViable: true });
+    assert.ok(!labels([], [], remote).includes("Add custom LoRA"));
+  });
+
+  it("does not list a saved LoRA the user never ran, and has no My LoRAs section", () => {
+    const result = labels([], []);
+
+    assert.ok(!result.includes("Ink") && !result.includes("Wash"));
+    assert.ok(!result.includes("[My LoRAs]"));
+  });
+
+  it("puts a LoRA the user ran under Recent workflows by its name, and does not list it twice", () => {
+    const result = labels(["custom-lora", "cozy-felt"], ["wash"]);
+
+    assert.deepEqual(
+      result.slice(result.indexOf("[Recent workflows]"), result.indexOf("[Featured]")),
+      ["[Recent workflows]", "Wash", "Cozy Felt"],
+    );
+    assert.equal(result.filter((label) => label === "Wash").length, 1);
+    assert.ok(!result.includes("Custom LoRA"));
+  });
+
+  it("omits a recent LoRA that was removed", () => {
+    const result = labels(["custom-lora"], ["gone"]);
+
+    assert.ok(!result.includes("[Recent workflows]"));
+  });
+
+  it("opens the saved LoRA page and the add dialog for a new one", () => {
+    const calls: Array<{ path: string; clearActiveProject: boolean }> = [];
+    let addOpened = false;
+    const items = planHomeSidebarNavItems(plan, ["custom-lora"], [], {
+      saved,
+      recentIds: ["ink"],
+    });
+    const ink = items.find((candidate) => candidate.label === "Ink");
+    const add = items.find((candidate) => candidate.label === "Add custom LoRA");
+    assert.ok(ink && add);
+
+    selectHomeSidebarNavItem(ink, recordActions("desktop", calls));
+    selectHomeSidebarNavItem(add, {
+      ...recordActions("desktop", calls),
+      openAddCustomLora: () => {
+        addOpened = true;
+      },
+    });
+
+    assert.deepEqual(calls, [
+      { path: customLoraRunPath("ink"), clearActiveProject: false },
+    ]);
+    assert.equal(addOpened, true);
   });
 });
 
@@ -241,6 +335,7 @@ describe("selectHomeSidebarNavItem", () => {
       { path: paths.assets, clearActiveProject: false },
       { path: paths.remote, clearActiveProject: true },
       { path: paths.projects, clearActiveProject: true },
+      { path: paths.customLora, clearActiveProject: false },
       ...HOME_SIDEBAR_FEATURED_FEATURES.map((feature) => ({
         path: feature.path,
         clearActiveProject: false,
@@ -331,7 +426,9 @@ describe("isHomeSidebarFooterItemActive", () => {
       true,
     );
     assert.equal(
-      isHomeSidebarFooterItemActive(paths.settings, settings, { settingsModalOpen: false }),
+      isHomeSidebarFooterItemActive(paths.settings, settings, {
+        settingsModalOpen: false,
+      }),
       true,
     );
   });

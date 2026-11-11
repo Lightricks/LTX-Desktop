@@ -392,11 +392,15 @@ def resolve_recipe_create(
             model=params.model,
             cameraMotion=params.cameraMotion,
             negativePrompt=params.negativePrompt,
+            nagScale=params.nagScale,
+            nagAlpha=params.nagAlpha,
+            nagTau=params.nagTau,
             duration=params.duration,
             fps=params.fps,
             seed=params.seed,
             aspectRatio=params.aspectRatio,
             promptProvenance=params.promptProvenance,
+            passShape=params.passShape,
             loras=loras,
         )
         return (
@@ -424,11 +428,15 @@ def resolve_recipe_create(
         model=params.model,
         cameraMotion=params.cameraMotion,
         negativePrompt=params.negativePrompt,
+        nagScale=params.nagScale,
+        nagAlpha=params.nagAlpha,
+        nagTau=params.nagTau,
         duration=params.duration,
         fps=params.fps,
         seed=params.seed,
         aspectRatio=params.aspectRatio,
         promptProvenance=params.promptProvenance,
+        passShape=params.passShape,
         loras=loras,
     )
     return recipe.recipe_id, tt_params, None

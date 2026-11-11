@@ -38,10 +38,11 @@ class DWPosePipeline:
     ) -> None:
         self._device = device
         jit_module = cast(Any, torch.jit)
-        self._pose_model = cast(torch.jit.ScriptModule, jit_module.load(pose_model_path, map_location=device))
+        # dw-ll_ucoco_384_bs5 embeds float64 scalar constants in HardSigmoid; map_location=mps fails.
+        self._pose_model = cast(torch.jit.ScriptModule, jit_module.load(pose_model_path, map_location="cpu")).to(device)
         self._pose_model.eval()
 
-        self._detector_model = cast(torch.jit.ScriptModule, jit_module.load(person_detector_model_path, map_location=device))
+        self._detector_model = cast(torch.jit.ScriptModule, jit_module.load(person_detector_model_path, map_location="cpu")).to(device)
         self._detector_model.eval()
 
     def _module_device_dtype(self, module: torch.nn.Module) -> tuple[torch.device, torch.dtype]:

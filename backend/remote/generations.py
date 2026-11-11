@@ -1,9 +1,9 @@
 """Remote-only generation HTTP surface.
 
 Desktop generation CRUD stays unfiltered. This module is the remote contract:
-only Home/Remote text-to-video, image-to-video, audio-to-video, retake,
-extend, and IC-LoRA recipes, plus get/retry/cancel/delete when the generation's feature is in that
-allowlist. Recently used uses the same feature set on both apps.
+only Home/Remote text-to-image, text-to-video, image-to-video, audio-to-video, retake,
+extend, custom LoRA, and IC-LoRA recipes, plus get/retry/cancel/delete when the generation's feature is in that
+allowlist. Recently used uses the same feature set on both apps, without the image jobs.
 """
 
 from __future__ import annotations
@@ -13,14 +13,21 @@ from fastapi import APIRouter, Depends, Path, Query
 from _routes._errors import HTTPError
 from api_types import (
     CreateAudioToVideoRequest,
+    CreateCustomLoraRequest,
     IcLoraRecipeCreate,
     CreateExtendRequest,
     CreateImageToVideoRequest,
+    CreateKeyframesRequest,
     CreateLoraRecipeRequest,
     CreateRetakeRequest,
+    CreateTextToImageRequest,
     CreateTextToVideoRequest,
     EditPreflightRequest,
     EditPreflightResponse,
+    IcLoraRecipeMemoryRequest,
+    IcLoraRecipeMemoryResponse,
+    IcLoraTilePreflightRequest,
+    IcLoraTilePreflightResponse,
     Generation,
     QueueSnapshot,
     ReorderGenerationQueueRequest,
@@ -29,11 +36,13 @@ from api_types import (
 from app_handler import AppHandler
 from remote.deps import RemoteContext, get_remote_context
 from remote.dto import RemoteGeneration, RemoteQueueSnapshot, to_remote_queue_snapshot
+from services.features.image.feature_id import FEATURE as TEXT_TO_IMAGE_FEATURE
 from services.features.queued_features import QUEUED_GENERATION_FEATURES
 from state import get_state_service
 
-# Same set the desktop recents endpoint uses, so Electron and remote agree.
-REMOTE_GENERATION_FEATURES = QUEUED_GENERATION_FEATURES
+# The jobs Remote can read and control. Recently used asks for QUEUED_GENERATION_FEATURES alone,
+# as on Desktop: an image job is Remote-visible but has no Home screen to reopen.
+REMOTE_GENERATION_FEATURES = QUEUED_GENERATION_FEATURES | {TEXT_TO_IMAGE_FEATURE}
 
 router = APIRouter(prefix="/api")
 
@@ -176,6 +185,23 @@ def route_create_text_to_video(
 
 
 @router.post(
+    "/generations/text-to-image",
+    response_model=RemoteGeneration,
+    tags=["generations"],
+)
+def route_create_text_to_image(
+    req: CreateTextToImageRequest,
+    handler: AppHandler = Depends(get_state_service),
+    remote: RemoteContext = Depends(get_remote_context),
+) -> RemoteGeneration:
+    return remote.generation(
+        handler.queued_generations.create_text_to_image(
+            req, analytics_client="remote"
+        )
+    )
+
+
+@router.post(
     "/generations/image-to-video",
     response_model=RemoteGeneration,
     tags=["generations"],
@@ -187,6 +213,23 @@ def route_create_image_to_video(
 ) -> RemoteGeneration:
     return remote.generation(
         handler.queued_generations.create_image_to_video(
+            req, analytics_client="remote"
+        )
+    )
+
+
+@router.post(
+    "/generations/keyframes",
+    response_model=RemoteGeneration,
+    tags=["generations"],
+)
+def route_create_keyframes(
+    req: CreateKeyframesRequest,
+    handler: AppHandler = Depends(get_state_service),
+    remote: RemoteContext = Depends(get_remote_context),
+) -> RemoteGeneration:
+    return remote.generation(
+        handler.queued_generations.create_keyframes(
             req, analytics_client="remote"
         )
     )
@@ -209,6 +252,22 @@ def route_create_lora_recipe(
         handler.queued_generations.create_lora_recipe(
             recipe_id, req, analytics_client="remote"
         )
+    )
+
+
+@router.post(
+    "/generations/custom-lora",
+    response_model=RemoteGeneration,
+    tags=["generations"],
+)
+def route_create_custom_lora(
+    req: CreateCustomLoraRequest,
+    handler: AppHandler = Depends(get_state_service),
+    remote: RemoteContext = Depends(get_remote_context),
+) -> RemoteGeneration:
+    # The saved LoRA is named by id. The weights path is stripped by the DTO.
+    return remote.generation(
+        handler.queued_generations.create_custom_lora(req, analytics_client="remote")
     )
 
 
@@ -272,6 +331,21 @@ def route_preflight_edit(
 
 
 @router.post(
+    "/generations/ic-lora-recipes/{recipe_id}/memory",
+    response_model=IcLoraRecipeMemoryResponse,
+    tags=["generations"],
+)
+def route_ic_lora_recipe_memory(
+    req: IcLoraRecipeMemoryRequest,
+    recipe_id: str = Path(pattern=r"^[a-z0-9-]+$", max_length=64),
+    handler: AppHandler = Depends(get_state_service),
+    _remote: RemoteContext = Depends(get_remote_context),
+) -> IcLoraRecipeMemoryResponse:
+    # Path-free DTO (sizes and verdicts only): no remote projection needed.
+    return handler.ic_lora.recipe_memory(recipe_id, req)
+
+
+@router.post(
     "/generations/ic-lora-recipes/{recipe_id}",
     response_model=RemoteGeneration,
     tags=["generations"],
@@ -289,6 +363,20 @@ def route_create_ic_lora_recipe(
     )
 
 
+@router.post(
+    "/generations/ic-lora-recipes/{recipe_id}/preflight",
+    response_model=IcLoraTilePreflightResponse,
+    tags=["generations"],
+)
+def route_preflight_ic_lora_tile_sizes(
+    req: IcLoraTilePreflightRequest,
+    recipe_id: str = Path(pattern=r"^[a-z0-9-]+$", max_length=64),
+    handler: AppHandler = Depends(get_state_service),
+) -> IcLoraTilePreflightResponse:
+    # Path-free DTO (verdicts only): no remote projection needed.
+    return handler.queued_generations.preflight_ic_lora_tile_sizes(recipe_id, req)
+
+
 @router.get(
     "/generations/recent-features",
     response_model=list[str],
@@ -301,7 +389,7 @@ def route_list_recent_features(
 ) -> list[str]:
     return handler.queued_generations.list_recent_features(
         limit=limit,
-        allowed=REMOTE_GENERATION_FEATURES,
+        allowed=QUEUED_GENERATION_FEATURES,
     )
 
 

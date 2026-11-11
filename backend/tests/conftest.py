@@ -10,7 +10,16 @@ import torch
 
 from app_factory import create_app
 from app_handler import ServiceBundle
-from api_types import AudioToVideoParams, GenerateVideoCompleteResponse, GenerateVideoRequest
+from api_types import (
+    AudioToVideoParams,
+    GenerateVideoCompleteResponse,
+    GenerateVideoRequest,
+    TextToImageStoredParams,
+)
+from handlers.queued_image_handler import QueuedImageHandler
+import runtime_config.video_job_budget as video_job_budget
+from runtime_config.budget_admission import RiskAllowance
+from runtime_config.reject_reasons import PassShape
 from runtime_config.model_download_specs import (
     DEPTH_PROCESSOR_CP_ID,
     IMG_GEN_MODEL_CP_ID,
@@ -24,8 +33,10 @@ from state import RuntimeConfig, build_initial_state, set_state_service_for_test
 from state.app_settings import AppSettings
 from state.app_state_types import HfAuthenticated
 from services.features.ic_lora_recipes import queued_ic_lora_recipes
+from services.features.image.text_to_image import QueuedImageResult, TextToImageExecutor
 from services.features.lora_recipes import queued_lora_recipes
-from services.features.video import AudioToVideoExecutor
+from services.features.video import AudioToVideoExecutor, KeyframesExecutor
+from services.generation_queue.sessions import JobSession
 from services.gemini_text_client import clear_gemini_models_cache
 from services.sqlite_store import SqliteStore
 from tests.fake_camera_motion_prompts import FAKE_CAMERA_MOTION_PROMPTS
@@ -37,9 +48,8 @@ DEFAULT_NEGATIVE_PROMPT = (
     "excessive noise, grainy texture"
 )
 
-# The app defaults to reckless, but these suites assert the standard refusals the
-# budget layer still implements. Tests that need reckless set it explicitly.
-DEFAULT_APP_SETTINGS = AppSettings(budget_mode="standard")
+# Cautious is the strict refusal surface most budget tests assert; Brave cases set it.
+DEFAULT_APP_SETTINGS = AppSettings(budget_mode="cautious")
 
 
 class _UnusedReservedVideoGenerator:
@@ -48,9 +58,13 @@ class _UnusedReservedVideoGenerator:
         return Path("/unused-reserved-video-generator")
 
     def validate_local_a2v_request(
-        self, params: AudioToVideoParams, audio_duration_ms: int
+        self,
+        params: AudioToVideoParams,
+        audio_duration_ms: int,
+        *,
+        pass_shape: PassShape,
     ) -> None:
-        del params, audio_duration_ms
+        del params, audio_duration_ms, pass_shape
 
     def generate_local_reserved(
         self,
@@ -62,13 +76,34 @@ class _UnusedReservedVideoGenerator:
         a2v_num_frames: int | None = None,
         a2v_audio_duration_seconds: float | None = None,
         local_model_id=None,
-        risk_allowance: bool | None = None,
-        unmeasured_bet: bool = False,
+        allowance: RiskAllowance | None = None,
+        pass_shape: PassShape | None = None,
     ) -> GenerateVideoCompleteResponse:
-        del req, generation_id, prompt_wrap, a2v_num_frames, a2v_audio_duration_seconds, local_model_id, risk_allowance, unmeasured_bet
+        del req, generation_id, prompt_wrap, a2v_num_frames, a2v_audio_duration_seconds, local_model_id, allowance
+        del pass_shape
         return GenerateVideoCompleteResponse(
             status="complete",
             video_path=str(output_path) if output_path is not None else "",
+        )
+
+
+class _AppImageRenderer:
+    """Defers to the AppHandler's image handler, which is built after the executors."""
+
+    def __init__(self) -> None:
+        self.target: QueuedImageHandler | None = None
+
+    def generate_queued(
+        self,
+        params: TextToImageStoredParams,
+        *,
+        generation_id: str,
+        output_path: Path,
+        session: JobSession,
+    ) -> QueuedImageResult:
+        assert self.target is not None
+        return self.target.generate_queued(
+            params, generation_id=generation_id, output_path=output_path, session=session
         )
 
 
@@ -95,8 +130,14 @@ def fake_services() -> FakeServices:
     return FakeServices()
 
 
+@pytest.fixture
+def parallel_lanes(request: pytest.FixtureRequest) -> bool:
+    """On by default. A test turns the kill switch on with indirect parametrization."""
+    return getattr(request, "param", True)
+
+
 @pytest.fixture(autouse=True)
-def test_state(tmp_path: Path, fake_services: FakeServices):
+def test_state(tmp_path: Path, fake_services: FakeServices, parallel_lanes: bool):
     """Provide a fresh AppHandler per test and register it in DI."""
     clear_gemini_models_cache()
     app_data = tmp_path / "app_data"
@@ -114,6 +155,7 @@ def test_state(tmp_path: Path, fake_services: FakeServices):
         settings_file=app_data / "settings.json",
         ltx_api_base_url="https://api.ltx.video",
         local_generations_mode="full_models_loading",
+        parallel_queue_lanes=parallel_lanes,
         vram_gb=31,
         use_sage_attention=False,
         camera_motion_prompts=FAKE_CAMERA_MOTION_PROMPTS,
@@ -124,6 +166,7 @@ def test_state(tmp_path: Path, fake_services: FakeServices):
     )
 
     store = SqliteStore(config.app_data_dir)
+    image_renderer = _AppImageRenderer()
     bundle = ServiceBundle(
         assistant_provider=fake_services.assistant_provider,
         assistant_models=fake_services.assistant_models,
@@ -135,6 +178,7 @@ def test_state(tmp_path: Path, fake_services: FakeServices):
         video_processor=fake_services.video_processor,
         text_encoder=fake_services.text_encoder,
         task_runner=fake_services.task_runner,
+        url_downloader=fake_services.url_downloader,
         ltx_api_client=fake_services.ltx_api_client,
         zit_api_client=fake_services.zit_api_client,
         fast_video_pipeline_class=type(fake_services.fast_video_pipeline),
@@ -147,8 +191,10 @@ def test_state(tmp_path: Path, fake_services: FakeServices):
         prompt_enhancer_pipeline_class=type(fake_services.prompt_enhancer_pipeline),
         store=store,
         generation_executors={
+            "text-to-image": TextToImageExecutor(image_renderer),
             "text-to-video": FakeGenerationExecutor(),
             "image-to-video": FakeGenerationExecutor(),
+            "custom-lora": FakeGenerationExecutor(feature="custom-lora"),
             # Injecting generation_executors skips AppHandler's real per-recipe
             # registration loop, so mirror it from the recipe table — a new recipe
             # then can't 422 at validate_params for a missing executor.
@@ -163,6 +209,8 @@ def test_state(tmp_path: Path, fake_services: FakeServices):
             "audio-to-video": AudioToVideoExecutor(
                 _UnusedReservedVideoGenerator(), store
             ),
+            # The real executor, so the queue refuses a bad timeline at create time.
+            "keyframes": KeyframesExecutor(_UnusedReservedVideoGenerator(), store),
             "retake": FakeGenerationExecutor(feature="retake"),
             "extend": FakeGenerationExecutor(feature="extend"),
         },
@@ -173,6 +221,7 @@ def test_state(tmp_path: Path, fake_services: FakeServices):
         DEFAULT_APP_SETTINGS.model_copy(deep=True),
         service_bundle=bundle,
     )
+    image_renderer.target = handler.queued_image
     handler.state.hf_auth_state = HfAuthenticated(
         access_token="fake-hf-token",
         expires_at=1e18,
@@ -306,3 +355,11 @@ def make_test_image():
         return buf
 
     return _make
+
+
+@pytest.fixture
+def single_pass_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Price the single-pass envelope: the window fallback is off, so a pass that no card
+    can hold keeps its refusal. Tests of one-pass cell boundaries use this; the window
+    picker has its own tests."""
+    monkeypatch.setattr(video_job_budget, "_windows_help", lambda *_a, **_k: False)

@@ -17,8 +17,8 @@ from services.features.video.job_common import (
     model_from_spec,
     require_existing_asset,
     resolve_job_local_model_id,
+    spec_pass_shape,
     spec_risk_allowance,
-    spec_unmeasured_bet,
 )
 from services.features.video.text_to_video import (
     ReservedVideoGenerator,
@@ -29,6 +29,7 @@ from services.features.video.text_to_video import (
 )
 from runtime_config.model_download_specs import local_aspect_ratios
 from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
+from services.generation_queue.sessions import JobSession
 from services.generation_queue.types import ExecutionOutcome, OutputAllocation, OutputPlan
 from services.records import AssetRecord, GenerationRecord
 
@@ -63,6 +64,7 @@ class AudioToVideoExecutor:
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
         self.validate_params(
             generation.spec, contract_version=generation.contract_version
@@ -86,9 +88,10 @@ class AudioToVideoExecutor:
             payload["aspectRatio"] = "16:9"
         req = GenerateVideoRequest.model_validate(payload)
         output = require_video_output(outputs)
+        pass_shape = spec_pass_shape(generation.spec)
         try:
             self._video_generation.validate_local_a2v_request(
-                params, audio_duration_ms=_audio_duration_ms(audio)
+                params, audio_duration_ms=_audio_duration_ms(audio), pass_shape=pass_shape
             )
             result = self._video_generation.generate_local_reserved(
                 req,
@@ -99,8 +102,8 @@ class AudioToVideoExecutor:
                 local_model_id=resolve_job_local_model_id(
                     self._video_generation.models_dir, offering
                 ),
-                risk_allowance=spec_risk_allowance(generation.spec),
-                unmeasured_bet=spec_unmeasured_bet(generation.spec),
+                allowance=spec_risk_allowance(generation.spec),
+                pass_shape=pass_shape,
             )
         except Exception as exc:
             if is_cancel_exception(exc):

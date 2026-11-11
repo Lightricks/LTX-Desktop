@@ -14,13 +14,16 @@ from typing import cast, get_args
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError, field_serializer
 
 from api_types import (
+    ApiActivityStatus,
     Asset,
     AssetCore,
     ExtendMode,
     IcLoraAudioMode,
     IcLoraControlType,
+    ImageProvider,
     Generation,
     GenerationCore,
+    NagParams,
     QueueEntry,
     QueueProgress,
     QueueSnapshot,
@@ -28,23 +31,40 @@ from api_types import (
 )
 from api_motion_path import MotionPath
 from remote.media_urls import MediaUrlSigner
+from runtime_config.ic_lora_tiling import (
+    MAX_TILE_OVERLAP,
+    MIN_CARRY_FRAMES,
+    MIN_TILE_OVERLAP,
+    MIN_WINDOW_FRAMES,
+    IcLoraTileSize,
+)
+from runtime_config.reject_reasons import PassShape
 
 logger = logging.getLogger(__name__)
+
+_NAG_NUMBER_FIELDS = frozenset(NagParams.model_fields) - {"negativePrompt"}
 
 _SAFE_PARAM_STRINGS = frozenset(
     {
         "prompt",
+        "negativePrompt",
         "model",
         "aspectRatio",
         "promptProvenance",
+        "provider",
         "mode",
         "audioMode",
+        "passShape",
         "controlType",
+        "tilingSize",
     }
 )
+_REMOTE_IMAGE_PROVIDERS = frozenset(get_args(ImageProvider))
 _REMOTE_AUDIO_MODES = frozenset(get_args(IcLoraAudioMode))
+_REMOTE_PASS_SHAPES = frozenset(get_args(PassShape))
 _REMOTE_CONTROL_TYPES = frozenset(get_args(IcLoraControlType))
-_SAFE_PARAM_NUMBERS = frozenset({"duration", "fps", "startTime"})
+_REMOTE_TILE_SIZES = frozenset(get_args(IcLoraTileSize))
+_SAFE_PARAM_NUMBERS = frozenset({"duration", "fps", "startTime", "tilingOverlap", *_NAG_NUMBER_FIELDS})
 _REMOTE_MODES = frozenset((*get_args(RetakeMode), *get_args(ExtendMode)))
 
 
@@ -73,6 +93,16 @@ class RemoteInputAssetRef(BaseModel):
     assetId: str = Field(min_length=1)
 
 
+class RemoteKeyframe(BaseModel):
+    """One still of a Keyframes run. Reuse puts it back on the timeline."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    assetId: str = Field(min_length=1)
+    frameIndex: int = Field(ge=0)
+    strength: float = Field(ge=0.0, le=1.0)
+
+
 class RemoteTargetResolution(BaseModel):
     """Home Retake/Extend target size. Tier ids stay strings."""
 
@@ -82,12 +112,16 @@ class RemoteTargetResolution(BaseModel):
     height: int = Field(gt=0)
 
 
-class RemoteVideoParams(BaseModel):
-    """T2V/I2V/A2V form and result-meta fields only."""
+class RemoteGenerationParams(BaseModel):
+    """Form and result-meta fields only, for video and text-to-image generations."""
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
     prompt: str | None = None
+    negativePrompt: str | None = None
+    nagScale: int | float | None = None
+    nagAlpha: int | float | None = None
+    nagTau: int | float | None = None
     model: str | None = None
     resolution: str | RemoteTargetResolution | None = None
     duration: int | float | None = None
@@ -95,12 +129,25 @@ class RemoteVideoParams(BaseModel):
     aspectRatio: str | None = None
     promptProvenance: str | None = None
     scale: int | float | None = None
+    # Which saved custom LoRA the run used, so Reuse can select it again. An id, never a path.
+    customLoraId: str | None = None
+    # The LoRA name at run time, so the queue and results show it on a phone.
+    customLoraName: str | None = None
     numFrames: int | None = None
     mode: RetakeMode | ExtendMode | None = None
     startTime: int | float | None = None
     seed: int | None = None
     audioMode: IcLoraAudioMode | None = None
+    passShape: PassShape | None = None
     controlType: IcLoraControlType | None = None
+    # Advanced tiling controls of a recipe, so Reuse restores the same run on the phone.
+    tilingOverlap: float | None = None
+    carryFrames: int | None = None
+    tilingSize: IcLoraTileSize | None = None
+    maxWindowFrames: int | None = None
+    width: int | None = None
+    height: int | None = None
+    provider: ImageProvider | None = None
 
 
 class RemoteVideoInputs(BaseModel):
@@ -112,6 +159,7 @@ class RemoteVideoInputs(BaseModel):
     video: RemoteInputAssetRef | None = None
     image: RemoteInputAssetRef | None = None
     images: list[RemoteInputAssetRef] | None = None
+    keyframes: list[RemoteKeyframe] | None = None
     # Motion Track: coordinates and pacing only, so Reuse can draw the paths again.
     paths: list[MotionPath] | None = None
 
@@ -119,7 +167,7 @@ class RemoteVideoInputs(BaseModel):
 class RemoteGenerationSpec(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    params: RemoteVideoParams = Field(default_factory=RemoteVideoParams)
+    params: RemoteGenerationParams = Field(default_factory=RemoteGenerationParams)
     inputs: RemoteVideoInputs | None = None
 
 
@@ -140,12 +188,14 @@ class RemoteQueueEntry(BaseModel):
     generation: RemoteGeneration
     input_assets: list[RemoteAsset]
     progress: QueueProgress | None = None
+    cancellable: bool = True
+    api_status: ApiActivityStatus | None = None
 
 
 class RemoteQueueSnapshot(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    active: RemoteQueueEntry | None
+    active: list[RemoteQueueEntry] = Field(default_factory=list[RemoteQueueEntry])
     queued: list[RemoteQueueEntry]
     done: list[RemoteQueueEntry] = Field(default_factory=list[RemoteQueueEntry])
     failed: list[RemoteQueueEntry] = Field(default_factory=list[RemoteQueueEntry])
@@ -200,6 +250,8 @@ def to_remote_generation(
         started_at=generation.started_at,
         finished_at=generation.finished_at,
         risk=generation.risk,
+        lane=generation.lane,
+        provider_job_id=generation.provider_job_id,
         outputs=[
             to_remote_asset(asset, signer=signer, device_id=device_id)
             for asset in generation.outputs
@@ -219,6 +271,8 @@ def to_remote_queue_entry(
             for asset in entry.input_assets
         ],
         progress=entry.progress,
+        cancellable=entry.cancellable,
+        api_status=entry.api_status,
     )
 
 
@@ -229,7 +283,6 @@ def to_remote_queue_snapshot(
     device_id: str,
     feature_is_allowed: Callable[[str], bool],
 ) -> RemoteQueueSnapshot:
-    active = snapshot.active
     done = [
         to_remote_queue_entry(entry, signer=signer, device_id=device_id)
         for entry in snapshot.done
@@ -237,11 +290,11 @@ def to_remote_queue_snapshot(
     ]
     visible_done_ids = {entry.generation.id for entry in done}
     return RemoteQueueSnapshot(
-        active=(
-            to_remote_queue_entry(active, signer=signer, device_id=device_id)
-            if active is not None and feature_is_allowed(active.generation.feature)
-            else None
-        ),
+        active=[
+            to_remote_queue_entry(entry, signer=signer, device_id=device_id)
+            for entry in snapshot.active
+            if feature_is_allowed(entry.generation.feature)
+        ],
         queued=[
             to_remote_queue_entry(entry, signer=signer, device_id=device_id)
             for entry in snapshot.queued
@@ -268,10 +321,10 @@ def project_remote_spec(spec: dict[str, JsonValue]) -> RemoteGenerationSpec:
     )
 
 
-def _project_params(value: object) -> RemoteVideoParams:
+def _project_params(value: object) -> RemoteGenerationParams:
     mapping = _string_mapping(value)
     if mapping is None:
-        return RemoteVideoParams()
+        return RemoteGenerationParams()
     strings = {
         key: extracted
         for key in _SAFE_PARAM_STRINGS
@@ -282,8 +335,12 @@ def _project_params(value: object) -> RemoteVideoParams:
         for key in _SAFE_PARAM_NUMBERS
         if (extracted := _optional_number(mapping.get(key))) is not None
     }
-    return RemoteVideoParams(
+    return RemoteGenerationParams(
         prompt=strings.get("prompt"),
+        negativePrompt=strings.get("negativePrompt") or None,
+        nagScale=_non_negative_number(numbers.get("nagScale")),
+        nagAlpha=_non_negative_number(numbers.get("nagAlpha")),
+        nagTau=_non_negative_number(numbers.get("nagTau")),
         model=strings.get("model"),
         resolution=_project_resolution(mapping.get("resolution")),
         duration=numbers.get("duration"),
@@ -291,12 +348,22 @@ def _project_params(value: object) -> RemoteVideoParams:
         aspectRatio=strings.get("aspectRatio"),
         promptProvenance=strings.get("promptProvenance"),
         scale=_project_lora_scale(mapping.get("loras")),
+        customLoraId=_project_custom_lora_id(mapping.get("loras")),
+        customLoraName=_project_custom_lora_name(mapping.get("loras")),
         numFrames=_optional_int(mapping.get("numFrames")),
         mode=_project_mode(strings.get("mode")),
         startTime=_non_negative_number(numbers.get("startTime")),
         seed=_optional_int(mapping.get("seed")),
         audioMode=_project_audio_mode(strings.get("audioMode")),
+        passShape=_project_pass_shape(strings.get("passShape")),
         controlType=_project_control_type(strings.get("controlType")),
+        tilingOverlap=_project_tiling_overlap(numbers.get("tilingOverlap")),
+        carryFrames=_at_least(_optional_int(mapping.get("carryFrames")), MIN_CARRY_FRAMES),
+        tilingSize=_project_tile_size(strings.get("tilingSize")),
+        maxWindowFrames=_at_least(_optional_int(mapping.get("maxWindowFrames")), MIN_WINDOW_FRAMES),
+        width=_positive_int(mapping.get("width")),
+        height=_positive_int(mapping.get("height")),
+        provider=_project_provider(strings.get("provider")),
     )
 
 
@@ -310,6 +377,24 @@ def _project_lora_scale(value: object) -> int | float | None:
     return _optional_number(first.get("scale"))
 
 
+def _project_custom_lora_id(value: object) -> str | None:
+    """``loras[0].customLoraId`` when the run used a saved custom LoRA."""
+    if not isinstance(value, list) or not value:
+        return None
+    first = _string_mapping(cast(list[object], value)[0])
+    return None if first is None else _optional_str(first.get("customLoraId"))
+
+
+def _project_custom_lora_name(value: object) -> str | None:
+    """``loras[0].displayName`` when the run used a saved custom LoRA."""
+    if not isinstance(value, list) or not value:
+        return None
+    first = _string_mapping(cast(list[object], value)[0])
+    if first is None or _optional_str(first.get("customLoraId")) is None:
+        return None
+    return _optional_str(first.get("displayName"))
+
+
 def _project_inputs(value: object) -> RemoteVideoInputs | None:
     mapping = _string_mapping(value)
     if mapping is None:
@@ -320,8 +405,9 @@ def _project_inputs(value: object) -> RemoteVideoInputs | None:
     video = _input_asset_ref(mapping.get("video"))
     image = _input_asset_ref(mapping.get("image"))
     images = _input_asset_refs(mapping.get("images"))
+    keyframes = _keyframes(mapping.get("keyframes"))
     paths = _motion_paths(mapping.get("paths"))
-    if images is None and paths is None and all(
+    if images is None and keyframes is None and paths is None and all(
         ref is None for ref in (start, end, audio, video, image)
     ):
         return None
@@ -332,8 +418,30 @@ def _project_inputs(value: object) -> RemoteVideoInputs | None:
         video=video,
         image=image,
         images=images,
+        keyframes=keyframes,
         paths=paths,
     )
+
+
+def _keyframes(value: object) -> list[RemoteKeyframe] | None:
+    """The stills with frame and strength. One unusable entry drops the list, never a part of it."""
+    if not isinstance(value, list):
+        return None
+    keyframes: list[RemoteKeyframe] = []
+    for item in cast(list[object], value):
+        mapping = _string_mapping(item)
+        ref = None if mapping is None else _input_asset_ref(mapping)
+        frame_index = None if mapping is None else _optional_int(mapping.get("frameIndex"))
+        strength = None if mapping is None else _optional_number(mapping.get("strength"))
+        if ref is None or frame_index is None or strength is None:
+            return None
+        try:
+            keyframes.append(
+                RemoteKeyframe(assetId=ref.assetId, frameIndex=frame_index, strength=float(strength))
+            )
+        except ValidationError:
+            return None
+    return keyframes or None
 
 
 def _motion_paths(value: object) -> list[MotionPath] | None:
@@ -411,9 +519,21 @@ def _project_mode(value: str | None) -> RetakeMode | ExtendMode | None:
     return None
 
 
+def _project_provider(value: str | None) -> ImageProvider | None:
+    if value in _REMOTE_IMAGE_PROVIDERS:
+        return cast(ImageProvider, value)
+    return None
+
+
 def _project_audio_mode(value: str | None) -> IcLoraAudioMode | None:
     if value in _REMOTE_AUDIO_MODES:
         return cast(IcLoraAudioMode, value)
+    return None
+
+
+def _project_pass_shape(value: str | None) -> PassShape | None:
+    if value in _REMOTE_PASS_SHAPES:
+        return cast(PassShape, value)
     return None
 
 
@@ -421,6 +541,24 @@ def _project_control_type(value: str | None) -> IcLoraControlType | None:
     if value in _REMOTE_CONTROL_TYPES:
         return cast(IcLoraControlType, value)
     return None
+
+
+def _project_tile_size(value: str | None) -> IcLoraTileSize | None:
+    if value in _REMOTE_TILE_SIZES:
+        return cast(IcLoraTileSize, value)
+    return None
+
+
+def _project_tiling_overlap(value: int | float | None) -> float | None:
+    if value is None or not MIN_TILE_OVERLAP <= value <= MAX_TILE_OVERLAP:
+        return None
+    return float(value)
+
+
+def _at_least(value: int | None, minimum: int) -> int | None:
+    if value is None or value < minimum:
+        return None
+    return value
 
 
 def _optional_int(value: object) -> int | None:

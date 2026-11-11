@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Literal
+from typing import Final
 
 from api_types import (
     REFERENCE_STILL_FRAME_IDX,
@@ -14,7 +14,14 @@ from api_types import (
     IcLoraSettings,
 )
 from frame_math import compute_num_frames
-from runtime_config.fast_chunking import job_window_count
+from runtime_config.fast_chunking import job_window_count, last_window_frames
+from runtime_config.ic_lora_adaptive_window import (
+    HIGH_RES_CANVAS_PIXELS,
+    AdaptiveRefusal,
+    choose_adaptive_window,
+    resolution_window_cap,
+)
+from runtime_config.ic_lora_auto_carry import price_with_auto_carry
 from runtime_config.ic_lora_decode_window import choose_decode_window
 from runtime_config.ic_lora_chunking import (
     IC_LORA_CHUNK_PIXEL_FRAMES,
@@ -32,28 +39,53 @@ from runtime_config.ic_lora_local_envelope import (
 from runtime_config.ic_lora_loop_fps import DEFAULT_IC_LORA_FPS, resolve_loop_fps
 from runtime_config.ic_lora_stage_mode import IcLoraStageMode, heavy_pass_size
 from runtime_config.ic_lora_tiling import IcLoraTiling, transformer_pass_size
-from runtime_config.measured_cells import is_unmeasured_high_res
-from runtime_config.reject_reasons import IcLoraDroppedReason, JobRiskTier
+from runtime_config.eta import spatial_tile_count
+from runtime_config.budget_admission import (
+    Admission,
+    Admitted,
+    PricedJob,
+    Refused,
+    RiskAllowance,
+    admit,
+    is_clean,
+    priced_job,
+    safer,
+)
+from runtime_config.budget_decision import (
+    IcLoraJobDecision,
+    IcLoraJobLoad,
+    IcLoraJobReject,
+    VideoJobLoad,
+    VideoJobReject,
+)
+from runtime_config.budget_evidence import (
+    Extrapolated,
+    Fitted,
+    GenericCurve,
+    JobShape,
+    PriceEvidence,
+)
+from runtime_config.measured_cells import (
+    is_unmeasured_high_res,
+    is_unmeasured_model,
+)
+from runtime_config.reject_reasons import IcLoraDroppedReason
 from runtime_config.video_job_budget import (
     MPS_SEQUENCE_OVER_MESSAGE,
     VIDEO_JOB_REJECT_ERRORS,
-    UNMEASURED_CELL_MESSAGE,
     VIDEO_JOB_TOO_LARGE,
+    WINDOWED_PLATEAU_GIB_PER_TOKEN,
+    WINDOWED_TWO_WINDOW_GIB_PER_TOKEN,
     BudgetRoute,
-    LoadMode,
     LocalJobFilter,
-    VideoJobLoad,
-    VideoJobReject,
     budget_route,
     decide_load_mode,
     decide_mac_job,
     decide_measured_job,
     estimated_giB,
     reject_message_and_code,
-    risk_for_reject,
-    unmeasured_cell_reject,
-    untested_readout,
     video_tokens,
+    windows_windowed_extra_gib,
 )
 
 # Compat-matrix preview of a Home IC-LoRA job. Home runs entries that skip stage 2 and
@@ -114,9 +146,20 @@ _IC_LORA_TS_PRICED_MAX_TOKENS = 14_880
 _HIGH_RES_TILED_GIB_PER_MPX = 1.75
 _HIGH_RES_TILED_BASE_MPX = 1920 * 1088 / 1e6
 _WINDOWS_TILED_MAX_TILE_SEQ = 14_976
+_WINDOWS_TILED_DECODE_MAX_TILE_SEQ = 24_480
 _WINDOWS_TILED_MAX_FRAMES = 97
 _WINDOWS_TILED_SINGLE_PX = 960 * 512
 _WINDOWS_TILED_DECODE_GIB = 1.30
+_IC_LORA_TILED_DECODE_INTERCEPT_GIB = 5.21
+_IC_LORA_TILED_DECODE_GIB_PER_TOKEN = 2.64e-4
+
+# Adapters trained with reference_downscale_factor = 2 (-ref0.5.safetensors).
+# The reference video is encoded at half spatial resolution ((W/2) x (H/2)),
+# appending 0.25 x video_tokens instead of 1.0 x video_tokens (1.25 x total).
+_HALF_RES_REF_IC_LORAS: Final = frozenset({"video-guide", "motion-track"})
+_HALF_RES_REF_TOKEN_FACTOR: Final = 1.25
+_IC_LORA_HALF_RES_INTERCEPT_GIB: Final = 5.20
+_IC_LORA_HALF_RES_GIB_PER_SEQ_TOKEN: Final = 2.00e-4
 
 
 def _windows_iclora_required_gib(seq: float) -> float:
@@ -124,6 +167,46 @@ def _windows_iclora_required_gib(seq: float) -> float:
         _IC_LORA_FLOOR_GIB,
         _IC_LORA_RESERVED_INTERCEPT_GIB + _IC_LORA_RESERVED_GIB_PER_SEQ_TOKEN * seq,
     )
+
+
+def _windows_half_res_ref_required_gib(
+    seq: float, *, windows: int, canvas_window_tokens: float
+) -> float:
+    base = max(
+        _IC_LORA_FLOOR_GIB,
+        _IC_LORA_HALF_RES_INTERCEPT_GIB + _IC_LORA_HALF_RES_GIB_PER_SEQ_TOKEN * seq,
+    )
+    return base + windows_windowed_extra_gib(windows, canvas_window_tokens)
+
+
+def _windows_tiled_decode_base_gib(canvas_tokens: float) -> float:
+    return max(
+        _IC_LORA_FLOOR_GIB,
+        _IC_LORA_TILED_DECODE_INTERCEPT_GIB
+        + _IC_LORA_TILED_DECODE_GIB_PER_TOKEN * canvas_tokens,
+    )
+
+
+def _windows_tiled_canvas_decode_gib(
+    stage1_width: int,
+    stage1_height: int,
+    frames: int,
+    *,
+    window_frames: int,
+    windows: int,
+    carry_frames: int,
+) -> float:
+    """Full-canvas DiffVAE decode peak plus multi-window accumulation."""
+    can_t1 = video_tokens(stage1_height, stage1_width, window_frames)
+    dec_t1 = _windows_tiled_decode_base_gib(can_t1)
+    if windows == 1:
+        return dec_t1
+    if windows == 2:
+        last_frames = last_window_frames(frames, window_frames, carry_frames)
+        can_t2 = video_tokens(stage1_height, stage1_width, last_frames)
+        dec_t2 = _windows_tiled_decode_base_gib(can_t2)
+        return max(dec_t1, dec_t2 + WINDOWED_TWO_WINDOW_GIB_PER_TOKEN * can_t1)
+    return dec_t1 + WINDOWED_PLATEAU_GIB_PER_TOKEN * can_t1
 
 
 # Mac (Darwin) IC-LoRA stream requirement, Mac-native fit (no transfer from CUDA):
@@ -241,24 +324,6 @@ _MAC_CHUNKED_TILED_MAX_TILE_SEQ = 13_260
 # boundary rather than tuning it.
 _IC_LORA_FULL_HEADROOM_GIB = 7.0
 
-# Two-stage is offered where it is measured and refused past the token ceiling.
-# A token rule, not a duration rule: a long small-canvas job can price while an
-# unmeasured large-canvas short job must not slip under a clock. It bites opt-in
-# two-stage and Layout to Render; single-stage never reaches it.
-TWO_STAGE_OVER_MEASURED_MESSAGE = (
-    "This two-stage clip is longer than we have measured at this photo size. "
-    "Try a shorter clip, a smaller photo, or single-stage for the full length."
-)
-# Mac two-stage past the measured cell refuses, not fenced by the Windows token
-# range: both two-stage layouts inside the L2R cell are priced
-# (``_mac_two_stage_priced`` owns that cell), so past-1080p, tiled, and
-# long unchunked small-canvas still refuse here rather than price on chords that never saw
-# them. The picker keeps the durations selectable with this refusal attached;
-# generate/preflight 422 with it.
-MAC_TWO_STAGE_UNMEASURED_MESSAGE = (
-    "Two-stage upscaling isn't measured on Macs yet, so it stays off here. "
-    "Use single-stage for the full length."
-)
 # Long unchunked tiled Refine past 720p refuses on every route: the DiffVAE decode
 # cannot fit its minimum tile (stage 4 needs 17.2 GiB vs 11.7 usable at
 # 1920x1088x241) and the pipeline answers 400 before denoise starts. Canvas pricing
@@ -271,7 +336,12 @@ REFINE_DECODE_FLOOR_MESSAGE = (
     "This high-resolution clip is too large for this GPU's decoder to finish. "
     "Try a shorter clip or a lower resolution."
 )
-_REFINE_DECODE_FENCE_PX = 1280 * 704
+# The maximum chunk length of an adaptive LoRA is above the longest chunk this resolution can
+# decode. The run never takes a shorter chunk in its place, so the choice stays the user's.
+WINDOW_OVER_CAP_MESSAGE = (
+    "This resolution cannot run a chunk that long. "
+    "Choose a shorter maximum chunk length, or Auto."
+)
 _REFINE_DECODE_FENCE_FRAMES = 97
 
 
@@ -280,9 +350,12 @@ def two_stage_exceeds_priced(
 ) -> bool:
     """True when a two-stage job runs past the priced token range.
 
-    Single source for the rule: decide_ic_lora_job calls it as its first
-    pre-check, with the window length for a chunked job. A token ceiling needs no
-    frame-rate grid, so there is no fps argument at all.
+    A token rule, not a duration rule: a long small-canvas job can price while an
+    unmeasured large-canvas short job must not slip under a clock. It bites opt-in
+    two-stage and Layout to Render; single-stage never reaches it. The verdict is
+    still priced on the curve and only tagged extrapolated, with the window length
+    for a chunked job. A token ceiling needs no frame-rate grid, so there is no fps
+    argument at all.
     """
     if stage_mode is IcLoraStageMode.SINGLE_STAGE:
         return False
@@ -314,7 +387,7 @@ def refine_decode_floor_exceeded(
         return False
     if window_frames <= _REFINE_DECODE_FENCE_FRAMES:
         return False
-    return stage1_width * stage1_height > _REFINE_DECODE_FENCE_PX
+    return stage1_width * stage1_height > HIGH_RES_CANVAS_PIXELS
 
 
 # List-time duration filter has no user image. skip_stage_2: 9:16 768×1280 through
@@ -325,34 +398,6 @@ _CATALOG_PREVIEW_SKIP_STAGE2_WIDTH = 768
 _CATALOG_PREVIEW_SKIP_STAGE2_HEIGHT = 1280
 _CATALOG_PREVIEW_TWO_STAGE_WIDTH = 1920
 _CATALOG_PREVIEW_TWO_STAGE_HEIGHT = 1088
-
-@dataclass(frozen=True, slots=True)
-class IcLoraJobLoad:
-    mode: LoadMode
-    seq: float
-    full_gib: float
-    stream_gib: float
-    # Window length when the job runs chunked, else None. The pipeline runs this value.
-    chunk_pixel_frames: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class IcLoraJobReject:
-    reason: Literal["spatial", "unsupported", "two_stage_over_measured", "mac_two_stage_unmeasured", "refine_decode_floor"]
-    seq: float
-    full_gib: float
-    stream_gib: float
-    # Uniform with VideoJobReject; always None (these verdicts never compare
-    # RAM — spatial is a canvas fence, unsupported short-circuits first, and
-    # the token-ceiling, Mac-two-stage and decode-floor fences refuse before
-    # any curve runs).
-    required_ram_bytes: int | None = None
-    # Window ``price()`` tried. A reckless downgrade runs this window;
-    # None would be one unchunked pass.
-    chunk_pixel_frames: int | None = None
-
-
-IcLoraJobDecision = IcLoraJobLoad | IcLoraJobReject | VideoJobReject
 
 
 def ic_lora_sequence_tokens(width: int, height: int, frames: int) -> float:
@@ -367,6 +412,7 @@ def _heaviest_pass_tokens(
     frames: int,
     stills: int,
     tiling: IcLoraTiling | None,
+    ic_lora_id: str | None = None,
 ) -> float:
     """Tokens of the heaviest pass of the job.
 
@@ -377,7 +423,8 @@ def _heaviest_pass_tokens(
     takes no still.
 
     A tiled job (single stage) runs the transformer on one tile at a time. Its pass is the
-    tile, with the reference cropped to the same tile.
+    tile, with the reference cropped to the same tile. Half-res reference adapters
+    (``reference_downscale_factor = 2``) append ``0.25 * video_tokens`` instead of ``1.0 *``.
     """
     width, height = transformer_pass_size(*heavy_pass_size(stage_mode, stage1_width, stage1_height), tiling)
     if stage_mode is IcLoraStageMode.STAGE_1_LORA:
@@ -386,6 +433,8 @@ def _heaviest_pass_tokens(
             ic_lora_sequence_tokens(stage1_width, stage1_height, frames),
         )
     still_tokens = stills * (height / 32.0) * (width / 32.0)
+    if ic_lora_id in _HALF_RES_REF_IC_LORAS:
+        return video_tokens(height, width, frames) * _HALF_RES_REF_TOKEN_FACTOR + still_tokens
     return ic_lora_sequence_tokens(width, height, frames) + still_tokens
 
 
@@ -403,10 +452,8 @@ def _mac_two_stage_priced(
 
     The chords price both two-stage layouts through the L2R cell (unchunked or
     chunked per window), untiled, with at most the measured look still. Anything
-    else two-stage on Mac is unmeasured and refuses. Single-stage never reaches
-    this predicate (the call site only invokes it past the single-stage check),
-    but the guard stays so a mis-called single-stage job refuses rather than
-    prices on the wrong curve.
+    else two-stage on Mac (past 1080p, tiled, long unchunked small canvas) still
+    prices on the chord, tagged extrapolated.
     """
     if route != "mac_measured":
         return False
@@ -513,25 +560,31 @@ def _windows_tiled_priced(
     window_frames: int,
     stills: int,
     tiling: IcLoraTiling | None,
+    ic_lora_id: str | None = None,
 ) -> bool:
-    """True when a Windows tiled job sits inside the measured one-window tile cell.
+    """True when a Windows tiled job sits inside the measured tile-pass cell.
 
     The tile-pass seq fence counts stills (a still pushes a tile at the fence
     back to canvas pricing). Anything outside the cell prices at the canvas.
     """
+    _ = window
     if route != "windows_measured":
         return False
     if stage_mode is not IcLoraStageMode.SINGLE_STAGE:
         return False
     if tiling is None:
         return False
-    if window is not None:
-        return False
     if window_frames > _WINDOWS_TILED_MAX_FRAMES:
         return False
     return (
         _heaviest_pass_tokens(
-            stage_mode, stage1_width, stage1_height, window_frames, stills, tiling
+            stage_mode,
+            stage1_width,
+            stage1_height,
+            window_frames,
+            stills,
+            tiling,
+            ic_lora_id=ic_lora_id,
         )
         <= _WINDOWS_TILED_MAX_TILE_SEQ
     )
@@ -557,8 +610,73 @@ def decide_ic_lora_job(
     ic_lora_id: str | None = None,
     stills: int = 0,
     tiling: IcLoraTiling | None = None,
-) -> IcLoraJobDecision:
-    """422 definite-over jobs; per-job stream when full will not fit; the chunk window.
+    allowance: RiskAllowance | None = None,
+) -> Admission:
+    """Price the IC-LoRA job, then admit it under the allowance.
+
+    ``allowance=None`` follows the filter's live mode (request-time gates);
+    executors pass the stored allowance so a mode flip never re-gates a queued job.
+    """
+    return admit(
+        price_ic_lora_job(
+            stage1_width,
+            stage1_height,
+            frames,
+            stage_mode=stage_mode,
+            job_filter=job_filter,
+            ic_lora_id=ic_lora_id,
+            stills=stills,
+            tiling=tiling,
+        ),
+        allowance if allowance is not None else RiskAllowance.for_mode(job_filter.budget_mode),
+    )
+
+
+def price_ic_lora_job(
+    stage1_width: int,
+    stage1_height: int,
+    frames: int,
+    *,
+    stage_mode: IcLoraStageMode,
+    job_filter: LocalJobFilter,
+    ic_lora_id: str | None,
+    stills: int,
+    tiling: IcLoraTiling | None,
+) -> PricedJob:
+    """The priced verdict and its chunk window. On Auto carry, it also picks the carry.
+
+    ``PricedJob.carry_frames`` carries that pick to the pipeline (``ic_lora_auto_carry``).
+    """
+
+    def price(tiling: IcLoraTiling | None) -> PricedJob:
+        return _price_ic_lora_carry(
+            stage1_width,
+            stage1_height,
+            frames,
+            stage_mode=stage_mode,
+            job_filter=job_filter,
+            ic_lora_id=ic_lora_id,
+            stills=stills,
+            tiling=tiling,
+        )
+
+    if tiling is not None and tiling.auto_carry:
+        return price_with_auto_carry(tiling, price)
+    return price(tiling)
+
+
+def _price_ic_lora_carry(
+    stage1_width: int,
+    stage1_height: int,
+    frames: int,
+    *,
+    stage_mode: IcLoraStageMode,
+    job_filter: LocalJobFilter,
+    ic_lora_id: str | None,
+    stills: int,
+    tiling: IcLoraTiling | None,
+) -> PricedJob:
+    """The priced verdict and its chunk window, for the carry of ``tiling``.
 
     ``stage_mode`` sets the heaviest pass (``heavy_pass_size``). That pass sets the priced
     token count, the chunk rule and the spatial cap. The spatial cap checks the output
@@ -567,9 +685,99 @@ def decide_ic_lora_job(
     single-stage.
 
     This is the one place that decides chunking. A job chunks when the size and token
-    rule says so, or when it may chunk and does not fit unchunked.
+    rule says so, or when it may chunk and the unchunked price is not clean (over budget,
+    or extrapolated) and the chunked price is safer (``safer``).
     ``IcLoraJobLoad.chunk_pixel_frames`` carries the decision to the pipeline. A chunked
-    job holds one window at a time, so it is priced (and fenced) as one window.
+    job holds one window at a time, so it is priced (and tagged) as one window.
+    """
+    route = budget_route("iclora", job_filter.profile)
+
+    def price(window: int | None, refusal: AdaptiveRefusal | None = None) -> PricedJob:
+        return _price_ic_lora_window(
+            stage1_width,
+            stage1_height,
+            frames,
+            window=window,
+            stage_mode=stage_mode,
+            job_filter=job_filter,
+            ic_lora_id=ic_lora_id,
+            stills=stills,
+            tiling=tiling,
+            refusal=refusal,
+        )
+
+    adaptive_tiling = tiling if tiling is not None and tiling.adaptive_window else None
+    refusal: AdaptiveRefusal | None = None
+    if adaptive_tiling is not None:
+        # Priced before the job starts, longest first. No generation runs to choose it.
+        def safest(candidates: list[int | None]) -> int | None:
+            # ``safer`` keeps the first on a tie, so an equal price keeps the longer window.
+            best_window, best = candidates[0], price(candidates[0])
+            for candidate in candidates[1:]:
+                priced = price(candidate)
+                kept = safer(best, priced)
+                if kept is priced:
+                    best_window, best = candidate, priced
+            return best_window
+
+        chosen = choose_adaptive_window(
+            frames,
+            tiling=adaptive_tiling,
+            cap=resolution_window_cap(stage1_width, stage1_height),
+            carry=ic_lora_carry_frames(adaptive_tiling),
+            pick=safest,
+        )
+        window, refusal = chosen.window, chosen.refusal
+    else:
+        window = ic_lora_chunk_pixel_frames(
+            stage1_width, stage1_height, frames, stage_mode=stage_mode, tiling=tiling
+        )
+    total_vram_gib = job_filter.budget.total_vram_gib
+    if (
+        refusal is None
+        and route == "windows_measured"
+        and _is_high_res_tiled(route, stage_mode, tiling)
+        and total_vram_gib is not None
+    ):
+        # The decode of the job's last window must fit, or the pipeline refuses after the denoise.
+        decode_choice = choose_decode_window(
+            frames=frames,
+            window=window,
+            width=stage1_width,
+            height=stage1_height,
+            total_vram_gib=total_vram_gib,
+            carry_frames=ic_lora_carry_frames(tiling),
+        )
+        window = decode_choice.window
+        refusal = None if decode_choice.fits else "refine_decode_floor"
+
+    first = price(window, refusal)
+    if (
+        adaptive_tiling is None
+        and window is None
+        and not is_clean(first)
+        and ic_lora_may_chunk(stage1_width, stage1_height, frames, stage_mode=stage_mode, tiling=tiling)
+    ):
+        # Without this, a clip just under the token rule is priced whole and a longer
+        # clip is priced as one window, so the longer clip would be cheaper.
+        return safer(first, price(IC_LORA_CHUNK_PIXEL_FRAMES))
+    return first
+
+
+def _price_ic_lora_window(
+    stage1_width: int,
+    stage1_height: int,
+    frames: int,
+    *,
+    window: int | None,
+    stage_mode: IcLoraStageMode,
+    job_filter: LocalJobFilter,
+    ic_lora_id: str | None,
+    stills: int,
+    tiling: IcLoraTiling | None,
+    refusal: AdaptiveRefusal | None = None,
+) -> PricedJob:
+    """Hard walls, the route's curve, then the evidence tag on this window.
 
     ``stills`` is the number of reference stills. Each adds one latent frame of tokens to
     each window, so a chunked job pays for it once per window.
@@ -587,30 +795,41 @@ def decide_ic_lora_job(
     measured); long unchunked Refine past 720p refuses outright at the decode
     floor (``refine_decode_floor_exceeded``).
 
-    Per window, in order: unsupported, the spatial cap, the two-stage token fence, the
-    Mac two-stage refusal (unmeasured two-stage shapes only — both two-stage
-    layouts inside the L2R cell price on its chords), then the platform curve. Windows prices the measured
-    reserved line (``_windows_iclora_required_gib``) against min(total, free) with the
-    feature RAM floor. Darwin prices the Mac-native curves (single-stage on
-    stage-1 tokens, priced two-stage on the heaviest pass), with the
-    ingredients adder keyed on ``ic_lora_id``. Everything else keeps the legacy generic
-    curve. The full-vs-stream pick stays conservative (full fits clean but runs
-    no faster, so streaming 8s+ costs nothing).
+    Hard walls, in order: unsupported, the spatial cap, the decode floor. Then the
+    platform curve. Windows prices the measured reserved line
+    (``_windows_iclora_required_gib``) against min(total, free) with the feature RAM
+    floor. Darwin prices the Mac-native curves (single-stage on stage-1 tokens,
+    two-stage on the heaviest pass), with the ingredients adder keyed on
+    ``ic_lora_id``. Everything else keeps the legacy generic curve. The full-vs-stream
+    pick stays conservative (full fits clean but runs no faster, so streaming 8s+
+    costs nothing). The evidence tag never refuses: a 1440p or 4K cell no run covers,
+    a two-stage window past the priced token range, and a Mac two-stage shape outside
+    the measured cell are priced verdicts tagged ``Extrapolated``.
     """
     token_width, token_height = heavy_pass_size(stage_mode, stage1_width, stage1_height)
     route = budget_route("iclora", job_filter.profile)
-    # Set below, once the window is chosen: no window fits the decode of the job's last window.
-    decode_no_fit = False
-
-    def price(window: int | None) -> IcLoraJobDecision:
-        def stamped(decision: IcLoraJobDecision) -> IcLoraJobDecision:
-            # Loads already carry the window. Rejects must too: a reckless
-            # downgrade runs this window, and None is one unchunked pass.
-            if isinstance(decision, IcLoraJobLoad):
-                return decision
-            return replace(decision, chunk_pixel_frames=window)
-        window_frames = frames if window is None else window
-        windows_tiled = _windows_tiled_priced(
+    window_frames = frames if window is None else window
+    carry_frames = ic_lora_carry_frames(tiling)
+    windows = job_window_count(frames, window, carry_frames)
+    windows_tiled = _windows_tiled_priced(
+        route=route,
+        stage_mode=stage_mode,
+        stage1_width=stage1_width,
+        stage1_height=stage1_height,
+        window=window,
+        window_frames=window_frames,
+        stills=stills,
+        tiling=tiling,
+        ic_lora_id=ic_lora_id,
+    )
+    high_res_tiled = _is_high_res_tiled(route, stage_mode, tiling)
+    canvas_mpx = stage1_width * stage1_height / 1e6
+    priced_tiling = (
+        tiling
+        if route == "legacy"
+        or windows_tiled
+        or high_res_tiled
+        or _mac_tile_priced(
             route=route,
             stage_mode=stage_mode,
             stage1_width=stage1_width,
@@ -620,78 +839,136 @@ def decide_ic_lora_job(
             stills=stills,
             tiling=tiling,
         )
-        high_res_tiled = _is_high_res_tiled(route, stage_mode, tiling)
-        canvas_mpx = stage1_width * stage1_height / 1e6
-        priced_tiling = (
-            tiling
-            if route == "legacy"
-            or windows_tiled
-            or high_res_tiled
-            or _mac_tile_priced(
-                route=route,
-                stage_mode=stage_mode,
-                stage1_width=stage1_width,
-                stage1_height=stage1_height,
-                window=window,
-                window_frames=window_frames,
-                stills=stills,
-                tiling=tiling,
-            )
-            else None
-        )
-        seq = _heaviest_pass_tokens(
-            stage_mode, stage1_width, stage1_height, window_frames, stills, priced_tiling
-        )
-        full_gib = estimated_giB("full_models_loading", seq)
-        stream_gib = estimated_giB("streaming_models_loading", seq)
+        else None
+    )
+    seq = _heaviest_pass_tokens(
+        stage_mode,
+        stage1_width,
+        stage1_height,
+        window_frames,
+        stills,
+        priced_tiling,
+        ic_lora_id=ic_lora_id,
+    )
+    full_gib = estimated_giB("full_models_loading", seq)
+    stream_gib = estimated_giB("streaming_models_loading", seq)
 
-        if job_filter.profile.process_mode == "unsupported":
-            return stamped(IcLoraJobReject(reason="unsupported", seq=seq, full_gib=full_gib, stream_gib=stream_gib))
-        # Spatial before the fences: no clip length passes an over-cap canvas, so
-        # "try a shorter clip" would be the wrong advice.
-        if over_spatial_cap(token_width, token_height, tiling):
-            return stamped(IcLoraJobReject(reason="spatial", seq=seq, full_gib=full_gib, stream_gib=stream_gib))
-        if two_stage_exceeds_priced(
+    evidence: PriceEvidence
+    if is_unmeasured_high_res(
+        "iclora",
+        route,
+        token_width,
+        token_height,
+        windows=windows,
+        ic_lora_id=ic_lora_id,
+    ):
+        evidence = Extrapolated(basis="high_res_cell")
+    elif two_stage_exceeds_priced(
+        stage_mode=stage_mode,
+        stage1_width=stage1_width,
+        stage1_height=stage1_height,
+        frames=window_frames,
+    ):
+        evidence = Extrapolated(basis="two_stage_range")
+    elif (
+        route == "mac_measured"
+        and stage_mode is not IcLoraStageMode.SINGLE_STAGE
+        and not _mac_two_stage_priced(
+            route=route,
             stage_mode=stage_mode,
             stage1_width=stage1_width,
             stage1_height=stage1_height,
-            frames=window_frames,
-        ):
-            return stamped(IcLoraJobReject(
-                reason="two_stage_over_measured", seq=seq, full_gib=full_gib, stream_gib=stream_gib
-            ))
-        if refine_decode_floor_exceeded(
-            stage1_width=stage1_width,
-            stage1_height=stage1_height,
-            window=window,
             window_frames=window_frames,
+            stills=stills,
             tiling=tiling,
-        ):
-            return stamped(IcLoraJobReject(
-                reason="refine_decode_floor", seq=seq, full_gib=full_gib, stream_gib=stream_gib
-            ))
-        if decode_no_fit:
-            return stamped(IcLoraJobReject(
-                reason="refine_decode_floor", seq=seq, full_gib=full_gib, stream_gib=stream_gib
-            ))
-        if (
-            stage_mode is not IcLoraStageMode.SINGLE_STAGE
-            and route == "mac_measured"
-            and not _mac_two_stage_priced(
-                route=route,
-                stage_mode=stage_mode,
-                stage1_width=stage1_width,
-                stage1_height=stage1_height,
-                window_frames=window_frames,
-                stills=stills,
-                tiling=tiling,
-            )
-        ):
-            return stamped(IcLoraJobReject(
-                reason="mac_two_stage_unmeasured", seq=seq, full_gib=full_gib, stream_gib=stream_gib
-            ))
+        )
+    ):
+        evidence = Extrapolated(basis="mac_two_stage_cell")
+    elif route == "legacy":
+        evidence = GenericCurve()
+    elif is_unmeasured_model(job_filter.profile.model_id):
+        evidence = Extrapolated(basis="unmeasured_model")
+    else:
+        evidence = Fitted()
 
-        if route == "windows_measured":
+    def priced(decision: IcLoraJobDecision) -> PricedJob:
+        # Rejects carry the window too: an over bet runs this window, and None is
+        # one unchunked pass.
+        if not isinstance(decision, IcLoraJobLoad):
+            decision = replace(decision, chunk_pixel_frames=window)
+        return priced_job(
+            "iclora",
+            decision,
+            evidence,
+            JobShape(
+                feature="iclora",
+                model_id=job_filter.profile.model_id or "",
+                adapter_id=ic_lora_id or "",
+                stage_mode=stage_mode.value,
+                tiled=tiling is not None,
+                chunked=window is not None,
+                seq=decision.seq,
+                canvas_px=token_width * token_height,
+                windows=windows,
+                tiles=spatial_tile_count(stage1_width, stage1_height, tiling),
+            ),
+            job_filter=job_filter,
+        )
+
+    if job_filter.profile.process_mode == "unsupported":
+        return priced(IcLoraJobReject(reason="unsupported", seq=seq, full_gib=full_gib, stream_gib=stream_gib))
+    # Spatial before the decode floor: no clip length passes an over-cap canvas, so
+    # "try a shorter clip" would be the wrong advice.
+    if over_spatial_cap(token_width, token_height, tiling):
+        return priced(IcLoraJobReject(reason="spatial", seq=seq, full_gib=full_gib, stream_gib=stream_gib))
+    if refine_decode_floor_exceeded(
+        stage1_width=stage1_width,
+        stage1_height=stage1_height,
+        window=window,
+        window_frames=window_frames,
+        tiling=tiling,
+    ):
+        return priced(IcLoraJobReject(
+            reason="refine_decode_floor", seq=seq, full_gib=full_gib, stream_gib=stream_gib
+        ))
+    if refusal is not None:
+        return priced(IcLoraJobReject(reason=refusal, seq=seq, full_gib=full_gib, stream_gib=stream_gib))
+
+    if route == "windows_measured":
+        if high_res_tiled and seq <= _WINDOWS_TILED_DECODE_MAX_TILE_SEQ:
+            required_gib = _windows_tiled_canvas_decode_gib(
+                stage1_width,
+                stage1_height,
+                frames,
+                window_frames=window_frames,
+                windows=windows,
+                carry_frames=carry_frames,
+            )
+        elif windows_tiled and window is not None:
+            required_gib = max(
+                _windows_iclora_required_gib(seq),
+                _windows_tiled_canvas_decode_gib(
+                    stage1_width,
+                    stage1_height,
+                    frames,
+                    window_frames=window_frames,
+                    windows=windows,
+                    carry_frames=carry_frames,
+                ),
+            )
+        elif (
+            stage_mode is IcLoraStageMode.SINGLE_STAGE
+            and tiling is None
+            and ic_lora_id in _HALF_RES_REF_IC_LORAS
+        ):
+            required_gib = _windows_half_res_ref_required_gib(
+                seq,
+                windows=windows,
+                canvas_window_tokens=video_tokens(
+                    stage1_height, stage1_width, window_frames
+                ),
+            )
+        else:
             required_gib = _windows_iclora_required_gib(seq)
             if high_res_tiled:
                 required_gib += _HIGH_RES_TILED_GIB_PER_MPX * canvas_mpx
@@ -703,106 +980,63 @@ def decide_ic_lora_job(
                 and window_frames > _WINDOWS_TILED_MAX_FRAMES
             ):
                 required_gib += _WINDOWS_TILED_DECODE_GIB
-            decision: VideoJobLoad | VideoJobReject = decide_measured_job(
-                required_gib=required_gib,
-                required_ram_bytes=job_filter.profile.windows_iclora_required_ram_bytes,
-                seq=seq,
-                full_headroom_gib=_IC_LORA_FULL_HEADROOM_GIB,
-                job_filter=job_filter,
-                force_stream=windows_tiled or high_res_tiled,
+        decision: VideoJobLoad | VideoJobReject = decide_measured_job(
+            required_gib=required_gib,
+            required_ram_bytes=job_filter.profile.windows_iclora_required_ram_bytes,
+            seq=seq,
+            full_headroom_gib=_IC_LORA_FULL_HEADROOM_GIB,
+            job_filter=job_filter,
+            force_stream=windows_tiled or high_res_tiled,
+        )
+    elif route == "mac_measured":
+        # The single-stage curve was fitted on stage-1 tokens; the heaviest
+        # pass of a single-stage job is twice that. The two-stage chord was
+        # fitted on the heaviest pass directly; a two-stage shape outside its
+        # cell prices on the same chord, tagged extrapolated above.
+        if high_res_tiled:
+            # Past the measured 1080p flat pass, the canvas term grows with the pixels.
+            stream_gib = _MAC_CHUNKED_TILED_FLAT_GIB + _HIGH_RES_TILED_GIB_PER_MPX * max(
+                0.0, canvas_mpx - _HIGH_RES_TILED_BASE_MPX
             )
-        elif route == "mac_measured":
-            # The single-stage curve was fitted on stage-1 tokens; the heaviest
-            # pass of a single-stage job is twice that. The two-stage chord was
-            # fitted on the heaviest pass directly; the refusal above fenced out
-            # everything past its cell, so only priced two-stage reaches here.
-            if high_res_tiled:
-                # Past the measured 1080p flat pass, the canvas term grows with the pixels.
-                stream_gib = _MAC_CHUNKED_TILED_FLAT_GIB + _HIGH_RES_TILED_GIB_PER_MPX * max(
-                    0.0, canvas_mpx - _HIGH_RES_TILED_BASE_MPX
-                )
-            elif stage_mode is IcLoraStageMode.SINGLE_STAGE:
-                if _mac_chunked_tiled_flat(
-                    route=route,
-                    stage_mode=stage_mode,
-                    stage1_width=stage1_width,
-                    stage1_height=stage1_height,
-                    frames=frames,
-                    window=window,
-                    window_frames=window_frames,
-                    stills=stills,
-                    tiling=tiling,
-                ):
-                    stream_gib = _MAC_CHUNKED_TILED_FLAT_GIB
-                else:
-                    stream_gib = _mac_iclora_stream_required_gib(seq / 2.0, ic_lora_id)
+        elif stage_mode is IcLoraStageMode.SINGLE_STAGE:
+            if _mac_chunked_tiled_flat(
+                route=route,
+                stage_mode=stage_mode,
+                stage1_width=stage1_width,
+                stage1_height=stage1_height,
+                frames=frames,
+                window=window,
+                window_frames=window_frames,
+                stills=stills,
+                tiling=tiling,
+            ):
+                stream_gib = _MAC_CHUNKED_TILED_FLAT_GIB
             else:
-                stream_gib = _mac_iclora_two_stage_required_gib(seq)
-            decision = decide_mac_job(
-                seq,
-                stream_gib,
-                job_filter=job_filter,
-            )
+                stream_gib = _mac_iclora_stream_required_gib(seq / 2.0, ic_lora_id)
         else:
-            decision = decide_load_mode(
-                seq,
-                memory_gb=job_filter.budget.memory_gb,
-                process_mode=job_filter.profile.process_mode,
-                darwin=job_filter.profile.darwin,
-                full_headroom_gib=_IC_LORA_FULL_HEADROOM_GIB,
-            )
-        if isinstance(decision, VideoJobReject):
-            return stamped(decision)
-        return IcLoraJobLoad(
-            mode=decision.mode,
-            seq=decision.seq,
-            full_gib=decision.full_gib,
-            stream_gib=decision.stream_gib,
-            chunk_pixel_frames=window,
+            stream_gib = _mac_iclora_two_stage_required_gib(seq)
+        decision = decide_mac_job(
+            seq,
+            stream_gib,
+            job_filter=job_filter,
         )
-
-    window = ic_lora_chunk_pixel_frames(
-        stage1_width, stage1_height, frames, stage_mode=stage_mode, tiling=tiling
-    )
-    total_vram_gib = job_filter.budget.total_vram_gib
-    if route == "windows_measured" and _is_high_res_tiled(route, stage_mode, tiling) and total_vram_gib is not None:
-        # The decode of the job's last window must fit, or the pipeline refuses after the denoise.
-        decode_choice = choose_decode_window(
-            frames=frames,
-            window=window,
-            width=stage1_width,
-            height=stage1_height,
-            total_vram_gib=total_vram_gib,
-            carry_frames=ic_lora_carry_frames(tiling),
+    else:
+        decision = decide_load_mode(
+            seq,
+            memory_gb=job_filter.budget.memory_gb,
+            process_mode=job_filter.profile.process_mode,
+            darwin=job_filter.profile.darwin,
+            full_headroom_gib=_IC_LORA_FULL_HEADROOM_GIB,
         )
-        window = decode_choice.window
-        decode_no_fit = not decode_choice.fits
-
-    def gated(verdict: IcLoraJobDecision) -> IcLoraJobDecision:
-        if isinstance(verdict, IcLoraJobLoad) and is_unmeasured_high_res(
-            "iclora",
-            route,
-            token_width,
-            token_height,
-            windows=job_window_count(
-                frames, verdict.chunk_pixel_frames, ic_lora_carry_frames(tiling)
-            ),
-            ic_lora_id=ic_lora_id,
-        ):
-            return unmeasured_cell_reject(verdict)
-        return verdict
-
-    decision = price(window)
-    if (
-        window is None
-        and isinstance(decision, VideoJobReject)
-        and decision.reason == "stream_over"
-        and ic_lora_may_chunk(stage1_width, stage1_height, frames, stage_mode=stage_mode, tiling=tiling)
-    ):
-        # Without this, a clip just under the token rule is priced whole and a longer
-        # clip is priced as one window, so the longer clip would be cheaper.
-        return gated(price(IC_LORA_CHUNK_PIXEL_FRAMES))
-    return gated(decision)
+    if isinstance(decision, VideoJobReject):
+        return priced(decision)
+    return priced(IcLoraJobLoad(
+        mode=decision.mode,
+        seq=decision.seq,
+        full_gib=decision.full_gib,
+        stream_gib=decision.stream_gib,
+        chunk_pixel_frames=window,
+    ))
 
 
 def catalog_preview_stage1(settings: IcLoraSettings) -> tuple[int, int]:
@@ -841,33 +1075,21 @@ def catalog_preview_stills(item: IcLoraCatalogItem) -> int:
 # fixed-copy reason must add a branch there, or it falls through to the
 # shared builder and prints figures it never compared.
 _FIXED_COPY_REASONS: frozenset[IcLoraDroppedReason] = frozenset(
-    {"spatial", "unsupported", "two_stage_over_measured", "mac_two_stage_unmeasured", "refine_decode_floor", "mps_sequence_over"}
+    {"spatial", "unsupported", "refine_decode_floor", "window_over_cap", "mps_sequence_over"}
 )
-
-
-def iclora_drop_risk_tier(reason: IcLoraDroppedReason) -> JobRiskTier | None:
-    """Risk tier for an IC-LoRA duration drop. None when a hard fence or
-    unsupported: those never allow-with-warning in any mode."""
-    if reason == "stream_over" or reason == "ram_shortfall":
-        return "over"
-    if reason in ("two_stage_over_measured", "mac_two_stage_unmeasured", "unmeasured_cell"):
-        return "unmeasured"
-    # spatial, refine_decode_floor, unsupported, mps_sequence_over
-    return None
 
 
 @dataclass(frozen=True, slots=True)
 class IcLoraDurationOutcome:
-    """Per-duration verdicts: kept plus why each dropped duration died."""
+    """Per-duration admissions in option order, so list-time drops message
+    without re-deciding."""
 
-    kept: list[int]
-    rejected: dict[int, IcLoraDroppedReason]
-    # Full decisions for dropped durations, so list-time drops message without
-    # re-deciding. Fixed-copy verdicts (spatial, fences, unsupported) carry
-    # fixed messages instead — never print a number the budget did not compare.
-    rejects: dict[int, VideoJobReject | IcLoraJobReject] = field(
-        default_factory=dict[int, VideoJobReject | IcLoraJobReject]
-    )
+    admitted: dict[int, Admitted] = field(default_factory=dict[int, Admitted])
+    refused: dict[int, Refused] = field(default_factory=dict[int, Refused])
+
+    @property
+    def kept(self) -> list[int]:
+        return list(self.admitted)
 
 
 def decide_ic_lora_durations(
@@ -882,19 +1104,17 @@ def decide_ic_lora_durations(
     stills: int = 0,
     tiling: IcLoraTiling | None = None,
 ) -> IcLoraDurationOutcome:
-    """Decide every duration with one decide call each; the token-ceiling fence rides inside it.
+    """Admit every duration with one decide call each, under the live mode.
 
     ``stage_mode``, ``stills`` and ``tiling`` must be what the pipeline runs, or the
     filter prices another job. ``ic_lora_id`` threads to the Mac ingredients term so
     the list-time offer matches the generate-time verdict (offer ≡ verdict); None
     prices on the line, same as generate's custom path.
     """
-    kept: list[int] = []
-    rejected: dict[int, IcLoraDroppedReason] = {}
-    rejects: dict[int, VideoJobReject | IcLoraJobReject] = {}
+    outcome = IcLoraDurationOutcome()
     for seconds in options:
         frames = compute_num_frames(seconds, max(1, fps))
-        decision = decide_ic_lora_job(
+        admission = decide_ic_lora_job(
             stage1_width,
             stage1_height,
             frames,
@@ -904,38 +1124,29 @@ def decide_ic_lora_durations(
             stills=stills,
             tiling=tiling,
         )
-        if isinstance(decision, IcLoraJobLoad):
-            kept.append(seconds)
+        if isinstance(admission, Admitted):
+            outcome.admitted[seconds] = admission
         else:
-            rejected[seconds] = decision.reason
-            rejects[seconds] = decision
-    return IcLoraDurationOutcome(
-        kept=kept,
-        rejected=rejected,
-        rejects=rejects,
-    )
+            outcome.refused[seconds] = admission
+    return outcome
 
 
 def dropped_duration_message_and_code(
     decision: VideoJobReject | IcLoraJobReject,
     job_filter: LocalJobFilter,
 ) -> tuple[str, str]:
-    """(message, code) for a dropped duration. Fixed copy for the spatial,
-    fence, Mac-two-stage, and unsupported verdicts; the shared budget builder
-    with the compared figures for stream-over and RAM verdicts."""
+    """(message, code) for a refused IC-LoRA job. Fixed copy for the spatial,
+    decode-floor, MPS-sequence, and unsupported verdicts; the shared budget
+    builder for the memory and untested verdicts."""
     reason = decision.reason
     if reason == "spatial":
         return IC_LORA_V1_ENVELOPE_MESSAGE, IC_LORA_SOURCE_TOO_LARGE
-    if reason == "two_stage_over_measured":
-        return TWO_STAGE_OVER_MEASURED_MESSAGE, VIDEO_JOB_TOO_LARGE
-    if reason == "mac_two_stage_unmeasured":
-        return MAC_TWO_STAGE_UNMEASURED_MESSAGE, VIDEO_JOB_TOO_LARGE
     if reason == "refine_decode_floor":
         return REFINE_DECODE_FLOOR_MESSAGE, VIDEO_JOB_TOO_LARGE
+    if reason == "window_over_cap":
+        return WINDOW_OVER_CAP_MESSAGE, VIDEO_JOB_TOO_LARGE
     if reason == "mps_sequence_over":
         return MPS_SEQUENCE_OVER_MESSAGE, VIDEO_JOB_TOO_LARGE
-    if reason == "unmeasured_cell":
-        return UNMEASURED_CELL_MESSAGE, VIDEO_JOB_TOO_LARGE
     if reason == "unsupported":
         return VIDEO_JOB_REJECT_ERRORS["unsupported"]
     assert reason not in _FIXED_COPY_REASONS  # fixed-copy branches took them
@@ -946,33 +1157,25 @@ def dropped_duration_message_and_code(
 def _dropped_duration_list(
     outcome: IcLoraDurationOutcome, *, job_filter: LocalJobFilter
 ) -> list[DroppedIcLoraDuration]:
-    """Catalog-order refusals for every rejected duration."""
+    """Catalog-order refusals for every refused duration."""
     dropped: list[DroppedIcLoraDuration] = []
-    for seconds, reason in outcome.rejected.items():
-        message, _ = dropped_duration_message_and_code(
-            outcome.rejects[seconds], job_filter
-        )
-        reject = outcome.rejects[seconds]
-        risk = (
-            risk_for_reject(reject, job_filter)
-            if isinstance(reject, VideoJobReject)
-            else None
-        )
+    for seconds, refused in outcome.refused.items():
+        reject = refused.reject
+        message, _ = dropped_duration_message_and_code(reject, job_filter)
+        bet = refused.bet
+        evidence = refused.priced.evidence
         dropped.append(
             DroppedIcLoraDuration(
                 value=seconds,
-                reason=reason,
+                reason=reject.reason,
                 message=message,
-                tier=iclora_drop_risk_tier(reason),
-                over_gib=(risk.over_gib if risk is not None else None),
-                over_ram_gb=(risk.over_ram_gb if risk is not None else None),
-                shortfall_kind=(risk.shortfall_kind if risk is not None else None),
-                readout=(
-                    risk.readout
-                    if risk is not None
-                    else untested_readout()
-                    if reason in ("two_stage_over_measured", "mac_two_stage_unmeasured", "unmeasured_cell")
-                    else None
+                tier=(bet.tier if bet is not None else None),
+                over_gib=(bet.over_gib if bet is not None else None),
+                over_ram_gb=(bet.over_ram_gb if bet is not None else None),
+                shortfall_kind=(bet.shortfall_kind if bet is not None else None),
+                readout=(bet.readout if bet is not None else None),
+                unmeasured_basis=(
+                    evidence.basis if isinstance(evidence, Extrapolated) else None
                 ),
             )
         )
@@ -1022,7 +1225,7 @@ def with_budgeted_duration_controls(
             stills=catalog_preview_stills(item),
             tiling=item.default_settings.tiling,
         )
-        if not outcome.rejected:
+        if not outcome.refused:
             controls.append(control)
             continue
         dropped = _dropped_duration_list(outcome, job_filter=job_filter)

@@ -151,10 +151,23 @@ def _clamp_diffvae_tiles(tiling: Any, height: int, width: int, num_frames: int) 
     )
 
 
-def _release_denoise_weights() -> None:
+def _decoder_label(decoder: Any) -> str:
+    """Log name of the VAE this decoder loads: ``DiffVAE``, ``ConvVAE``, or ``video VAE`` when unknown."""
+    checkpoint = getattr(decoder, "checkpoint_path", None)
+    if not isinstance(checkpoint, str):
+        checkpoint = getattr(decoder, "_checkpoint_path", None)
+    if not isinstance(checkpoint, str):
+        return "video VAE"
+    try:
+        return "DiffVAE" if is_diffusion_video_vae(checkpoint) else "ConvVAE"
+    except Exception:  # noqa: BLE001  the label is for a log line only; it must never fail a generation
+        return "video VAE"
+
+
+def _release_denoise_weights(decoder: Any) -> None:
     diffusion_stage_cache.evict()
     cleanup_memory()
-    logger.info("Freed resident transformer before DiffVAE decode")
+    logger.info("Freed resident transformer before %s decode", _decoder_label(decoder))
 
 
 def _decode_budget_cap_bytes() -> int | None:
@@ -341,7 +354,7 @@ def _dump_latent_for_replay(decoder: Any, args: tuple[Any, ...], kwargs: dict[st
 
 
 def _patched_video_decoder_call(self: VideoDecoder, *args: Any, **kwargs: Any) -> Any:
-    _release_denoise_weights()
+    _release_denoise_weights(self)
     args, kwargs = _with_post_evict_cuda_tiling(self, args, kwargs)
     args, kwargs = _with_mps_clamped_tiles(self, args, kwargs)
     _dump_latent_for_replay(self, args, kwargs)

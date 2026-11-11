@@ -15,6 +15,14 @@
   max-height: 320px;
 }
 
+// The label and an optional action, such as making the image with AI.
+.labelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
 .actions {
   display: flex;
   align-items: center;

@@ -18,8 +18,8 @@ from services.features.video.job_common import (
     model_from_spec,
     require_existing_asset,
     resolve_job_local_model_id,
+    spec_pass_shape,
     spec_risk_allowance,
-    spec_unmeasured_bet,
 )
 from services.features.video.text_to_video import (
     ReservedVideoGenerator,
@@ -31,6 +31,7 @@ from services.features.video.text_to_video import (
 from runtime_config.model_download_specs import local_aspect_ratios
 from services.aspect_ratio import find_closest_aspect_ratio_option
 from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
+from services.generation_queue.sessions import JobSession
 from services.generation_queue.types import ExecutionOutcome, OutputAllocation, OutputPlan
 from services.records import AssetRecord, GenerationRecord
 
@@ -65,7 +66,7 @@ class ImageToVideoExecutor:
         self._assets = assets
         # Recipe-scoped: post-enhancement prompt scaffold. None for plain i2v.
         self._prompt_wrap = prompt_wrap
-        # Recipe-scoped: fills the LoRA ref from its catalog id at execution. None for plain i2v.
+        # Recipe/custom-LoRA scoped: fills the LoRA ref at execution. None for plain i2v.
         self._lora_resolver = lora_resolver
 
     def validate_params(
@@ -85,6 +86,7 @@ class ImageToVideoExecutor:
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
         self.validate_params(
             generation.spec, contract_version=generation.contract_version
@@ -105,7 +107,9 @@ class ImageToVideoExecutor:
         try:
             # Inside the try so a resolution with no local cell becomes a capability
             # failure, the same as generate_local_reserved's pixel lookup.
-            request_payload["aspectRatio"] = _resolve_aspect_ratio(params, start)
+            request_payload["aspectRatio"] = resolve_image_aspect_ratio(
+                params.aspectRatio, params.resolution, start
+            )
             req = GenerateVideoRequest.model_validate(request_payload)
             if self._lora_resolver is not None:
                 # Inside the try so a missing/removed adapter becomes a capability failure.
@@ -118,8 +122,8 @@ class ImageToVideoExecutor:
                 local_model_id=resolve_job_local_model_id(
                     self._video_generation.models_dir, offering
                 ),
-                risk_allowance=spec_risk_allowance(generation.spec),
-                unmeasured_bet=spec_unmeasured_bet(generation.spec),
+                allowance=spec_risk_allowance(generation.spec),
+                pass_shape=spec_pass_shape(generation.spec),
             )
         except Exception as exc:
             if is_cancel_exception(exc):
@@ -149,16 +153,17 @@ class ImageToVideoExecutor:
         )
 
 
-def _resolve_aspect_ratio(
-    params: ImageToVideoParams, start: AssetRecord
+def resolve_image_aspect_ratio(
+    aspect_ratio: str, resolution: str, image: AssetRecord
 ) -> str:
-    if params.aspectRatio != "auto":
-        return params.aspectRatio
-    metadata = start.metadata
+    """An explicit aspect passes through. Auto is the local option closest to the image."""
+    if aspect_ratio != "auto":
+        return aspect_ratio
+    metadata = image.metadata
     if metadata.mediaType != "image":
         raise ValueError("startFrame must have image metadata")
     try:
-        options = local_aspect_ratios(params.resolution, is_a2v=False)
+        options = local_aspect_ratios(resolution, is_a2v=False)
     except KeyError as exc:
         raise HTTPError(400, "INVALID_LOCAL_RESOLUTION") from exc
     return find_closest_aspect_ratio_option(

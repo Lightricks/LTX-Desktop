@@ -1,4 +1,16 @@
-import { readBudgetMode } from "../../lib/budget-risk.ts";
+import {
+  isConfirmableBudgetTier,
+  riskOptionFields,
+} from "../../lib/budget-risk.ts";
+import { askOptionMemory, optionMemory } from "../../lib/memory-meter.ts";
+import {
+  meterCell,
+  passShapeChoice,
+  selectedFastRisk,
+  type ForcedPassShape,
+  type ImageSize,
+  type PassShapeSelection,
+} from "../../lib/pass-shape.ts";
 import {
   GENSPACE_MIN_SELECTABLE_DURATION_S,
   getOfferingVideoGenerationModelSpecs,
@@ -13,6 +25,7 @@ import {
   type VideoGenerationFps,
   type VideoGenerationModelSpecsResponse,
   type VideoGenerationResolution,
+  type WarnedVideoGenerationOption,
 } from "../../lib/video-generation-model-specs.ts";
 import { videoGenerationResolutionLabel } from "../../lib/video-resolution.ts";
 import { chunkedRunNotice, generationResolutionWarning } from "./lowPerformanceWarning.ts";
@@ -21,6 +34,7 @@ import type {
   FeatureFieldSchema,
   FeatureValues,
   FieldOption,
+  ValidationIssue,
 } from "../screens/Feature/types.ts";
 import {
   clampVideoFields,
@@ -96,6 +110,52 @@ type VideoSettingsFpsField = {
   options: FieldOption<VideoGenerationFps>[];
 };
 
+type PassShapeField = {
+  kind: "options";
+  id: string;
+  label: string;
+  dataKey: "passShape";
+  info: string;
+  defaultValue: ForcedPassShape;
+  options: FieldOption<ForcedPassShape>[];
+};
+
+const PASS_SHAPE_INFO =
+  "All at once makes the whole clip at once, so there are no joins, but it needs more memory. " +
+  "In parts, the clip is made in overlapping pieces that each fit. Lighting or subjects can " +
+  "drift a little where they meet.";
+
+/**
+ * "Make it": all at once or in parts, each with its memory. Empty wherever the choice isn't real
+ * (see `passShapeChoice`) or the priced cell is still unknown, so callers spread it as the last
+ * settings row.
+ */
+export function createPassShapeFields(
+  cell: PassShapeSelection | null,
+  specs: VideoGenerationModelSpecsResponse | null | undefined,
+): PassShapeField[] {
+  const choice = cell == null ? null : passShapeChoice(specs, cell);
+  if (choice == null) return [];
+  const memory = (ask: typeof choice.onePass): Pick<FieldOption, "memory"> => {
+    const option = askOptionMemory(ask, specs?.memory);
+    return option === undefined ? {} : { memory: option };
+  };
+  return [
+    {
+      kind: "options",
+      id: "passShape",
+      label: "Make it",
+      dataKey: "passShape",
+      info: PASS_SHAPE_INFO,
+      defaultValue: choice.automatic,
+      options: [
+        { value: "one_pass", label: "All at once", ...memory(choice.onePass) },
+        { value: "parts", label: "In parts", ...memory(choice.parts) },
+      ],
+    },
+  ];
+}
+
 export type VideoSettingsOptionField<
   TAspect extends VideoFeatureAspectRatio = VideoFeatureAspectRatio,
 > =
@@ -128,8 +188,39 @@ function resolutionChunk(
   return resolved.singlePassResolutionOptions.includes(resolution) ? null : undefined;
 }
 
-function withCaveat(caveat: string | undefined): Pick<FieldOption, "warning"> {
+/** With the memory meter on, memory lives in the meter: options keep only their quality caveat. */
+function optionWarning<T extends string | number>(
+  memoryMeter: boolean,
+  value: T,
+  caveat: string | undefined,
+  warned: readonly WarnedVideoGenerationOption<T>[],
+): Pick<FieldOption, "warning" | "warningTone" | "budget" | "budgetNote"> {
+  if (!memoryMeter) return withBudgetWarning(value, caveat, warned);
   return caveat != null ? { warning: caveat } : {};
+}
+
+function disabledFields(
+  memoryMeter: boolean,
+  option: { message: string; readout?: FieldOption["budget"] },
+): Pick<FieldOption, "disabledReason" | "budget"> {
+  return {
+    disabledReason: option.message,
+    ...(!memoryMeter && option.readout ? { budget: option.readout } : {}),
+  };
+}
+
+function withBudgetWarning<T extends string | number>(
+  value: T,
+  caveat: string | undefined,
+  warned: readonly WarnedVideoGenerationOption<T>[],
+): Pick<FieldOption, "warning" | "warningTone" | "budget" | "budgetNote"> {
+  const match = warned.find((option) => option.value === value);
+  return {
+    ...riskOptionFields(match?.message, caveat),
+    ...(match?.readout
+      ? { budget: match.readout, ...(caveat != null ? { budgetNote: caveat } : {}) }
+      : {}),
+  };
 }
 
 export function isSupportedVideoResolution(
@@ -154,9 +245,14 @@ export function createVideoSettingsOptionFields<
   values: Pick<
     FeatureValues<TSchema>,
     "model" | "aspectRatio" | "resolution" | "duration" | "fps"
-  >,
+  > & { passShape?: ForcedPassShape | null },
   specs: VideoGenerationModelSpecsResponse | null | undefined,
-  input: { includeAuto?: boolean } = {},
+  input: {
+    includeAuto?: boolean;
+    memoryMeter?: boolean;
+    /** Prices Auto at the start image's ratio, as the run does. */
+    startFrameSize?: ImageSize | null;
+  } = {},
 ): [
   VideoSettingsModelField,
   VideoSettingsAspectField<
@@ -178,7 +274,6 @@ export function createVideoSettingsOptionFields<
     modelSpecs: offeringSpecsAsPipelineItems(offeringSpecs),
     hasAudio: false,
     minimumDuration: GENSPACE_MIN_SELECTABLE_DURATION_S,
-    budgetMode: readBudgetMode(specs?.budgetMode),
   });
   const selectedModel =
     resolved.modelOptions.find(
@@ -196,6 +291,23 @@ export function createVideoSettingsOptionFields<
   // Withheld fps values append after keeps (union scope, numeric): the budget
   // grows monotonically, so drops sit above keeps.
   const disabledFps = collectModelDisabledFpsOptions(selectedModel, fpsOptions);
+  const memoryMeter = input.memoryMeter ?? false;
+  const selection: PassShapeSelection = {
+    model: values.model,
+    resolution: values.resolution,
+    fps: values.fps,
+    duration: values.duration,
+    aspectRatio: values.aspectRatio,
+    passShape: values.passShape,
+  };
+  const preview = (patch: Partial<typeof selection>): Pick<FieldOption, "memory"> => {
+    if (!memoryMeter) return {};
+    const memory = optionMemory(
+      specs,
+      meterCell(specs, { ...selection, ...patch }, input.startFrameSize),
+    );
+    return memory === undefined ? {} : { memory };
+  };
 
   return [
     {
@@ -211,6 +323,7 @@ export function createVideoSettingsOptionFields<
         .map((row) => ({
           value: row.model,
           label: row.spec.display_name,
+          ...preview({ model: row.model }),
         })),
     },
     {
@@ -229,13 +342,14 @@ export function createVideoSettingsOptionFields<
           return {
             value: aspectRatio,
             label: aspectRatio,
-            ...withCaveat(untrainedAspectRatioWarning(aspectRatio)),
-            ...(disabled
-              ? {
-                  disabledReason: disabled.message,
-                  ...(disabled.readout ? { budget: disabled.readout } : {}),
-                }
-              : {}),
+            ...optionWarning(
+              memoryMeter,
+              aspectRatio,
+              untrainedAspectRatioWarning(aspectRatio),
+              resolved.warnedAspectRatioOptions,
+            ),
+            ...(disabled ? disabledFields(memoryMeter, disabled) : {}),
+            ...preview({ aspectRatio }),
           };
         }),
       ] as VideoSettingsAspectField<
@@ -258,19 +372,24 @@ export function createVideoSettingsOptionFields<
           .map((resolution) => ({
             value: resolution,
             label: videoGenerationResolutionLabel(resolution),
-            ...withCaveat(
+            ...optionWarning(
+              memoryMeter,
+              resolution,
               generationResolutionWarning(
                 resolution,
                 specs?.low_performance_machine,
-                resolutionChunk(resolved, resolution),
+                // The meter says when the picked cell runs in parts.
+                memoryMeter ? undefined : resolutionChunk(resolved, resolution),
               ),
+              resolved.warnedResolutionOptions,
             ),
+            ...preview({ resolution }),
           })),
         ...resolved.disabledResolutionOptions.map((option) => ({
           value: option.value,
           label: videoGenerationResolutionLabel(option.value),
-          disabledReason: option.message,
-          ...(option.readout ? { budget: option.readout } : {}),
+          ...disabledFields(memoryMeter, option),
+          ...preview({ resolution: option.value }),
         })),
       ],
     },
@@ -284,13 +403,19 @@ export function createVideoSettingsOptionFields<
         ...durationOptions.map((duration) => ({
           value: duration,
           label: `${duration}s`,
-          ...withCaveat(chunkedNotice(resolved.chunkedDurationOptions, duration)),
+          ...optionWarning(
+            memoryMeter,
+            duration,
+            memoryMeter ? undefined : chunkedNotice(resolved.chunkedDurationOptions, duration),
+            resolved.warnedDurationOptions,
+          ),
+          ...preview({ duration }),
         })),
         ...disabledDurations.map((option) => ({
           value: option.value,
           label: `${option.value}s`,
-          disabledReason: option.message,
-          ...(option.readout ? { budget: option.readout } : {}),
+          ...disabledFields(memoryMeter, option),
+          ...preview({ duration: option.value }),
         })),
       ],
     },
@@ -304,15 +429,41 @@ export function createVideoSettingsOptionFields<
         ...fpsOptions.map((fps) => ({
           value: fps,
           label: String(fps),
-          ...withCaveat(chunkedNotice(resolved.chunkedFpsOptions, fps)),
+          ...optionWarning(
+            memoryMeter,
+            fps,
+            memoryMeter ? undefined : chunkedNotice(resolved.chunkedFpsOptions, fps),
+            resolved.warnedFpsOptions,
+          ),
+          ...preview({ fps }),
         })),
         ...disabledFps.map((option) => ({
           value: option.value,
           label: String(option.value),
-          disabledReason: option.message,
-          ...(option.readout ? { budget: option.readout } : {}),
+          ...disabledFields(memoryMeter, option),
+          ...preview({ fps: option.value }),
         })),
       ],
+    },
+  ];
+}
+
+export function fastBudgetIssues(
+  specs: VideoGenerationModelSpecsResponse | null | undefined,
+  selection: PassShapeSelection | null,
+): ValidationIssue[] {
+  if (selection == null) return [];
+  const risk = selectedFastRisk(specs, selection);
+  if (risk == null || !isConfirmableBudgetTier(risk.tier)) return [];
+  return [
+    {
+      id: "budget-risk",
+      fieldId: "generate",
+      message: risk.message,
+      alwaysRevealed: true,
+      blocksGenerate: false,
+      tone: "risk",
+      tier: risk.tier,
     },
   ];
 }

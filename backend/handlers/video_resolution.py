@@ -13,11 +13,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from _routes._errors import HTTPError
+from frame_math import snap_up_to_multiple
 
 if TYPE_CHECKING:
     from api_types import TargetResolution
 
 _SPATIAL_FACTOR = 32
+_CHROMA_FACTOR = 2  # yuv420p subsamples chroma 2x2, so encoded edges must be even.
 # VAE temporal downscale: valid frame counts are 8k+1. Single source of truth for the
 # 8-frame rule (extend's snap-up and video generation's frame math reuse this).
 TIME_FACTOR = 8
@@ -154,7 +156,15 @@ def resolve_home_edit_size(
     width = source_width if requested_width is None or requested_height is None else requested_width
     height = source_height if requested_width is None or requested_height is None else requested_height
     width, height = cap_edit_size(width, height, high_res=high_res)
-    return min(width, source_width), min(height, source_height)
+    # libx264 with yuv420p cannot encode an odd edge, and the cap's round() can produce one
+    # (960x544 at 360p gives 635x360). Snap the picture size to even, source bound included.
+    even = _CHROMA_FACTOR
+    even_source_width = snap_up_to_multiple(source_width, even)
+    even_source_height = snap_up_to_multiple(source_height, even)
+    return (
+        min(snap_up_to_multiple(width, even), even_source_width),
+        min(snap_up_to_multiple(height, even), even_source_height),
+    )
 
 
 def resolve_requested_home_edit_size(

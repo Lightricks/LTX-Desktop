@@ -435,6 +435,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/custom-loras": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route List Custom Loras */
+        get: operations["route_list_custom_loras_api_custom_loras_get"];
+        put?: never;
+        /** Route Import Custom Lora */
+        post: operations["route_import_custom_lora_api_custom_loras_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/custom-loras/import/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Custom Lora Import Active */
+        get: operations["route_custom_lora_import_active_api_custom_loras_import_active_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/custom-loras/import/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Custom Lora Import Progress */
+        get: operations["route_custom_lora_import_progress_api_custom_loras_import_progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/custom-loras/link-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Custom Lora Link Info */
+        post: operations["route_custom_lora_link_info_api_custom_loras_link_info_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/custom-loras/{custom_lora_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Route Delete Custom Lora */
+        delete: operations["route_delete_custom_lora_api_custom_loras__custom_lora_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/custom-loras/{custom_lora_id}/weights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Restore Custom Lora Weights */
+        post: operations["route_restore_custom_lora_weights_api_custom_loras__custom_lora_id__weights_post"];
+        /** Route Delete Custom Lora Weights */
+        delete: operations["route_delete_custom_lora_weights_api_custom_loras__custom_lora_id__weights_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/enhance-prompt": {
         parameters: {
             query?: never;
@@ -767,6 +871,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/generations/custom-lora": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Create Custom Lora */
+        post: operations["route_create_custom_lora_api_generations_custom_lora_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/generations/edit/preflight": {
         parameters: {
             query?: never;
@@ -818,6 +939,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/generations/ic-lora-recipes/{recipe_id}/memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Ic Lora Recipe Memory */
+        post: operations["route_ic_lora_recipe_memory_api_generations_ic_lora_recipes__recipe_id__memory_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generations/ic-lora-recipes/{recipe_id}/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Preflight Ic Lora Tile Sizes */
+        post: operations["route_preflight_ic_lora_tile_sizes_api_generations_ic_lora_recipes__recipe_id__preflight_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/generations/image-to-video": {
         parameters: {
             query?: never;
@@ -829,6 +984,23 @@ export interface paths {
         put?: never;
         /** Route Create Image To Video */
         post: operations["route_create_image_to_video_api_generations_image_to_video_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generations/keyframes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Create Keyframes */
+        post: operations["route_create_keyframes_api_generations_keyframes_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -883,6 +1055,23 @@ export interface paths {
         put?: never;
         /** Route Create Retake */
         post: operations["route_create_retake_api_generations_retake_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generations/text-to-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Create Text To Image */
+        post: operations["route_create_text_to_image_api_generations_text_to_image_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1123,6 +1312,26 @@ export interface paths {
         post?: never;
         /** Route Delete Ic Lora Installation */
         delete: operations["route_delete_ic_lora_installation_api_ic_loras_installation_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/image-generation/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Route Image Generation Status
+         * @description Mounted on both Desktop and Remote: the phone cannot read Settings.
+         */
+        get: operations["route_image_generation_status_api_image_generation_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1647,6 +1856,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui-preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Get Ui Preferences */
+        get: operations["route_get_ui_preferences_api_ui_preferences_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -1668,6 +1894,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActiveCustomLoraImportResponse */
+        ActiveCustomLoraImportResponse: {
+            /** Custom Lora Id */
+            custom_lora_id: string | null;
+            /** Progress */
+            progress?: number | null;
+            /** Session Id */
+            session_id: string | null;
+        };
         /** ActiveDownloadResponse */
         ActiveDownloadResponse: {
             /** Cp Ids */
@@ -1707,6 +1942,8 @@ export interface components {
             /** Activeltxmodelid */
             activeLtxModelId?: ("ltx-2.5-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-22b-distilled") | null;
             activityDashboardSelections?: components["schemas"]["DashboardSelectionPatch"] | null;
+            /** Advancedcontrols */
+            advancedControls?: boolean | null;
             /** Assistantlocalmodel */
             assistantLocalModel?: "qwen3.5:9b" | null;
             /** Assistantparallelgemini */
@@ -1714,7 +1951,7 @@ export interface components {
             /** Assistantprovider */
             assistantProvider?: ("gemini" | "local") | null;
             /** Budgetmode */
-            budgetMode?: ("standard" | "reckless") | null;
+            budgetMode?: ("brave" | "cautious") | null;
             /** Diffusionstagecacheenabled */
             diffusionStageCacheEnabled?: boolean | null;
             /** Exploreautoenhanceprompts */
@@ -1731,6 +1968,12 @@ export interface components {
             ltxApiKey?: string | null;
             /** Modelsdir */
             modelsDir?: string | null;
+            /** Mpsconv3Dasconv2Denabled */
+            mpsConv3DAsConv2DEnabled?: boolean | null;
+            /** Nagscale */
+            nagScale?: number | null;
+            /** Neversplitintoparts */
+            neverSplitIntoParts?: boolean | null;
             /** Promptcachesize */
             promptCacheSize?: number | null;
             /** Promptenhancerenabled */
@@ -1741,6 +1984,10 @@ export interface components {
             remoteExposure?: ("off" | "lan") | null;
             /** Seedlocked */
             seedLocked?: boolean | null;
+            /** Shownagstrengthcontrols */
+            showNagStrengthControls?: boolean | null;
+            /** Skipbudgetriskconfirm */
+            skipBudgetRiskConfirm?: boolean | null;
             /** Useconvvae */
             useConvVae?: boolean | null;
             /** Uselocaltextencoder */
@@ -2179,11 +2426,23 @@ export interface components {
              * @enum {string}
              */
             model: "ltx-2.3-fast" | "ltx-2.5-fast";
+            /** Nagalpha */
+            nagAlpha?: number | null;
+            /** Nagscale */
+            nagScale?: number | null;
+            /** Nagtau */
+            nagTau?: number | null;
             /**
              * Negativeprompt
              * @default
              */
             negativePrompt: string;
+            /**
+             * Passshape
+             * @default auto
+             * @enum {string}
+             */
+            passShape: "auto" | "one_pass" | "parts";
             /** Prompt */
             prompt: string;
             /**
@@ -2210,6 +2469,19 @@ export interface components {
             contract_version: number;
             inputs: components["schemas"]["AudioToVideoInputs"];
             params: components["schemas"]["CreateAudioToVideoParams"];
+        };
+        /**
+         * CreateCustomLoraRequest
+         * @description ``inputs`` carries the optional Start Frame. With it the run is image to video. Without it, text to video.
+         */
+        CreateCustomLoraRequest: {
+            /**
+             * Contract Version
+             * @default 1
+             */
+            contract_version: number;
+            inputs?: components["schemas"]["LoraRecipeInputs"] | null;
+            params: components["schemas"]["CustomLoraParams"];
         };
         /** CreateExtendRequest */
         CreateExtendRequest: {
@@ -2261,6 +2533,16 @@ export interface components {
             inputs: components["schemas"]["ImageToVideoInputs"];
             params: components["schemas"]["ImageToVideoParams"];
         };
+        /** CreateKeyframesRequest */
+        CreateKeyframesRequest: {
+            /**
+             * Contract Version
+             * @default 1
+             */
+            contract_version: number;
+            inputs: components["schemas"]["KeyframesInputs"];
+            params: components["schemas"]["KeyframesParams"];
+        };
         /** CreateLoraRecipeRequest */
         CreateLoraRecipeRequest: {
             /**
@@ -2281,6 +2563,15 @@ export interface components {
             inputs: components["schemas"]["RetakeInputs"];
             params: components["schemas"]["RetakeRequestParams"];
         };
+        /** CreateTextToImageRequest */
+        CreateTextToImageRequest: {
+            /**
+             * Contract Version
+             * @default 1
+             */
+            contract_version: number;
+            params: components["schemas"]["TextToImageParams"];
+        };
         /** CreateTextToVideoRequest */
         CreateTextToVideoRequest: {
             /**
@@ -2289,6 +2580,226 @@ export interface components {
              */
             contract_version: number;
             params: components["schemas"]["TextToVideoParams"];
+        };
+        /** CustomLoraImportProgressResponse */
+        CustomLoraImportProgressResponse: {
+            /** Custom Lora Id */
+            custom_lora_id?: string | null;
+            /**
+             * Downloaded Bytes
+             * @default 0
+             */
+            downloaded_bytes: number;
+            /** Error */
+            error?: string | null;
+            /**
+             * Expected Bytes
+             * @default 0
+             */
+            expected_bytes: number;
+            /**
+             * Progress
+             * @default 0
+             */
+            progress: number;
+            /**
+             * Speed Bytes Per Sec
+             * @default 0
+             */
+            speed_bytes_per_sec: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "downloading" | "complete" | "error";
+        };
+        /**
+         * CustomLoraImportRequest
+         * @description Add a custom LoRA from exactly one source: a local file path or a URL.
+         */
+        CustomLoraImportRequest: {
+            /** Cover Path */
+            cover_path?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Examples */
+            examples?: string[];
+            /** Name */
+            name: string;
+            /** Source Path */
+            source_path?: string | null;
+            /** Trigger */
+            trigger?: string | null;
+            /** Url */
+            url?: string | null;
+        };
+        /** CustomLoraImportStartResponse */
+        CustomLoraImportStartResponse: {
+            /** Custom Lora Id */
+            custom_lora_id: string;
+            /** Sessionid */
+            sessionId: string;
+            /** Status */
+            status: string;
+        };
+        /**
+         * CustomLoraItem
+         * @description One saved custom LoRA.
+         *
+         *     The desktop list puts the cover file path in ``cover_url``. The phone list replaces that
+         *     path with a signed URL, so a paired phone never receives a filesystem path.
+         */
+        CustomLoraItem: {
+            /** Can Download */
+            can_download: boolean;
+            /** Cover Url */
+            cover_url?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Downloaded */
+            downloaded: boolean;
+            /** Examples */
+            examples?: string[];
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Page Url */
+            page_url?: string | null;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "file" | "url";
+            /** Trigger */
+            trigger?: string | null;
+        };
+        /**
+         * CustomLoraLinkInfoRequest
+         * @description Check whether a URL is an accepted Custom LoRA link and read its Hugging Face model card.
+         */
+        CustomLoraLinkInfoRequest: {
+            /** Url */
+            url: string;
+        };
+        /**
+         * CustomLoraLinkInfoResponse
+         * @description Link validity and suggestions from a model card. The user checks and edits them. Nothing is saved.
+         */
+        CustomLoraLinkInfoResponse: {
+            /**
+             * Accepted
+             * @default false
+             */
+            accepted: boolean;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Examples */
+            examples?: string[];
+            /** Trigger */
+            trigger?: string | null;
+        };
+        /** CustomLoraListResponse */
+        CustomLoraListResponse: {
+            /** Loras */
+            loras: components["schemas"]["CustomLoraItem"][];
+        };
+        /**
+         * CustomLoraParams
+         * @description Create-body params for a custom LoRA run.
+         *
+         *     The client sends the custom LoRA id + scale, never a filesystem path. Create stores
+         *     ``loras: [{ ref: "", scale, displayName, customLoraId }]`` and execute hydrates the
+         *     weights path (see ``make_custom_lora_resolver``). ``aspectRatio`` includes ``auto`` only
+         *     when the run has a start frame (resolved from the start frame at execute); a run without
+         *     one rejects ``auto``.
+         */
+        CustomLoraParams: {
+            /**
+             * Aspectratio
+             * @default 16:9
+             * @enum {string}
+             */
+            aspectRatio: "auto" | "21:9" | "16:9" | "3:2" | "4:3" | "1:1" | "4:5" | "9:16";
+            /**
+             * Cameramotion
+             * @default none
+             * @enum {string}
+             */
+            cameraMotion: "none" | "dolly_in" | "dolly_out" | "dolly_left" | "dolly_right" | "jib_up" | "jib_down" | "static" | "focus_shift";
+            /** Customloraid */
+            customLoraId: string;
+            /**
+             * Duration
+             * @default 5
+             */
+            duration: (2 | 3 | 4 | 5 | 6 | 8 | 10 | 12 | 14 | 16 | 18 | 20) | null;
+            /**
+             * Fps
+             * @default 24
+             * @enum {integer}
+             */
+            fps: 24 | 25 | 48 | 50;
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "ltx-2.3-fast" | "ltx-2.5-fast";
+            /** Nagalpha */
+            nagAlpha?: number | null;
+            /** Nagscale */
+            nagScale?: number | null;
+            /** Nagtau */
+            nagTau?: number | null;
+            /**
+             * Negativeprompt
+             * @default
+             */
+            negativePrompt: string;
+            /**
+             * Passshape
+             * @default auto
+             * @enum {string}
+             */
+            passShape: "auto" | "one_pass" | "parts";
+            /** Prompt */
+            prompt: string;
+            /**
+             * Promptprovenance
+             * @default typed
+             * @enum {string}
+             */
+            promptProvenance: "typed" | "enhanced";
+            /**
+             * Resolution
+             * @default 1080p
+             * @enum {string}
+             */
+            resolution: "270p" | "360p" | "540p" | "720p" | "1080p" | "1440p" | "2160p";
+            /**
+             * Scale
+             * @default 1
+             */
+            scale: number;
+            /** Seed */
+            seed?: number | null;
+        };
+        /**
+         * CustomLoraRestoreRequest
+         * @description Put the weights of a saved LoRA back. A `source_path` copies that file. Without it, the
+         *     weights are fetched again from the saved link.
+         */
+        CustomLoraRestoreRequest: {
+            /** Source Path */
+            source_path?: string | null;
         };
         /** DashboardKpis */
         DashboardKpis: {
@@ -2517,7 +3028,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "stream_over" | "unsupported" | "ram_shortfall" | "mps_sequence_over" | "unmeasured_cell";
+            reason: "stream_over" | "unsupported" | "ram_shortfall" | "mps_sequence_over" | "unmeasured_cell" | "one_pass_unavailable";
             /**
              * Resolution
              * @enum {string}
@@ -2525,6 +3036,8 @@ export interface components {
             resolution: "270p" | "360p" | "540p" | "720p" | "1080p" | "1440p" | "2160p";
             /** Shortfall Kind */
             shortfall_kind?: ("total" | "free") | null;
+            /** Unmeasured Basis */
+            unmeasured_basis?: ("high_res_cell" | "two_stage_range" | "mac_two_stage_cell" | "windowed_range" | "pass_tokens" | "unmeasured_model") | null;
         };
         /**
          * DroppedFastCell
@@ -2559,7 +3072,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "stream_over" | "unsupported" | "ram_shortfall" | "mps_sequence_over" | "unmeasured_cell";
+            reason: "stream_over" | "unsupported" | "ram_shortfall" | "mps_sequence_over" | "unmeasured_cell" | "one_pass_unavailable";
             /**
              * Resolution
              * @enum {string}
@@ -2567,6 +3080,8 @@ export interface components {
             resolution: "270p" | "360p" | "540p" | "720p" | "1080p" | "1440p" | "2160p";
             /** Shortfall Kind */
             shortfall_kind?: ("total" | "free") | null;
+            /** Unmeasured Basis */
+            unmeasured_basis?: ("high_res_cell" | "two_stage_range" | "mac_two_stage_cell" | "windowed_range" | "pass_tokens" | "unmeasured_model") | null;
             /** Window Frames */
             window_frames?: number | null;
             /** Windows */
@@ -2593,11 +3108,13 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "stream_over" | "unsupported" | "ram_shortfall" | "mps_sequence_over" | "unmeasured_cell" | "spatial" | "two_stage_over_measured" | "mac_two_stage_unmeasured" | "refine_decode_floor";
+            reason: "stream_over" | "unsupported" | "ram_shortfall" | "mps_sequence_over" | "unmeasured_cell" | "one_pass_unavailable" | "spatial" | "refine_decode_floor" | "window_over_cap";
             /** Shortfall Kind */
             shortfall_kind?: ("total" | "free") | null;
             /** Tier */
             tier?: ("over" | "unmeasured") | null;
+            /** Unmeasured Basis */
+            unmeasured_basis?: ("high_res_cell" | "two_stage_range" | "mac_two_stage_cell" | "windowed_range" | "pass_tokens" | "unmeasured_model") | null;
             /** Value */
             value: number;
         };
@@ -2620,14 +3137,18 @@ export interface components {
         };
         /**
          * EditPreflightCell
-         * @description Verdict for one (candidate, duration) cell. ``message``/``code`` are None
-         *     when ``ok``; otherwise the exact refusal Generate would return.
+         * @description Verdict for one (candidate, duration) cell. ``ok`` means Generate would
+         *     enqueue it in the echoed mode. An ok cell admitted on a bet carries the bet
+         *     line as ``message``; a failing cell carries the exact refusal Generate
+         *     would return.
          */
         EditPreflightCell: {
             /** Code */
             code?: string | null;
             /** Duration */
             duration: number;
+            /** Estimated Seconds */
+            estimated_seconds?: number | null;
             /** Key */
             key: string;
             /** Message */
@@ -2705,10 +3226,10 @@ export interface components {
         EditPreflightResponse: {
             /**
              * Budgetmode
-             * @default standard
+             * @default brave
              * @enum {string}
              */
-            budgetMode: "standard" | "reckless";
+            budgetMode: "brave" | "cautious";
             /** Cells */
             cells: components["schemas"]["EditPreflightCell"][];
             /** Resolutions */
@@ -2731,13 +3252,15 @@ export interface components {
         /**
          * EnhancePromptRequest
          * @description Regular-LoRA, IC-LoRA, and built-in conditioning-type selection are mutually exclusive UI
-         *     surfaces — a request never carries more than one of loraCatalogIds/icLoraId/conditioningType.
+         *     surfaces — a request never carries more than one of loraCatalogIds/customLoraIds/icLoraId/conditioningType.
          */
         EnhancePromptRequest: {
             /** Aspectratio */
             aspectRatio?: ("21:9" | "16:9" | "3:2" | "4:3" | "1:1" | "4:5" | "9:16") | null;
             /** Conditioningtype */
             conditioningType?: ("canny" | "depth") | null;
+            /** Customloraids */
+            customLoraIds?: string[];
             /** Duration */
             duration?: number | null;
             /** Fps */
@@ -2752,6 +3275,8 @@ export interface components {
             imagePath?: string | null;
             /** Imagepaths */
             imagePaths?: string[];
+            /** Keyframeassets */
+            keyframeAssets?: components["schemas"]["KeyframeRef"][];
             /** Keyframes */
             keyframes?: components["schemas"]["KeyframeInput"][];
             /** Lastimageassetid */
@@ -2766,6 +3291,8 @@ export interface components {
              * @enum {string}
              */
             mediaType: "video" | "image";
+            /** Negativeprompt */
+            negativePrompt?: string | null;
             /** Prompt */
             prompt: string;
             /**
@@ -2850,6 +3377,17 @@ export interface components {
              * @enum {string}
              */
             model: "ltx-2.3-fast" | "ltx-2.5-fast";
+            /** Nagalpha */
+            nagAlpha?: number | null;
+            /** Nagscale */
+            nagScale?: number | null;
+            /** Nagtau */
+            nagTau?: number | null;
+            /**
+             * Negativeprompt
+             * @default
+             */
+            negativePrompt: string;
             /**
              * Prompt
              * @default
@@ -2904,6 +3442,58 @@ export interface components {
             error_code: string;
         };
         /**
+         * FastCellAsk
+         * @description One Fast grid cell's ask, kept or withheld.
+         *
+         *     The ask is the shape the budget picks (``windows`` 1 is one pass). ``alternative`` is the
+         *     other shape's ask, sent only where a Brave form offers the choice, so a shape the form
+         *     shows is always one create runs.
+         */
+        FastCellAsk: {
+            alternative?: components["schemas"]["JobMemoryAsk"] | null;
+            /** Ask Gib */
+            ask_gib: number;
+            /** Audio */
+            audio: boolean;
+            /** Band High Gib */
+            band_high_gib?: number | null;
+            /** Band Low Gib */
+            band_low_gib?: number | null;
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "solid" | "estimate" | "rough";
+            /**
+             * Duration
+             * @enum {integer}
+             */
+            duration: 2 | 3 | 4 | 5 | 6 | 8 | 10 | 12 | 14 | 16 | 18 | 20;
+            /** Estimated Seconds */
+            estimated_seconds?: number | null;
+            /**
+             * Fps
+             * @enum {integer}
+             */
+            fps: 24 | 25 | 48 | 50;
+            /**
+             * Resolution
+             * @enum {string}
+             */
+            resolution: "270p" | "360p" | "540p" | "720p" | "1080p" | "1440p" | "2160p";
+            risk?: components["schemas"]["GenerationRisk"] | null;
+            /**
+             * Tight
+             * @default false
+             */
+            tight: boolean;
+            /**
+             * Windows
+             * @default 1
+             */
+            windows: number;
+        };
+        /**
          * FeatureFlags
          * @description Dev feature flags, persisted in feature_flags.json. Adding a flag = one field here.
          */
@@ -2914,6 +3504,11 @@ export interface components {
              */
             advancedIcLoraControls: boolean;
             /**
+             * Createwithai
+             * @default false
+             */
+            createWithAi: boolean;
+            /**
              * Customiclora
              * @default false
              */
@@ -2923,6 +3518,16 @@ export interface components {
              * @default false
              */
             highResVideoToVideo: boolean;
+            /**
+             * Keyframes
+             * @default false
+             */
+            keyframes: boolean;
+            /**
+             * Showgenerationnegativeprompt
+             * @default false
+             */
+            showGenerationNegativePrompt: boolean;
         };
         /**
          * FeatureFlagsPatch
@@ -2931,10 +3536,16 @@ export interface components {
         FeatureFlagsPatch: {
             /** Advancedicloracontrols */
             advancedIcLoraControls?: boolean | null;
+            /** Createwithai */
+            createWithAi?: boolean | null;
             /** Customiclora */
             customIcLora?: boolean | null;
             /** Highresvideotovideo */
             highResVideoToVideo?: boolean | null;
+            /** Keyframes */
+            keyframes?: boolean | null;
+            /** Showgenerationnegativeprompt */
+            showGenerationNegativePrompt?: boolean | null;
         };
         /**
          * FeatureRenderCell
@@ -3083,10 +3694,10 @@ export interface components {
             api_models: components["schemas"]["LTXVideoGenerationModelSpecItem"][];
             /**
              * Budgetmode
-             * @default standard
+             * @default brave
              * @enum {string}
              */
-            budgetMode: "standard" | "reckless";
+            budgetMode: "brave" | "cautious";
             /** Downloaded Local Models */
             downloaded_local_models?: components["schemas"]["DownloadedLocalVideoGenerationModelSpecItem"][];
             /** Local Models */
@@ -3094,7 +3705,7 @@ export interface components {
             /** Local Unavailable Detected Ram Gb */
             local_unavailable_detected_ram_gb?: number | null;
             /** Local Unavailable Reason */
-            local_unavailable_reason?: ("stream_over" | "unsupported" | "ram_shortfall" | "mps_sequence_over" | "unmeasured_cell") | null;
+            local_unavailable_reason?: ("stream_over" | "unsupported" | "ram_shortfall" | "mps_sequence_over" | "unmeasured_cell" | "one_pass_unavailable") | null;
             /** Local Unavailable Required Ram Gb */
             local_unavailable_required_ram_gb?: number | null;
             /**
@@ -3102,6 +3713,12 @@ export interface components {
              * @default false
              */
             low_performance_machine: boolean;
+            memory?: components["schemas"]["MemoryCapacity"] | null;
+            /**
+             * Neversplitintoparts
+             * @default false
+             */
+            neverSplitIntoParts: boolean;
         };
         /** GenerateVideoRequest */
         GenerateVideoRequest: {
@@ -3149,6 +3766,12 @@ export interface components {
              * @enum {string}
              */
             model: "fast" | "pro" | "fast-2.5" | "pro-2.5";
+            /** Nagalpha */
+            nagAlpha?: number | null;
+            /** Nagscale */
+            nagScale?: number | null;
+            /** Nagtau */
+            nagTau?: number | null;
             /**
              * Negativeprompt
              * @default
@@ -3180,15 +3803,22 @@ export interface components {
             /** Created At */
             created_at: number;
             /** Error Code */
-            error_code?: ("INTERRUPTED" | "INPUT_MISSING" | "OUTPUT_MISSING" | "OUTPUT_UNREADABLE" | "EXECUTOR_FAILED" | "CUDA_OOM" | "JOB_TOO_LARGE" | "CAPABILITY_FAILED" | "LTX_INVALID_API_KEY" | "LTX_API_PROMPT_EMBEDDING_FAILED") | null;
+            error_code?: ("INTERRUPTED" | "INPUT_MISSING" | "OUTPUT_MISSING" | "OUTPUT_UNREADABLE" | "EXECUTOR_FAILED" | "CUDA_OOM" | "JOB_TOO_LARGE" | "CAPABILITY_FAILED" | "LTX_INVALID_API_KEY" | "LTX_API_PROMPT_EMBEDDING_FAILED" | "IMAGE_BLOCKED_BY_SAFETY_CHECKER") | null;
             /** Feature */
             feature: string;
             /** Finished At */
             finished_at?: number | null;
             /** Id */
             id: string;
+            /**
+             * Lane
+             * @default local
+             */
+            lane: string;
             /** Outputs */
             outputs: components["schemas"]["Asset"][];
+            /** Provider Job Id */
+            provider_job_id?: string | null;
             /** Queued At */
             queued_at: number;
             risk?: components["schemas"]["GenerationRisk"] | null;
@@ -3217,6 +3847,8 @@ export interface components {
             phase: string;
             /** Progress */
             progress: number;
+            /** Remainingseconds */
+            remainingSeconds?: number | null;
             /** Result */
             result?: string | string[] | null;
             /**
@@ -3229,7 +3861,7 @@ export interface components {
         };
         /**
          * GenerationRisk
-         * @description Create-time snapshot of the bet a reckless job took.
+         * @description Create-time snapshot of the bet a Brave job took.
          *
          *     Stored privately as spec["_risk"] (no store migration), promoted to this
          *     typed field on every read. Drives the queue badge and the failure backstop
@@ -3252,6 +3884,8 @@ export interface components {
              * @enum {string}
              */
             tier: "over" | "unmeasured";
+            /** Unmeasured Basis */
+            unmeasured_basis?: ("high_res_cell" | "two_stage_range" | "mac_two_stage_cell" | "windowed_range" | "pass_tokens" | "unmeasured_model") | null;
         };
         /**
          * GenerationSeed
@@ -3370,6 +4004,50 @@ export interface components {
             status: "logged_out";
         };
         /**
+         * IcLoraAutoSinglePass
+         * @description Auto runs the whole clip in one pass.
+         */
+        IcLoraAutoSinglePass: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "single-pass";
+        };
+        /**
+         * IcLoraAutoWindowed
+         * @description Auto runs the clip in chunks of ``frames`` frames.
+         */
+        IcLoraAutoWindowed: {
+            /** Frames */
+            frames: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "windowed";
+        };
+        /** IcLoraCarryPreflightCell */
+        IcLoraCarryPreflightCell: {
+            /** Carryframes */
+            carryFrames: number;
+            /** Code */
+            code?: string | null;
+            /** Message */
+            message?: string | null;
+            /** Ok */
+            ok: boolean;
+            /** Over Gib */
+            over_gib?: number | null;
+            /** Over Ram Gb */
+            over_ram_gb?: number | null;
+            readout?: components["schemas"]["BudgetReadout"] | null;
+            /** Shortfall Kind */
+            shortfall_kind?: ("total" | "free") | null;
+            /** Tier */
+            tier?: ("over" | "unmeasured") | null;
+        };
+        /**
          * IcLoraCatalogItem
          * @description IC-LoRA — base plus IC-specific preprocessing / controls / default settings.
          *
@@ -3395,6 +4073,8 @@ export interface components {
             controls?: components["schemas"]["IcLoraControl"][];
             /** Created At */
             created_at?: string | null;
+            /** Default Negative Prompt */
+            default_negative_prompt?: string | null;
             default_settings?: components["schemas"]["IcLoraSettings"];
             /** Description */
             description: string;
@@ -3434,6 +4114,24 @@ export interface components {
             trigger?: string | null;
             /** Trigger Placement */
             trigger_placement?: ("first_token" | "anywhere") | null;
+        };
+        /**
+         * IcLoraCellFit
+         * @description How long a clip one output cell fits on this machine.
+         *
+         *     ``max_frames`` is the longest clip, in frames at the output rate, whose job loads. 0 when none
+         *     does. ``full`` is a clip at the input cap.
+         */
+        IcLoraCellFit: {
+            /** Full */
+            full: boolean;
+            /** Max Frames */
+            max_frames: number;
+            /**
+             * Resolution
+             * @enum {string}
+             */
+            resolution: "270p" | "360p" | "540p" | "720p" | "1080p" | "1440p" | "2160p";
         };
         /** IcLoraControl */
         IcLoraControl: {
@@ -3563,6 +4261,8 @@ export interface components {
         IcLoraGenerateRequest: {
             /** Audio Mode */
             audio_mode?: ("source" | "generated" | "off") | null;
+            /** Carry Frames */
+            carry_frames?: number | null;
             /**
              * Cfg Guidance Scale
              * @default 1
@@ -3597,6 +4297,14 @@ export interface components {
             loop_seconds?: (2 | 3 | 4 | 5 | 6 | 8 | 10 | 12 | 14 | 16 | 18 | 20) | null;
             /** Lora Strength */
             lora_strength?: number | null;
+            /** Max Window Frames */
+            max_window_frames?: number | null;
+            /** Nag Alpha */
+            nag_alpha?: number | null;
+            /** Nag Scale */
+            nag_scale?: number | null;
+            /** Nag Tau */
+            nag_tau?: number | null;
             /**
              * Negative Prompt
              * @default
@@ -3621,6 +4329,10 @@ export interface components {
             resolution_factor?: number | null;
             /** Skip Stage 2 */
             skip_stage_2?: boolean | null;
+            /** Tile Overlap */
+            tile_overlap?: number | null;
+            /** Tile Size */
+            tile_size?: ("large" | "extra-large") | null;
             /** Use Lora In Stage 2 */
             use_lora_in_stage_2?: boolean | null;
             /** Variant Id */
@@ -3658,12 +4370,32 @@ export interface components {
         IcLoraListResponse: {
             /**
              * Budgetmode
-             * @default standard
+             * @default brave
              * @enum {string}
              */
-            budgetMode: "standard" | "reckless";
+            budgetMode: "brave" | "cautious";
             /** Ic Loras */
             ic_loras: components["schemas"]["IcLoraListItem"][];
+        };
+        /** IcLoraMaxWindowPreflightCell */
+        IcLoraMaxWindowPreflightCell: {
+            /** Code */
+            code?: string | null;
+            /** Maxwindowframes */
+            maxWindowFrames: number;
+            /** Message */
+            message?: string | null;
+            /** Ok */
+            ok: boolean;
+            /** Over Gib */
+            over_gib?: number | null;
+            /** Over Ram Gb */
+            over_ram_gb?: number | null;
+            readout?: components["schemas"]["BudgetReadout"] | null;
+            /** Shortfall Kind */
+            shortfall_kind?: ("total" | "free") | null;
+            /** Tier */
+            tier?: ("over" | "unmeasured") | null;
         };
         /**
          * IcLoraPreflightCell
@@ -3721,10 +4453,10 @@ export interface components {
         IcLoraPreflightResponse: {
             /**
              * Budgetmode
-             * @default standard
+             * @default brave
              * @enum {string}
              */
-            budgetMode: "standard" | "reckless";
+            budgetMode: "brave" | "cautious";
             /** Cells */
             cells: components["schemas"]["IcLoraPreflightCell"][];
             source: components["schemas"]["IcLoraPreflightSource"];
@@ -3753,6 +4485,61 @@ export interface components {
         IcLoraRecipeInputs: {
             image?: components["schemas"]["InputAssetRef"] | null;
             video: components["schemas"]["InputAssetRef"];
+        };
+        /**
+         * IcLoraRecipeMemoryRequest
+         * @description Memory advice for a Home video recipe, before and after a clip is picked.
+         *
+         *     ``cells`` are the output cells the form offers. Without ``source`` each is priced for a 16:9
+         *     clip of that size. ``resolution`` is the selected cell, priced for ``source`` when given.
+         */
+        IcLoraRecipeMemoryRequest: {
+            /** Audiomode */
+            audioMode?: ("source" | "generated" | "off") | null;
+            /** Carryframes */
+            carryFrames?: number | null;
+            /** Cells */
+            cells: ("270p" | "360p" | "540p" | "720p" | "1080p" | "1440p" | "2160p")[];
+            /** Maxwindowframes */
+            maxWindowFrames?: number | null;
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "ltx-2.3-fast" | "ltx-2.5-fast";
+            /**
+             * Resolution
+             * @enum {string}
+             */
+            resolution: "270p" | "360p" | "540p" | "720p" | "1080p" | "1440p" | "2160p";
+            /** Scale */
+            scale?: number | null;
+            source?: components["schemas"]["IcLoraRecipeMemorySource"] | null;
+            /** Tilingoverlap */
+            tilingOverlap?: number | null;
+            /** Tilingsize */
+            tilingSize?: ("large" | "extra-large") | null;
+        };
+        /** IcLoraRecipeMemoryResponse */
+        IcLoraRecipeMemoryResponse: {
+            /** Cells */
+            cells: components["schemas"]["IcLoraCellFit"][];
+            /** Max Input Frames */
+            max_input_frames: number;
+            memory: components["schemas"]["MemoryCapacity"];
+            selected?: components["schemas"]["JobMemoryAsk"] | null;
+        };
+        /**
+         * IcLoraRecipeMemorySource
+         * @description The picked clip: its file size and its frames at the output rate.
+         */
+        IcLoraRecipeMemorySource: {
+            /** Frames */
+            frames: number;
+            /** Height */
+            height: number;
+            /** Width */
+            width: number;
         };
         /** IcLoraSettings */
         IcLoraSettings: {
@@ -3823,6 +4610,17 @@ export interface components {
              * @enum {string}
              */
             model: "ltx-2.3-fast" | "ltx-2.5-fast";
+            /** Nagalpha */
+            nagAlpha?: number | null;
+            /** Nagscale */
+            nagScale?: number | null;
+            /** Nagtau */
+            nagTau?: number | null;
+            /**
+             * Negativeprompt
+             * @default
+             */
+            negativePrompt: string;
             /**
              * Prompt
              * @default
@@ -3847,6 +4645,68 @@ export interface components {
             /** Variantid */
             variantId?: string | null;
         };
+        /** IcLoraTilePreflightCell */
+        IcLoraTilePreflightCell: {
+            /** Code */
+            code?: string | null;
+            /** Message */
+            message?: string | null;
+            /** Ok */
+            ok: boolean;
+            /** Over Gib */
+            over_gib?: number | null;
+            /** Over Ram Gb */
+            over_ram_gb?: number | null;
+            readout?: components["schemas"]["BudgetReadout"] | null;
+            /** Shortfall Kind */
+            shortfall_kind?: ("total" | "free") | null;
+            /** Tier */
+            tier?: ("over" | "unmeasured") | null;
+            /**
+             * Tilesize
+             * @enum {string}
+             */
+            tileSize: "standard" | "large" | "extra-large";
+        };
+        /**
+         * IcLoraTilePreflightRequest
+         * @description Advisory verdict per tile size and per window for a recipe create.
+         *
+         *     The body is the create body. Each requested tile size replaces its ``tilingSize``, each
+         *     requested maximum chunk length replaces its ``maxWindowFrames``, and each requested carry replaces its
+         *     ``carryFrames``. The other choice of the body stays. ``standard`` is the tile of the
+         *     catalog entry. An empty prompt is accepted here. Create still refuses one. The response
+         *     also gives the carry, window and tile the run uses when the body omits them.
+         */
+        IcLoraTilePreflightRequest: {
+            /** Carries */
+            carries?: number[];
+            inputs: components["schemas"]["IcLoraRecipeInputs"];
+            /** Maxwindows */
+            maxWindows?: number[];
+            params: components["schemas"]["IcLoraVideoRecipeParams"];
+            /** Tilesizes */
+            tileSizes?: ("standard" | "large" | "extra-large")[];
+        };
+        /**
+         * IcLoraTilePreflightResponse
+         * @description Verdicts only. The input is never echoed.
+         */
+        IcLoraTilePreflightResponse: {
+            /**
+             * Budgetmode
+             * @default brave
+             * @enum {string}
+             */
+            budgetMode: "brave" | "cautious";
+            /** Carrycells */
+            carryCells?: components["schemas"]["IcLoraCarryPreflightCell"][];
+            /** Cells */
+            cells: components["schemas"]["IcLoraTilePreflightCell"][];
+            defaults: components["schemas"]["IcLoraTilingDefaults"];
+            /** Maxwindowcells */
+            maxWindowCells?: components["schemas"]["IcLoraMaxWindowPreflightCell"][];
+        };
         /**
          * IcLoraTiling
          * @description Tile size of a catalog IC-LoRA, and an optional fixed temporal window.
@@ -3858,26 +4718,71 @@ export interface components {
          *     frames detail is lost and colour drifts). A clip longer than the window always runs
          *     in windows of this length. None leaves the choice to the job budget.
          *
+         *     ``adaptive_window`` leaves the window to the job budget for a LoRA that has no measured
+         *     drift length (Refine Details). The budget picks the longest window that fits, up to the cap
+         *     of the resolution (``ic_lora_adaptive_window``). It excludes ``window_frames``, because a
+         *     fixed window chunks every longer clip. ``max_window_frames`` is the run's own maximum
+         *     for it. None keeps the cap of the resolution.
+         *
          *     ``carry_frames`` is the part of a window that the next window re-renders and pins at
-         *     its start. It needs a ``window_frames``. None keeps ``DEFAULT_CARRY_FRAMES``.
+         *     its start. It needs a ``window_frames`` or an ``adaptive_window``. None keeps
+         *     ``DEFAULT_CARRY_FRAMES``. ``carry_pinned`` is set when the run chose the carry. An adaptive
+         *     run that did not is on Auto carry: ``carry_frames`` is then the longest carry that Auto may
+         *     use, and the job budget picks the carry that is safest (``ic_lora_auto_carry``).
+         *
+         *     ``overlap_fraction`` is the share of a tile that the next tile covers again. A smaller
+         *     share means fewer tiles per step, and a faster run with a higher risk of seams.
          *
          *     ``max_output_long_side`` and ``max_output_short_side`` raise the spatial cap of the
          *     job for this LoRA. The transformer sees one tile at a time, so the output can be
          *     larger than the local 1080p cell. None keeps that cell.
          */
         IcLoraTiling: {
+            /**
+             * Adaptive Window
+             * @default false
+             */
+            adaptive_window: boolean;
             /** Carry Frames */
             carry_frames?: number | null;
+            /**
+             * Carry Pinned
+             * @default false
+             */
+            carry_pinned: boolean;
             /** Long Side */
             long_side: number;
             /** Max Output Long Side */
             max_output_long_side?: number | null;
             /** Max Output Short Side */
             max_output_short_side?: number | null;
+            /** Max Window Frames */
+            max_window_frames?: number | null;
+            /**
+             * Overlap Fraction
+             * @default 0.5
+             */
+            overlap_fraction: number;
             /** Short Side */
             short_side: number;
             /** Window Frames */
             window_frames?: number | null;
+        };
+        /**
+         * IcLoraTilingDefaults
+         * @description What Auto runs when the request omits a tiling control.
+         *
+         *     ``carryFrames`` is the Auto carry. ``overlapFraction`` is the Auto tile overlap of the LoRA.
+         *     ``auto`` is the Auto chunk length, picked from the clip and the resolution. It is None when
+         *     Auto is refused: the cells carry the refusal.
+         */
+        IcLoraTilingDefaults: {
+            /** Auto */
+            auto?: (components["schemas"]["IcLoraAutoSinglePass"] | components["schemas"]["IcLoraAutoWindowed"]) | null;
+            /** Carryframes */
+            carryFrames: number;
+            /** Overlapfraction */
+            overlapFraction?: number | null;
         };
         /** IcLoraTrackInputs */
         IcLoraTrackInputs: {
@@ -3906,6 +4811,17 @@ export interface components {
              * @enum {string}
              */
             model: "ltx-2.3-fast" | "ltx-2.5-fast";
+            /** Nagalpha */
+            nagAlpha?: number | null;
+            /** Nagscale */
+            nagScale?: number | null;
+            /** Nagtau */
+            nagTau?: number | null;
+            /**
+             * Negativeprompt
+             * @default
+             */
+            negativePrompt: string;
             /**
              * Prompt
              * @default
@@ -3937,15 +4853,30 @@ export interface components {
         IcLoraVideoRecipeParams: {
             /** Audiomode */
             audioMode?: ("source" | "generated" | "off") | null;
+            /** Carryframes */
+            carryFrames?: number | null;
             /** Controltype */
             controlType?: ("pose" | "depth" | "canny") | null;
             /** Fps */
             fps?: number | null;
+            /** Maxwindowframes */
+            maxWindowFrames?: number | null;
             /**
              * Model
              * @enum {string}
              */
             model: "ltx-2.3-fast" | "ltx-2.5-fast";
+            /** Nagalpha */
+            nagAlpha?: number | null;
+            /** Nagscale */
+            nagScale?: number | null;
+            /** Nagtau */
+            nagTau?: number | null;
+            /**
+             * Negativeprompt
+             * @default
+             */
+            negativePrompt: string;
             /**
              * Prompt
              * @default
@@ -3967,6 +4898,10 @@ export interface components {
             scale?: number | null;
             /** Seed */
             seed?: number | null;
+            /** Tilingoverlap */
+            tilingOverlap?: number | null;
+            /** Tilingsize */
+            tilingSize?: ("large" | "extra-large") | null;
             /** Variantid */
             variantId?: string | null;
         };
@@ -3983,6 +4918,21 @@ export interface components {
         ImageGenRecommendationResponse: {
             /** Cp To Download */
             cp_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-spatial-upscaler-x2-1.1" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "ltx-2.5-22b-distilled" | "ltx-2.5-spatial-upscaler-x2-1.0" | "ltx-2.5-video-vae" | "ltx-2.5-video-vae-conv" | "ltx-2.5-audio-vae" | "ltx-2.5-duration-head" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "gemma4-12b-with-proj-ltx-2.5" | "gemma-4-e2b-it" | "z-image-turbo") | null;
+        };
+        /**
+         * ImageGenerationStatusResponse
+         * @description Which image providers can run now. A blocker is the code create would refuse with.
+         */
+        ImageGenerationStatusResponse: {
+            /**
+             * Defaultprovider
+             * @enum {string}
+             */
+            defaultProvider: "local" | "fal";
+            /** Falblocker */
+            falBlocker: ("FAL_API_KEY_NOT_CONFIGURED" | "LOCAL_GENERATION_UNSUPPORTED" | "IMAGE_MODEL_NOT_DOWNLOADED") | null;
+            /** Localblocker */
+            localBlocker: ("FAL_API_KEY_NOT_CONFIGURED" | "LOCAL_GENERATION_UNSUPPORTED" | "IMAGE_MODEL_NOT_DOWNLOADED") | null;
         };
         /** ImageMeta */
         ImageMeta: {
@@ -4031,11 +4981,23 @@ export interface components {
              * @enum {string}
              */
             model: "ltx-2.3-fast" | "ltx-2.5-fast";
+            /** Nagalpha */
+            nagAlpha?: number | null;
+            /** Nagscale */
+            nagScale?: number | null;
+            /** Nagtau */
+            nagTau?: number | null;
             /**
              * Negativeprompt
              * @default
              */
             negativePrompt: string;
+            /**
+             * Passshape
+             * @default auto
+             * @enum {string}
+             */
+            passShape: "auto" | "one_pass" | "parts";
             /** Prompt */
             prompt: string;
             /**
@@ -4113,6 +5075,43 @@ export interface components {
              */
             title: "What it does" | "Input" | "Prompt" | "Tips" | "Notes";
         };
+        /**
+         * JobMemoryAsk
+         * @description What one job asks of the memory the gate compares.
+         *
+         *     ``ask_gib`` is the figure admission compares against ``MemoryCapacity.capacity_gib``, rounded
+         *     up to 0.001 GiB, so a meter drawn from it never shows an over job as fitting. ``windows`` is
+         *     1 for a single pass. ``tight`` is the gate's own tight-fit flag. The band is sent on
+         *     ``estimate`` asks only: one ask per Fast grid point and aspect makes this the bulk of the
+         *     specs payload. ``risk`` is sent on ``FastCellAsk.alternative`` when the alternative pass
+         *     shape is an ``over`` or ``unmeasured`` bet.
+         */
+        JobMemoryAsk: {
+            /** Ask Gib */
+            ask_gib: number;
+            /** Band High Gib */
+            band_high_gib?: number | null;
+            /** Band Low Gib */
+            band_low_gib?: number | null;
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "solid" | "estimate" | "rough";
+            /** Estimated Seconds */
+            estimated_seconds?: number | null;
+            risk?: components["schemas"]["GenerationRisk"] | null;
+            /**
+             * Tight
+             * @default false
+             */
+            tight: boolean;
+            /**
+             * Windows
+             * @default 1
+             */
+            windows: number;
+        };
         JsonValue: unknown;
         /** KeepRate */
         KeepRate: {
@@ -4137,6 +5136,96 @@ export interface components {
              * @default 1
              */
             strength: number;
+        };
+        /**
+         * KeyframeRef
+         * @description One still on the timeline. An asset id, never a path.
+         */
+        KeyframeRef: {
+            /** Assetid */
+            assetId: string;
+            /** Frameindex */
+            frameIndex: number;
+            /**
+             * Strength
+             * @default 1
+             */
+            strength: number;
+        };
+        /** KeyframesInputs */
+        KeyframesInputs: {
+            /** Keyframes */
+            keyframes: components["schemas"]["KeyframeRef"][];
+        };
+        /**
+         * KeyframesParams
+         * @description Non-media params of a Home Keyframes job. Several stills guide one clip.
+         *
+         *     The keyframes need a known length, so ``duration`` cannot be ``None``. A blank prompt
+         *     is refused: the generate request takes a blank one only with a start image.
+         */
+        KeyframesParams: {
+            /**
+             * Aspectratio
+             * @default auto
+             * @enum {string}
+             */
+            aspectRatio: "auto" | "21:9" | "16:9" | "3:2" | "4:3" | "1:1" | "4:5" | "9:16";
+            /**
+             * Cameramotion
+             * @default none
+             * @enum {string}
+             */
+            cameraMotion: "none" | "dolly_in" | "dolly_out" | "dolly_left" | "dolly_right" | "jib_up" | "jib_down" | "static" | "focus_shift";
+            /**
+             * Duration
+             * @default 5
+             */
+            duration: (2 | 3 | 4 | 5 | 6 | 8 | 10 | 12 | 14 | 16 | 18 | 20) | null;
+            /**
+             * Fps
+             * @default 24
+             * @enum {integer}
+             */
+            fps: 24 | 25 | 48 | 50;
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "ltx-2.3-fast" | "ltx-2.5-fast";
+            /** Nagalpha */
+            nagAlpha?: number | null;
+            /** Nagscale */
+            nagScale?: number | null;
+            /** Nagtau */
+            nagTau?: number | null;
+            /**
+             * Negativeprompt
+             * @default
+             */
+            negativePrompt: string;
+            /**
+             * Passshape
+             * @default auto
+             * @enum {string}
+             */
+            passShape: "auto" | "one_pass" | "parts";
+            /** Prompt */
+            prompt: string;
+            /**
+             * Promptprovenance
+             * @default typed
+             * @enum {string}
+             */
+            promptProvenance: "typed" | "enhanced";
+            /**
+             * Resolution
+             * @default 1080p
+             * @enum {string}
+             */
+            resolution: "270p" | "360p" | "540p" | "720p" | "1080p" | "1440p" | "2160p";
+            /** Seed */
+            seed?: number | null;
         };
         /**
          * LTXOfferingCapabilitiesSpec
@@ -4166,6 +5255,28 @@ export interface components {
             /** User Loras */
             user_loras: boolean;
         };
+        /**
+         * LTXVideoGenerationAspectSpec
+         * @description Per-aspect kept grids and cell annotations priced at that ratio's real canvas.
+         */
+        LTXVideoGenerationAspectSpec: {
+            /** A2V Supported Resolutions Durations */
+            a2v_supported_resolutions_durations?: {
+                [key: string]: components["schemas"]["LTXVideoGenerationResolutionSpec"];
+            } | null;
+            /** Cell Asks */
+            cell_asks?: components["schemas"]["FastCellAsk"][];
+            /** Chunked Cells */
+            chunked_cells?: components["schemas"]["ChunkedFastCell"][];
+            /** Dropped Cells */
+            dropped_cells?: components["schemas"]["DroppedFastCell"][];
+            /** Supported Resolutions Durations */
+            supported_resolutions_durations: {
+                [key: string]: components["schemas"]["LTXVideoGenerationResolutionSpec"];
+            };
+            /** Warned Cells */
+            warned_cells?: components["schemas"]["WarnedFastCell"][];
+        };
         /** LTXVideoGenerationModelSpecItem */
         LTXVideoGenerationModelSpecItem: {
             /**
@@ -4190,7 +5301,13 @@ export interface components {
             a2v_supported_resolutions_durations?: {
                 [key: string]: components["schemas"]["LTXVideoGenerationResolutionSpec"];
             } | null;
+            /** Aspect Specs */
+            aspect_specs?: {
+                [key: string]: components["schemas"]["LTXVideoGenerationAspectSpec"];
+            } | null;
             capabilities?: components["schemas"]["LTXOfferingCapabilitiesSpec"] | null;
+            /** Cell Asks */
+            cell_asks?: components["schemas"]["FastCellAsk"][] | null;
             /** Chunked Cells */
             chunked_cells?: components["schemas"]["ChunkedFastCell"][] | null;
             /** Display Name */
@@ -4230,6 +5347,8 @@ export interface components {
             base_model?: string | null;
             /** Created At */
             created_at?: string | null;
+            /** Default Negative Prompt */
+            default_negative_prompt?: string | null;
             /** Description */
             description: string;
             download: components["schemas"]["DownloadSpec"];
@@ -4315,6 +5434,8 @@ export interface components {
         LoraEntry: {
             /** Catalogid */
             catalogId?: string | null;
+            /** Customloraid */
+            customLoraId?: string | null;
             /** Displayname */
             displayName?: string | null;
             /** Ref */
@@ -4399,11 +5520,23 @@ export interface components {
              * @enum {string}
              */
             model: "ltx-2.3-fast" | "ltx-2.5-fast";
+            /** Nagalpha */
+            nagAlpha?: number | null;
+            /** Nagscale */
+            nagScale?: number | null;
+            /** Nagtau */
+            nagTau?: number | null;
             /**
              * Negativeprompt
              * @default
              */
             negativePrompt: string;
+            /**
+             * Passshape
+             * @default auto
+             * @enum {string}
+             */
+            passShape: "auto" | "one_pass" | "parts";
             /** Prompt */
             prompt: string;
             /**
@@ -4552,6 +5685,23 @@ export interface components {
             demo_video?: string | null;
             /** Thumbnail */
             thumbnail?: string | null;
+        };
+        /**
+         * MemoryCapacity
+         * @description The figure every ``FastCellAsk`` is compared against.
+         *
+         *     ``gpu`` is total VRAM (list time gates on total). ``mac`` is the MPS pool macOS recommends
+         *     for this Mac, which is the whole allowance video may use. None when the backend compared
+         *     nothing (unknown VRAM, unsupported process).
+         */
+        MemoryCapacity: {
+            /** Capacity Gib */
+            capacity_gib: number | null;
+            /**
+             * Device
+             * @enum {string}
+             */
+            device: "gpu" | "mac";
         };
         /** ModelDeleteRequest */
         ModelDeleteRequest: {
@@ -4708,8 +5858,19 @@ export interface components {
             hasGeminiApiKey: boolean;
             /** Localenhancementsupported */
             localEnhancementSupported: boolean;
+            /** Nagunavailablereason */
+            nagUnavailableReason?: string | null;
+            /** Nagunavailablereasonbyfeature */
+            nagUnavailableReasonByFeature?: {
+                [key: string]: string;
+            };
             /** Showmanualenhance */
             showManualEnhance: boolean;
+            /**
+             * Shownagstrengthcontrols
+             * @default false
+             */
+            showNagStrengthControls: boolean;
         };
         /** PromptTemplatePlaceholder */
         PromptTemplatePlaceholder: {
@@ -4734,6 +5895,13 @@ export interface components {
         };
         /** QueueEntry */
         QueueEntry: {
+            /** Api Status */
+            api_status?: ("pending" | "processing") | null;
+            /**
+             * Cancellable
+             * @default true
+             */
+            cancellable: boolean;
             generation: components["schemas"]["Generation"];
             /** Input Assets */
             input_assets: components["schemas"]["Asset"][];
@@ -4750,12 +5918,15 @@ export interface components {
             phase: string;
             /** Progress */
             progress: number;
+            /** Remainingseconds */
+            remainingSeconds?: number | null;
             /** Totalsteps */
             totalSteps: number | null;
         };
         /** QueueSnapshot */
         QueueSnapshot: {
-            active: components["schemas"]["QueueEntry"] | null;
+            /** Active */
+            active?: components["schemas"]["QueueEntry"][];
             /** Done */
             done?: components["schemas"]["QueueEntry"][];
             /** Failed */
@@ -4891,6 +6062,17 @@ export interface components {
              * @enum {string}
              */
             model: "ltx-2.3-fast" | "ltx-2.5-fast";
+            /** Nagalpha */
+            nagAlpha?: number | null;
+            /** Nagscale */
+            nagScale?: number | null;
+            /** Nagtau */
+            nagTau?: number | null;
+            /**
+             * Negativeprompt
+             * @default
+             */
+            negativePrompt: string;
             /**
              * Prompt
              * @default
@@ -4939,6 +6121,11 @@ export interface components {
             activeLtxModelId?: ("ltx-2.5-22b-distilled" | "ltx-2.3-22b-distilled-1.1" | "ltx-2.3-22b-distilled") | null;
             activityDashboardSelections?: components["schemas"]["DashboardSelection"];
             /**
+             * Advancedcontrols
+             * @default false
+             */
+            advancedControls: boolean;
+            /**
              * Assistantlocalmodel
              * @default qwen3.5:9b
              * @constant
@@ -4957,10 +6144,10 @@ export interface components {
             assistantProvider: "gemini" | "local";
             /**
              * Budgetmode
-             * @default reckless
+             * @default brave
              * @enum {string}
              */
-            budgetMode: "standard" | "reckless";
+            budgetMode: "brave" | "cautious";
             /**
              * Diffusionstagecacheenabled
              * @default false
@@ -5002,6 +6189,21 @@ export interface components {
              */
             modelsDir: string;
             /**
+             * Mpsconv3Dasconv2Denabled
+             * @default false
+             */
+            mpsConv3DAsConv2DEnabled: boolean;
+            /**
+             * Nagscale
+             * @default 11
+             */
+            nagScale: number;
+            /**
+             * Neversplitintoparts
+             * @default false
+             */
+            neverSplitIntoParts: boolean;
+            /**
              * Promptcachesize
              * @default 100
              */
@@ -5024,6 +6226,16 @@ export interface components {
              * @default false
              */
             seedLocked: boolean;
+            /**
+             * Shownagstrengthcontrols
+             * @default false
+             */
+            showNagStrengthControls: boolean;
+            /**
+             * Skipbudgetriskconfirm
+             * @default false
+             */
+            skipBudgetRiskConfirm: boolean;
             /**
              * Useconvvae
              * @default false
@@ -5136,6 +6348,34 @@ export interface components {
             ltx_version_label: string;
         };
         /**
+         * TextToImageParams
+         * @description Create-body params. An omitted provider resolves from the settings at create time.
+         */
+        TextToImageParams: {
+            /**
+             * Height
+             * @default 1024
+             */
+            height: number;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Promptprovenance
+             * @default typed
+             * @enum {string}
+             */
+            promptProvenance: "typed" | "enhanced";
+            /** Provider */
+            provider?: ("local" | "fal") | null;
+            /** Seed */
+            seed?: number | null;
+            /**
+             * Width
+             * @default 1024
+             */
+            width: number;
+        };
+        /**
          * TextToVideoParams
          * @description Non-media text-to-video params stored on a generation row.
          */
@@ -5170,11 +6410,23 @@ export interface components {
              * @enum {string}
              */
             model: "ltx-2.3-fast" | "ltx-2.5-fast";
+            /** Nagalpha */
+            nagAlpha?: number | null;
+            /** Nagscale */
+            nagScale?: number | null;
+            /** Nagtau */
+            nagTau?: number | null;
             /**
              * Negativeprompt
              * @default
              */
             negativePrompt: string;
+            /**
+             * Passshape
+             * @default auto
+             * @enum {string}
+             */
+            passShape: "auto" | "one_pass" | "parts";
             /** Prompt */
             prompt: string;
             /**
@@ -5198,6 +6450,17 @@ export interface components {
             endSec: number;
             /** Startsec */
             startSec: number;
+        };
+        /**
+         * UiPreferences
+         * @description The user settings that change what a form shows. Read-only, so Remote may read them.
+         */
+        UiPreferences: {
+            /**
+             * Advancedcontrols
+             * @default false
+             */
+            advancedControls: boolean;
         };
         /** UsualSettings */
         UsualSettings: {
@@ -5288,15 +6551,16 @@ export interface components {
              * Tier
              * @enum {string}
              */
-            tier: "tight" | "unmeasured";
+            tier: "tight" | "over" | "unmeasured";
         };
         /**
          * WarnedFastCell
-         * @description One kept grid cell carrying a warning tier (tight fit or unmeasured).
+         * @description One kept grid cell carrying a warning tier: a tight fit, or a Brave bet
+         *     (over budget or untested) the echoed mode admits.
          *
          *     Kept + warned render the full grid for warned-with-tooltip pickers:
          *     ``fps_to_durations`` stays the kept set, this list marks the risky subset.
-         *     ``headroom_gib`` is set on tight cells only (unmeasured compares nothing).
+         *     ``headroom_gib`` is set on tight cells only.
          *     ``message`` is backend-composed, same builder as the create annotation, so
          *     the picker tooltip and the queue badge read identically.
          */
@@ -5327,7 +6591,7 @@ export interface components {
              * Tier
              * @enum {string}
              */
-            tier: "tight" | "unmeasured";
+            tier: "tight" | "over" | "unmeasured";
         };
     };
     responses: never;
@@ -6595,6 +7859,330 @@ export interface operations {
             };
         };
     };
+    route_list_custom_loras_api_custom_loras_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomLoraListResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_import_custom_lora_api_custom_loras_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomLoraImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomLoraImportStartResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_custom_lora_import_active_api_custom_loras_import_active_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveCustomLoraImportResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_custom_lora_import_progress_api_custom_loras_import_progress_get: {
+        parameters: {
+            query: {
+                sessionId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomLoraImportProgressResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_custom_lora_link_info_api_custom_loras_link_info_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomLoraLinkInfoRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomLoraLinkInfoResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_delete_custom_lora_api_custom_loras__custom_lora_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                custom_lora_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_restore_custom_lora_weights_api_custom_loras__custom_lora_id__weights_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                custom_lora_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomLoraRestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomLoraImportStartResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_delete_custom_lora_weights_api_custom_loras__custom_lora_id__weights_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                custom_lora_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
     route_enhance_prompt_api_enhance_prompt_post: {
         parameters: {
             query?: never;
@@ -7406,6 +8994,48 @@ export interface operations {
             };
         };
     };
+    route_create_custom_lora_api_generations_custom_lora_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCustomLoraRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Generation"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
     route_preflight_edit_api_generations_edit_preflight_post: {
         parameters: {
             query?: never;
@@ -7534,6 +9164,94 @@ export interface operations {
             };
         };
     };
+    route_ic_lora_recipe_memory_api_generations_ic_lora_recipes__recipe_id__memory_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IcLoraRecipeMemoryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IcLoraRecipeMemoryResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_preflight_ic_lora_tile_sizes_api_generations_ic_lora_recipes__recipe_id__preflight_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IcLoraTilePreflightRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IcLoraTilePreflightResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
     route_create_image_to_video_api_generations_image_to_video_post: {
         parameters: {
             query?: never;
@@ -7544,6 +9262,48 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateImageToVideoRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Generation"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_create_keyframes_api_generations_keyframes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateKeyframesRequest"];
             };
         };
         responses: {
@@ -7670,6 +9430,48 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateRetakeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Generation"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_create_text_to_image_api_generations_text_to_image_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTextToImageRequest"];
             };
         };
         responses: {
@@ -8286,6 +10088,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_image_generation_status_api_image_generation_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageGenerationStatusResponse"];
                 };
             };
             /** @description Client Error */
@@ -9567,6 +11407,44 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_get_ui_preferences_api_ui_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UiPreferences"];
                 };
             };
             /** @description Client Error */

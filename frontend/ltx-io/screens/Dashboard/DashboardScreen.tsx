@@ -6,13 +6,13 @@ import { Text } from "@/ds/Text/Text";
 
 import { ResultStatus } from "../../components/shared/ResultStatus/ResultStatus.tsx";
 import { generationQueryKeys } from "../../hooks/generationQueryKeys.ts";
+import { useInvalidateOnGenerationFinish } from "../../hooks/useInvalidateOnGenerationFinish.ts";
 import { unwrapApiResult } from "../../lib/unwrapApiResult.ts";
 import { useExploreRuntime } from "../../runtime/ExploreRuntime.tsx";
 
 import { DashboardPanels } from "./DashboardPanels.tsx";
 import { dashboardLayout } from "./dashboardLayout.ts";
 import { useDashboardSelection, type DashboardRange } from "./useDashboardSelection.ts";
-import { useRefreshDashboardOnFinish } from "./useRefreshDashboardOnFinish.ts";
 import styles from "./DashboardScreen.module.scss";
 
 const RANGES: { id: DashboardRange; label: string }[] = [
@@ -28,7 +28,7 @@ export function DashboardScreen() {
     [],
   );
   const { selection, ready, setSelection } = useDashboardSelection();
-  useRefreshDashboardOnFinish();
+  useInvalidateOnGenerationFinish(generationQueryKeys.dashboards);
   const range = selection.range;
   const pageRef = useRef<HTMLDivElement>(null);
   const width = useDashboardWidth(pageRef);

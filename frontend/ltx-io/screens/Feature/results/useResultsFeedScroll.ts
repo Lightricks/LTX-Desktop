@@ -170,9 +170,12 @@ export function useResultsFeedScroll({
     const newest = newestElRef.current;
     const scroller = newest ? getScrollParent(newest) : null;
     if (!newest || !scroller) return;
+    // No smooth scroll. The feed is virtualized, so rows are measured while the scroll runs.
+    // The virtualizer then sets the scroll position itself, which cancels a smooth scroll
+    // and leaves it in the middle of the list.
     scroller.scrollTo({
       top: scrollTopForNewest(scroller, newest),
-      behavior: "smooth",
+      behavior: "auto",
     });
   }, []);
 

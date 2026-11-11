@@ -19,6 +19,8 @@ export function createRemoteAppRoutes(options: {
   homeLayoutPages: Record<"home" | "assistant" | "assets" | "dashboard", ReactNode>;
   screens: Partial<Record<HomeFeatureId, ComponentType>>;
   featureLayout: ComponentType;
+  /** Pages under the feature layout that are not a feature, such as one saved custom LoRA. */
+  extraFeatureRoutes?: readonly RouteObject[];
 }): RouteObject[] {
   return [
     {
@@ -42,7 +44,11 @@ export function createRemoteAppRoutes(options: {
                 element: options.homeLayoutPages[spec.id],
               };
             }),
-            ...createHomeFeatureRoutes(options.screens, options.featureLayout),
+            ...createHomeFeatureRoutes(
+              options.screens,
+              options.featureLayout,
+              options.extraFeatureRoutes,
+            ),
             { path: "*", element: createElement(RemoteUnknownPathRedirect) },
           ],
         },

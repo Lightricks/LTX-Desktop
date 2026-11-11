@@ -212,13 +212,13 @@ class ExtendHandler(StateHandlerBase):
             )
 
             try:
-                pipeline_state = self._pipelines.load_retake_pipeline(
+                pipeline_state, ran = self._pipelines.load_retake_pipeline(
                     distilled=True,
                     width=target_width,
                     height=target_height,
                     frames=target_frames + extend_frames,
                 )
-                self._generation.start_generation(generation_id)
+                self._generation.start_generation(generation_id, ran=ran)
                 self._generation.update_progress("loading_model", 5, 0, 1)
                 self._generation.update_progress("inference", 15, 0, 1)
 
@@ -246,7 +246,7 @@ class ExtendHandler(StateHandlerBase):
                     raise GenerationCancelledError()
 
                 self._generation.update_progress("complete", 100, 1, 1)
-                self._generation.complete_generation(str(output_path))
+                self._generation.complete_generation(str(output_path), ran=ran)
                 return RetakeVideoResponse(status="complete", video_path=str(output_path))
             except HTTPError:
                 self._generation.fail_generation("Extend generation failed")

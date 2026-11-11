@@ -98,6 +98,9 @@ Budget constants in `backend/runtime_config/` cite internal measurement run keys
 Budget comments explain why, not what was measured: mechanism, failure mode,
 and what breaks if the constant changes. No run keys, brackets, or fit math in
 code prose — those live behind the Evidence links and in the budgets ledger.
+What each machine runs, for users, is `docs/hardware-compatibility.md`; when a
+budget change moves what a card or Mac offers, update its tables in the same change
+and regenerate `docs/local-compat-matrix.md` (never hand-edit it).
 
 ## Tests
 

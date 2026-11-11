@@ -1,6 +1,18 @@
 import type { components } from "../../../../generated/backend-openapi";
+import { type SelectionRisk, worseRisk } from "../../../../lib/budget-risk.ts";
+import { closestVideoAspectRatio } from "../../../../lib/closest-video-aspect-ratio.ts";
+import { buildMemoryMeterModel, optionMemory } from "../../../../lib/memory-meter.ts";
+import {
+  effectivePassShape,
+  isForcedPassShape,
+  withVisiblePassShape,
+  type ForcedPassShape,
+  type PassShapeSelection,
+} from "../../../../lib/pass-shape.ts";
 import {
   type OfferingId,
+  type VideoGenerationAspectRatio,
+  fastSelectionRisk,
   isVideoGenerationAspectRatio,
   orderAspectRatiosForPicker,
   restoreOfferingId,
@@ -18,6 +30,7 @@ import {
   a2vAspectRatios,
   a2vDisabledAspectsForOffering,
   a2vDisabledResolutionsForOffering,
+  a2vDurationForFrames,
   a2vResolutionsForOffering,
   a2vTrimCapSeconds,
   advertisedA2vDurations,
@@ -32,7 +45,11 @@ import type {
   VideoFeatureAspectRatio,
   VideoFeatureContext,
 } from "../../../lib/videoFieldPolicy.ts";
-import { VIDEO_SETTING_RESOLUTIONS } from "../../../lib/videoSettingsControls.ts";
+import {
+  createPassShapeFields,
+  fastBudgetIssues,
+  VIDEO_SETTING_RESOLUTIONS,
+} from "../../../lib/videoSettingsControls.ts";
 import {
   type AssetRef,
   type FeatureDefinition,
@@ -43,6 +60,7 @@ import {
   type ValidationIssue,
   applyFeatureFieldChange,
 } from "../types.ts";
+import { negativePromptField, readNegativePrompt } from "./negativePrompt.ts";
 
 import { readAssetRef } from "./videoFeature.ts";
 
@@ -53,10 +71,12 @@ export type AudioToVideoAspectRatio = VideoFeatureAspectRatio;
 export type AudioToVideoSchema = {
   startFrame: { kind: "image-asset"; value: AssetRef | null };
   prompt: { kind: "textarea" };
+  negativePrompt: { kind: "textarea" };
   audio: { kind: "audio-asset"; value: AssetRef | null };
   model: { kind: "options"; value: OfferingId };
   resolution: { kind: "options"; value: A2vResolution };
   aspectRatio: { kind: "options"; value: AudioToVideoAspectRatio };
+  passShape: { kind: "options"; value: ForcedPassShape | null };
 };
 
 export type AudioToVideoValues = FeatureValues<AudioToVideoSchema>;
@@ -93,12 +113,13 @@ function a2vFit(
   offering: OfferingId | null | undefined,
   resolution: A2vResolution,
   audioSeconds: number,
+  aspectRatio?: string | null,
 ): A2vAudioFit {
   return resolveA2vAudio({
     audioSeconds,
-    keptSeconds: advertisedA2vDurations(specs, offering, resolution),
-    ceilingSeconds: staticA2vDurations(specs, offering, resolution),
-    longestCeilingSeconds: staticA2vLongestCellSeconds(specs, offering),
+    keptSeconds: advertisedA2vDurations(specs, offering, resolution, aspectRatio),
+    ceilingSeconds: staticA2vDurations(specs, offering, resolution, aspectRatio),
+    longestCeilingSeconds: staticA2vLongestCellSeconds(specs, offering, aspectRatio),
   });
 }
 
@@ -106,12 +127,19 @@ function explicitAspectOptions(
   context: AudioToVideoContext,
   offering: OfferingId,
   resolution: A2vResolution,
+  passShape?: ForcedPassShape | null,
 ): FieldOption<AudioToVideoAspectRatio>[] {
   const fit =
     context.audioDurationSeconds == null
       ? null
       : a2vFit(context.specs, offering, resolution, context.audioDurationSeconds);
   const effective = fit != null && !fit.pastKept ? fit.heardSeconds : null;
+  const priced = pricedA2vDuration(
+    context.specs,
+    offering,
+    resolution,
+    context.audioDurationSeconds,
+  );
   const disabled = a2vDisabledAspectsForOffering(
     context.specs,
     offering,
@@ -123,16 +151,29 @@ function explicitAspectOptions(
   ).map((value) => {
     const warning = untrainedAspectRatioWarning(value);
     const refused = disabled.find((option) => option.value === value);
+    const aspectPriced =
+      pricedA2vDuration(
+        context.specs,
+        offering,
+        resolution,
+        context.audioDurationSeconds,
+        value,
+      ) ?? priced;
+    const memory = optionMemory(context.specs, {
+      model: offering,
+      resolution,
+      fps: A2V_FPS,
+      duration: aspectPriced,
+      aspectRatio: value,
+      audio: true,
+      passShape,
+    });
     return {
       value,
       label: value,
-      ...(warning ? { warning } : {}),
-      ...(refused
-        ? {
-            disabledReason: refused.message,
-            ...(refused.readout ? { budget: refused.readout } : {}),
-          }
-        : {}),
+      ...(warning != null ? { warning } : {}),
+      ...(refused ? { disabledReason: refused.message } : {}),
+      ...(memory === undefined ? {} : { memory }),
     };
   });
 }
@@ -141,6 +182,9 @@ function explicitAspectOptions(
 export const AUDIO_TO_VIDEO_EXAMPLE_PROMPT =
   "The character speaks while moving through the scene";
 
+export const AUDIO_TO_VIDEO_EXAMPLE_NEGATIVE_PROMPT =
+  "closed mouth, out-of-sync lips, warped teeth, distorted jaw, frozen face, robotic movement, subtitles, watermark";
+
 /**
  * Empty state: example prompt plus Auto aspect, which matches the packaged
  * example start image. Normalize rewrites Auto to 16:9 when no image is set.
@@ -148,10 +192,12 @@ export const AUDIO_TO_VIDEO_EXAMPLE_PROMPT =
 export const AUDIO_TO_VIDEO_DEFAULTS: AudioToVideoValues = {
   startFrame: null,
   prompt: AUDIO_TO_VIDEO_EXAMPLE_PROMPT,
+  negativePrompt: AUDIO_TO_VIDEO_EXAMPLE_NEGATIVE_PROMPT,
   audio: null,
   model: "ltx-2.5-fast",
   resolution: A2V_RESOLUTION,
   aspectRatio: "auto",
+  passShape: null,
 };
 
 function isAspectRatio(value: unknown): value is AudioToVideoAspectRatio {
@@ -188,26 +234,67 @@ export function a2vModelOptions(
 function a2vResolutionOptions(
   context: AudioToVideoContext,
   offering: OfferingId,
+  aspectRatio?: AudioToVideoAspectRatio,
+  passShape?: ForcedPassShape | null,
 ): FieldOption<A2vResolution>[] {
   const specs = context.specs;
+  const resolvedAspect =
+    aspectRatio != null && aspectRatio !== "auto" ? aspectRatio : null;
   // Kept-then-dropped stays sorted: a kept resolution implies all smaller
   // ones kept, so drops append above keeps in A2V order.
   return [
-    ...a2vResolutionsForOffering(specs, offering).map((resolution) => {
+    ...a2vResolutionsForOffering(specs, offering, resolvedAspect).map((resolution) => {
+      const priced = pricedA2vDuration(
+        specs,
+        offering,
+        resolution,
+        context.audioDurationSeconds,
+        resolvedAspect,
+      );
+      const memory = optionMemory(specs, {
+        model: offering,
+        resolution,
+        fps: A2V_FPS,
+        duration: priced,
+        aspectRatio: resolvedAspect,
+        audio: true,
+        passShape,
+      });
       const warning = generationResolutionWarning(resolution, specs?.low_performance_machine);
       return {
         value: resolution,
         label: videoGenerationResolutionLabel(resolution),
-        ...(warning ? { warning } : {}),
+        ...(warning != null ? { warning } : {}),
+        ...(memory === undefined ? {} : { memory }),
       };
     }),
-    ...a2vDisabledResolutionsForOffering(specs, offering).map((option) => ({
+    ...a2vDisabledResolutionsForOffering(specs, offering, resolvedAspect).map((option) => ({
       value: option.value,
       label: videoGenerationResolutionLabel(option.value),
       disabledReason: option.message,
-      ...(option.readout ? { budget: option.readout } : {}),
     })),
   ];
+}
+
+/**
+ * Smallest kept cell whose frame count covers the heard audio. The backend
+ * prices the exact frame count, so this can warn when the queued job stores
+ * no risk. It does not price a longer cell than those frames need.
+ */
+function pricedA2vDuration(
+  specs: AudioToVideoContext["specs"],
+  offering: OfferingId | null | undefined,
+  resolution: A2vResolution,
+  audioSeconds: number | null,
+  aspectRatio?: string | null,
+): number | null {
+  if (audioSeconds == null) return null;
+  const fit = a2vFit(specs, offering, resolution, audioSeconds, aspectRatio);
+  if (fit.pastKept || fit.frames == null) return null;
+  return a2vDurationForFrames(
+    advertisedA2vDurations(specs, offering, resolution, aspectRatio),
+    fit.frames,
+  );
 }
 
 function resolveA2vModel(model: unknown, context: AudioToVideoContext): OfferingId {
@@ -223,8 +310,9 @@ function resolveA2vResolution(
   resolution: unknown,
   specs: AudioToVideoContext["specs"],
   offering: OfferingId,
+  aspectRatio?: string | null,
 ): A2vResolution {
-  const options = a2vResolutionsForOffering(specs, offering);
+  const options = a2vResolutionsForOffering(specs, offering, aspectRatio);
   if (isA2vResolution(resolution) && options.includes(resolution)) {
     return resolution;
   }
@@ -242,9 +330,16 @@ export function a2vAudioNumFrames(
   context: AudioToVideoContext,
   offering?: OfferingId | null,
   resolution: A2vResolution = A2V_RESOLUTION,
+  aspectRatio?: string | null,
 ): number | null {
   if (context.audioDurationSeconds == null) return null;
-  const fit = a2vFit(context.specs, offering, resolution, context.audioDurationSeconds);
+  const fit = a2vFit(
+    context.specs,
+    offering,
+    resolution,
+    context.audioDurationSeconds,
+    aspectRatio,
+  );
   if (fit.pastKept || fit.frames == null) return null;
   return fit.frames;
 }
@@ -264,16 +359,19 @@ export function fromGeneration(
   if (!params || !inputs) return null;
   const model =
     restoreOfferingId(params.model, context.specs) ?? AUDIO_TO_VIDEO_DEFAULTS.model;
+  const aspectRatio = isAspectRatio(params.aspectRatio)
+    ? params.aspectRatio
+    : AUDIO_TO_VIDEO_DEFAULTS.aspectRatio;
 
   return {
     startFrame: inputs.startFrame,
     prompt: typeof params.prompt === "string" ? params.prompt : "",
+    negativePrompt: readNegativePrompt(spec),
     audio: inputs.audio,
     model,
-    resolution: resolveA2vResolution(params.resolution, context.specs, model),
-    aspectRatio: isAspectRatio(params.aspectRatio)
-      ? params.aspectRatio
-      : AUDIO_TO_VIDEO_DEFAULTS.aspectRatio,
+    resolution: resolveA2vResolution(params.resolution, context.specs, model, aspectRatio),
+    aspectRatio,
+    passShape: isForcedPassShape(params.passShape) ? params.passShape : null,
   };
 }
 
@@ -303,12 +401,18 @@ function audioLengthIssue(
       alwaysRevealed: true,
     };
   }
-  const ceiling = staticA2vDurations(context.specs, values.model, values.resolution);
+  const ceiling = staticA2vDurations(
+    context.specs,
+    values.model,
+    values.resolution,
+    values.aspectRatio,
+  );
   const fit = a2vFit(
     context.specs,
     values.model,
     values.resolution,
     context.audioDurationSeconds,
+    values.aspectRatio,
   );
   // A prefix is hearable only when its frames fit a kept cell. A dropped
   // ceiling is a refusal, even when a longer resolution made the backend trim.
@@ -352,6 +456,49 @@ function audioLengthIssue(
   };
 }
 
+/**
+ * Explicit ratios pass through. Auto with no start frame is 16:9, the same
+ * fallback the backend uses. Auto with a loaded frame uses that frame's
+ * closest ratio. Until the frame loads, the loudest aspect is used so the
+ * warning cannot be quieter than the ratio the backend will price.
+ */
+function aspectForA2vBudget(
+  values: AudioToVideoValues,
+  context: AudioToVideoContext,
+): VideoGenerationAspectRatio {
+  if (isVideoGenerationAspectRatio(values.aspectRatio)) return values.aspectRatio;
+  if (values.startFrame == null) return "16:9";
+  const ratios = a2vAspectRatios(context.specs, values.model, values.resolution);
+  const size = context.startFrameSize;
+  if (size != null && size.height > 0) {
+    return closestVideoAspectRatio(size.width, size.height, ratios) ?? "16:9";
+  }
+  const priced = pricedA2vDuration(
+    context.specs,
+    values.model,
+    values.resolution,
+    context.audioDurationSeconds,
+  );
+  let chosen: VideoGenerationAspectRatio = "16:9";
+  let worst: SelectionRisk | null = null;
+  for (const ratio of ratios) {
+    const risk = fastSelectionRisk(context.specs, {
+      model: values.model,
+      resolution: values.resolution,
+      fps: A2V_FPS,
+      duration: priced,
+      aspectRatio: ratio,
+      audio: true,
+    });
+    const next = worseRisk(worst, risk);
+    if (next !== worst && risk != null) {
+      worst = next;
+      chosen = ratio;
+    }
+  }
+  return chosen;
+}
+
 export function validateAudioToVideo(
   values: AudioToVideoValues,
   context: AudioToVideoContext,
@@ -374,7 +521,54 @@ export function validateAudioToVideo(
       message: "Add a prompt or a start image.",
     });
   }
+  issues.push(...fastBudgetIssues(context.specs, a2vCellSelection(values, context)));
   return issues;
+}
+
+/** The cell the job is priced at, or null until the audio is in: its length is the job's length. */
+function a2vCellSelection(
+  values: AudioToVideoValues,
+  context: AudioToVideoContext,
+): PassShapeSelection | null {
+  const priced = pricedA2vDuration(
+    context.specs,
+    values.model,
+    values.resolution,
+    context.audioDurationSeconds,
+    values.aspectRatio,
+  );
+  if (values.audio == null || priced == null) return null;
+  return {
+    model: values.model,
+    resolution: values.resolution,
+    fps: A2V_FPS,
+    duration: priced,
+    aspectRatio: aspectForA2vBudget(values, context),
+    audio: true,
+    passShape: values.passShape,
+  };
+}
+
+function audioToVideoMemory(values: AudioToVideoValues, context: AudioToVideoContext) {
+  const selection = a2vCellSelection(values, context);
+  if (selection == null) return null;
+  return buildMemoryMeterModel(
+    context.specs,
+    selection,
+    {
+      fixFields: ["passShape", "resolution"],
+      durationAt: (resolution) =>
+        isA2vResolution(resolution)
+          ? pricedA2vDuration(
+              context.specs,
+              values.model,
+              resolution,
+              context.audioDurationSeconds,
+              values.aspectRatio,
+            )
+          : null,
+    },
+  );
 }
 
 export function toCreateBody(
@@ -384,7 +578,10 @@ export function toCreateBody(
   if (values.audio == null) {
     throw new Error("Audio is required.");
   }
-  if (a2vAudioNumFrames(context, values.model, values.resolution) == null) {
+  if (
+    a2vAudioNumFrames(context, values.model, values.resolution, values.aspectRatio) ==
+    null
+  ) {
     throw new Error("This audio is longer than this machine can generate.");
   }
   return {
@@ -401,10 +598,16 @@ export function toCreateBody(
       resolution: values.resolution,
       fps: A2V_FPS,
       cameraMotion: "none",
-      negativePrompt: "",
+      negativePrompt: values.negativePrompt.trim(),
       promptProvenance: "typed",
+      passShape: passShapeFor(values, context),
     },
   };
+}
+
+function passShapeFor(values: AudioToVideoValues, context: AudioToVideoContext) {
+  const selection = a2vCellSelection(values, context);
+  return selection == null ? "auto" : effectivePassShape(context.specs, selection);
 }
 
 export function buildAudioToVideoForm(
@@ -426,6 +629,7 @@ export function buildAudioToVideoForm(
         dataKey: "prompt",
         placeholder: "The character speaks while moving through the scene...",
       },
+      negativePromptField<AudioToVideoSchema>(),
       {
         kind: "audio-asset",
         id: "audio",
@@ -446,7 +650,12 @@ export function buildAudioToVideoForm(
         label: "Resolution",
         dataKey: "resolution",
         maxOptionCount: VIDEO_SETTING_RESOLUTIONS.length,
-        options: a2vResolutionOptions(context, values.model),
+        options: a2vResolutionOptions(
+          context,
+          values.model,
+          values.aspectRatio,
+          values.passShape,
+        ),
       },
       {
         kind: "options",
@@ -457,11 +666,23 @@ export function buildAudioToVideoForm(
         // while one is set.
         options: [
           ...(values.startFrame == null ? [] : [AUTO_ASPECT_OPTION]),
-          ...explicitAspectOptions(context, values.model, values.resolution),
+          ...explicitAspectOptions(
+            context,
+            values.model,
+            values.resolution,
+            values.passShape,
+          ),
         ],
       },
+      ...a2vPassShapeFields(values, context),
     ],
+    memory: audioToVideoMemory(values, context),
   };
+}
+
+function a2vPassShapeFields(values: AudioToVideoValues, context: AudioToVideoContext) {
+  const selection = a2vCellSelection(values, context);
+  return selection == null ? [] : createPassShapeFields(selection, context.specs);
 }
 
 export function applyAudioToVideoChange(
@@ -471,21 +692,41 @@ export function applyAudioToVideoChange(
   return applyFeatureFieldChange(values, change);
 }
 
-/** Auto has no meaning without a start image, so drop it back to 16:9. */
+/**
+ * Auto has no meaning without a start image, so drop it back to 16:9. A forced shape the
+ * toggle no longer shows goes back to the automatic pick, once the audio's length is known.
+ */
 export function normalizeAudioToVideo(
   values: AudioToVideoValues,
   context: AudioToVideoContext,
 ): AudioToVideoValues {
+  const cell = normalizeA2vCell(values, context);
+  return withVisiblePassShape(context.specs, cell, a2vCellSelection(cell, context));
+}
+
+function normalizeA2vCell(
+  values: AudioToVideoValues,
+  context: AudioToVideoContext,
+): AudioToVideoValues {
   const model = resolveA2vModel(values.model, context);
-  const resolution = resolveA2vResolution(values.resolution, context.specs, model);
-  const next =
-    model === values.model && resolution === values.resolution
-      ? values
-      : { ...values, model, resolution };
-  if (next.aspectRatio === "auto" && next.startFrame == null) {
-    return { ...next, aspectRatio: "16:9" };
+  const aspectRatio =
+    values.aspectRatio === "auto" && values.startFrame == null
+      ? "16:9"
+      : values.aspectRatio;
+  const resolution = resolveA2vResolution(
+    values.resolution,
+    context.specs,
+    model,
+    aspectRatio,
+  );
+  if (
+    model === values.model &&
+    resolution === values.resolution &&
+    aspectRatio === values.aspectRatio
+  ) {
+    return values;
   }
-  return next;
+  return { ...values, model, resolution, aspectRatio };
 }
 
 export function seedAudioToVideoValues(context: AudioToVideoContext): AudioToVideoValues {
@@ -521,7 +762,14 @@ export const audioToVideoDefinition: FeatureDefinition<
     // Ready when the heard frames fit a budget-kept cell. A prefix of a kept
     // cell stays ready. A dropped ceiling does not. No GenSpace picker-floor
     // probe — a 5s-only machine stays ready.
-    return a2vAudioNumFrames(context, values.model, values.resolution) != null;
+    return (
+      a2vAudioNumFrames(
+        context,
+        values.model,
+        values.resolution,
+        values.aspectRatio,
+      ) != null
+    );
   },
   isUnavailable: (_values, context) =>
     // No downloaded offering with an A2V cell at 540p/24. Settings

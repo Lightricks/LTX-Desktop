@@ -11,6 +11,9 @@ export interface GenerateVideoBodySettings {
   audio: boolean
   cameraMotion: string
   negativePrompt?: string
+  nagScale?: number | null
+  nagAlpha?: number | null
+  nagTau?: number | null
   aspectRatio?: string
   loras?: Array<{ ref: string; scale: number; catalogId?: string }>
 }
@@ -51,6 +54,9 @@ export function buildGenerateVideoBody({
     audio: settings.audio,
     cameraMotion: settings.cameraMotion,
     negativePrompt: settings.negativePrompt ?? '',
+    ...(settings.nagScale != null ? { nagScale: settings.nagScale } : {}),
+    ...(settings.nagAlpha != null ? { nagAlpha: settings.nagAlpha } : {}),
+    ...(settings.nagTau != null ? { nagTau: settings.nagTau } : {}),
     aspectRatio: settings.aspectRatio || '16:9',
     ...buildGenerateVideoImageInputs({
       mode: imageInputs?.mode ?? 'video',

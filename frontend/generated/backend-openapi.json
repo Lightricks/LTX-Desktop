@@ -1,6 +1,49 @@
 {
   "components": {
     "schemas": {
+      "ActiveCustomLoraImportResponse": {
+        "properties": {
+          "custom_lora_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Lora Id"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "required": [
+          "session_id",
+          "custom_lora_id"
+        ],
+        "title": "ActiveCustomLoraImportResponse",
+        "type": "object"
+      },
       "ActiveDownloadResponse": {
         "properties": {
           "cp_ids": {
@@ -185,6 +228,17 @@
               }
             ]
           },
+          "advancedControls": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advancedcontrols"
+          },
           "assistantLocalModel": {
             "anyOf": [
               {
@@ -227,8 +281,8 @@
             "anyOf": [
               {
                 "enum": [
-                  "standard",
-                  "reckless"
+                  "brave",
+                  "cautious"
                 ],
                 "type": "string"
               },
@@ -326,6 +380,39 @@
             ],
             "title": "Modelsdir"
           },
+          "mpsConv3DAsConv2DEnabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mpsconv3Dasconv2Denabled"
+          },
+          "nagScale": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagscale"
+          },
+          "neverSplitIntoParts": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Neversplitintoparts"
+          },
           "promptCacheSize": {
             "anyOf": [
               {
@@ -388,6 +475,28 @@
               }
             ],
             "title": "Seedlocked"
+          },
+          "showNagStrengthControls": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shownagstrengthcontrols"
+          },
+          "skipBudgetRiskConfirm": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipbudgetriskconfirm"
           },
           "useConvVae": {
             "anyOf": [
@@ -1627,9 +1736,59 @@
             "title": "Model",
             "type": "string"
           },
+          "nagAlpha": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagalpha"
+          },
+          "nagScale": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagscale"
+          },
+          "nagTau": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagtau"
+          },
           "negativePrompt": {
             "default": "",
+            "maxLength": 2000,
             "title": "Negativeprompt",
+            "type": "string"
+          },
+          "passShape": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "one_pass",
+              "parts"
+            ],
+            "title": "Passshape",
             "type": "string"
           },
           "prompt": {
@@ -1699,6 +1858,36 @@
           "inputs"
         ],
         "title": "CreateAudioToVideoRequest",
+        "type": "object"
+      },
+      "CreateCustomLoraRequest": {
+        "additionalProperties": false,
+        "description": "``inputs`` carries the optional Start Frame. With it the run is image to video. Without it, text to video.",
+        "properties": {
+          "contract_version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "inputs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LoraRecipeInputs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "params": {
+            "$ref": "#/components/schemas/CustomLoraParams"
+          }
+        },
+        "required": [
+          "params"
+        ],
+        "title": "CreateCustomLoraRequest",
         "type": "object"
       },
       "CreateExtendRequest": {
@@ -1816,6 +2005,29 @@
         "title": "CreateImageToVideoRequest",
         "type": "object"
       },
+      "CreateKeyframesRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/KeyframesInputs"
+          },
+          "params": {
+            "$ref": "#/components/schemas/KeyframesParams"
+          }
+        },
+        "required": [
+          "params",
+          "inputs"
+        ],
+        "title": "CreateKeyframesRequest",
+        "type": "object"
+      },
       "CreateLoraRecipeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1868,6 +2080,25 @@
         "title": "CreateRetakeRequest",
         "type": "object"
       },
+      "CreateTextToImageRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "params": {
+            "$ref": "#/components/schemas/TextToImageParams"
+          }
+        },
+        "required": [
+          "params"
+        ],
+        "title": "CreateTextToImageRequest",
+        "type": "object"
+      },
       "CreateTextToVideoRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1885,6 +2116,552 @@
           "params"
         ],
         "title": "CreateTextToVideoRequest",
+        "type": "object"
+      },
+      "CustomLoraImportProgressResponse": {
+        "properties": {
+          "custom_lora_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Lora Id"
+          },
+          "downloaded_bytes": {
+            "default": 0,
+            "title": "Downloaded Bytes",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "expected_bytes": {
+            "default": 0,
+            "title": "Expected Bytes",
+            "type": "integer"
+          },
+          "progress": {
+            "default": 0.0,
+            "title": "Progress",
+            "type": "number"
+          },
+          "speed_bytes_per_sec": {
+            "default": 0.0,
+            "title": "Speed Bytes Per Sec",
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "downloading",
+              "complete",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "CustomLoraImportProgressResponse",
+        "type": "object"
+      },
+      "CustomLoraImportRequest": {
+        "additionalProperties": false,
+        "description": "Add a custom LoRA from exactly one source: a local file path or a URL.",
+        "properties": {
+          "cover_path": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Path"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 600,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "examples": {
+            "items": {
+              "maxLength": 1000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Examples",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "pattern": "^[^\\r\\n]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CustomLoraImportRequest",
+        "type": "object"
+      },
+      "CustomLoraImportStartResponse": {
+        "properties": {
+          "custom_lora_id": {
+            "title": "Custom Lora Id",
+            "type": "string"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "sessionId",
+          "custom_lora_id"
+        ],
+        "title": "CustomLoraImportStartResponse",
+        "type": "object"
+      },
+      "CustomLoraItem": {
+        "description": "One saved custom LoRA.\n\nThe desktop list puts the cover file path in ``cover_url``. The phone list replaces that\npath with a signed URL, so a paired phone never receives a filesystem path.",
+        "properties": {
+          "can_download": {
+            "title": "Can Download",
+            "type": "boolean"
+          },
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "downloaded": {
+            "title": "Downloaded",
+            "type": "boolean"
+          },
+          "examples": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Examples",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "page_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Url"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "source": {
+            "enum": [
+              "file",
+              "url"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "size_bytes",
+          "source",
+          "downloaded",
+          "can_download"
+        ],
+        "title": "CustomLoraItem",
+        "type": "object"
+      },
+      "CustomLoraLinkInfoRequest": {
+        "additionalProperties": false,
+        "description": "Check whether a URL is an accepted Custom LoRA link and read its Hugging Face model card.",
+        "properties": {
+          "url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "CustomLoraLinkInfoRequest",
+        "type": "object"
+      },
+      "CustomLoraLinkInfoResponse": {
+        "description": "Link validity and suggestions from a model card. The user checks and edits them. Nothing is saved.",
+        "properties": {
+          "accepted": {
+            "default": false,
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "examples": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Examples",
+            "type": "array"
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger"
+          }
+        },
+        "title": "CustomLoraLinkInfoResponse",
+        "type": "object"
+      },
+      "CustomLoraListResponse": {
+        "properties": {
+          "loras": {
+            "items": {
+              "$ref": "#/components/schemas/CustomLoraItem"
+            },
+            "title": "Loras",
+            "type": "array"
+          }
+        },
+        "required": [
+          "loras"
+        ],
+        "title": "CustomLoraListResponse",
+        "type": "object"
+      },
+      "CustomLoraParams": {
+        "additionalProperties": false,
+        "description": "Create-body params for a custom LoRA run.\n\nThe client sends the custom LoRA id + scale, never a filesystem path. Create stores\n``loras: [{ ref: \"\", scale, displayName, customLoraId }]`` and execute hydrates the\nweights path (see ``make_custom_lora_resolver``). ``aspectRatio`` includes ``auto`` only\nwhen the run has a start frame (resolved from the start frame at execute); a run without\none rejects ``auto``.",
+        "properties": {
+          "aspectRatio": {
+            "default": "16:9",
+            "enum": [
+              "auto",
+              "21:9",
+              "16:9",
+              "3:2",
+              "4:3",
+              "1:1",
+              "4:5",
+              "9:16"
+            ],
+            "title": "Aspectratio",
+            "type": "string"
+          },
+          "cameraMotion": {
+            "default": "none",
+            "enum": [
+              "none",
+              "dolly_in",
+              "dolly_out",
+              "dolly_left",
+              "dolly_right",
+              "jib_up",
+              "jib_down",
+              "static",
+              "focus_shift"
+            ],
+            "title": "Cameramotion",
+            "type": "string"
+          },
+          "customLoraId": {
+            "maxLength": 64,
+            "pattern": "^[a-z0-9-]+$",
+            "title": "Customloraid",
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "enum": [
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  8,
+                  10,
+                  12,
+                  14,
+                  16,
+                  18,
+                  20
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 5,
+            "title": "Duration"
+          },
+          "fps": {
+            "default": 24,
+            "enum": [
+              24,
+              25,
+              48,
+              50
+            ],
+            "title": "Fps",
+            "type": "integer"
+          },
+          "model": {
+            "enum": [
+              "ltx-2.3-fast",
+              "ltx-2.5-fast"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "nagAlpha": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagalpha"
+          },
+          "nagScale": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagscale"
+          },
+          "nagTau": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagtau"
+          },
+          "negativePrompt": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Negativeprompt",
+            "type": "string"
+          },
+          "passShape": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "one_pass",
+              "parts"
+            ],
+            "title": "Passshape",
+            "type": "string"
+          },
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "promptProvenance": {
+            "default": "typed",
+            "enum": [
+              "typed",
+              "enhanced"
+            ],
+            "title": "Promptprovenance",
+            "type": "string"
+          },
+          "resolution": {
+            "default": "1080p",
+            "enum": [
+              "270p",
+              "360p",
+              "540p",
+              "720p",
+              "1080p",
+              "1440p",
+              "2160p"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          },
+          "scale": {
+            "default": 1.0,
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Scale",
+            "type": "number"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "required": [
+          "model",
+          "prompt",
+          "customLoraId"
+        ],
+        "title": "CustomLoraParams",
+        "type": "object"
+      },
+      "CustomLoraRestoreRequest": {
+        "additionalProperties": false,
+        "description": "Put the weights of a saved LoRA back. A `source_path` copies that file. Without it, the\nweights are fetched again from the saved link.",
+        "properties": {
+          "source_path": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          }
+        },
+        "title": "CustomLoraRestoreRequest",
         "type": "object"
       },
       "DashboardKpis": {
@@ -2602,7 +3379,8 @@
               "unsupported",
               "ram_shortfall",
               "mps_sequence_over",
-              "unmeasured_cell"
+              "unmeasured_cell",
+              "one_pass_unavailable"
             ],
             "title": "Reason",
             "type": "string"
@@ -2634,6 +3412,25 @@
               }
             ],
             "title": "Shortfall Kind"
+          },
+          "unmeasured_basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "high_res_cell",
+                  "two_stage_range",
+                  "mac_two_stage_cell",
+                  "windowed_range",
+                  "pass_tokens",
+                  "unmeasured_model"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unmeasured Basis"
           }
         },
         "required": [
@@ -2725,7 +3522,8 @@
               "unsupported",
               "ram_shortfall",
               "mps_sequence_over",
-              "unmeasured_cell"
+              "unmeasured_cell",
+              "one_pass_unavailable"
             ],
             "title": "Reason",
             "type": "string"
@@ -2757,6 +3555,25 @@
               }
             ],
             "title": "Shortfall Kind"
+          },
+          "unmeasured_basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "high_res_cell",
+                  "two_stage_range",
+                  "mac_two_stage_cell",
+                  "windowed_range",
+                  "pass_tokens",
+                  "unmeasured_model"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unmeasured Basis"
           },
           "window_frames": {
             "anyOf": [
@@ -2838,10 +3655,10 @@
               "ram_shortfall",
               "mps_sequence_over",
               "unmeasured_cell",
+              "one_pass_unavailable",
               "spatial",
-              "two_stage_over_measured",
-              "mac_two_stage_unmeasured",
-              "refine_decode_floor"
+              "refine_decode_floor",
+              "window_over_cap"
             ],
             "title": "Reason",
             "type": "string"
@@ -2875,6 +3692,25 @@
               }
             ],
             "title": "Tier"
+          },
+          "unmeasured_basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "high_res_cell",
+                  "two_stage_range",
+                  "mac_two_stage_cell",
+                  "windowed_range",
+                  "pass_tokens",
+                  "unmeasured_model"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unmeasured Basis"
           },
           "value": {
             "title": "Value",
@@ -2931,7 +3767,7 @@
       },
       "EditPreflightCell": {
         "additionalProperties": false,
-        "description": "Verdict for one (candidate, duration) cell. ``message``/``code`` are None\nwhen ``ok``; otherwise the exact refusal Generate would return.",
+        "description": "Verdict for one (candidate, duration) cell. ``ok`` means Generate would\nenqueue it in the echoed mode. An ok cell admitted on a bet carries the bet\nline as ``message``; a failing cell carries the exact refusal Generate\nwould return.",
         "properties": {
           "code": {
             "anyOf": [
@@ -2947,6 +3783,17 @@
           "duration": {
             "title": "Duration",
             "type": "number"
+          },
+          "estimated_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Seconds"
           },
           "key": {
             "minLength": 1,
@@ -3138,10 +3985,10 @@
         "description": "Path-free (asset dims + verdicts only), so the Remote router reuses it.",
         "properties": {
           "budgetMode": {
-            "default": "standard",
+            "default": "brave",
             "enum": [
-              "standard",
-              "reckless"
+              "brave",
+              "cautious"
             ],
             "title": "Budgetmode",
             "type": "string"
@@ -3212,7 +4059,7 @@
         "type": "object"
       },
       "EnhancePromptRequest": {
-        "description": "Regular-LoRA, IC-LoRA, and built-in conditioning-type selection are mutually exclusive UI\nsurfaces — a request never carries more than one of loraCatalogIds/icLoraId/conditioningType.",
+        "description": "Regular-LoRA, IC-LoRA, and built-in conditioning-type selection are mutually exclusive UI\nsurfaces — a request never carries more than one of loraCatalogIds/customLoraIds/icLoraId/conditioningType.",
         "properties": {
           "aspectRatio": {
             "anyOf": [
@@ -3248,6 +4095,14 @@
               }
             ],
             "title": "Conditioningtype"
+          },
+          "customLoraIds": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1,
+            "title": "Customloraids",
+            "type": "array"
           },
           "duration": {
             "anyOf": [
@@ -3322,6 +4177,13 @@
             "title": "Imagepaths",
             "type": "array"
           },
+          "keyframeAssets": {
+            "items": {
+              "$ref": "#/components/schemas/KeyframeRef"
+            },
+            "title": "Keyframeassets",
+            "type": "array"
+          },
           "keyframes": {
             "items": {
               "$ref": "#/components/schemas/KeyframeInput"
@@ -3366,6 +4228,18 @@
             ],
             "title": "Mediatype",
             "type": "string"
+          },
+          "negativePrompt": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negativeprompt"
           },
           "prompt": {
             "title": "Prompt",
@@ -3599,6 +4473,51 @@
             "title": "Model",
             "type": "string"
           },
+          "nagAlpha": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagalpha"
+          },
+          "nagScale": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagscale"
+          },
+          "nagTau": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagtau"
+          },
+          "negativePrompt": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Negativeprompt",
+            "type": "string"
+          },
           "prompt": {
             "default": "",
             "title": "Prompt",
@@ -3719,12 +4638,153 @@
         "title": "FailureRow",
         "type": "object"
       },
+      "FastCellAsk": {
+        "description": "One Fast grid cell's ask, kept or withheld.\n\nThe ask is the shape the budget picks (``windows`` 1 is one pass). ``alternative`` is the\nother shape's ask, sent only where a Brave form offers the choice, so a shape the form\nshows is always one create runs.",
+        "properties": {
+          "alternative": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobMemoryAsk"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ask_gib": {
+            "title": "Ask Gib",
+            "type": "number"
+          },
+          "audio": {
+            "title": "Audio",
+            "type": "boolean"
+          },
+          "band_high_gib": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Band High Gib"
+          },
+          "band_low_gib": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Band Low Gib"
+          },
+          "confidence": {
+            "enum": [
+              "solid",
+              "estimate",
+              "rough"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "duration": {
+            "enum": [
+              2,
+              3,
+              4,
+              5,
+              6,
+              8,
+              10,
+              12,
+              14,
+              16,
+              18,
+              20
+            ],
+            "title": "Duration",
+            "type": "integer"
+          },
+          "estimated_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Seconds"
+          },
+          "fps": {
+            "enum": [
+              24,
+              25,
+              48,
+              50
+            ],
+            "title": "Fps",
+            "type": "integer"
+          },
+          "resolution": {
+            "enum": [
+              "270p",
+              "360p",
+              "540p",
+              "720p",
+              "1080p",
+              "1440p",
+              "2160p"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          },
+          "risk": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GenerationRisk"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tight": {
+            "default": false,
+            "title": "Tight",
+            "type": "boolean"
+          },
+          "windows": {
+            "default": 1,
+            "title": "Windows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ask_gib",
+          "confidence",
+          "resolution",
+          "fps",
+          "duration",
+          "audio"
+        ],
+        "title": "FastCellAsk",
+        "type": "object"
+      },
       "FeatureFlags": {
         "description": "Dev feature flags, persisted in feature_flags.json. Adding a flag = one field here.",
         "properties": {
           "advancedIcLoraControls": {
             "default": false,
             "title": "Advancedicloracontrols",
+            "type": "boolean"
+          },
+          "createWithAi": {
+            "default": false,
+            "title": "Createwithai",
             "type": "boolean"
           },
           "customIcLora": {
@@ -3735,6 +4795,16 @@
           "highResVideoToVideo": {
             "default": false,
             "title": "Highresvideotovideo",
+            "type": "boolean"
+          },
+          "keyframes": {
+            "default": false,
+            "title": "Keyframes",
+            "type": "boolean"
+          },
+          "showGenerationNegativePrompt": {
+            "default": false,
+            "title": "Showgenerationnegativeprompt",
             "type": "boolean"
           }
         },
@@ -3755,6 +4825,17 @@
               }
             ],
             "title": "Advancedicloracontrols"
+          },
+          "createWithAi": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createwithai"
           },
           "customIcLora": {
             "anyOf": [
@@ -3777,6 +4858,28 @@
               }
             ],
             "title": "Highresvideotovideo"
+          },
+          "keyframes": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keyframes"
+          },
+          "showGenerationNegativePrompt": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Showgenerationnegativeprompt"
           }
         },
         "title": "FeatureFlagsPatch",
@@ -4138,10 +5241,10 @@
             "type": "array"
           },
           "budgetMode": {
-            "default": "standard",
+            "default": "brave",
             "enum": [
-              "standard",
-              "reckless"
+              "brave",
+              "cautious"
             ],
             "title": "Budgetmode",
             "type": "string"
@@ -4179,7 +5282,8 @@
                   "unsupported",
                   "ram_shortfall",
                   "mps_sequence_over",
-                  "unmeasured_cell"
+                  "unmeasured_cell",
+                  "one_pass_unavailable"
                 ],
                 "type": "string"
               },
@@ -4204,6 +5308,21 @@
             "default": false,
             "title": "Low Performance Machine",
             "type": "boolean"
+          },
+          "memory": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemoryCapacity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "neverSplitIntoParts": {
+            "default": false,
+            "title": "Neversplitintoparts",
+            "type": "boolean"
           }
         },
         "required": [
@@ -4214,6 +5333,7 @@
         "type": "object"
       },
       "GenerateVideoRequest": {
+        "additionalProperties": false,
         "properties": {
           "aspectRatio": {
             "default": "16:9",
@@ -4345,8 +5465,48 @@
             "title": "Model",
             "type": "string"
           },
+          "nagAlpha": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagalpha"
+          },
+          "nagScale": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagscale"
+          },
+          "nagTau": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagtau"
+          },
           "negativePrompt": {
             "default": "",
+            "maxLength": 2000,
             "title": "Negativeprompt",
             "type": "string"
           },
@@ -4425,7 +5585,8 @@
                   "JOB_TOO_LARGE",
                   "CAPABILITY_FAILED",
                   "LTX_INVALID_API_KEY",
-                  "LTX_API_PROMPT_EMBEDDING_FAILED"
+                  "LTX_API_PROMPT_EMBEDDING_FAILED",
+                  "IMAGE_BLOCKED_BY_SAFETY_CHECKER"
                 ],
                 "type": "string"
               },
@@ -4456,12 +5617,29 @@
             "title": "Id",
             "type": "string"
           },
+          "lane": {
+            "default": "local",
+            "minLength": 1,
+            "title": "Lane",
+            "type": "string"
+          },
           "outputs": {
             "items": {
               "$ref": "#/components/schemas/Asset"
             },
             "title": "Outputs",
             "type": "array"
+          },
+          "provider_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Job Id"
           },
           "queued_at": {
             "minimum": 0.0,
@@ -4569,6 +5747,17 @@
             "title": "Progress",
             "type": "integer"
           },
+          "remainingSeconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remainingseconds"
+          },
           "result": {
             "anyOf": [
               {
@@ -4622,7 +5811,7 @@
       },
       "GenerationRisk": {
         "additionalProperties": false,
-        "description": "Create-time snapshot of the bet a reckless job took.\n\nStored privately as spec[\"_risk\"] (no store migration), promoted to this\ntyped field on every read. Drives the queue badge and the failure backstop\ncopy. An `over` tier also waives a later memory miss at execute. An\n`unmeasured` tier does not. `over_gib`/`over_ram_gb` mirror the dropped-\ncell figure semantics; `message` is the snapshotted tier line.",
+        "description": "Create-time snapshot of the bet a Brave job took.\n\nStored privately as spec[\"_risk\"] (no store migration), promoted to this\ntyped field on every read. Drives the queue badge and the failure backstop\ncopy. An `over` tier also waives a later memory miss at execute. An\n`unmeasured` tier does not. `over_gib`/`over_ram_gb` mirror the dropped-\ncell figure semantics; `message` is the snapshotted tier line.",
         "properties": {
           "message": {
             "title": "Message",
@@ -4682,6 +5871,25 @@
             ],
             "title": "Tier",
             "type": "string"
+          },
+          "unmeasured_basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "high_res_cell",
+                  "two_stage_range",
+                  "mac_two_stage_cell",
+                  "windowed_range",
+                  "pass_tokens",
+                  "unmeasured_model"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unmeasured Basis"
           }
         },
         "required": [
@@ -5024,6 +6232,145 @@
         "title": "HuggingFaceLogoutResponse",
         "type": "object"
       },
+      "IcLoraAutoSinglePass": {
+        "additionalProperties": false,
+        "description": "Auto runs the whole clip in one pass.",
+        "properties": {
+          "kind": {
+            "const": "single-pass",
+            "default": "single-pass",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "title": "IcLoraAutoSinglePass",
+        "type": "object"
+      },
+      "IcLoraAutoWindowed": {
+        "additionalProperties": false,
+        "description": "Auto runs the clip in chunks of ``frames`` frames.",
+        "properties": {
+          "frames": {
+            "exclusiveMinimum": 0.0,
+            "title": "Frames",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "windowed",
+            "default": "windowed",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "frames"
+        ],
+        "title": "IcLoraAutoWindowed",
+        "type": "object"
+      },
+      "IcLoraCarryPreflightCell": {
+        "additionalProperties": false,
+        "properties": {
+          "carryFrames": {
+            "title": "Carryframes",
+            "type": "integer"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "over_gib": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Over Gib"
+          },
+          "over_ram_gb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Over Ram Gb"
+          },
+          "readout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BudgetReadout"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shortfall_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "total",
+                  "free"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortfall Kind"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "enum": [
+                  "over",
+                  "unmeasured"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier"
+          }
+        },
+        "required": [
+          "ok",
+          "carryFrames"
+        ],
+        "title": "IcLoraCarryPreflightCell",
+        "type": "object"
+      },
       "IcLoraCatalogItem": {
         "description": "IC-LoRA — base plus IC-specific preprocessing / controls / default settings.\n\nIC-LoRAs always take a driving image/video; `input` is required in practice (the base\nfield is optional for plain LoRAs). Enforced by the validator below, so handlers can rely\non it being present.",
         "properties": {
@@ -5075,6 +6422,17 @@
               }
             ],
             "title": "Created At"
+          },
+          "default_negative_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Negative Prompt"
           },
           "default_settings": {
             "$ref": "#/components/schemas/IcLoraSettings"
@@ -5266,6 +6624,39 @@
           "requires_hf_login"
         ],
         "title": "IcLoraCatalogItem",
+        "type": "object"
+      },
+      "IcLoraCellFit": {
+        "description": "How long a clip one output cell fits on this machine.\n\n``max_frames`` is the longest clip, in frames at the output rate, whose job loads. 0 when none\ndoes. ``full`` is a clip at the input cap.",
+        "properties": {
+          "full": {
+            "title": "Full",
+            "type": "boolean"
+          },
+          "max_frames": {
+            "title": "Max Frames",
+            "type": "integer"
+          },
+          "resolution": {
+            "enum": [
+              "270p",
+              "360p",
+              "540p",
+              "720p",
+              "1080p",
+              "1440p",
+              "2160p"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resolution",
+          "max_frames",
+          "full"
+        ],
+        "title": "IcLoraCellFit",
         "type": "object"
       },
       "IcLoraControl": {
@@ -5592,6 +6983,18 @@
             ],
             "title": "Audio Mode"
           },
+          "carry_frames": {
+            "anyOf": [
+              {
+                "minimum": 17.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carry Frames"
+          },
           "cfg_guidance_scale": {
             "default": 1.0,
             "title": "Cfg Guidance Scale",
@@ -5744,8 +7147,60 @@
             ],
             "title": "Lora Strength"
           },
+          "max_window_frames": {
+            "anyOf": [
+              {
+                "minimum": 41.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Window Frames"
+          },
+          "nag_alpha": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nag Alpha"
+          },
+          "nag_scale": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nag Scale"
+          },
+          "nag_tau": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nag Tau"
+          },
           "negative_prompt": {
             "default": "",
+            "maxLength": 2000,
             "title": "Negative Prompt",
             "type": "string"
           },
@@ -5810,6 +7265,34 @@
               }
             ],
             "title": "Skip Stage 2"
+          },
+          "tile_overlap": {
+            "anyOf": [
+              {
+                "maximum": 0.5,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tile Overlap"
+          },
+          "tile_size": {
+            "anyOf": [
+              {
+                "enum": [
+                  "large",
+                  "extra-large"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tile Size"
           },
           "use_lora_in_stage_2": {
             "anyOf": [
@@ -5897,10 +7380,10 @@
       "IcLoraListResponse": {
         "properties": {
           "budgetMode": {
-            "default": "standard",
+            "default": "brave",
             "enum": [
-              "standard",
-              "reckless"
+              "brave",
+              "cautious"
             ],
             "title": "Budgetmode",
             "type": "string"
@@ -5917,6 +7400,109 @@
           "ic_loras"
         ],
         "title": "IcLoraListResponse",
+        "type": "object"
+      },
+      "IcLoraMaxWindowPreflightCell": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "maxWindowFrames": {
+            "title": "Maxwindowframes",
+            "type": "integer"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "over_gib": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Over Gib"
+          },
+          "over_ram_gb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Over Ram Gb"
+          },
+          "readout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BudgetReadout"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shortfall_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "total",
+                  "free"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortfall Kind"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "enum": [
+                  "over",
+                  "unmeasured"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier"
+          }
+        },
+        "required": [
+          "ok",
+          "maxWindowFrames"
+        ],
+        "title": "IcLoraMaxWindowPreflightCell",
         "type": "object"
       },
       "IcLoraPreflightCell": {
@@ -6017,8 +7603,8 @@
           }
         },
         "required": [
-          "duration",
-          "ok"
+          "ok",
+          "duration"
         ],
         "title": "IcLoraPreflightCell",
         "type": "object"
@@ -6094,10 +7680,10 @@
         "description": "Source dims + verdicts only; the input path is never echoed.",
         "properties": {
           "budgetMode": {
-            "default": "standard",
+            "default": "brave",
             "enum": [
-              "standard",
-              "reckless"
+              "brave",
+              "cautious"
             ],
             "title": "Budgetmode",
             "type": "string"
@@ -6190,6 +7776,214 @@
           "video"
         ],
         "title": "IcLoraRecipeInputs",
+        "type": "object"
+      },
+      "IcLoraRecipeMemoryRequest": {
+        "additionalProperties": false,
+        "description": "Memory advice for a Home video recipe, before and after a clip is picked.\n\n``cells`` are the output cells the form offers. Without ``source`` each is priced for a 16:9\nclip of that size. ``resolution`` is the selected cell, priced for ``source`` when given.",
+        "properties": {
+          "audioMode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "source",
+                  "generated",
+                  "off"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audiomode"
+          },
+          "carryFrames": {
+            "anyOf": [
+              {
+                "minimum": 17.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carryframes"
+          },
+          "cells": {
+            "items": {
+              "enum": [
+                "270p",
+                "360p",
+                "540p",
+                "720p",
+                "1080p",
+                "1440p",
+                "2160p"
+              ],
+              "type": "string"
+            },
+            "maxItems": 7,
+            "title": "Cells",
+            "type": "array"
+          },
+          "maxWindowFrames": {
+            "anyOf": [
+              {
+                "minimum": 41.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxwindowframes"
+          },
+          "model": {
+            "enum": [
+              "ltx-2.3-fast",
+              "ltx-2.5-fast"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "resolution": {
+            "enum": [
+              "270p",
+              "360p",
+              "540p",
+              "720p",
+              "1080p",
+              "1440p",
+              "2160p"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IcLoraRecipeMemorySource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tilingOverlap": {
+            "anyOf": [
+              {
+                "maximum": 0.5,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tilingoverlap"
+          },
+          "tilingSize": {
+            "anyOf": [
+              {
+                "enum": [
+                  "large",
+                  "extra-large"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tilingsize"
+          }
+        },
+        "required": [
+          "model",
+          "resolution",
+          "cells"
+        ],
+        "title": "IcLoraRecipeMemoryRequest",
+        "type": "object"
+      },
+      "IcLoraRecipeMemoryResponse": {
+        "properties": {
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/IcLoraCellFit"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "max_input_frames": {
+            "title": "Max Input Frames",
+            "type": "integer"
+          },
+          "memory": {
+            "$ref": "#/components/schemas/MemoryCapacity"
+          },
+          "selected": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobMemoryAsk"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "memory",
+          "max_input_frames",
+          "cells"
+        ],
+        "title": "IcLoraRecipeMemoryResponse",
+        "type": "object"
+      },
+      "IcLoraRecipeMemorySource": {
+        "additionalProperties": false,
+        "description": "The picked clip: its file size and its frames at the output rate.",
+        "properties": {
+          "frames": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 10000.0,
+            "title": "Frames",
+            "type": "integer"
+          },
+          "height": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 16384.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "width": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 16384.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height",
+          "frames"
+        ],
+        "title": "IcLoraRecipeMemorySource",
         "type": "object"
       },
       "IcLoraSettings": {
@@ -6342,6 +8136,51 @@
             "title": "Model",
             "type": "string"
           },
+          "nagAlpha": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagalpha"
+          },
+          "nagScale": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagscale"
+          },
+          "nagTau": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagtau"
+          },
+          "negativePrompt": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Negativeprompt",
+            "type": "string"
+          },
           "prompt": {
             "default": "",
             "title": "Prompt",
@@ -6414,9 +8253,216 @@
         "title": "IcLoraSheetParams",
         "type": "object"
       },
-      "IcLoraTiling": {
-        "description": "Tile size of a catalog IC-LoRA, and an optional fixed temporal window.\n\n``long_side`` and ``short_side`` are given for a landscape canvas. A portrait canvas\nswaps them (Refine Details card: \"1024x576, or 576x1024 portrait\").\n\n``window_frames`` is set when the LoRA drifts over a longer clip (Restore: past 97\nframes detail is lost and colour drifts). A clip longer than the window always runs\nin windows of this length. None leaves the choice to the job budget.\n\n``carry_frames`` is the part of a window that the next window re-renders and pins at\nits start. It needs a ``window_frames``. None keeps ``DEFAULT_CARRY_FRAMES``.\n\n``max_output_long_side`` and ``max_output_short_side`` raise the spatial cap of the\njob for this LoRA. The transformer sees one tile at a time, so the output can be\nlarger than the local 1080p cell. None keeps that cell.",
+      "IcLoraTilePreflightCell": {
+        "additionalProperties": false,
         "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "over_gib": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Over Gib"
+          },
+          "over_ram_gb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Over Ram Gb"
+          },
+          "readout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BudgetReadout"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shortfall_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "total",
+                  "free"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortfall Kind"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "enum": [
+                  "over",
+                  "unmeasured"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier"
+          },
+          "tileSize": {
+            "enum": [
+              "standard",
+              "large",
+              "extra-large"
+            ],
+            "title": "Tilesize",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "tileSize"
+        ],
+        "title": "IcLoraTilePreflightCell",
+        "type": "object"
+      },
+      "IcLoraTilePreflightRequest": {
+        "additionalProperties": false,
+        "description": "Advisory verdict per tile size and per window for a recipe create.\n\nThe body is the create body. Each requested tile size replaces its ``tilingSize``, each\nrequested maximum chunk length replaces its ``maxWindowFrames``, and each requested carry replaces its\n``carryFrames``. The other choice of the body stays. ``standard`` is the tile of the\ncatalog entry. An empty prompt is accepted here. Create still refuses one. The response\nalso gives the carry, window and tile the run uses when the body omits them.",
+        "properties": {
+          "carries": {
+            "items": {
+              "minimum": 17.0,
+              "type": "integer"
+            },
+            "maxItems": 8,
+            "title": "Carries",
+            "type": "array"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/IcLoraRecipeInputs"
+          },
+          "maxWindows": {
+            "items": {
+              "minimum": 41.0,
+              "type": "integer"
+            },
+            "maxItems": 4,
+            "title": "Maxwindows",
+            "type": "array"
+          },
+          "params": {
+            "$ref": "#/components/schemas/IcLoraVideoRecipeParams"
+          },
+          "tileSizes": {
+            "items": {
+              "enum": [
+                "standard",
+                "large",
+                "extra-large"
+              ],
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Tilesizes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "params",
+          "inputs"
+        ],
+        "title": "IcLoraTilePreflightRequest",
+        "type": "object"
+      },
+      "IcLoraTilePreflightResponse": {
+        "additionalProperties": false,
+        "description": "Verdicts only. The input is never echoed.",
+        "properties": {
+          "budgetMode": {
+            "default": "brave",
+            "enum": [
+              "brave",
+              "cautious"
+            ],
+            "title": "Budgetmode",
+            "type": "string"
+          },
+          "carryCells": {
+            "items": {
+              "$ref": "#/components/schemas/IcLoraCarryPreflightCell"
+            },
+            "title": "Carrycells",
+            "type": "array"
+          },
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/IcLoraTilePreflightCell"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/IcLoraTilingDefaults"
+          },
+          "maxWindowCells": {
+            "items": {
+              "$ref": "#/components/schemas/IcLoraMaxWindowPreflightCell"
+            },
+            "title": "Maxwindowcells",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cells",
+          "defaults"
+        ],
+        "title": "IcLoraTilePreflightResponse",
+        "type": "object"
+      },
+      "IcLoraTiling": {
+        "description": "Tile size of a catalog IC-LoRA, and an optional fixed temporal window.\n\n``long_side`` and ``short_side`` are given for a landscape canvas. A portrait canvas\nswaps them (Refine Details card: \"1024x576, or 576x1024 portrait\").\n\n``window_frames`` is set when the LoRA drifts over a longer clip (Restore: past 97\nframes detail is lost and colour drifts). A clip longer than the window always runs\nin windows of this length. None leaves the choice to the job budget.\n\n``adaptive_window`` leaves the window to the job budget for a LoRA that has no measured\ndrift length (Refine Details). The budget picks the longest window that fits, up to the cap\nof the resolution (``ic_lora_adaptive_window``). It excludes ``window_frames``, because a\nfixed window chunks every longer clip. ``max_window_frames`` is the run's own maximum\nfor it. None keeps the cap of the resolution.\n\n``carry_frames`` is the part of a window that the next window re-renders and pins at\nits start. It needs a ``window_frames`` or an ``adaptive_window``. None keeps\n``DEFAULT_CARRY_FRAMES``. ``carry_pinned`` is set when the run chose the carry. An adaptive\nrun that did not is on Auto carry: ``carry_frames`` is then the longest carry that Auto may\nuse, and the job budget picks the carry that is safest (``ic_lora_auto_carry``).\n\n``overlap_fraction`` is the share of a tile that the next tile covers again. A smaller\nshare means fewer tiles per step, and a faster run with a higher risk of seams.\n\n``max_output_long_side`` and ``max_output_short_side`` raise the spatial cap of the\njob for this LoRA. The transformer sees one tile at a time, so the output can be\nlarger than the local 1080p cell. None keeps that cell.",
+        "properties": {
+          "adaptive_window": {
+            "default": false,
+            "title": "Adaptive Window",
+            "type": "boolean"
+          },
           "carry_frames": {
             "anyOf": [
               {
@@ -6428,6 +8474,11 @@
               }
             ],
             "title": "Carry Frames"
+          },
+          "carry_pinned": {
+            "default": false,
+            "title": "Carry Pinned",
+            "type": "boolean"
           },
           "long_side": {
             "minimum": 64.0,
@@ -6458,6 +8509,25 @@
             ],
             "title": "Max Output Short Side"
           },
+          "max_window_frames": {
+            "anyOf": [
+              {
+                "minimum": 9.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Window Frames"
+          },
+          "overlap_fraction": {
+            "default": 0.5,
+            "maximum": 0.5,
+            "minimum": 0.0,
+            "title": "Overlap Fraction",
+            "type": "number"
+          },
           "short_side": {
             "minimum": 64.0,
             "title": "Short Side",
@@ -6481,6 +8551,57 @@
           "short_side"
         ],
         "title": "IcLoraTiling",
+        "type": "object"
+      },
+      "IcLoraTilingDefaults": {
+        "additionalProperties": false,
+        "description": "What Auto runs when the request omits a tiling control.\n\n``carryFrames`` is the Auto carry. ``overlapFraction`` is the Auto tile overlap of the LoRA.\n``auto`` is the Auto chunk length, picked from the clip and the resolution. It is None when\nAuto is refused: the cells carry the refusal.",
+        "properties": {
+          "auto": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "single-pass": "#/components/schemas/IcLoraAutoSinglePass",
+                    "windowed": "#/components/schemas/IcLoraAutoWindowed"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/IcLoraAutoSinglePass"
+                  },
+                  {
+                    "$ref": "#/components/schemas/IcLoraAutoWindowed"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto"
+          },
+          "carryFrames": {
+            "title": "Carryframes",
+            "type": "integer"
+          },
+          "overlapFraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overlapfraction"
+          }
+        },
+        "required": [
+          "carryFrames"
+        ],
+        "title": "IcLoraTilingDefaults",
         "type": "object"
       },
       "IcLoraTrackInputs": {
@@ -6562,6 +8683,51 @@
               "ltx-2.5-fast"
             ],
             "title": "Model",
+            "type": "string"
+          },
+          "nagAlpha": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagalpha"
+          },
+          "nagScale": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagscale"
+          },
+          "nagTau": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagtau"
+          },
+          "negativePrompt": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Negativeprompt",
             "type": "string"
           },
           "prompt": {
@@ -6655,6 +8821,18 @@
             ],
             "title": "Audiomode"
           },
+          "carryFrames": {
+            "anyOf": [
+              {
+                "minimum": 17.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carryframes"
+          },
           "controlType": {
             "anyOf": [
               {
@@ -6683,12 +8861,69 @@
             ],
             "title": "Fps"
           },
+          "maxWindowFrames": {
+            "anyOf": [
+              {
+                "minimum": 41.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxwindowframes"
+          },
           "model": {
             "enum": [
               "ltx-2.3-fast",
               "ltx-2.5-fast"
             ],
             "title": "Model",
+            "type": "string"
+          },
+          "nagAlpha": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagalpha"
+          },
+          "nagScale": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagscale"
+          },
+          "nagTau": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagtau"
+          },
+          "negativePrompt": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Negativeprompt",
             "type": "string"
           },
           "prompt": {
@@ -6742,6 +8977,34 @@
               }
             ],
             "title": "Seed"
+          },
+          "tilingOverlap": {
+            "anyOf": [
+              {
+                "maximum": 0.5,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tilingoverlap"
+          },
+          "tilingSize": {
+            "anyOf": [
+              {
+                "enum": [
+                  "large",
+                  "extra-large"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tilingsize"
           },
           "variantId": {
             "anyOf": [
@@ -6818,6 +9081,59 @@
           "cp_to_download"
         ],
         "title": "ImageGenRecommendationResponse",
+        "type": "object"
+      },
+      "ImageGenerationStatusResponse": {
+        "additionalProperties": false,
+        "description": "Which image providers can run now. A blocker is the code create would refuse with.",
+        "properties": {
+          "defaultProvider": {
+            "enum": [
+              "local",
+              "fal"
+            ],
+            "title": "Defaultprovider",
+            "type": "string"
+          },
+          "falBlocker": {
+            "anyOf": [
+              {
+                "enum": [
+                  "FAL_API_KEY_NOT_CONFIGURED",
+                  "LOCAL_GENERATION_UNSUPPORTED",
+                  "IMAGE_MODEL_NOT_DOWNLOADED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Falblocker"
+          },
+          "localBlocker": {
+            "anyOf": [
+              {
+                "enum": [
+                  "FAL_API_KEY_NOT_CONFIGURED",
+                  "LOCAL_GENERATION_UNSUPPORTED",
+                  "IMAGE_MODEL_NOT_DOWNLOADED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Localblocker"
+          }
+        },
+        "required": [
+          "defaultProvider",
+          "localBlocker",
+          "falBlocker"
+        ],
+        "title": "ImageGenerationStatusResponse",
         "type": "object"
       },
       "ImageMeta": {
@@ -6944,9 +9260,59 @@
             "title": "Model",
             "type": "string"
           },
+          "nagAlpha": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagalpha"
+          },
+          "nagScale": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagscale"
+          },
+          "nagTau": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagtau"
+          },
           "negativePrompt": {
             "default": "",
+            "maxLength": 2000,
             "title": "Negativeprompt",
+            "type": "string"
+          },
+          "passShape": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "one_pass",
+              "parts"
+            ],
+            "title": "Passshape",
             "type": "string"
           },
           "prompt": {
@@ -7159,6 +9525,83 @@
         "title": "InstructionSection",
         "type": "object"
       },
+      "JobMemoryAsk": {
+        "description": "What one job asks of the memory the gate compares.\n\n``ask_gib`` is the figure admission compares against ``MemoryCapacity.capacity_gib``, rounded\nup to 0.001 GiB, so a meter drawn from it never shows an over job as fitting. ``windows`` is\n1 for a single pass. ``tight`` is the gate's own tight-fit flag. The band is sent on\n``estimate`` asks only: one ask per Fast grid point and aspect makes this the bulk of the\nspecs payload. ``risk`` is sent on ``FastCellAsk.alternative`` when the alternative pass\nshape is an ``over`` or ``unmeasured`` bet.",
+        "properties": {
+          "ask_gib": {
+            "title": "Ask Gib",
+            "type": "number"
+          },
+          "band_high_gib": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Band High Gib"
+          },
+          "band_low_gib": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Band Low Gib"
+          },
+          "confidence": {
+            "enum": [
+              "solid",
+              "estimate",
+              "rough"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "estimated_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Seconds"
+          },
+          "risk": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GenerationRisk"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tight": {
+            "default": false,
+            "title": "Tight",
+            "type": "boolean"
+          },
+          "windows": {
+            "default": 1,
+            "title": "Windows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ask_gib",
+          "confidence"
+        ],
+        "title": "JobMemoryAsk",
+        "type": "object"
+      },
       "JsonValue": {},
       "KeepRate": {
         "properties": {
@@ -7216,6 +9659,236 @@
           "frameIndex"
         ],
         "title": "KeyframeInput",
+        "type": "object"
+      },
+      "KeyframeRef": {
+        "additionalProperties": false,
+        "description": "One still on the timeline. An asset id, never a path.",
+        "properties": {
+          "assetId": {
+            "minLength": 1,
+            "title": "Assetid",
+            "type": "string"
+          },
+          "frameIndex": {
+            "minimum": 0.0,
+            "title": "Frameindex",
+            "type": "integer"
+          },
+          "strength": {
+            "default": 1.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Strength",
+            "type": "number"
+          }
+        },
+        "required": [
+          "assetId",
+          "frameIndex"
+        ],
+        "title": "KeyframeRef",
+        "type": "object"
+      },
+      "KeyframesInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "keyframes": {
+            "items": {
+              "$ref": "#/components/schemas/KeyframeRef"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Keyframes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "keyframes"
+        ],
+        "title": "KeyframesInputs",
+        "type": "object"
+      },
+      "KeyframesParams": {
+        "additionalProperties": false,
+        "description": "Non-media params of a Home Keyframes job. Several stills guide one clip.\n\nThe keyframes need a known length, so ``duration`` cannot be ``None``. A blank prompt\nis refused: the generate request takes a blank one only with a start image.",
+        "properties": {
+          "aspectRatio": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "21:9",
+              "16:9",
+              "3:2",
+              "4:3",
+              "1:1",
+              "4:5",
+              "9:16"
+            ],
+            "title": "Aspectratio",
+            "type": "string"
+          },
+          "cameraMotion": {
+            "default": "none",
+            "enum": [
+              "none",
+              "dolly_in",
+              "dolly_out",
+              "dolly_left",
+              "dolly_right",
+              "jib_up",
+              "jib_down",
+              "static",
+              "focus_shift"
+            ],
+            "title": "Cameramotion",
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "enum": [
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  8,
+                  10,
+                  12,
+                  14,
+                  16,
+                  18,
+                  20
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 5,
+            "title": "Duration"
+          },
+          "fps": {
+            "default": 24,
+            "enum": [
+              24,
+              25,
+              48,
+              50
+            ],
+            "title": "Fps",
+            "type": "integer"
+          },
+          "model": {
+            "enum": [
+              "ltx-2.3-fast",
+              "ltx-2.5-fast"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "nagAlpha": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagalpha"
+          },
+          "nagScale": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagscale"
+          },
+          "nagTau": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagtau"
+          },
+          "negativePrompt": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Negativeprompt",
+            "type": "string"
+          },
+          "passShape": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "one_pass",
+              "parts"
+            ],
+            "title": "Passshape",
+            "type": "string"
+          },
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "promptProvenance": {
+            "default": "typed",
+            "enum": [
+              "typed",
+              "enhanced"
+            ],
+            "title": "Promptprovenance",
+            "type": "string"
+          },
+          "resolution": {
+            "default": "1080p",
+            "enum": [
+              "270p",
+              "360p",
+              "540p",
+              "720p",
+              "1080p",
+              "1440p",
+              "2160p"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "title": "KeyframesParams",
         "type": "object"
       },
       "LTXOfferingCapabilitiesSpec": {
@@ -7280,6 +9953,87 @@
           "auto_duration"
         ],
         "title": "LTXOfferingCapabilitiesSpec",
+        "type": "object"
+      },
+      "LTXVideoGenerationAspectSpec": {
+        "description": "Per-aspect kept grids and cell annotations priced at that ratio's real canvas.",
+        "properties": {
+          "a2v_supported_resolutions_durations": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/LTXVideoGenerationResolutionSpec"
+                },
+                "propertyNames": {
+                  "enum": [
+                    "270p",
+                    "360p",
+                    "540p",
+                    "720p",
+                    "1080p",
+                    "1440p",
+                    "2160p"
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A2V Supported Resolutions Durations"
+          },
+          "cell_asks": {
+            "items": {
+              "$ref": "#/components/schemas/FastCellAsk"
+            },
+            "title": "Cell Asks",
+            "type": "array"
+          },
+          "chunked_cells": {
+            "items": {
+              "$ref": "#/components/schemas/ChunkedFastCell"
+            },
+            "title": "Chunked Cells",
+            "type": "array"
+          },
+          "dropped_cells": {
+            "items": {
+              "$ref": "#/components/schemas/DroppedFastCell"
+            },
+            "title": "Dropped Cells",
+            "type": "array"
+          },
+          "supported_resolutions_durations": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/LTXVideoGenerationResolutionSpec"
+            },
+            "propertyNames": {
+              "enum": [
+                "270p",
+                "360p",
+                "540p",
+                "720p",
+                "1080p",
+                "1440p",
+                "2160p"
+              ]
+            },
+            "title": "Supported Resolutions Durations",
+            "type": "object"
+          },
+          "warned_cells": {
+            "items": {
+              "$ref": "#/components/schemas/WarnedFastCell"
+            },
+            "title": "Warned Cells",
+            "type": "array"
+          }
+        },
+        "required": [
+          "supported_resolutions_durations"
+        ],
+        "title": "LTXVideoGenerationAspectSpec",
         "type": "object"
       },
       "LTXVideoGenerationModelSpecItem": {
@@ -7382,6 +10136,31 @@
             ],
             "title": "A2V Supported Resolutions Durations"
           },
+          "aspect_specs": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/LTXVideoGenerationAspectSpec"
+                },
+                "propertyNames": {
+                  "enum": [
+                    "21:9",
+                    "16:9",
+                    "3:2",
+                    "4:3",
+                    "1:1",
+                    "4:5",
+                    "9:16"
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aspect Specs"
+          },
           "capabilities": {
             "anyOf": [
               {
@@ -7391,6 +10170,20 @@
                 "type": "null"
               }
             ]
+          },
+          "cell_asks": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FastCellAsk"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cell Asks"
           },
           "chunked_cells": {
             "anyOf": [
@@ -7555,6 +10348,17 @@
               }
             ],
             "title": "Created At"
+          },
+          "default_negative_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Negative Prompt"
           },
           "description": {
             "title": "Description",
@@ -7848,6 +10652,19 @@
             ],
             "title": "Catalogid"
           },
+          "customLoraId": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "pattern": "^[a-z0-9-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customloraid"
+          },
           "displayName": {
             "anyOf": [
               {
@@ -8065,9 +10882,59 @@
             "title": "Model",
             "type": "string"
           },
+          "nagAlpha": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagalpha"
+          },
+          "nagScale": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagscale"
+          },
+          "nagTau": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagtau"
+          },
           "negativePrompt": {
             "default": "",
+            "maxLength": 2000,
             "title": "Negativeprompt",
+            "type": "string"
+          },
+          "passShape": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "one_pass",
+              "parts"
+            ],
+            "title": "Passshape",
             "type": "string"
           },
           "prompt": {
@@ -8607,6 +11474,36 @@
         "title": "MediaSpec",
         "type": "object"
       },
+      "MemoryCapacity": {
+        "description": "The figure every ``FastCellAsk`` is compared against.\n\n``gpu`` is total VRAM (list time gates on total). ``mac`` is the MPS pool macOS recommends\nfor this Mac, which is the whole allowance video may use. None when the backend compared\nnothing (unknown VRAM, unsupported process).",
+        "properties": {
+          "capacity_gib": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity Gib"
+          },
+          "device": {
+            "enum": [
+              "gpu",
+              "mac"
+            ],
+            "title": "Device",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "capacity_gib"
+        ],
+        "title": "MemoryCapacity",
+        "type": "object"
+      },
       "ModelDeleteRequest": {
         "properties": {
           "cp_ids": {
@@ -9033,8 +11930,31 @@
             "title": "Localenhancementsupported",
             "type": "boolean"
           },
+          "nagUnavailableReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagunavailablereason"
+          },
+          "nagUnavailableReasonByFeature": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Nagunavailablereasonbyfeature",
+            "type": "object"
+          },
           "showManualEnhance": {
             "title": "Showmanualenhance",
+            "type": "boolean"
+          },
+          "showNagStrengthControls": {
+            "default": false,
+            "title": "Shownagstrengthcontrols",
             "type": "boolean"
           }
         },
@@ -9092,6 +12012,26 @@
       },
       "QueueEntry": {
         "properties": {
+          "api_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "processing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Status"
+          },
+          "cancellable": {
+            "default": true,
+            "title": "Cancellable",
+            "type": "boolean"
+          },
           "generation": {
             "$ref": "#/components/schemas/Generation"
           },
@@ -9142,6 +12082,17 @@
             "title": "Progress",
             "type": "integer"
           },
+          "remainingSeconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remainingseconds"
+          },
           "totalSteps": {
             "anyOf": [
               {
@@ -9166,14 +12117,11 @@
       "QueueSnapshot": {
         "properties": {
           "active": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/QueueEntry"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "items": {
+              "$ref": "#/components/schemas/QueueEntry"
+            },
+            "title": "Active",
+            "type": "array"
           },
           "done": {
             "items": {
@@ -9205,7 +12153,6 @@
           }
         },
         "required": [
-          "active",
           "queued"
         ],
         "title": "QueueSnapshot",
@@ -9518,6 +12465,51 @@
             "title": "Model",
             "type": "string"
           },
+          "nagAlpha": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagalpha"
+          },
+          "nagScale": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagscale"
+          },
+          "nagTau": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagtau"
+          },
+          "negativePrompt": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Negativeprompt",
+            "type": "string"
+          },
           "prompt": {
             "default": "",
             "title": "Prompt",
@@ -9643,6 +12635,11 @@
           "activityDashboardSelections": {
             "$ref": "#/components/schemas/DashboardSelection"
           },
+          "advancedControls": {
+            "default": false,
+            "title": "Advancedcontrols",
+            "type": "boolean"
+          },
           "assistantLocalModel": {
             "const": "qwen3.5:9b",
             "default": "qwen3.5:9b",
@@ -9664,10 +12661,10 @@
             "type": "string"
           },
           "budgetMode": {
-            "default": "reckless",
+            "default": "brave",
             "enum": [
-              "standard",
-              "reckless"
+              "brave",
+              "cautious"
             ],
             "title": "Budgetmode",
             "type": "string"
@@ -9712,6 +12709,21 @@
             "title": "Modelsdir",
             "type": "string"
           },
+          "mpsConv3DAsConv2DEnabled": {
+            "default": false,
+            "title": "Mpsconv3Dasconv2Denabled",
+            "type": "boolean"
+          },
+          "nagScale": {
+            "default": 11.0,
+            "title": "Nagscale",
+            "type": "number"
+          },
+          "neverSplitIntoParts": {
+            "default": false,
+            "title": "Neversplitintoparts",
+            "type": "boolean"
+          },
           "promptCacheSize": {
             "default": 100,
             "title": "Promptcachesize",
@@ -9749,6 +12761,16 @@
           "seedLocked": {
             "default": false,
             "title": "Seedlocked",
+            "type": "boolean"
+          },
+          "showNagStrengthControls": {
+            "default": false,
+            "title": "Shownagstrengthcontrols",
+            "type": "boolean"
+          },
+          "skipBudgetRiskConfirm": {
+            "default": false,
+            "title": "Skipbudgetriskconfirm",
             "type": "boolean"
           },
           "useConvVae": {
@@ -10074,6 +13096,72 @@
         "title": "TextEncoderRecommendationResponse",
         "type": "object"
       },
+      "TextToImageParams": {
+        "additionalProperties": false,
+        "description": "Create-body params. An omitted provider resolves from the settings at create time.",
+        "properties": {
+          "height": {
+            "default": 1024,
+            "maximum": 2048.0,
+            "minimum": 256.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "prompt": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "promptProvenance": {
+            "default": "typed",
+            "enum": [
+              "typed",
+              "enhanced"
+            ],
+            "title": "Promptprovenance",
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "enum": [
+                  "local",
+                  "fal"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "width": {
+            "default": 1024,
+            "maximum": 2048.0,
+            "minimum": 256.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "title": "TextToImageParams",
+        "type": "object"
+      },
       "TextToVideoParams": {
         "additionalProperties": false,
         "description": "Non-media text-to-video params stored on a generation row.",
@@ -10160,9 +13248,59 @@
             "title": "Model",
             "type": "string"
           },
+          "nagAlpha": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagalpha"
+          },
+          "nagScale": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagscale"
+          },
+          "nagTau": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nagtau"
+          },
           "negativePrompt": {
             "default": "",
+            "maxLength": 2000,
             "title": "Negativeprompt",
+            "type": "string"
+          },
+          "passShape": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "one_pass",
+              "parts"
+            ],
+            "title": "Passshape",
             "type": "string"
           },
           "prompt": {
@@ -10231,6 +13369,18 @@
           "endSec"
         ],
         "title": "TrimMediaRequest",
+        "type": "object"
+      },
+      "UiPreferences": {
+        "description": "The user settings that change what a form shows. Read-only, so Remote may read them.",
+        "properties": {
+          "advancedControls": {
+            "default": false,
+            "title": "Advancedcontrols",
+            "type": "boolean"
+          }
+        },
+        "title": "UiPreferences",
         "type": "object"
       },
       "UsualSettings": {
@@ -10452,6 +13602,7 @@
           "tier": {
             "enum": [
               "tight",
+              "over",
               "unmeasured"
             ],
             "title": "Tier",
@@ -10471,7 +13622,7 @@
         "type": "object"
       },
       "WarnedFastCell": {
-        "description": "One kept grid cell carrying a warning tier (tight fit or unmeasured).\n\nKept + warned render the full grid for warned-with-tooltip pickers:\n``fps_to_durations`` stays the kept set, this list marks the risky subset.\n``headroom_gib`` is set on tight cells only (unmeasured compares nothing).\n``message`` is backend-composed, same builder as the create annotation, so\nthe picker tooltip and the queue badge read identically.",
+        "description": "One kept grid cell carrying a warning tier: a tight fit, or a Brave bet\n(over budget or untested) the echoed mode admits.\n\nKept + warned render the full grid for warned-with-tooltip pickers:\n``fps_to_durations`` stays the kept set, this list marks the risky subset.\n``headroom_gib`` is set on tight cells only.\n``message`` is backend-composed, same builder as the create annotation, so\nthe picker tooltip and the queue badge read identically.",
         "properties": {
           "audio": {
             "title": "Audio",
@@ -10546,6 +13697,7 @@
           "tier": {
             "enum": [
               "tight",
+              "over",
               "unmeasured"
             ],
             "title": "Tier",
@@ -12228,6 +15380,410 @@
         ]
       }
     },
+    "/api/custom-loras": {
+      "get": {
+        "operationId": "route_list_custom_loras_api_custom_loras_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomLoraListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route List Custom Loras",
+        "tags": [
+          "custom-loras"
+        ]
+      },
+      "post": {
+        "operationId": "route_import_custom_lora_api_custom_loras_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomLoraImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomLoraImportStartResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Import Custom Lora",
+        "tags": [
+          "custom-loras"
+        ]
+      }
+    },
+    "/api/custom-loras/import/active": {
+      "get": {
+        "operationId": "route_custom_lora_import_active_api_custom_loras_import_active_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveCustomLoraImportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Custom Lora Import Active",
+        "tags": [
+          "custom-loras"
+        ]
+      }
+    },
+    "/api/custom-loras/import/progress": {
+      "get": {
+        "operationId": "route_custom_lora_import_progress_api_custom_loras_import_progress_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "title": "Sessionid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomLoraImportProgressResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Custom Lora Import Progress",
+        "tags": [
+          "custom-loras"
+        ]
+      }
+    },
+    "/api/custom-loras/link-info": {
+      "post": {
+        "operationId": "route_custom_lora_link_info_api_custom_loras_link_info_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomLoraLinkInfoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomLoraLinkInfoResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Custom Lora Link Info",
+        "tags": [
+          "custom-loras"
+        ]
+      }
+    },
+    "/api/custom-loras/{custom_lora_id}": {
+      "delete": {
+        "operationId": "route_delete_custom_lora_api_custom_loras__custom_lora_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "custom_lora_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "pattern": "^[a-z0-9-]+$",
+              "title": "Custom Lora Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Delete Custom Lora",
+        "tags": [
+          "custom-loras"
+        ]
+      }
+    },
+    "/api/custom-loras/{custom_lora_id}/weights": {
+      "delete": {
+        "operationId": "route_delete_custom_lora_weights_api_custom_loras__custom_lora_id__weights_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "custom_lora_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "pattern": "^[a-z0-9-]+$",
+              "title": "Custom Lora Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Delete Custom Lora Weights",
+        "tags": [
+          "custom-loras"
+        ]
+      },
+      "post": {
+        "operationId": "route_restore_custom_lora_weights_api_custom_loras__custom_lora_id__weights_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "custom_lora_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "pattern": "^[a-z0-9-]+$",
+              "title": "Custom Lora Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomLoraRestoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomLoraImportStartResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Restore Custom Lora Weights",
+        "tags": [
+          "custom-loras"
+        ]
+      }
+    },
     "/api/enhance-prompt": {
       "post": {
         "description": "POST /api/enhance-prompt.",
@@ -13225,6 +16781,57 @@
         ]
       }
     },
+    "/api/generations/custom-lora": {
+      "post": {
+        "operationId": "route_create_custom_lora_api_generations_custom_lora_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCustomLoraRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Generation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Create Custom Lora",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
     "/api/generations/edit/preflight": {
       "post": {
         "operationId": "route_preflight_edit_api_generations_edit_preflight_post",
@@ -13401,6 +17008,133 @@
         ]
       }
     },
+    "/api/generations/ic-lora-recipes/{recipe_id}/memory": {
+      "post": {
+        "operationId": "route_ic_lora_recipe_memory_api_generations_ic_lora_recipes__recipe_id__memory_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recipe_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "pattern": "^[a-z0-9-]+$",
+              "title": "Recipe Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IcLoraRecipeMemoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IcLoraRecipeMemoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Ic Lora Recipe Memory",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/ic-lora-recipes/{recipe_id}/preflight": {
+      "post": {
+        "operationId": "route_preflight_ic_lora_tile_sizes_api_generations_ic_lora_recipes__recipe_id__preflight_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recipe_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9-]+$",
+              "title": "Recipe Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IcLoraTilePreflightRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IcLoraTilePreflightResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Preflight Ic Lora Tile Sizes",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
     "/api/generations/image-to-video": {
       "post": {
         "operationId": "route_create_image_to_video_api_generations_image_to_video_post",
@@ -13447,6 +17181,57 @@
           }
         },
         "summary": "Route Create Image To Video",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/keyframes": {
+      "post": {
+        "operationId": "route_create_keyframes_api_generations_keyframes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateKeyframesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Generation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Create Keyframes",
         "tags": [
           "generations"
         ]
@@ -13622,6 +17407,57 @@
           }
         },
         "summary": "Route Create Retake",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/text-to-image": {
+      "post": {
+        "operationId": "route_create_text_to_image_api_generations_text_to_image_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTextToImageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Generation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Create Text To Image",
         "tags": [
           "generations"
         ]
@@ -14372,6 +18208,48 @@
         "summary": "Route Delete Ic Lora Installation",
         "tags": [
           "ic-loras"
+        ]
+      }
+    },
+    "/api/image-generation/status": {
+      "get": {
+        "description": "Mounted on both Desktop and Remote: the phone cannot read Settings.",
+        "operationId": "route_image_generation_status_api_image_generation_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageGenerationStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Image Generation Status",
+        "tags": [
+          "image"
         ]
       }
     },
@@ -15958,6 +19836,47 @@
         "summary": "Route Shutdown",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/ui-preferences": {
+      "get": {
+        "operationId": "route_get_ui_preferences_api_ui_preferences_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UiPreferences"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Get Ui Preferences",
+        "tags": [
+          "ui-preferences"
         ]
       }
     },

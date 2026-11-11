@@ -6,9 +6,28 @@ import {
   lightboxMediaKey,
   nextLightboxIndex,
   resolveLightboxDeepLinkAction,
+  resolveLightboxIndex,
   shouldOpenAssetFromKey,
   shouldHandleLightboxArrowKey,
 } from "./lightboxCollection.ts";
+
+describe("resolveLightboxIndex", () => {
+  const items = [{ id: "a" }, { id: "b" }, { id: "a" }];
+
+  it("finds an item by id when no place is given", () => {
+    assert.equal(resolveLightboxIndex(items, "b"), 1);
+    assert.equal(resolveLightboxIndex(items, "missing"), -1);
+  });
+
+  it("uses the given place, so the second copy of an asset opens as the second copy", () => {
+    assert.equal(resolveLightboxIndex(items, "a", 2), 2);
+  });
+
+  it("is -1 for a place outside the list", () => {
+    assert.equal(resolveLightboxIndex(items, "a", 3), -1);
+    assert.equal(resolveLightboxIndex(items, "a", -1), -1);
+  });
+});
 
 describe("nextLightboxIndex", () => {
   it("advances within the loaded collection", () => {

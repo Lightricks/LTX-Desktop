@@ -12,6 +12,7 @@ export function ResultStatus({
   action,
   className,
   copyClassName,
+  bodyClassName,
 }: {
   icon?: ReactNode;
   title?: string;
@@ -19,6 +20,7 @@ export function ResultStatus({
   action?: ReactNode;
   className?: string;
   copyClassName?: string;
+  bodyClassName?: string;
 }) {
   const hasCopy = Boolean(title || body);
 
@@ -43,7 +45,7 @@ export function ResultStatus({
             </Text>
           ) : null}
           {body ? (
-            <Text as="p" variant="body" size="lg" align="center" className={styles.body}>
+            <Text as="p" variant="body" size="lg" align="center" className={clsx(styles.body, bodyClassName)}>
               {body}
             </Text>
           ) : null}

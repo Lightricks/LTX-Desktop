@@ -23,5 +23,6 @@
   "free_vram_bytes",
   "drive_type",
   "load_mode",
-  "offload_mode"
+  "offload_mode",
+  "prompt_rewrite"
 ]

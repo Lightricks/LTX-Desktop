@@ -85,6 +85,14 @@ def _output(generation: dict[str, Any]) -> str | None:
     return outputs[0]["path"] if outputs else None
 
 
+def _active_entry(snapshot: Any, generation_id: str) -> dict[str, Any] | None:
+    """The running entry of this job. ``active`` lists one entry per running job (several lanes)."""
+    for entry in (snapshot or {}).get("active") or []:
+        if (entry.get("generation") or {}).get("id") == generation_id:
+            return entry
+    return None
+
+
 def trigger(jobs: list[QueuedJob]) -> list[str | None]:
     """Submit every job first (so several really queue up), then wait for each in order."""
     ids = [_create(job) for job in jobs]
@@ -102,8 +110,8 @@ def trigger_cancellable(job: QueuedJob, *, after_s: float, wait_timeout_s: float
     try:
         deadline = time.time() + wait_timeout_s
         while time.time() < deadline:
-            active = (perf_config._get(QUEUE_PATH) or {}).get("active") or {}
-            if (active.get("generation") or {}).get("id") == generation_id:
+            active = _active_entry(perf_config._get(QUEUE_PATH), generation_id)
+            if active is not None:
                 saw_inference = (active.get("progress") or {}).get("phase") == "inference"
                 if saw_inference:
                     break

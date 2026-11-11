@@ -4,6 +4,7 @@ import type {
   FeatureFormField,
   ImageAssetFieldDef,
   ImageAssetsFieldDef,
+  KeyframesFieldDef,
   MotionPathFieldDef,
   OptionsFieldDef,
   SliderFieldDef,
@@ -15,6 +16,7 @@ export type FeatureFormDisplayGroup<TSchema extends FeatureFieldSchema> =
   | { kind: "textarea"; field: TextareaFieldDef<TSchema> }
   | { kind: "image-asset"; field: ImageAssetFieldDef<TSchema> }
   | { kind: "image-assets"; field: ImageAssetsFieldDef<TSchema> }
+  | { kind: "keyframes"; field: KeyframesFieldDef<TSchema> }
   | { kind: "slider"; field: SliderFieldDef<TSchema> }
   | { kind: "audio-asset"; field: AudioAssetFieldDef<TSchema> }
   | { kind: "video-asset"; field: VideoAssetFieldDef<TSchema> }
@@ -61,6 +63,7 @@ export function applyOptionFieldOrder<TSchema extends FeatureFieldSchema>(
       case "textarea":
       case "image-asset":
       case "image-assets":
+      case "keyframes":
       case "slider":
       case "audio-asset":
       case "video-asset":
@@ -88,6 +91,9 @@ export function groupConsecutiveOptionFields<TSchema extends FeatureFieldSchema>
         break;
       case "image-assets":
         groups.push({ kind: "image-assets", field });
+        break;
+      case "keyframes":
+        groups.push({ kind: "keyframes", field });
         break;
       case "slider":
         groups.push({ kind: "slider", field });

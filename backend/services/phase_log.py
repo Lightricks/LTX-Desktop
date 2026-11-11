@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 import psutil
 
 from server_utils.heartbeat import log_heartbeat
+from services.gpu_info.run_peak import fold_and_reset_cuda_peak
 
 if TYPE_CHECKING:
     import torch
@@ -76,7 +77,7 @@ def measured_gpu_phase(
 
     cuda = device.type == "cuda" and torch.cuda.is_available()
     if cuda:
-        torch.cuda.reset_peak_memory_stats(device)
+        fold_and_reset_cuda_peak(device)
     try:
         with logged_phase(logger, label, heartbeat=True, prefix=prefix):
             yield

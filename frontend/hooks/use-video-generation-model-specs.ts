@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useAppSettings } from '../contexts/AppSettingsContext'
 import { ApiClient } from '../lib/api-client'
-import type { VideoGenerationModelSpecsResponse } from '../lib/video-generation-model-specs'
+import {
+  withoutBetCells,
+  type VideoGenerationModelSpecsResponse,
+} from '../lib/video-generation-model-specs'
 
 interface VideoGenerationModelSpecsState {
   modelSpecs: VideoGenerationModelSpecsResponse | null
@@ -9,6 +12,7 @@ interface VideoGenerationModelSpecsState {
   errorMessage: string | null
 }
 
+/** GenSpace and the editor have no risk confirm, so their grid never offers a bet. */
 export function useVideoGenerationModelSpecs(): VideoGenerationModelSpecsState {
   // Local specs describe the *active* LTX version, so they go stale as soon as the user
   // downloads, deletes, or activates a version — refetch on the models-changed signal.
@@ -31,7 +35,7 @@ export function useVideoGenerationModelSpecs(): VideoGenerationModelSpecsState {
 
       if (result.ok) {
         setState({
-          modelSpecs: result.data,
+          modelSpecs: withoutBetCells(result.data),
           isLoading: false,
           errorMessage: null,
         })
@@ -49,7 +53,7 @@ export function useVideoGenerationModelSpecs(): VideoGenerationModelSpecsState {
       isActive = false
       abortController.abort()
     }
-  }, [settings.budgetMode, modelsVersion])
+  }, [settings.budgetMode, settings.neverSplitIntoParts, modelsVersion])
 
   return state
 }

@@ -15,7 +15,7 @@ export function lowPerformanceResolutionWarning(
 }
 
 export const HIGH_RES_RUN_WARNING =
-  "4K runs in overlapping time windows. It takes minutes on a high-end GPU and hours on a Mac.";
+  "4K runs in sections. It takes minutes on a high-end GPU and hours on a Mac.";
 
 export const HIGH_RES_1440P_RUN_WARNING =
   "1440p takes noticeably longer than 1080p, and long clips take much longer still.";
@@ -27,7 +27,7 @@ export const HIGH_RES_1440P_RUN_WARNING =
  * An IC-LoRA recipe has a guide video that anchors every window, so it needs its own, shorter line.
  */
 export function chunkedRunNotice(windows: number): string {
-  return `This runs in ${windows} overlapping time windows. It takes longer than a single pass, and the result may be less consistent: lighting, background or subjects can drift between windows.`;
+  return `This runs in ${windows} sections. It takes longer than generating all at once, and the result may be less consistent: lighting, background or subjects can drift between sections.`;
 }
 
 export const HIGH_RES_EDIT_4K_RUN_WARNING =

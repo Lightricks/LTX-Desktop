@@ -8,17 +8,18 @@ import { readCachedGenerationSeed } from "@/lib/generation-seed-sync";
 import type { HomeFeatureId } from "@/lib/home-features";
 import type { PromptProvenance } from "@/lib/prompt-provenance";
 import type { UseMutationResult } from "@tanstack/react-query";
+import { useAdvancedControls } from "../../hooks/useAdvancedControls";
 import { useCancelGeneration } from "../../hooks/useCancelGeneration";
 import { useDeleteGeneration } from "../../hooks/useDeleteGeneration";
 import { useGenerations } from "../../hooks/useGenerations";
 import { useRetryGeneration } from "../../hooks/useRetryGeneration";
 import { injectGenerationSeed } from "../../lib/injectGenerationSeed";
 import { injectPromptProvenance } from "../../lib/injectPromptProvenance";
+import { injectNagStrength, type NagStrength } from "../../lib/nagStrength";
+import { useNagUnavailableReason } from "../../hooks/useNagUnavailableReason";
+import type { Generation } from "../../lib/resultsFeedModel";
 import {
-  getVisibleGenerations,
-  type Generation,
-} from "../../lib/resultsFeedModel";
-import {
+  type FeatureFormKey,
   type FeatureSchemaMap,
   useFeatureFormStore,
 } from "../../stores/featureFormStore";
@@ -30,6 +31,7 @@ import {
   type FeatureFieldChange,
   type FeatureValues,
 } from "./types";
+import { formWithAdvancedFields, valuesForRun } from "./advancedFields";
 
 function errorMessage(error: unknown): string | null {
   if (error instanceof Error && error.message.trim().length > 0) {
@@ -48,16 +50,27 @@ export function useFeatureForm<
   createGeneration: UseMutationResult<Generation, Error, TCreateBody>,
   contextReady: boolean,
   resourceError: unknown,
+  /**
+   * Keep only some of the feature's generations. A page for one saved custom LoRA shows only the
+   * runs of that LoRA, though every custom LoRA run has the same feature id. Must be stable.
+   */
+  generationFilter?: (generation: Generation) => boolean,
+  storeKey: FeatureFormKey = definition.id,
 ) {
   const storedValues = useFeatureFormStore((state) =>
-    state.getValues(definition.id),
-  );
+    state.getValues(storeKey),
+  ) as FeatureValues<FeatureSchemaMap[TId]> | undefined;
   const hasStoredValues = useFeatureFormStore((state) =>
-    state.hasValues(definition.id),
+    state.hasValues(storeKey),
   );
   const setStoreValues = useFeatureFormStore((state) => state.setValues);
+  // The request scale wins over Settings, so a strength sent while NAG is off for this feature
+  // (Settings strength 0, API text encoding, Torch Compile) would turn NAG back on. The screen
+  // only passes one while its row shows; this keeps it out even if a caller passes one anyway.
+  const nagUnavailableReason = useNagUnavailableReason(definition.id);
 
   const { api } = useExploreRuntime();
+  const advancedControls = useAdvancedControls();
   const queryClient = useQueryClient();
   const { randomize: rollGenerationSeed, ready: seedReady } =
     useGenerationSeed(api);
@@ -74,12 +87,20 @@ export function useFeatureForm<
     () => new Set(),
   );
 
+  const scopedGenerations = useMemo(
+    () =>
+      generationFilter && generationsQuery.data
+        ? generationsQuery.data.filter(generationFilter)
+        : generationsQuery.data,
+    [generationFilter, generationsQuery.data],
+  );
+
   const values = resolveFeatureFormValues(definition, {
     context,
     contextReady,
     storedValues,
     generationsFetched: generationsQuery.isFetched,
-    lastGenerationSpec: generationsQuery.data?.[0]?.spec,
+    lastGenerationSpec: scopedGenerations?.[0]?.spec,
   });
 
   useEffect(() => {
@@ -93,7 +114,7 @@ export function useFeatureForm<
     if (!contextReady) return;
     if (!hasStoredValues && !generationsQuery.isFetched) return;
 
-    const lastGeneration = generationsQuery.data?.[0];
+    const lastGeneration = scopedGenerations?.[0];
     const next = resolveFeatureSeedValues(definition, {
       context,
       hasStoredValues,
@@ -101,22 +122,27 @@ export function useFeatureForm<
       lastGenerationSpec: lastGeneration?.spec,
     });
     if (!shallow(storedValues, next)) {
-      setStoreValues(definition.id, next);
+      setStoreValues(storeKey, next);
     }
   }, [
     definition,
     context,
     contextReady,
-    generationsQuery.data,
+    scopedGenerations,
     generationsQuery.isFetched,
     hasStoredValues,
     setStoreValues,
     storedValues,
+    storeKey,
   ]);
 
-  const form = useMemo(
+  const fullForm = useMemo(
     () => definition.form(values, context),
     [context, definition, values],
+  );
+  const form = useMemo(
+    () => formWithAdvancedFields(fullForm, advancedControls),
+    [advancedControls, fullForm],
   );
 
   const issues = useMemo(
@@ -145,7 +171,7 @@ export function useFeatureForm<
   const setValues = useCallback(
     (next: FeatureValues<FeatureSchemaMap[TId]>) => {
       const normalized = definition.normalize(next, context);
-      setStoreValues(definition.id, normalized);
+      setStoreValues(storeKey, normalized);
       setRevealedIssueIds((current) => {
         const remaining = definition.validate(normalized, context);
         const remainingIds = new Set(remaining.map((issue) => issue.id));
@@ -155,7 +181,7 @@ export function useFeatureForm<
         return nextIds.size === current.size ? current : nextIds;
       });
     },
-    [context, definition, setStoreValues],
+    [context, definition, setStoreValues, storeKey],
   );
 
   const updateField = useCallback(
@@ -183,7 +209,9 @@ export function useFeatureForm<
   }, [context, definition, setValues]);
 
   const generateWithProvenance = useCallback(
-    (promptProvenance: PromptProvenance): boolean => {
+    // nagStrength: the strength row the screen shows, or null when it shows none. Null sends
+    // the body as the definition built it.
+    (promptProvenance: PromptProvenance, nagStrength: NagStrength | null = null): boolean => {
       const submittedSeed = readCachedGenerationSeed(queryClient);
       if (!canGenerate || submittedSeed == null) return false;
       const currentIssues = definition.validate(values, context);
@@ -199,15 +227,22 @@ export function useFeatureForm<
       cancelGeneration.reset();
       retryGeneration.reset();
       deleteGeneration.reset();
-      const body = injectGenerationSeed(
+      const built = injectGenerationSeed(
         injectPromptProvenance(
-          definition.toCreateBody(values, context) as {
+          definition.toCreateBody(
+            valuesForRun(fullForm, values, definition.defaults, advancedControls),
+            context,
+          ) as {
             params: Record<string, unknown>;
           },
           promptProvenance,
         ),
         submittedSeed.seed,
       );
+      const body =
+        nagStrength && nagUnavailableReason == null
+          ? injectNagStrength(built, nagStrength)
+          : built;
       createGeneration.mutate(body as TCreateBody, {
         onSuccess: (generation) => {
           setKeepPollingId(generation.id);
@@ -229,6 +264,9 @@ export function useFeatureForm<
       createGeneration,
       definition,
       deleteGeneration,
+      fullForm,
+      advancedControls,
+      nagUnavailableReason,
       queryClient,
       retryGeneration,
       rollGenerationSeed,
@@ -236,13 +274,14 @@ export function useFeatureForm<
     ],
   );
 
-  const visibleGenerations = useMemo(
-    () => getVisibleGenerations(generationsQuery.data ?? []),
-    [generationsQuery.data],
+  // The feed is virtualized, so it takes every generation. A stable empty list keeps its memo.
+  const allGenerations = useMemo(
+    () => scopedGenerations ?? [],
+    [scopedGenerations],
   );
 
   const generationsError =
-    generationsQuery.isError && visibleGenerations.length === 0
+    generationsQuery.isError && allGenerations.length === 0
       ? errorMessage(generationsQuery.error)
       : null;
 
@@ -267,7 +306,7 @@ export function useFeatureForm<
     canGenerate,
     isUnavailable,
     isCreating: createGeneration.isPending,
-    generations: visibleGenerations,
+    generations: allGenerations,
     isGenerationsLoading: generationsQuery.isPending,
     isGenerationsFetching: generationsQuery.isFetching,
     generationsError,

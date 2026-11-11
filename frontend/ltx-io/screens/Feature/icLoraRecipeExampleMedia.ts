@@ -14,6 +14,8 @@ import waterSimulationExamplePosterUrl from "../../assets/water-simulation/examp
 import waterSimulationExampleVideoUrl from "../../assets/water-simulation/example.mp4";
 import layoutToRenderExamplePosterUrl from "../../assets/layout-to-render/example-poster.webp";
 import layoutToRenderExampleVideoUrl from "../../assets/layout-to-render/example.mp4";
+import refineDetailsExamplePosterUrl from "../../assets/refine-details/example-poster.webp";
+import refineDetailsExampleVideoUrl from "../../assets/refine-details/example.mp4";
 import restoreExamplePosterUrl from "../../assets/restore/example-poster.webp";
 import restoreExampleVideoUrl from "../../assets/restore/example.mp4";
 import ingredientsExamplePosterUrl from "../../assets/ingredients/example-poster.webp";
@@ -74,10 +76,10 @@ export const IC_LORA_RECIPE_EXAMPLE_MEDIA: Record<
     videoUrl: ingredientsExampleVideoUrl,
     posterUrl: ingredientsExamplePosterUrl,
   },
-  // Placeholder: the Restore example. Replace it with a Refine Details example.
+  // The 4K result of the packaged reference clip. The compare slider shows both.
   "refine-details": {
-    videoUrl: restoreExampleVideoUrl,
-    posterUrl: restoreExamplePosterUrl,
+    videoUrl: refineDetailsExampleVideoUrl,
+    posterUrl: refineDetailsExamplePosterUrl,
   },
   "motion-track": {
     videoUrl: motionTrackExampleVideoUrl,

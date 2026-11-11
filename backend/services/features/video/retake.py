@@ -12,6 +12,8 @@ from handlers.video_resolution import (
     read_source_metadata,
     resolve_requested_home_edit_size,
 )
+from runtime_config.budget_admission import RiskAllowance
+from runtime_config.device_calibration import JobEnvelope
 from services.features.video.edit_executor import VideoEditExecutor
 from services.features.video.job_common import model_from_spec
 from services.fast_video_pipeline.windowed_run import measured_edit
@@ -51,6 +53,7 @@ class _PreparedRetake:
     regenerate_audio: bool
     dest_path: Path
     windowed_path: str
+    ran: JobEnvelope | None
 
 
 class RetakeExecutor(VideoEditExecutor[RetakeParams, RetakeInputs, _PreparedRetake]):
@@ -80,8 +83,7 @@ class RetakeExecutor(VideoEditExecutor[RetakeParams, RetakeInputs, _PreparedReta
         dest: Path,
         windowed_path: str,
         *,
-        allow_risk: bool,
-        unmeasured_bet: bool = False,
+        allowance: RiskAllowance = RiskAllowance.none(),
     ) -> _PreparedRetake:
         try:
             regenerate_video, regenerate_audio = resolve_retake_mode(params.mode)
@@ -152,14 +154,13 @@ class RetakeExecutor(VideoEditExecutor[RetakeParams, RetakeInputs, _PreparedReta
             region_start, region_end = feathered_mask_times(window, fps)
             return window.encode_frames
 
-        pipeline_state = self._load_edit_window(
+        pipeline_state, ran = self._load_edit_window(
             local_model_id=local_model_id,
             width=box.canvas_width,
             height=box.canvas_height,
             frames=window.encode_frames,
             total_cap=frame_cap,
-            allow_risk=allow_risk,
-            unmeasured_bet=unmeasured_bet,
+            allowance=allowance,
             generation_id=generation.id,
             log_name="Retake",
             rewindow=rewindow,
@@ -199,6 +200,7 @@ class RetakeExecutor(VideoEditExecutor[RetakeParams, RetakeInputs, _PreparedReta
             regenerate_audio=regenerate_audio,
             dest_path=dest,
             windowed_path=windowed_path,
+            ran=ran,
         )
 
     def generate(self, prepared: _PreparedRetake) -> None:
@@ -206,6 +208,7 @@ class RetakeExecutor(VideoEditExecutor[RetakeParams, RetakeInputs, _PreparedReta
             self._generate(prepared)
 
     def _generate(self, prepared: _PreparedRetake) -> None:
+        nag = self.resolve_nag(prepared.params, prepared.pipeline_state)
         prepared.pipeline_state.pipeline.generate(
             video_path=prepared.video.path,
             prompt=prepared.params.prompt,
@@ -213,7 +216,7 @@ class RetakeExecutor(VideoEditExecutor[RetakeParams, RetakeInputs, _PreparedReta
             end_time=prepared.region_end,
             seed=prepared.seed,
             output_path=prepared.windowed_path,
-            negative_prompt=self._default_negative_prompt,
+            negative_prompt=prepared.params.negativePrompt or self._default_negative_prompt,
             num_inference_steps=40,
             video_guider_params=None,
             audio_guider_params=None,
@@ -228,6 +231,7 @@ class RetakeExecutor(VideoEditExecutor[RetakeParams, RetakeInputs, _PreparedReta
             target_frames=prepared.window.encode_frames,
             encode_start_time=prepared.window.encode_start_time(prepared.fps),
             encode_max_duration=prepared.window.encode_duration(prepared.fps),
+            nag=nag,
         )
 
     def stitch(self, prepared: _PreparedRetake) -> None:

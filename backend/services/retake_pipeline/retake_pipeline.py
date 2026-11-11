@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 from api_types import ExtendMode
+from services.fast_video_pipeline.nag_config import NagConfig
 
 if TYPE_CHECKING:
     import torch
@@ -54,6 +55,7 @@ class RetakePipeline(Protocol):
         encode_max_duration: float | None = None,
         content_width: int | None = None,
         content_height: int | None = None,
+        nag: NagConfig | None = None,
     ) -> None: ...
 
     def extend(
@@ -76,4 +78,5 @@ class RetakePipeline(Protocol):
         encode_max_duration: float | None = None,
         content_width: int | None = None,
         content_height: int | None = None,
+        nag: NagConfig | None = None,
     ) -> None: ...

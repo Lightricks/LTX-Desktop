@@ -7,8 +7,8 @@ import logging
 import os
 import threading
 from collections.abc import AsyncIterator, Mapping
-from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from contextlib import AbstractContextManager, asynccontextmanager
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from api_types import LTXLocalModelId
@@ -24,6 +24,7 @@ from handlers import (
     ModelsHandler,
     PipelinesHandler,
     LoraCatalogHandler,
+    CustomLoraHandler,
     PromptEnhancementHandler,
     SuggestGapPromptHandler,
     RetakeHandler,
@@ -34,8 +35,10 @@ from handlers import (
     TextHandler,
     VideoGenerationHandler,
 )
+from handlers.calibration_handler import CalibrationHandler
 from handlers.dashboard_handler import DashboardHandler
 from handlers.queued_generation_handler import QueuedGenerationHandler
+from handlers.queued_image_handler import QueuedImageHandler
 from runtime_config.offerings import OFFERING_IDS, resolve_offering_local_model_id
 from handlers.assistant_handler import AssistantHandler
 from services.assistant_provider import AssistantProvider, DesktopAssistantProvider
@@ -63,29 +66,45 @@ from services.interfaces import (
     TextEncoder,
     VideoProcessor,
 )
+from services.url_downloader import UrlDownloader
 from services.analytics import AnalyticsService, QueuedEnhancement
 from services.lora_catalog import LoraCatalogProvider
 from services.store import Store
-from services.records import GenerationRecord, UnavailableError
+from services.records import LOCAL_LANE, GenerationRecord, UnavailableError
 from services.unavailable_store import UnavailableStore
 from services.generation_queue.registry import ExecutorRegistry
+from services.generation_queue.dispatcher import QueueDispatcher
+from services.generation_queue.lane_sessions import LaneJobSession
+from services.generation_queue.lane_slots import CountingLaneSlot
+from services.generation_queue.lanes import FAL_LANE_SPEC, LOCAL_LANE_SPEC, LaneRegistry, LaneSpec
 from services.generation_queue.runner import QueueRunner
+from services.generation_queue.sessions import LocalJobSession
 from services.features.video import (
     AUDIO_TO_VIDEO_FEATURE,
+    CUSTOM_LORA_FEATURE,
     EXTEND_FEATURE,
     FEATURE as TEXT_TO_VIDEO_FEATURE,
     IMAGE_TO_VIDEO_FEATURE,
+    KEYFRAMES_FEATURE,
     RETAKE_FEATURE,
     SYNTHESIZED_IC_LORA_EXECUTORS,
     AudioToVideoExecutor,
+    CustomLoraExecutor,
     IcLoraRecipeExecutor,
     ExtendExecutor,
     ImageToVideoExecutor,
+    KeyframesExecutor,
     RebindableAssetResolver,
     RetakeExecutor,
     TextToVideoExecutor,
 )
+from services.features.custom_loras import (
+    custom_lora_in_use,
+    make_custom_lora_resolver,
+)
 from services.features.ic_lora_recipes import queued_ic_lora_recipes
+from services.features.image.feature_id import FEATURE as TEXT_TO_IMAGE_FEATURE
+from services.features.image.text_to_image import TextToImageExecutor
 from services.features.lora_recipes import (
     i2v_lora_recipes,
     make_recipe_lora_resolver,
@@ -128,6 +147,7 @@ class AppHandler:
         generation_executors: Mapping[str, GenerationExecutor] | None = None,
         assistant_provider: AssistantProvider | None = None,
         assistant_models: LocalAssistantModels | None = None,
+        url_downloader: UrlDownloader | None = None,
     ) -> None:
         self.config = config
 
@@ -211,7 +231,6 @@ class AppHandler:
             task_runner=task_runner,
             config=config,
             gpu_info=gpu_info,
-            high_res_enabled=self._high_res_video_to_video_enabled,
         )
 
         self.text = TextHandler(
@@ -237,7 +256,12 @@ class AppHandler:
             gpu_info=gpu_info,
         )
 
-        self.generation = GenerationHandler(state=self.state, lock=self._lock, config=config)
+        self.calibration = CalibrationHandler(
+            state=self.state, lock=self._lock, config=config, gpu_info=gpu_info
+        )
+        self.generation = GenerationHandler(
+            state=self.state, lock=self._lock, config=config, calibration=self.calibration
+        )
         self.assistant_models = AssistantModelsHandler(
             state=self.state, lock=self._lock, models=local_assistant_models,
             task_runner=task_runner, generation=self.generation,
@@ -293,6 +317,16 @@ class AppHandler:
             gpu_info=gpu_info,
         )
 
+        self._store: Store = store
+        self.custom_loras = CustomLoraHandler(
+            state=self.state,
+            lock=self._lock,
+            task_runner=task_runner,
+            config=config,
+            url_downloader=url_downloader,
+            # Resolved at call time: `_store` is rebound when the store is replaced.
+            lora_in_use=lambda custom_lora_id: custom_lora_in_use(self._store, custom_lora_id),
+        )
         self._lora_catalog_provider = lora_catalog_provider
         self.ic_lora = IcLoraHandler(
             state=self.state,
@@ -307,15 +341,43 @@ class AppHandler:
             gpu_info=gpu_info,
             high_res_enabled=self._high_res_video_to_video_enabled,
         )
+        self.image_generation = ImageGenerationHandler(
+            state=self.state,
+            lock=self._lock,
+            generation_handler=self.generation,
+            pipelines_handler=self.pipelines,
+            config=config,
+            zit_api_client=zit_api_client,
+        )
+        self.queued_image = QueuedImageHandler(
+            state=self.state,
+            lock=self._lock,
+            generation_handler=self.generation,
+            pipelines_handler=self.pipelines,
+            config=config,
+            zit_api_client=zit_api_client,
+            prompt_enhancement_handler=self.prompt_enhancement,
+            lease_idle_gpu=self._lease_idle_gpu,
+        )
+
         self._queued_asset_resolver: RebindableAssetResolver | None = None
+        # The provider cancel of the fal lane needs the fal client, so its spec is built here.
+        fal_lane = replace(FAL_LANE_SPEC, cancel_orphan=self.queued_image.cancel_fal_request)
+        self._lanes = LaneRegistry(
+            [LOCAL_LANE_SPEC, fal_lane] if config.parallel_queue_lanes else [LOCAL_LANE_SPEC]
+        )
         if generation_executors is None:
             self._queued_asset_resolver = RebindableAssetResolver(store)
             executors: dict[str, GenerationExecutor] = {
+                TEXT_TO_IMAGE_FEATURE: TextToImageExecutor(self.queued_image),
                 TEXT_TO_VIDEO_FEATURE: TextToVideoExecutor(self.video_generation),
                 IMAGE_TO_VIDEO_FEATURE: ImageToVideoExecutor(
                     self.video_generation, self._queued_asset_resolver
                 ),
             }
+            executors[KEYFRAMES_FEATURE] = KeyframesExecutor(
+                self.video_generation, self._queued_asset_resolver
+            )
             # Each t2v LoRA recipe reuses the text-to-video executor, keyed on its
             # Explore id, with its scaffold applied post-enhance. i2v recipes reuse
             # the image-to-video executor the same way (start frame + LoRA).
@@ -340,6 +402,21 @@ class AppHandler:
                         models_dir=lambda: self.video_generation.models_dir,
                     ),
                 )
+            # A custom LoRA is one feature for both forms. The row's inputs pick the executor.
+            custom_lora_resolver = make_custom_lora_resolver(
+                lambda: self.video_generation.models_dir
+            )
+            executors[CUSTOM_LORA_FEATURE] = CustomLoraExecutor(
+                TextToVideoExecutor(
+                    self.video_generation,
+                    lora_resolver=custom_lora_resolver,
+                ),
+                ImageToVideoExecutor(
+                    self.video_generation,
+                    self._queued_asset_resolver,
+                    lora_resolver=custom_lora_resolver,
+                ),
+            )
             executors[AUDIO_TO_VIDEO_FEATURE] = AudioToVideoExecutor(
                 self.video_generation, self._queued_asset_resolver
             )
@@ -351,6 +428,7 @@ class AppHandler:
                 config.default_negative_prompt,
                 self.generation,
                 self.prompt_enhancement,
+                default_nag_scale=lambda: self.settings.get_settings_snapshot().nag_scale,
             )
             executors[EXTEND_FEATURE] = ExtendExecutor(
                 self.pipelines,
@@ -360,6 +438,7 @@ class AppHandler:
                 config.default_negative_prompt,
                 self.generation,
                 self.prompt_enhancement,
+                default_nag_scale=lambda: self.settings.get_settings_snapshot().nag_scale,
             )
             for recipe in queued_ic_lora_recipes():
                 if recipe.kind != "video":
@@ -379,19 +458,10 @@ class AppHandler:
                     upscales_to_cell=recipe.upscales_to_cell,
                     high_res_enabled=self._high_res_video_to_video_enabled,
                 )
-            self.executor_registry = ExecutorRegistry(executors)
+            self.executor_registry = ExecutorRegistry(executors, self._lanes)
         else:
-            self.executor_registry = ExecutorRegistry(generation_executors)
+            self.executor_registry = ExecutorRegistry(generation_executors, self._lanes)
         self._bind_store(store)
-
-        self.image_generation = ImageGenerationHandler(
-            state=self.state,
-            lock=self._lock,
-            generation_handler=self.generation,
-            pipelines_handler=self.pipelines,
-            config=config,
-            zit_api_client=zit_api_client,
-        )
 
         self.health = HealthHandler(
             state=self.state,
@@ -451,6 +521,7 @@ class AppHandler:
                 exc_info=True,
             )
             self._bind_store(UnavailableStore())
+        self.calibration.load()
 
     def _queued_local_model_id(self, generation: GenerationRecord) -> LTXLocalModelId | None:
         """The checkpoint this queued job will encode with, not the active model."""
@@ -465,29 +536,66 @@ class AppHandler:
     def _queued_enhancement_policy(self, generation: GenerationRecord) -> QueuedEnhancement:
         settings = self.state.app_settings
         model_id = self._queued_local_model_id(generation)
+        # An image rewrite has its own rule (no local Gemma when API-only), kept in one place.
+        local_enhancer_root = (
+            self.prompt_enhancement.local_image_enhancer_root()
+            if generation.feature == TEXT_TO_IMAGE_FEATURE
+            else self.text.resolve_prompt_enhancer_root_if_downloaded(model_id)
+        )
         return QueuedEnhancement(
             explore_auto_enhance_prompts=settings.explore_auto_enhance_prompts,
             prompt_enhancer_enabled=settings.prompt_enhancer_enabled,
             use_local_encoding=self.text.should_use_local_encoding(model_id),
-            local_enhancer_available=(
-                self.text.resolve_prompt_enhancer_root_if_downloaded(model_id) is not None
-            ),
+            local_enhancer_available=local_enhancer_root is not None,
             gemini_video_enhance=self.prompt_enhancement.gemini_video_enhance_enabled(),
         )
 
     def _high_res_video_to_video_enabled(self) -> bool:
         return self.feature_flags.get_flags().highResVideoToVideo
 
-    def _bind_store(self, store: Store) -> None:
-        if self._queued_asset_resolver is not None:
-            self._queued_asset_resolver.bind(store)
-        self.generation_queue = QueueRunner(
+    def _keyframes_enabled(self) -> bool:
+        return self.feature_flags.get_flags().keyframes
+
+    def _lane_runner(self, store: Store, lane: LaneSpec) -> QueueRunner:
+        if lane.id == LOCAL_LANE:
+            return QueueRunner(
+                db=store,
+                generation=self.generation,
+                executors=self.executor_registry,
+                lane=lane,
+                session_factory=lambda job: LocalJobSession(self.generation, job.id),
+                analytics=self.analytics,
+                enhancement_policy=self._queued_enhancement_policy,
+                gpu_info=self.gpu_info,
+                checkpoint_drive_type=self.config.checkpoint_drive_type,
+            )
+        return QueueRunner(
             db=store,
-            generation=self.generation,
+            generation=CountingLaneSlot(lane.concurrency),
             executors=self.executor_registry,
+            lane=lane,
+            session_factory=lambda job: LaneJobSession(
+                job.id, job.attempt_count, store.set_provider_job_id
+            ),
             analytics=self.analytics,
             enhancement_policy=self._queued_enhancement_policy,
             gpu_info=self.gpu_info,
+            checkpoint_drive_type=self.config.checkpoint_drive_type,
+        )
+
+    def _lease_idle_gpu(self) -> AbstractContextManager[bool]:
+        """The GPU for a short job of another lane, only when the local lane is idle."""
+        return self.generation.try_lease_idle_gpu(
+            local_lane_idle=lambda: self.generation_queue.lane_is_idle(LOCAL_LANE)
+        )
+
+    def _bind_store(self, store: Store) -> None:
+        self._store = store
+        self.calibration.bind(store)
+        if self._queued_asset_resolver is not None:
+            self._queued_asset_resolver.bind(store)
+        self.generation_queue = QueueDispatcher(
+            [self._lane_runner(store, lane) for lane in self._lanes.lanes],
             checkpoint_drive_type=self.config.checkpoint_drive_type,
         )
         self.assets = AssetHandler(
@@ -498,7 +606,6 @@ class AppHandler:
             executor_registry=self.executor_registry,
             derive_local_a2v=self.video_generation.derive_local_a2v_params,
             queue_control=self.generation_queue,
-            progress_reader=self.generation.get_generation_progress,
             config=self.config,
             lora_catalog_provider=self._lora_catalog_provider,
             state=self.state,
@@ -508,8 +615,12 @@ class AppHandler:
             preflight_queued_edit=self.pipelines.preflight_queued_edit_job,
             preflight_edit_matrix=self.pipelines.preflight_edit_matrix,
             preflight_queued_ic_lora_recipe=self.ic_lora.preflight_queued_recipe_job,
+            preflight_ic_lora_tile_sizes=self.ic_lora.preflight_recipe_tile_sizes,
             preflight_queued_synthesized_ic_lora=self.ic_lora.preflight_queued_synthesized_job,
             high_res_enabled=self._high_res_video_to_video_enabled,
+            keyframes_enabled=self._keyframes_enabled,
+            should_use_local_encoding=self.text.should_use_local_encoding,
+            image_generation_status=self.image_generation.get_status,
         )
         self.assistant = AssistantHandler(
             state=self.state, lock=self._lock, provider=self._assistant_provider, store=store,
@@ -552,6 +663,8 @@ class ServiceBundle:
     generation_executors: Mapping[str, GenerationExecutor] | None = None
     assistant_provider: AssistantProvider | None = None
     assistant_models: LocalAssistantModels | None = None
+    # None leaves URL import off. The real bundle supplies the downloader.
+    url_downloader: UrlDownloader | None = None
 
 
 def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
@@ -571,6 +684,7 @@ def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
     from services.prompt_enhancer_pipeline.ltx_prompt_enhancer_pipeline import LtxPromptEnhancerPipeline
     from services.pose_processor_pipeline.dw_pose_pipeline import DWPosePipeline
     from services.task_runner.threading_runner import ThreadingRunner
+    from services.url_downloader.url_downloader_impl import UrlDownloaderImpl
     from services.text_encoder.ltx_text_encoder import LTXTextEncoder
     from services.video_processor.video_processor_impl import VideoProcessorImpl
     from services.lora_catalog import FileLoraCatalogProvider
@@ -602,15 +716,16 @@ def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
         a2v_pipeline_class=LTXa2vPipeline,
         retake_pipeline_class=LTXRetakePipeline,
         prompt_enhancer_pipeline_class=LtxPromptEnhancerPipeline,
-        store=open_store(config.app_data_dir),
+        store=open_store(config.app_data_dir, config.assets_dir),
+        url_downloader=UrlDownloaderImpl(),
     )
 
 
-def open_store(app_data_dir: Path) -> Store:
+def open_store(app_data_dir: Path, assets_dir: Path | None = None) -> Store:
     from services.sqlite_store import SqliteStore
 
     try:
-        return SqliteStore(app_data_dir)
+        return SqliteStore(app_data_dir, assets_dir=assets_dir)
     except UnavailableError:
         logger.warning(
             "Store unavailable at %s", app_data_dir / "store.sqlite3", exc_info=True
@@ -650,4 +765,5 @@ def build_initial_state(
         generation_executors=bundle.generation_executors,
         assistant_provider=bundle.assistant_provider,
         assistant_models=bundle.assistant_models,
+        url_downloader=bundle.url_downloader,
     )

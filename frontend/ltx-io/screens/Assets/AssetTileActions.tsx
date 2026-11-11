@@ -11,6 +11,7 @@ import type { ExploreListedAsset } from "@/lib/explore-contract";
 import { revealInFolderLabel } from "@/lib/revealInFolderLabel";
 import { useModalContext } from "@/ltx-io/components/shared/Modal/ModalContext";
 import { useAssetDownload } from "@/ltx-io/hooks/useAssetDownload";
+import { useConfirmDeleteAction } from "@/ltx-io/hooks/useConfirmDeleteAction";
 import { useExploreRuntime } from "@/ltx-io/runtime/ExploreRuntime";
 
 import {
@@ -18,9 +19,7 @@ import {
   type AssetLibraryFileAction,
 } from "./assetLibraryFileAction";
 import {
-  ASSETS_DELETE_CONFIRM_BUTTON,
-  ASSETS_DELETE_CONFIRM_DESCRIPTION,
-  ASSETS_DELETE_CONFIRM_TITLE,
+  ASSETS_DELETE_CONFIRMATION,
   ASSETS_IN_USE_BUTTON,
   ASSETS_IN_USE_DESCRIPTION,
   ASSETS_IN_USE_TITLE,
@@ -60,56 +59,72 @@ export function OverlayButton({
   );
 }
 
-export function AssetDeleteConfirmation({
-  title,
-  description,
-  onDismiss,
-  onConfirm,
-}: {
-  title: string;
-  description: string;
-  onDismiss: () => void;
-  onConfirm?: () => void;
-}) {
+function AssetInUseNotice({ onDismiss }: { onDismiss: () => void }) {
   return (
     <Flex direction="column" gap="md" style={{ maxWidth: 400 }}>
       <Flex direction="column" gap="xs">
         <Text as="h2" variant="heading" size="sm">
-          {title}
+          {ASSETS_IN_USE_TITLE}
         </Text>
         <Text as="p" variant="body" size="md">
-          {description}
+          {ASSETS_IN_USE_DESCRIPTION}
         </Text>
       </Flex>
       <Flex gap="sm" justify="end">
-        {onConfirm ? (
-          <>
-            <Button
-              appearance="neutral"
-              hierarchy="plain"
-              size="md"
-              label="Cancel"
-              onClick={onDismiss}
-            />
-            <Button
-              appearance="danger"
-              hierarchy="primary"
-              size="md"
-              label={ASSETS_DELETE_CONFIRM_BUTTON}
-              onClick={onConfirm}
-            />
-          </>
-        ) : (
-          <Button
-            appearance="brand"
-            hierarchy="primary"
-            size="md"
-            label={ASSETS_IN_USE_BUTTON}
-            onClick={onDismiss}
-          />
-        )}
+        <Button
+          appearance="brand"
+          hierarchy="primary"
+          size="md"
+          label={ASSETS_IN_USE_BUTTON}
+          onClick={onDismiss}
+        />
       </Flex>
     </Flex>
+  );
+}
+
+export function AssetDeleteButton({
+  asset,
+  onDelete,
+  isDeletePending,
+}: {
+  asset: ExploreListedAsset;
+  onDelete: (assetId: string) => Promise<void>;
+  isDeletePending: boolean;
+}) {
+  const { hideConfirmation, showConfirmation } = useModalContext();
+  const confirmDelete = useConfirmDeleteAction();
+  const isDeleteSubmittingRef = useRef(false);
+
+  const showInUseConfirmation = () => {
+    showConfirmation({
+      confirmationName: "asset-delete-in-use",
+      content: <AssetInUseNotice onDismiss={() => hideConfirmation("done")} />,
+    });
+  };
+
+  const runDeleteAsset = () => {
+    if (isDeleteSubmittingRef.current) return;
+    isDeleteSubmittingRef.current = true;
+    void onDelete(asset.id)
+      .catch((error: unknown) => {
+        if (isAssetDeleteInUseError(error)) showInUseConfirmation();
+      })
+      .finally(() => {
+        isDeleteSubmittingRef.current = false;
+      });
+  };
+
+  return (
+    <OverlayButton
+      label={asset.in_use ? "Used as an input" : "Delete file"}
+      icon={<RemoveIcon />}
+      disabled={asset.in_use || isDeletePending}
+      onClick={() => {
+        if (isDeletePending) return;
+        confirmDelete(ASSETS_DELETE_CONFIRMATION, runDeleteAsset);
+      }}
+    />
   );
 }
 
@@ -187,55 +202,11 @@ export function AssetTileActions({
   isDeletePending: boolean;
 }) {
   const runtime = useExploreRuntime();
-  const { hideConfirmation, showConfirmation } = useModalContext();
-  const isDeleteSubmittingRef = useRef(false);
   const fileAction = resolveAssetLibraryFileAction({
     revealInFolder: runtime.revealInFolder,
     path: asset.path,
     mediaUrl,
   });
-
-  const showInUseConfirmation = () => {
-    showConfirmation({
-      confirmationName: "asset-delete-in-use",
-      content: (
-        <AssetDeleteConfirmation
-          title={ASSETS_IN_USE_TITLE}
-          description={ASSETS_IN_USE_DESCRIPTION}
-          onDismiss={() => hideConfirmation("done")}
-        />
-      ),
-    });
-  };
-
-  const showDeleteConfirmation = () => {
-    if (isDeletePending) return;
-    showConfirmation({
-      confirmationName: "asset-delete-confirm",
-      content: (
-        <AssetDeleteConfirmation
-          title={ASSETS_DELETE_CONFIRM_TITLE}
-          description={ASSETS_DELETE_CONFIRM_DESCRIPTION}
-          onDismiss={() => hideConfirmation("cancel")}
-          onConfirm={() => {
-            if (isDeleteSubmittingRef.current) {
-              hideConfirmation("confirm");
-              return;
-            }
-            isDeleteSubmittingRef.current = true;
-            hideConfirmation("confirm");
-            void onDelete(asset.id)
-              .catch((error: unknown) => {
-                if (isAssetDeleteInUseError(error)) showInUseConfirmation();
-              })
-              .finally(() => {
-                isDeleteSubmittingRef.current = false;
-              });
-          }}
-        />
-      ),
-    });
-  };
 
   if (runtime.deleteAsset !== null) {
     return (
@@ -244,11 +215,10 @@ export function AssetTileActions({
           <OverlayButton label="Ask assistant" icon={<MessageSquare />}
             onClick={() => runtime.askAssistant?.(asset.id)} />
         )}
-        <OverlayButton
-          label={asset.in_use ? "Used as an input" : "Delete file"}
-          icon={<RemoveIcon />}
-          disabled={asset.in_use || isDeletePending}
-          onClick={showDeleteConfirmation}
+        <AssetDeleteButton
+          asset={asset}
+          onDelete={onDelete}
+          isDeletePending={isDeletePending}
         />
         <DesktopRevealButton
           action={fileAction}

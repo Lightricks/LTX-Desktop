@@ -107,6 +107,11 @@ const SEED_CASES: readonly {
     suffix: /motion-track-input\.jpg$/,
     header: { offset: 0, bytes: JPEG_HEADER },
   },
+  ...(["summer", "autumn", "winter", "spring"] as const).map((season) => ({
+    kind: `keyframes-${season}-image` as const,
+    suffix: new RegExp(`keyframes-${season}\\.jpg$`),
+    header: { offset: 0, bytes: JPEG_HEADER },
+  })),
 ];
 
 describe("packaged seed IPC", () => {
@@ -174,5 +179,17 @@ describe("packaged seed path resolution", () => {
     const yaml = fs.readFileSync(path.join(repoRoot, "electron-builder.yml"), "utf8");
     assert.match(yaml, /from:\s+resources\/explore-assets/);
     assert.match(yaml, /to:\s+explore-assets/);
+  });
+
+  it("packages the shared JSON files the backend reads at import", () => {
+    const yaml = fs.readFileSync(path.join(repoRoot, "electron-builder.yml"), "utf8");
+    for (const name of [
+      "ic-lora-input-cap.json",
+      "motion-path.json",
+      "ic-lora-stage-2-upscale.json",
+      "ic-lora-tiling-controls.json",
+    ]) {
+      assert.equal(yaml.includes(`- ${name}`), true, name);
+    }
   });
 });

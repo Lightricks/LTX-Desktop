@@ -1,6 +1,6 @@
 """Drive-type probe for the checkpoint volume (Windows Fast DISK routing).
 
-Disk-mapped streaming reads ~70 GB per generation: seconds on NVMe, minutes on
+Disk streaming reads ~70 GB per generation: seconds on NVMe, minutes on
 spinning rust. This probe classifies the volume holding the checkpoints so the
 offload decision can tell them apart. Checkpoints live under the app-data tree,
 so the app-data volume answers for them (volume granularity, not the file).

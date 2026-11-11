@@ -1,0 +1,9 @@
+{
+  "overlap": { "min": 0, "max": 0.5, "step": 0.05, "default": 0.5, "presets": [0.5, 0.35, 0.25, 0.15, 0] },
+  "carryFrames": { "min": 17, "default": 25, "highResDefault": 17, "presets": [17, 25, 33] },
+  "windowFrames": { "max": 97, "presets": [97, 73, 57, 41] },
+  "tileSizes": {
+    "large": { "long": 1536, "short": 864 },
+    "extra-large": { "long": 1920, "short": 1088 }
+  }
+}

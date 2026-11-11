@@ -11,6 +11,19 @@ export function findLightboxAssetIndex(
   return items.findIndex((item) => item.id === activeAssetId);
 }
 
+/**
+ * The place of the active item. A given `activeIndex` wins, because an id matches the first copy
+ * of an asset that the list holds twice. It is -1 when nothing is active.
+ */
+export function resolveLightboxIndex(
+  items: readonly LightboxItem[],
+  activeAssetId: string,
+  activeIndex?: number,
+): number {
+  if (activeIndex === undefined) return findLightboxAssetIndex(items, activeAssetId);
+  return items[activeIndex] === undefined ? -1 : activeIndex;
+}
+
 export function nextLightboxIndex(
   index: number,
   loadedCount: number,

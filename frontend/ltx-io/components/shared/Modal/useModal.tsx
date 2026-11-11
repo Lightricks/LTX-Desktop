@@ -26,7 +26,6 @@ export function useModal(): UseModalReturn {
   const [disableCloseButtonUntilMs, setDisableCloseButtonUntilMs] = useState<
     number | undefined
   >(undefined);
-  const [shouldBeTopmost, setShouldBeTopmost] = useState(false);
 
   const onCloseCallback = useRef<((reason: CloseReason) => void) | undefined>();
   const afterCloseCallback = useRef<VoidFunction | undefined>(undefined);
@@ -49,7 +48,6 @@ export function useModal(): UseModalReturn {
       shouldPreventDismiss,
       noPadding = false,
       disableCloseButtonUntilMs,
-      shouldBeTopmost = false,
       onClose,
     }: ShowModalParams) => {
       onCloseCallback.current = onClose;
@@ -63,7 +61,6 @@ export function useModal(): UseModalReturn {
       setDisablePointerClickOutside(disablePointerClickOutside);
       setNoPadding(noPadding);
       setDisableCloseButtonUntilMs(disableCloseButtonUntilMs);
-      setShouldBeTopmost(shouldBeTopmost);
     },
     [],
   );
@@ -78,7 +75,6 @@ export function useModal(): UseModalReturn {
     setDisablePointerClickOutside(false);
     setNoPadding(false);
     setDisableCloseButtonUntilMs(undefined);
-    setShouldBeTopmost(false);
 
     shouldPreventDismissRef.current = undefined;
 
@@ -102,7 +98,6 @@ export function useModal(): UseModalReturn {
           shouldPreventDismiss={resolveShouldPreventDismiss}
           noPadding={noPadding}
           disableCloseButtonUntilMs={disableCloseButtonUntilMs}
-          shouldBeTopmost={shouldBeTopmost}
         >
           {content}
         </Modal>

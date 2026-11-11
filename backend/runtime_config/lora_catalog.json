@@ -103,6 +103,7 @@
       ],
       "trigger": "crtanim,",
       "recommended_strength": 1.0,
+      "default_negative_prompt": "blurry, low quality, jpeg artifacts, compression artifacts, watermark, signature",
       "media": {
         "demo_video": "crt_animation_terminal_demo.mp4"
       },
@@ -891,6 +892,7 @@
       "trigger": "CINEMAGRAPH_MOTION",
       "trigger_placement": "first_token",
       "recommended_strength": 2.0,
+      "default_negative_prompt": "camera movement, pan, tilt, zoom, parallax, whole image moving, background sliding, person moving, flicker on entire image, noisy texture, crawling texture, distorted, blurry, low quality",
       "media": {
         "demo_video": "cinemagraph_demo.mp4"
       },
@@ -1410,6 +1412,7 @@
         "resolution_factor": 1.5,
         "audio_mode": "source"
       },
+      "default_negative_prompt": "person, people, human, figure, limb, arm, hand, leg, body part, shadow of a person, leftover people, leftover figures, ghosting, semi-transparent remnants, blurry, soft, distorted, inconsistent motion, jitter, worst quality, cartoon, video game, ugly",
       "enhancement_examples": [
         "An empty clean plate of the exact same scene: a colorful wooden fishing boat with identical painted hull, fishing nets, ropes and gear floating on calm blue sea, with the same distant boat, rocky breakwater shoreline, water and clear sky as the source video, but with no one aboard. No people, no humans, no men, no fishermen, no figures, and no body parts such as heads, arms, hands or legs anywhere in the frame, on the boats or in the background. No cast shadows or reflections of people on the boat or water. Static photorealistic footage, natural daylight, high detail. Keep the boats, nets and background intact.",
         "An empty clean plate of the exact same location: a modern open-plan office with identical desks, office chairs, monitor dividers, concrete pillar, exposed ceiling with pipes and acoustic panels, large windows with city view, floor and lighting as the source video. No people, no humans, no figures, and no body parts such as faces, arms, hands or legs anywhere in the frame. No backpack, no ID badge, no lanyard anywhere in the frame. No cast shadows from people on the floor or walls. Static photorealistic footage, natural indoor light, high detail.",
@@ -1584,6 +1587,7 @@
         "audio_mode": "source",
         "lora_strength": 1
       },
+      "default_negative_prompt": "daytime, bright sunlight, blue sky, overexposed, worst quality, inconsistent motion, blurry, jittery, distorted",
       "enhancement_examples": [
         "A realistic nighttime outdoor scene. A mountain landscape under a dark sky filled with bright stars and a prominent Milky Way. Deep natural shadows across the terrain with very faint ambient starlight. Photorealistic night. Only the lighting changes from day to night; identical composition, framing, camera movement and motion.",
         "A realistic nighttime scene. A cafe interior looking out at a dark city street at night. Warm overhead interior lights cast amber reflections on the furniture, contrasting with the cool ambient streetlights and deep shadows outside. Only the lighting changes from day to night; identical composition, framing, camera movement and motion.",
@@ -1858,6 +1862,7 @@
         "resolution_factor": 1.5,
         "audio_mode": "source"
       },
+      "default_negative_prompt": "worst quality, blurry, out of focus, defocused, soft, hazy, smeared, low detail, jittery, distorted, oversharpened, haloing, ringing",
       "prompt_template": {
         "template": "Reference shows {reference}, heavily out of focus with soft defocused blur. Edited shows the same scene in sharp focus with crisp detail. DEBLUR {result}.",
         "placeholders": {
@@ -1931,7 +1936,8 @@
         "skip_stage_2": true,
         "resolution_factor": 1.5,
         "audio_mode": "source"
-      }
+      },
+      "default_negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted, normal eyes, straight eyes, corrected eyes, gaze correction"
     },
     {
       "id": "water-simulation",
@@ -2016,6 +2022,7 @@
         "resolution_factor": 1.5,
         "audio_mode": "source"
       },
+      "default_negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted, deformed water, unnatural fluid, frozen water, morphing face, shifting features, inconsistent clothing, warped features",
       "prompt_template": {
         "template": "Reference shows {reference}. Edited shows the same scene with water added. ADD WATER {result}.",
         "placeholders": {
@@ -2131,6 +2138,7 @@
         "resolution_factor": 1.5,
         "audio_mode": "generated"
       },
+      "default_negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted",
       "enhancement_examples": [
         "Reference sheet: Top Row Left (Setting): A modern \"FreshMart\" grocery store exterior with a grey facade, a prominent green awning displaying the FreshMart logo (a leaf inside a shopping cart), and a white delivery car parked in front on a dark asphalt lot under a bright, partly cloudy sky. Top Row Middle (Setting): A long, brightly lit interior aisle of a grocery store fully stocked with various colorful packaged products on tall shelves, with polished floors reflecting the overhead fluorescent lights. Top Row Right (Character): A 3D animated owl mascot shown from multiple angles (front, sides, back, 3/4 view). The owl has grey and white feathers, large expressive eyes, and wears a green short-sleeved polo shirt, a dark green apron with the FreshMart logo, and a green visor cap. Middle Row Left (Props): Dark blue reusable shopping tote bags with bright green handles and trim. One features the FreshMart logo, and another features the text \"FRESH CHOICES, BETTER LIVING\". Middle Row Right (Props): Multiple angles (front, back, side) of a white 5-door FreshMart delivery hatchback car featuring the FreshMart logo on the side doors and a roof sign. Bottom Row Left (Props): Close-up angles of the FreshMart tote bags, showing their sturdy boxy shape, green fabric trim, and folded handles. Bottom Row Right (Logo): The standalone FreshMart logo featuring a minimalist shopping cart with a green leaf design above bold green text. Generated video: A bright, high-quality 3D animated commercial shot set outside a modern \"FreshMart\" grocery store exterior during a sunny day. The camera holds a steady, static wide shot. In the foreground, standing on the grey pavement, is a cheerful 3D animated owl mascot with grey and white feathers, large expressive eyes, and a small yellow beak. The owl is dressed in a green short-sleeved polo shirt, a dark green apron featuring the FreshMart logo, and a matching green visor cap. Parked directly behind and slightly to the right of the owl is a white 5-door FreshMart delivery hatchback car with the store's leaf-and-cart logo on the side doors and a small roof sign. The store's grey facade and prominent green awning form the background, with the sliding glass entrance doors visible behind the character. The owl warmly spreads its wings outward and upward in an inviting, energetic welcoming gesture, blinking its large eyes naturally. It looks directly into the camera lens with a joyful, enthusiastic expression and opens its beak, confidently delivering its lines: \"Welcome to FreshMart, where we're always ready to help you load up with everything you need. Fresh choices, better living!\" The lighting is crisp and commercial, casting soft natural shadows on the asphalt and highlighting the clean, vibrant green accents of the store.",
         "Reference sheet: Top Row (Character): A 3D animated young, athletic man shown from multiple turnaround angles. He has short brown hair and brown eyes. He wears a teal hooded sleeveless vest with a high collar over a dark grey undershirt, brown leather bracers on his forearms, a cross-body leather satchel strap, brown pants with thick brown boots, and a glowing blue crystal pendant necklace. Middle Row Left (Prop): A casual short-sleeved button-up Hawaiian shirt in a light cream color, covered with large green tropical pine and palm leaf patterns. Middle Row Right (Prop): A brightly colored tropical soda can shown from three angles. The can has a yellow top transitioning to a teal bottom with abstract wave designs and a silver pull tab. Bottom Row Left (Prop): A magical wooden staff made of dark brown twisting wood. The top holds a large, sharp, glowing blue crystal bound tightly to the wood by dark leather straps. Bottom Row Right (Setting): A bright, sunny open-air tropical beach bar with wooden railings, sturdy wooden pillars, and warm hanging lantern lights. The background features a pristine white sand beach, lush green trees, and clear turquoise ocean water beneath a bright blue sky. Generated video: A vibrant, high-quality 3D animated cinematic shot set inside a sun-drenched, open-air tropical beach bar. The camera frames a steady medium shot of the young, athletic man with short brown hair leaning casually near a sturdy wooden pillar. He is dressed in the light cream Hawaiian shirt covered in green palm leaf patterns, layered under the teal hooded sleeveless vest, wearing brown leather bracers and the glowing blue crystal pendant necklace. In his right hand, he firmly grips the twisting dark wooden staff with the glowing blue crystal at the top. In his left hand, he holds the brightly colored yellow and teal tropical soda can. He takes a slow, deep breath of the ocean air, looking slightly off-camera before turning his warm brown eyes forward. A soft, contented smile spreads across his face as he slightly raises the soda can in a subtle toasting motion. He speaks smoothly in a relaxed and satisfied way: \"Nothing beats a cold drink after a long quest.\" He pauses for a beat, his smile widening as he gently shakes the can, adding: \"Pure magic!\" The background features a shallow depth of field, showcasing the pristine white sand, lush green trees, and clear turquoise ocean water. Warm, bright daylight illuminates his face, casting natural shadows, while a gentle ocean breeze slightly rustles his hair and the collar of his shirt.",
@@ -2216,6 +2224,7 @@
         "resolution_factor": 1.5,
         "audio_mode": "source"
       },
+      "default_negative_prompt": "beard, mustache, facial hair, stubble, worst quality, inconsistent motion, blurry, jittery, distorted",
       "trigger_placement": "first_token"
     },
     {
@@ -2986,7 +2995,8 @@
           "short_side": 544,
           "window_frames": 97
         }
-      }
+      },
+      "default_negative_prompt": "blocky compression, banding, mosquito noise, ringing, blurry, soft, plastic, smeared detail, ghosting, oversharpened halos, warped faces, low resolution"
     },
     {
       "id": "refine-details",
@@ -3068,9 +3078,11 @@
         "tiling": {
           "long_side": 1024,
           "short_side": 576,
-          "window_frames": 73
+          "adaptive_window": true,
+          "overlap_fraction": 0.25
         }
-      }
+      },
+      "default_negative_prompt": "blurry, soft, plastic, smeared detail, oversharpened halos, warped faces"
     }
   ]
 }

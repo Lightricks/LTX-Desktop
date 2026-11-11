@@ -1,42 +1,42 @@
-import type { MouseEvent } from "react";
-import { useReducedMotion } from "framer-motion";
-
 import { Button } from "@ds/Button/Button";
 import { Text } from "@ds/Text/Text";
 import ExternalLinkIcon from "@ds/assets/Icons/ExternalLink.svg?react";
+import { useReducedMotion } from "framer-motion";
+import type { MouseEvent } from "react";
+
 import LtxLogo from "@/assets/home/icons/LTX-logo.svg?react";
 import {
   openExternalBrowserUrl,
   shouldInterceptHomeExternalUrl,
 } from "@/components/home/home-external-links";
-import type { HomeFeatureId } from "@/lib/home-features";
-import { RoundCloseButton } from "../../../components/shared/RoundCloseButton/RoundCloseButton";
+import type { GalleryHomeFeatureId } from "@/components/home/home-media";
+
 import { VideoPlayer } from "../../../components/VideoView/VideoPlayer";
 import { useModalContext } from "../../../components/shared/Modal/ModalContext";
+import { RoundCloseButton } from "../../../components/shared/RoundCloseButton/RoundCloseButton";
 
+import { FeatureCompareView } from "./FeatureCompareView";
+import styles from "./FeatureDetailsModal.module.scss";
 import {
   COMMUNITY_FEATURE_DISCLAIMER,
-  buildFeatureDetails,
   type FeatureCredit,
   type FeatureDetails,
   type FeatureDetailsHero,
+  buildFeatureDetails,
 } from "./featureChromeModel";
-import { FeatureCompareView } from "./FeatureCompareView";
 import { resolveFeatureDetailsHero } from "./featureDetailsHero";
 import { featureDetailsHeroPlayerProps } from "./featureDetailsHeroPlayer";
-import styles from "./FeatureDetailsModal.module.scss";
 
 export const FEATURE_DETAILS_MODAL_NAME = "feature_details";
 
-export function FeatureDetailsModal({
-  featureId,
-}: {
-  featureId: HomeFeatureId;
-}) {
+export function FeatureDetailsModal({ featureId }: { featureId: GalleryHomeFeatureId }) {
   const details = buildFeatureDetails(featureId);
   const { hideModal } = useModalContext();
-  const hero = resolveFeatureDetailsHero(featureId);
+  const closeButton = (
+    <RoundCloseButton className={styles.close} onClick={() => hideModal("close")} />
+  );
 
+  const hero = resolveFeatureDetailsHero(featureId);
   return (
     <div className={styles.split}>
       <section className={styles.info}>
@@ -44,10 +44,7 @@ export function FeatureDetailsModal({
       </section>
       <aside className={styles.hero}>
         <FeatureDetailsHeroMedia hero={hero} title={details.title} />
-        <RoundCloseButton
-          className={styles.close}
-          onClick={() => hideModal("close")}
-        />
+        {closeButton}
       </aside>
     </div>
   );
@@ -111,13 +108,7 @@ function FeatureDetailsBody({ details }: { details: FeatureDetails }) {
   );
 }
 
-function FeatureDetailsExternalLink({
-  href,
-  label,
-}: {
-  href: string;
-  label: string;
-}) {
+function FeatureDetailsExternalLink({ href, label }: { href: string; label: string }) {
   const intercept = shouldInterceptHomeExternalUrl();
 
   const openExternally = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -179,13 +170,7 @@ function FeatureDetailsHeroMedia({
 
   const videoUrl = hero.videoUrl;
   if (videoUrl == null) {
-    return (
-      <img
-        className={styles.heroMedia}
-        src={hero.posterUrl}
-        alt={title}
-      />
-    );
+    return <img className={styles.heroMedia} src={hero.posterUrl} alt={title} />;
   }
 
   return (

@@ -55,12 +55,13 @@ import {
   type VideoGenerationModelSpecItem,
   type VideoGenerationPipeline,
 } from '../lib/video-generation-model-specs'
-import { preflightCellStatus } from '../lib/budget-risk'
+import { preflightCellStatus, riskOptionFields } from '../lib/budget-risk'
 import { localUnavailableMessage } from '../lib/local-generation-availability'
 import {
   GENSPACE_IMAGE_ASPECT_RATIOS,
   genSpaceImageAspectRatio,
 } from '../lib/genspace-image-aspect'
+import { IMAGE_RESOLUTIONS } from '../lib/genspace-image-resolution'
 import { logger } from '../lib/logger'
 import { ApiClient, type ApiSuccessOf } from '../lib/api-client'
 import type { GenerationSettings, LoraSelection } from '../components/SettingsPanel'
@@ -718,7 +719,6 @@ function PromptBar({
         modelSpecs: videoModelSpecs,
         hasAudio: genSpaceUsesAudioInput(mode) && Boolean(inputAudio),
         minimumDuration: isLocalMode ? undefined : GENSPACE_MIN_SELECTABLE_DURATION_S,
-        budgetMode: 'reckless',
       })
     : null
   const showVideoFpsControl = Boolean(
@@ -1116,11 +1116,7 @@ function PromptBar({
                   title="IMAGE RESOLUTION"
                   value={settings.imageResolution}
                   onChange={(v) => onSettingsChange({ ...settings, imageResolution: v })}
-                  options={[
-                    { value: '1080p', label: '1080p' },
-                    { value: '1440p', label: '1440p' },
-                    { value: '2048p', label: '2048p' },
-                  ]}
+                  options={IMAGE_RESOLUTIONS.map((value) => ({ value, label: value }))}
                   trigger={
                     <>
                       <Monitor className="h-3.5 w-3.5" />
@@ -1186,10 +1182,17 @@ function PromptBar({
                       : []),
                     // Kept-then-dropped stays sorted: the budget grows
                     // monotonically in duration, so drops sit above keeps.
-                    ...resolvedVideoOptions.durationOptions.map((value) => ({
-                      value: String(value),
-                      label: `${value} Sec`,
-                    })),
+                    ...resolvedVideoOptions.durationOptions.map((value) => {
+                      const warned = resolvedVideoOptions.warnedDurationOptions.find(
+                        (option) => option.value === value,
+                      )
+                      return {
+                        value: String(value),
+                        label: `${value} Sec`,
+                        ...riskOptionFields(warned?.message, undefined),
+                        ...(warned?.readout ? { budget: warned.readout } : {}),
+                      }
+                    }),
                     ...resolvedVideoOptions.disabledDurationOptions.map((option) => ({
                       value: String(option.value),
                       label: `${option.value} Sec`,
@@ -1213,10 +1216,17 @@ function PromptBar({
                   value={resolvedVideoOptions.selectedResolution ?? settings.videoResolution}
                   onChange={(v) => onSettingsChange({ ...settings, videoResolution: v })}
                   options={[
-                    ...resolvedVideoOptions.resolutionOptions.map((value) => ({
-                      value,
-                      label: videoGenerationResolutionLabel(value),
-                    })),
+                    ...resolvedVideoOptions.resolutionOptions.map((value) => {
+                      const warned = resolvedVideoOptions.warnedResolutionOptions.find(
+                        (option) => option.value === value,
+                      )
+                      return {
+                        value,
+                        label: videoGenerationResolutionLabel(value),
+                        ...riskOptionFields(warned?.message, undefined),
+                        ...(warned?.readout ? { budget: warned.readout } : {}),
+                      }
+                    }),
                     // A kept resolution implies all smaller ones kept, so
                     // drops append above keeps in canonical order.
                     ...resolvedVideoOptions.disabledResolutionOptions.map((option) => ({
@@ -1245,10 +1255,17 @@ function PromptBar({
                     value={String(resolvedVideoOptions.selectedFps ?? settings.fps)}
                     onChange={(v) => onSettingsChange({ ...settings, fps: parseInt(v) })}
                     options={[
-                      ...resolvedVideoOptions.fpsOptions.map((value) => ({
-                        value: String(value),
-                        label: `${value}`,
-                      })),
+                      ...resolvedVideoOptions.fpsOptions.map((value) => {
+                        const warned = resolvedVideoOptions.warnedFpsOptions.find(
+                          (option) => option.value === value,
+                        )
+                        return {
+                          value: String(value),
+                          label: `${value}`,
+                          ...riskOptionFields(warned?.message, undefined),
+                          ...(warned?.readout ? { budget: warned.readout } : {}),
+                        }
+                      }),
                       ...resolvedVideoOptions.disabledFpsOptions.map((option) => ({
                         value: String(option.value),
                         label: `${option.value}`,
@@ -1277,10 +1294,14 @@ function PromptBar({
                     const disabled = resolvedVideoOptions.disabledAspectRatioOptions.find(
                       (option) => option.value === value,
                     );
+                    const warned = resolvedVideoOptions.warnedAspectRatioOptions.find(
+                      (option) => option.value === value,
+                    );
                     return {
                       value,
                       label: value,
-                      ...(warning != null ? { warning } : {}),
+                      ...riskOptionFields(warned?.message, warning),
+                      ...(warned?.readout ? { budget: warned.readout } : {}),
                       ...(disabled
                         ? {
                             disabled: true,
@@ -1509,7 +1530,7 @@ export function GenSpace() {
       ? `Could not load generation settings: ${videoGenerationModelSpecsErrorMessage}`
       : shouldVideoGenerateWithLtxApi
         ? null
-        : localUnavailableMessage(videoGenerationModelSpecsResponse, window.electronAPI.platform, 'reckless')
+        : localUnavailableMessage(videoGenerationModelSpecsResponse, window.electronAPI.platform)
   const sanitizeVideoSettings = useCallback(
     (
       next: typeof settings,
@@ -1520,7 +1541,6 @@ export function GenSpace() {
         hasAudio: genSpaceUsesAudioInput(mode) && Boolean(inputAudio),
         minimumDuration: shouldVideoGenerateWithLtxApi ? GENSPACE_MIN_SELECTABLE_DURATION_S : undefined,
         durationSelection,
-        budgetMode: 'reckless',
       }) ?? next
     },
     [inputAudio, mode, shouldVideoGenerateWithLtxApi, videoGenerationModelSpecsResponse, videoModelSpecs],
@@ -3125,7 +3145,6 @@ export function GenSpace() {
       modelSpecs: videoModelSpecs,
       hasAudio: genSpaceUsesAudioInput(mode) && Boolean(inputAudio),
       minimumDuration: shouldVideoGenerateWithLtxApi ? GENSPACE_MIN_SELECTABLE_DURATION_S : undefined,
-      budgetMode: 'reckless',
     }).hasCompatibleOptions
   )
   // One global backend slot: Stop / Generate-disable must follow the in-flight job, not the
@@ -3281,9 +3300,10 @@ export function GenSpace() {
     const current = controlValues.duration
     if (typeof current !== 'number') return
     const currentCell = freshIcLoraPreflightCells.find((c) => c.duration === current)
-    if (preflightCellStatus(currentCell, 'reckless').status !== 'blocked') return
+    // No confirm on this surface, so a Brave bet counts as refused.
+    if (preflightCellStatus(currentCell).status === 'clear') return
     const passing = freshIcLoraPreflightCells
-      .filter((c) => preflightCellStatus(c, 'reckless').status !== 'blocked')
+      .filter((c) => preflightCellStatus(c).status === 'clear')
       .map((c) => c.duration)
     if (passing.length === 0) return
     onControlChange('duration', Math.max(...passing))
@@ -3297,8 +3317,12 @@ export function GenSpace() {
         ? freshIcLoraPreflightCells.find((c) => c.duration === current)
         : undefined
     if (currentCell !== undefined) {
-      const status = preflightCellStatus(currentCell, 'reckless')
-      return status.status === 'blocked' ? status.message : null
+      const status = preflightCellStatus(currentCell)
+      if (status.status === 'clear') return null
+      if (status.status === 'warned' && status.message != null) {
+        return `Risky setup — ${status.message}`
+      }
+      return status.message
     }
     // Video entries verdict the whole clip in a single cell; surface it.
     if (freshIcLoraPreflightCells.length === 1) {

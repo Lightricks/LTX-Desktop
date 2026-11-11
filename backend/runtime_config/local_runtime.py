@@ -18,6 +18,7 @@ class LocalRuntimeConfigKwargs(TypedDict):
     darwin_unified_memory: bool
     system: str
     vram_bytes: int | None
+    usable_vram_bytes: int | None
     total_ram_bytes: int | None
     checkpoint_drive_type: DriveType | None
     gpu_device_name: str | None
@@ -36,6 +37,7 @@ class LocalRuntime:
     checkpoint_drive_type: DriveType | None
     gpu_device_name: str | None
     fp8_capable: bool
+    usable_vram_bytes: int | None = None
 
     def runtime_config_kwargs(
         self,
@@ -49,6 +51,7 @@ class LocalRuntime:
             "darwin_unified_memory": self.darwin,
             "system": self.system,
             "vram_bytes": self.vram_bytes,
+            "usable_vram_bytes": self.usable_vram_bytes,
             "total_ram_bytes": self.total_ram_bytes,
             "checkpoint_drive_type": self.checkpoint_drive_type,
             "gpu_device_name": self.gpu_device_name,
@@ -68,6 +71,7 @@ def resolve_local_runtime(
     mps_available = gpu_info.get_mps_available()
     vram_gb = gpu_info.get_vram_total_gb()
     vram_bytes = gpu_info.get_cuda_total_vram_bytes()
+    usable_vram_bytes = gpu_info.get_free_cuda_vram_bytes()
     total_ram_bytes = gpu_info.get_total_ram_bytes()
     # Darwin has no discrete VRAM (unified memory). Eligibility uses *total* RAM
     # (``get_vram_total_gb`` / SKU). Job sizing still uses free RAM at launch.
@@ -104,6 +108,7 @@ def resolve_local_runtime(
         darwin=system == "Darwin",
         system=system,
         vram_bytes=vram_bytes,
+        usable_vram_bytes=usable_vram_bytes,
         total_ram_bytes=total_ram_bytes,
         checkpoint_drive_type=storage_info.get_drive_type(),
         gpu_device_name=gpu_info.get_device_name(),

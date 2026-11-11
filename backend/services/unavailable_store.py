@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from datetime import datetime
 from typing import NoReturn
 
 from pydantic import JsonValue
 
+from runtime_config.device_calibration import CalibrationBucket, DeviceIdentity, FrontierPoint
 from services.dashboard_stats import DashboardSnapshot, DashboardWindow
 
 from services.records import (
+    LOCAL_LANE,
     AssetListPage,
     AssetRecord,
     AssistantQueueRecord,
@@ -17,6 +19,7 @@ from services.records import (
     GenerationRecord,
     MediaKind,
     OutputSpec,
+    ProviderOrphan,
     QueueGenerationRecord,
     UnavailableError,
 )
@@ -118,13 +121,14 @@ class UnavailableStore:
         *,
         contract_version: int = 1,
         generation_id: str | None = None,
+        lane: str = LOCAL_LANE,
     ) -> GenerationRecord:
         _unavailable()
 
-    def has_queued(self) -> bool:
+    def has_queued(self, lane: str = LOCAL_LANE) -> bool:
         _unavailable()
 
-    def claim_next_queued(self) -> GenerationRecord | None:
+    def claim_next_queued(self, lane: str = LOCAL_LANE) -> GenerationRecord | None:
         _unavailable()
 
     def dashboard(
@@ -146,11 +150,15 @@ class UnavailableStore:
         del generation_id, before_generation_id
         _unavailable()
 
-    def request_generation_cancellation(self, generation_id: str) -> GenerationRecord:
-        del generation_id
+    def request_generation_cancellation(
+        self, generation_id: str, *, uncancellable_lanes: Collection[str] = ()
+    ) -> GenerationRecord:
+        del generation_id, uncancellable_lanes
         _unavailable()
 
-    def retry_generation(self, generation_id: str) -> GenerationRecord:
+    def retry_generation(
+        self, generation_id: str, lane: str | None = None
+    ) -> GenerationRecord:
         _unavailable()
 
     def mark_succeeded(
@@ -202,6 +210,53 @@ class UnavailableStore:
 
     def fail_running_on_boot(self) -> int:
         return 0
+
+    def load_device_frontier(
+        self, identity: DeviceIdentity, epoch: int
+    ) -> Mapping[CalibrationBucket, tuple[FrontierPoint, ...]]:
+        del identity, epoch
+        return {}
+
+    def load_device_machine_factor(
+        self, identity: DeviceIdentity, epoch: int
+    ) -> float | None:
+        del identity, epoch
+        return None
+
+    def widen_device_frontier(
+        self,
+        identity: DeviceIdentity,
+        epoch: int,
+        bucket: CalibrationBucket,
+        point: FrontierPoint,
+        *,
+        priced_gib: float,
+        generation_id: str | None,
+        conv_vae: bool = False,
+    ) -> tuple[FrontierPoint, ...] | None:
+        del identity, epoch, bucket, point, priced_gib, generation_id, conv_vae
+        return None
+
+    def reassign_unknown_lanes(self, known: Collection[str]) -> int:
+        del known
+        return 0
+
+    def set_provider_job_id(
+        self, generation_id: str, attempt_count: int, provider_job_id: str
+    ) -> bool:
+        del generation_id, attempt_count, provider_job_id
+        return False
+
+    def clear_provider_job_id(self, generation_id: str, provider_job_id: str) -> bool:
+        del generation_id, provider_job_id
+        return False
+
+    def list_provider_orphans(self) -> list[ProviderOrphan]:
+        return []
+
+    def list_displaced_provider_jobs(self, generation_id: str) -> list[ProviderOrphan]:
+        del generation_id
+        return []
 
     def unlink_partial_outputs(self, paths: list[str]) -> None:
         del paths

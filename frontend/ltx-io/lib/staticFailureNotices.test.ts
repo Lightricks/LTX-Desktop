@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { RECKLESS_FAILURE_BACKSTOP } from "../../lib/budget-risk.ts";
+import { BET_FAILURE_BACKSTOP } from "../../lib/budget-risk.ts";
 import {
   CUDA_OOM,
   CUDA_OOM_MESSAGE,
@@ -23,13 +23,13 @@ describe("staticFailureNotice", () => {
     });
   });
 
-  it("appends the reckless backstop only when the failed job was a bet", () => {
+  it("appends the bet backstop only when the failed job was a bet", () => {
     assert.equal(
-      staticFailureNotice({ errorCode: CUDA_OOM, ranReckless: true })?.body,
-      `${CUDA_OOM_MESSAGE} ${RECKLESS_FAILURE_BACKSTOP}`,
+      staticFailureNotice({ errorCode: CUDA_OOM, ranOnBet: true })?.body,
+      `${CUDA_OOM_MESSAGE} ${BET_FAILURE_BACKSTOP}`,
     );
     assert.equal(
-      staticFailureNotice({ errorCode: JOB_TOO_LARGE, ranReckless: false })?.body,
+      staticFailureNotice({ errorCode: JOB_TOO_LARGE, ranOnBet: false })?.body,
       JOB_TOO_LARGE_MESSAGE,
     );
   });

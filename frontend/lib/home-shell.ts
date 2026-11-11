@@ -160,7 +160,12 @@ export function getHomeShellEntry(
 }
 
 export function isHomeFeaturePath(pathname: string): boolean {
-  return matchHomeFeature(pathname) != null;
+  // A saved LoRA lives at /custom-lora/:id, not on the feature path itself. It is still a
+  // feature form, so it gets the same title bar and the same gap above the form.
+  return (
+    matchHomeFeature(pathname) != null ||
+    matchPath({ path: paths.customLoraRun, end: true }, pathname) != null
+  );
 }
 
 export function homeShellEntryServesHost(
@@ -189,7 +194,10 @@ export function homeLayoutRouteSpecs(host: HomeShellHost): HomeLayoutRouteSpec[]
     if (entry.layout !== "home" || !homeShellEntryServesHost(entry, host)) continue;
     if (entry.path === null) continue;
     // One splat route keeps the chat mounted when a new chat's URL gains its id.
-    specs.push({ id: entry.id, path: entry.id === "assistant" ? `${entry.path}/*` : entry.path });
+    specs.push({
+      id: entry.id,
+      path: entry.id === "assistant" ? `${entry.path}/*` : entry.path,
+    });
   }
   return specs;
 }

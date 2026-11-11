@@ -3,6 +3,9 @@ export const GEMINI_KEY_REQUIRED_SETTINGS_DETAIL = {
   reason: 'geminiKeyRequired' as const,
 }
 
+export const MISSING_GEMINI_KEY_MESSAGE =
+  'Add a Gemini API key in Desktop Settings, or use local Enhance when Gemma is downloaded.'
+
 export function isEnhanceBlockedByMissingGeminiKey(input: {
   enhanceAvailableForMode: boolean
   enhanceProvider: 'local' | 'api'

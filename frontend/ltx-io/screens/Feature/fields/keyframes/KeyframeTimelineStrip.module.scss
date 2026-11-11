@@ -1,0 +1,198 @@
+@import "@ds/styles/themes/mixins.module.scss";
+
+.strip {
+  // The marker size. The field sets it. It is never more than the rail height.
+  --keyframe-thumb: 44px;
+  // The strip keeps this height for every marker size.
+  --keyframe-rail-height: 44px;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+// The track is wider than the rail by half a thumb on each side, so a thumb at either end stays inside it.
+.track {
+  padding: var(--spacing-sm) calc(var(--keyframe-thumb) / 2);
+  border: 1px solid var(--semantic-border-secondary);
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-primary);
+}
+
+.rail {
+  position: relative;
+  height: var(--keyframe-rail-height);
+  touch-action: none;
+}
+
+.seekable {
+  cursor: pointer;
+}
+
+.playhead {
+  position: absolute;
+  top: calc(var(--spacing-sm) * -1);
+  bottom: calc(var(--spacing-sm) * -1);
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--semantic-fg-tertiary);
+  pointer-events: none;
+}
+
+.marker {
+  position: absolute;
+  // A marker smaller than the rail sits in the middle of it.
+  top: calc((var(--keyframe-rail-height) - var(--keyframe-thumb)) / 2);
+  z-index: 1;
+  width: var(--keyframe-thumb);
+  height: var(--keyframe-thumb);
+  overflow: hidden;
+  transform: translateX(-50%);
+  border: 2px solid var(--semantic-border-secondary);
+  border-radius: var(--radius-sm);
+  background: var(--semantic-bg-tertiary);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.marker:focus-visible {
+  outline: 2px solid var(--semantic-bg-brand-primary-enabled);
+  outline-offset: 2px;
+}
+
+// A selected or moving marker sits above the markers it overlaps.
+.selected {
+  z-index: 2;
+  border-color: var(--semantic-bg-brand-primary-enabled);
+}
+
+.dragging {
+  z-index: 3;
+  cursor: grabbing;
+}
+
+.markerImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.markerOrder {
+  @include text_style_label_xs;
+
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-width: 16px;
+  padding: 0 3px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--semantic-fg-primary);
+  background: color-mix(in srgb, var(--semantic-bg-primary) 75%, transparent);
+  border-bottom-right-radius: var(--radius-sm);
+  pointer-events: none;
+}
+
+// The button that removes the still. It sits in the corner that the order number does not use.
+// It shows while the pointer is over the marker or the marker has the keyboard focus, so that a
+// keyboard user sees the action that Delete does. A screen without hover shows it always.
+.markerRemove {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--semantic-fg-primary);
+  background: color-mix(in srgb, var(--semantic-bg-primary) 75%, transparent);
+  cursor: pointer;
+
+  svg {
+    width: 10px;
+    height: 10px;
+  }
+
+  &:hover,
+  &:focus-visible {
+    background: var(--semantic-bg-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--semantic-bg-brand-primary-enabled);
+  }
+
+  @media (hover: none) {
+    opacity: 1;
+  }
+}
+
+.marker:hover .markerRemove,
+.marker:focus-visible .markerRemove {
+  opacity: 1;
+}
+
+// The strength shows on the selected marker only.
+.markerStrength {
+  @include text_style_label_xs;
+
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 1px 0;
+  text-align: center;
+  color: var(--semantic-fg-primary);
+  background: color-mix(in srgb, var(--semantic-bg-primary) 75%, transparent);
+  pointer-events: none;
+}
+
+.ruler {
+  position: relative;
+  height: 24px;
+  margin-top: var(--spacing-xs);
+  pointer-events: none;
+}
+
+// A tick is a thin line. The label of a main tick hangs under it, centered on it.
+.tick {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 5px;
+  transform: translateX(-50%);
+  background: var(--semantic-border-secondary);
+}
+
+.tickMain {
+  height: 8px;
+  background: var(--semantic-fg-tertiary);
+}
+
+.tickLabel {
+  @include text_style_label_xs;
+
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--semantic-fg-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

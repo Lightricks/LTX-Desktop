@@ -12,7 +12,6 @@ export type ShowConfirmationProps = {
   content: ReactNode;
   confirmationName: string;
   confirmationClassName?: string;
-  shouldBeTopmost?: boolean;
 };
 
 export type ModalContextType = {

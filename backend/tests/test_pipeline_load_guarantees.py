@@ -62,7 +62,7 @@ def _swap_cases(test_state, lora_path: str, depth_path: str) -> dict[str, _Loade
         ),
         "retake": _LoaderCase(
             fake_class=FakeRetakePipeline,
-            first=lambda: test_state.pipelines.load_retake_pipeline(distilled=True),
+            first=lambda: test_state.pipelines.load_retake_pipeline(distilled=True)[0],
             swap=lambda: test_state.pipelines.load_retake_pipeline(distilled=False),
         ),
         "ic-lora": _LoaderCase(
@@ -156,3 +156,24 @@ def test_cold_load_holds_liveness_file_during_create(
     monkeypatch.setattr(fake_class, "create", _spy)
     load()
     assert observed.get("held") is True
+
+
+def test_image_load_releases_a_resident_video_pipeline_before_create(
+    test_state, create_fake_model_files, monkeypatch
+) -> None:
+    """A queued image job often follows a video job: both models must not be resident at once."""
+    create_fake_model_files(include_zit=True)
+    video = test_state.pipelines.load_gpu_pipeline("fast")
+    old = weakref.ref(video)
+    del video
+    original_create = FakeImageGenerationPipeline.create
+    observed: dict[str, bool] = {}
+
+    def _spy(*args: Any, **kwargs: Any) -> Any:
+        gc.collect()
+        observed["video_alive"] = old() is not None
+        return original_create(*args, **kwargs)
+
+    monkeypatch.setattr(FakeImageGenerationPipeline, "create", _spy)
+    test_state.pipelines.load_image_generation_pipeline_to_gpu()
+    assert observed.get("video_alive") is False

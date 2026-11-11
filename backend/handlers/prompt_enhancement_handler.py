@@ -6,10 +6,10 @@ import logging
 import random
 import uuid
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager, nullcontext
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
 from threading import Lock, RLock
-from typing import TYPE_CHECKING, Literal, NamedTuple
+from typing import TYPE_CHECKING, Literal
 
 from _routes._errors import HTTPError
 from api_types import (
@@ -17,7 +17,7 @@ from api_types import (
     EnhancePromptRequest,
     EnhancePromptResponse,
     IcLoraCatalogItem,
-    LoraCatalogItem,
+    LoraEntry,
     LTXLocalModelId,
     LTXVideoGenAspectRatio,
     LTXVideoGenResolution,
@@ -27,11 +27,24 @@ from api_types import (
 from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
+from handlers.prompt_enhancer_nag import nag_unavailable_reasons
+from handlers.prompt_rewrite_helpers import (
+    ic_lora_rewrite,
+    reference_frame,
+    video_role,
+    writes_blank_prompt,
+)
+from handlers.resolved_generation_prompt import (
+    PromptProvenanceLabel,
+    ResolvedGenerationPrompt,
+)
 from handlers.text_handler import TextHandler
+from runtime_config.custom_loras import custom_lora_prompt_guidance, read_custom_lora
 from server_utils.media_validation import normalize_optional_path, validate_image_file
 from services.analytics import resolution_for_provenance as shared_resolution_for_provenance
 from services.analytics import prompt_provenance_label as shared_prompt_provenance_label
 from services.features.ic_lora_recipes import ic_lora_skips_prompt_enhancement
+from services.features.image.prompt_rewrite import ImagePromptRewrite
 from services.features.video.job_common import UNNAMED_RECIPE, denoise_canvas_for
 from services.features.video.reference_sheet import ensure_reference_sheet
 from services.gemini_text_client import resolve_gemini_model
@@ -39,24 +52,20 @@ from services.generation_interrupt import is_cancel_exception
 from services.interfaces import PromptEnhancerPipeline
 from services.lora_catalog import LoraCatalogProvider
 from services.prompt_enhancement import (
+    LoraPromptGuidance,
     build_audio_visual_caption_system_prompt,
     build_conditioning_system_prompt,
-    build_ic_lora_enhancement_system_prompt,
     build_image_edit_system_prompt,
     build_image_generation_system_prompt,
     build_keyframe_enhancement_system_prompt,
     build_lora_enhancement_system_prompt,
-    build_template_fill_system_prompt,
     enforce_trigger_placements,
-    fill_prompt_template,
-    parse_template_fill_response,
 )
 from services.prompt_enhancement.i2v_frames import (
     KeyframeStill,
     SceneFrame,
     VideoRole,
     reference_sheet_still,
-    reference_still,
     strip_panel_labels,
 )
 from services.prompt_enhancement.source_video import SourceVideo
@@ -78,74 +87,12 @@ if TYPE_CHECKING:
 _MAX_ENHANCE_SEED = 2147483647
 
 
-class ResolvedGenerationPrompt(NamedTuple):
-    """The prompt a local generation should submit, and how it got (or will get) enhanced."""
-
-    prompt: str
-    enhance_via_api: bool
-    enhanced_locally: bool
-    skip_recipe_wrap: bool = False
-
-    @property
-    def enhancement(self) -> str:
-        """Where the rewrite happens, for run logs: local, server-side, or nowhere."""
-        if self.enhanced_locally:
-            return "local"
-        return "api" if self.enhance_via_api else "none"
+def _always_leased() -> AbstractContextManager[bool]:
+    return nullcontext(True)
 
 
-PromptProvenanceLabel = Literal["raw", "manually-enhanced", "auto-enhanced"]
-
-
-def prompt_provenance_label(
-    provenance: PromptProvenance,
-    resolved: ResolvedGenerationPrompt,
-) -> PromptProvenanceLabel:
-    """How this run asked for the prompt to be passed. Not the prompt text."""
-    return shared_prompt_provenance_label(
-        provenance,
-        enhanced_locally=resolved.enhanced_locally,
-        enhance_via_api=resolved.enhance_via_api,
-    )
-
-
-def _video_role(req: EnhancePromptRequest) -> VideoRole:
-    """A list of panel images is its own role. An IC-LoRA transforms its video, so the stills
-    are ground truth. Anything else (Extend, Retake) only gets scene context from them and the
-    typed prompt leads."""
-    if req.imagePaths:
-        return "panels"
-    return "driving" if req.icLoraId is not None else "scene"
-
-
-def _ic_lora_rewrite(ic_lora: IcLoraCatalogItem, run: Callable[[str], str]) -> str:
-    """The catalog policy of an IC-LoRA rewrite, for every path that makes one.
-
-    ``run`` sends one rewrite call with the given system prompt and returns the raw reply.
-    A template entry gets the template fill. Any other entry gets a free rewrite with its
-    trigger phrases enforced. ``ValueError`` means the reply did not fill the template.
-    """
-    template = ic_lora.prompt_template
-    if template is not None:
-        raw = run(build_template_fill_system_prompt(ic_lora))
-        values = parse_template_fill_response(raw, set(template.placeholders))
-        return fill_prompt_template(template, values)
-    enhanced = run(build_ic_lora_enhancement_system_prompt(ic_lora))
-    # Trigger enforcement on an empty rewrite would make a bare trigger word the prompt.
-    if not enhanced.strip():
-        return enhanced
-    return enforce_trigger_placements(enhanced, [ic_lora])
-
-
-def _writes_blank_prompt(source_video: SourceVideo | None) -> bool:
-    return source_video is not None and source_video.writes_blank_prompt
-
-
-def _reference_frame(ic_lora: IcLoraCatalogItem, path: str) -> SceneFrame:
-    """A catalog entry pins the frame its look image conditions: the first frame of the clip
-    (Restore), or a still before the clip (Layout to Render). An unpinned one uses frame 0."""
-    pinned = ic_lora.reference_image_frame
-    return reference_still(path, is_clip_frame=pinned is None or pinned >= 0)
+def _never_cancelled() -> None:
+    return None
 
 
 class PromptEnhancementHandler(StateHandlerBase):
@@ -203,6 +150,13 @@ class PromptEnhancementHandler(StateHandlerBase):
                 if preferred == "api" and not has_gemini and has_local
                 else preferred
             )
+        local_encoding = self._text_handler.should_use_local_encoding()
+        compile_on = (
+            settings.use_torch_compile and not self.config.use_sage_attention
+        )
+        base_reason, reason_by_feature = nag_unavailable_reasons(
+            nag_scale=settings.nag_scale, local_encoding=local_encoding, compile_on=compile_on
+        )
         return PromptEnhancerStatusResponse(
             exploreAutoEnhancePrompts=settings.explore_auto_enhance_prompts,
             hasGeminiApiKey=has_gemini,
@@ -210,6 +164,9 @@ class PromptEnhancementHandler(StateHandlerBase):
             defaultProvider=default_provider,
             canToggleProvider=has_local and has_gemini,
             showManualEnhance=not settings.explore_auto_enhance_prompts,
+            nagUnavailableReason=base_reason,
+            nagUnavailableReasonByFeature=reason_by_feature,
+            showNagStrengthControls=settings.show_nag_strength_controls,
         )
 
     def _automatic_enhancement_seed(
@@ -325,7 +282,7 @@ class PromptEnhancementHandler(StateHandlerBase):
         )
         try:
             sheet = ensure_reference_sheet(
-                paths, *canvas, app_data_dir=self.config.app_data_dir
+                paths, *canvas, in_flight_dir=self.config.in_flight_dir
             )
         except (OSError, ValueError) as exc:
             raise HTTPError(400, "Invalid image file") from exc
@@ -347,7 +304,7 @@ class PromptEnhancementHandler(StateHandlerBase):
                 raise HTTPError(400, "This IC-LoRA does not take a reference image")
             # Before it reaches either provider: Gemini would otherwise get unchecked file bytes.
             validate_image_file(source_video.reference_image_path)
-            reference = _reference_frame(ic_lora, source_video.reference_image_path)
+            reference = reference_frame(ic_lora, source_video.reference_image_path)
         try:
             with sampled_video_frames(
                 source_video.path, replaced_window=source_video.replaced_window
@@ -379,13 +336,19 @@ class PromptEnhancementHandler(StateHandlerBase):
             return self._enhance_ic_lora(ic_lora, req, gemma_root, frames)
 
         if req.loraCatalogIds:
-            loras: list[LoraCatalogItem] = []
+            loras: list[LoraPromptGuidance] = []
             for catalog_id in req.loraCatalogIds:
                 lora = self._lora_catalog_provider.get_lora(catalog_id)
                 if lora is None:
                     raise HTTPError(404, "LORA_CATALOG_ID_NOT_FOUND")
                 loras.append(lora)
             return self._enhance_loras(loras, req, gemma_root)
+
+        if req.customLoraIds:
+            record = read_custom_lora(self.models_dir, req.customLoraIds[0])
+            if record is None:
+                raise HTTPError(404, "CUSTOM_LORA_NOT_FOUND")
+            return self._enhance_loras([custom_lora_prompt_guidance(record)], req, gemma_root)
 
         if req.conditioningType is not None:
             system_prompt = build_conditioning_system_prompt(req.conditioningType)
@@ -434,13 +397,14 @@ class PromptEnhancementHandler(StateHandlerBase):
         duration: int | None = None,
         fps: int | None = None,
         ic_lora: IcLoraCatalogItem | None = None,
-        lora_catalog_ids: list[str] | None = None,
+        loras: Sequence[LoraEntry] | None = None,
         conditioning_type: ConditioningType | None = None,
         local_model_id: LTXLocalModelId | None = None,
         explore_generation: bool = False,
         audio_path: str | None = None,
         source_video: SourceVideo | None = None,
         panel_paths: Sequence[str] = (),
+        negative_prompt: str = "",
     ) -> ResolvedGenerationPrompt:
         """The single enhancement policy for prompt-bearing local generation.
 
@@ -460,9 +424,9 @@ class PromptEnhancementHandler(StateHandlerBase):
         the prompt as typed, which for a version captioned in 150-220 word audio-visual
         paragraphs (2.5) lands far outside its training distribution and it invents the rest.
 
-        ``lora_catalog_ids`` are the catalog ids of the plain LoRAs the request selected. They
-        get the same catalog-aware treatment manual Enhance gives them, because the generic
-        rewrite would paraphrase a required trigger phrase away and leave the adapter inert.
+        ``loras`` are the plain LoRA entries the request selected. Catalog entries get the
+        same catalog-aware treatment manual Enhance gives them, and saved custom LoRAs get what
+        the user told the enhancer when adding the LoRA (description, trigger, and examples).
 
         ``generation_seed`` is the seed the caller already resolved for this run (an explicit
         request seed, the lock, or a fresh draw). It reaches the rewrite when
@@ -509,11 +473,12 @@ class PromptEnhancementHandler(StateHandlerBase):
             duration=duration,
             fps=fps,
             ic_lora=ic_lora,
-            loras=self._resolve_generation_loras(lora_catalog_ids),
+            loras=self._resolve_generation_loras(loras),
             conditioning_type=conditioning_type,
             local_model_id=local_model_id,
             source_video=source_video,
             panel_paths=panel_paths,
+            negative_prompt=negative_prompt,
         )
         return ResolvedGenerationPrompt(enhanced, False, rewritten, False)
 
@@ -578,7 +543,7 @@ class PromptEnhancementHandler(StateHandlerBase):
             ),
             force_api=force_api,
             gemini_video_enhance=self._wants_gemini_media_enhance(source_video, panel_paths),
-            enhance_blank_prompt=_writes_blank_prompt(source_video),
+            enhance_blank_prompt=writes_blank_prompt(source_video),
         )
         if decided is None:
             return None
@@ -586,11 +551,12 @@ class PromptEnhancementHandler(StateHandlerBase):
         return ResolvedGenerationPrompt(prompt, enhance_via_api, enhanced_locally, skip_recipe_wrap)
 
     def gemini_video_enhance_enabled(self) -> bool:
-        """Whether an automatic rewrite of a source video or panel images may go to Gemini.
+        """Whether an automatic rewrite may go to Gemini.
 
-        Manual Enhance with Gemini is an explicit click. Automatic enhancement is not, and it
-        would upload stills of the user's video or the user's panel images. So it needs an explicit provider choice (not
-        the default that merely follows a stored key) as well as the key.
+        Manual Enhance with Gemini is an explicit click. Automatic enhancement is not, and a
+        video or panel rewrite would upload stills of the user's media. So every automatic
+        Gemini rewrite needs an explicit provider choice (not the default that merely follows a
+        stored key) as well as the key.
         """
         settings = self.state.app_settings
         return (
@@ -625,24 +591,31 @@ class PromptEnhancementHandler(StateHandlerBase):
             return False
         return self.state.app_settings.prompt_enhancer_enabled
 
-    def _resolve_generation_loras(self, catalog_ids: list[str] | None) -> list[LoraCatalogItem]:
-        """The catalog entries behind a generation's selected plain LoRAs, by id alone.
+    def _resolve_generation_loras(
+        self, loras: Sequence[LoraEntry] | None
+    ) -> list[LoraPromptGuidance]:
+        """The prompt-enhancer guidance behind a generation's selected plain LoRAs.
 
         Unlike manual Enhance, an unresolvable id doesn't 404: automatic enhancement is a
         quality step layered onto a generation the user already started, so a stale id costs
         the catalog treatment rather than the run.
         """
-        items: list[LoraCatalogItem] = []
-        for catalog_id in catalog_ids or []:
-            lora = self._lora_catalog_provider.get_lora(catalog_id)
-            if lora is None:
-                logger.info("Skipping unknown LoRA catalog id for enhancement: %s", catalog_id)
-                continue
-            # A templated entry needs the template-fill path, which the multi-select free
-            # rewrite has no shape for. No plain catalog LoRA has one today.
-            if lora.prompt_template is not None:
-                continue
-            items.append(lora)
+        items: list[LoraPromptGuidance] = []
+        for entry in loras or ():
+            if entry.catalogId is not None:
+                lora = self._lora_catalog_provider.get_lora(entry.catalogId)
+                if lora is None:
+                    logger.info("Skipping unknown LoRA catalog id for enhancement: %s", entry.catalogId)
+                    continue
+                if lora.prompt_template is not None:
+                    continue
+                items.append(lora)
+            elif entry.customLoraId is not None:
+                record = read_custom_lora(self.models_dir, entry.customLoraId)
+                if record is None:
+                    logger.info("Skipping unknown custom LoRA for enhancement: %s", entry.customLoraId)
+                    continue
+                items.append(custom_lora_prompt_guidance(record))
         return items
 
     def enhance_for_generation(
@@ -657,11 +630,12 @@ class PromptEnhancementHandler(StateHandlerBase):
         duration: int | None = None,
         fps: int | None = None,
         ic_lora: IcLoraCatalogItem | None = None,
-        loras: list[LoraCatalogItem] | None = None,
+        loras: Sequence[LoraPromptGuidance] | None = None,
         conditioning_type: ConditioningType | None = None,
         local_model_id: LTXLocalModelId | None = None,
         source_video: SourceVideo | None = None,
         panel_paths: Sequence[str] = (),
+        negative_prompt: str = "",
     ) -> tuple[str, bool]:
         """Rewrite ``prompt`` on the local enhancer: ``(prompt, rewritten)``.
 
@@ -685,7 +659,7 @@ class PromptEnhancementHandler(StateHandlerBase):
         the generation.
         """
         loras = loras or []
-        if not prompt.strip() and not _writes_blank_prompt(source_video):
+        if not prompt.strip() and not writes_blank_prompt(source_video):
             return prompt, False
         gemma_root = self._text_handler.resolve_prompt_enhancer_root_if_downloaded(
             model_id=local_model_id
@@ -710,6 +684,7 @@ class PromptEnhancementHandler(StateHandlerBase):
                         provider="api" if use_gemini else "local",
                         gemma_root=gemma_root,
                         sheet_path=image_path,
+                        negative_prompt=negative_prompt,
                     )
             elif source_video is not None:
                 with self._gemini_enhance_slot if use_gemini else nullcontext():
@@ -721,15 +696,19 @@ class PromptEnhancementHandler(StateHandlerBase):
                         provider="api" if use_gemini else "local",
                         gemma_root=gemma_root,
                         local_model_id=local_model_id,
+                        negative_prompt=negative_prompt,
                     )
             else:
                 assert gemma_root is not None
                 pipeline = self._load_prompt_enhancer_pipeline(gemma_root)
                 if ic_lora is not None:
-                    enhanced = _ic_lora_rewrite(
+                    enhanced = ic_lora_rewrite(
                         ic_lora,
                         lambda system_prompt: pipeline.enhance_t2v(
-                            prompt, system_prompt=system_prompt, seed=seed
+                            prompt,
+                            system_prompt=system_prompt,
+                            seed=seed,
+                            negative_prompt=negative_prompt,
                         ),
                     )
                 else:
@@ -752,9 +731,15 @@ class PromptEnhancementHandler(StateHandlerBase):
                             keyframes=keyframes,
                             duration=duration,
                             fps=fps,
+                            negative_prompt=negative_prompt,
                         )
                     else:
-                        enhanced = pipeline.enhance_t2v(prompt, system_prompt=system_prompt, seed=seed)
+                        enhanced = pipeline.enhance_t2v(
+                            prompt,
+                            system_prompt=system_prompt,
+                            seed=seed,
+                            negative_prompt=negative_prompt,
+                        )
                     if enhanced.strip():
                         # Deterministic, same as manual Enhance: the rewrite is asked for the
                         # trigger phrases, never trusted to have kept them.
@@ -774,14 +759,96 @@ class PromptEnhancementHandler(StateHandlerBase):
         )
         return enhanced, True
 
+    def local_image_enhancer_root(self) -> str | None:
+        """The local Gemma an image rewrite may use, or None.
+
+        None on an API-only machine (`force_api_generations`): local enhancement is not
+        supported there, as `status()` reports. The image job then rewrites on Gemini if the
+        user chose it, else keeps the typed prompt.
+        """
+        if self.config.force_api_generations:
+            return None
+        return self._text_handler.resolve_prompt_enhancer_root_if_downloaded()
+
+    def _image_rewrite_wanted(self, prompt: str, provenance: PromptProvenance) -> bool:
+        """Explore auto-enhance is on and the prompt is still as typed."""
+        settings = self.state.app_settings
+        return not (
+            provenance == "enhanced"
+            or not prompt.strip()
+            or not settings.explore_auto_enhance_prompts
+        )
+
+    def rewrite_image_prompt(
+        self,
+        prompt: str,
+        *,
+        provenance: PromptProvenance,
+        generation_seed: int,
+        explicit_generation_seed: bool,
+        lease_gpu: Callable[[], AbstractContextManager[bool]] = _always_leased,
+        raise_if_cancelled: Callable[[], None] = _never_cancelled,
+    ) -> ImagePromptRewrite:
+        """The automatic rewrite of a text-to-image prompt, for a local job and a fal job.
+
+        Rewrites only when Explore auto-enhance is on and the prompt is still as typed. The
+        rewrite runs on local Gemma when it is downloaded and ``lease_gpu`` grants the GPU, else
+        on Gemini when the user chose Gemini and stored a key. Any failure keeps the typed
+        prompt: the image job must not fail for a quality step. Only cancellation is re-raised.
+        ``raise_if_cancelled`` runs before each step that takes long.
+        """
+        if not self._image_rewrite_wanted(prompt, provenance):
+            return ImagePromptRewrite(prompt, source=None, wanted=False)
+        typed = ImagePromptRewrite(prompt, source=None, wanted=True)
+        gemma_root = self.local_image_enhancer_root()
+        use_gemini = gemma_root is None and self.gemini_video_enhance_enabled()
+        if gemma_root is None and not use_gemini:
+            logger.info("No prompt enhancer available for the image prompt")
+            return typed
+        seed = self._automatic_enhancement_seed(
+            generation_seed, explicit_generation_seed=explicit_generation_seed
+        )
+        system_prompt = build_image_generation_system_prompt()
+        try:
+            if gemma_root is not None:
+                with lease_gpu() as leased:
+                    if not leased:
+                        logger.info("GPU busy: the image prompt is not rewritten on local Gemma")
+                        return typed
+                    # A cancel that came while the lease was taken must not load Gemma.
+                    raise_if_cancelled()
+                    pipeline = self._load_prompt_enhancer_pipeline(gemma_root)
+                    rewritten = pipeline.enhance_t2v(prompt, system_prompt=system_prompt, seed=seed)
+                source: Literal["local", "gemini"] = "local"
+            else:
+                raise_if_cancelled()
+                settings = self.state.app_settings
+                with self._gemini_enhance_slot:
+                    rewritten = self._gemini_pipeline.enhance_t2v(
+                        prompt,
+                        system_prompt=system_prompt,
+                        seed=seed,
+                        api_key=settings.gemini_api_key.strip(),
+                        model=resolve_gemini_model(settings.gemini_model),
+                    )
+                source = "gemini"
+        except Exception as exc:
+            if is_cancel_exception(exc):
+                raise
+            logger.warning("Automatic image enhancement failed; using the typed prompt", exc_info=True)
+            return typed
+        if not rewritten.strip():
+            return typed
+        return ImagePromptRewrite(rewritten, source=source, wanted=True)
+
     def _generation_fallback_prompt(
         self,
         prompt: str,
         ic_lora: IcLoraCatalogItem | None,
-        loras: list[LoraCatalogItem],
+        loras: Sequence[LoraPromptGuidance],
     ) -> str:
         """Preserve every non-template catalog adapter's trigger when no rewrite is available."""
-        items: list[LoraCatalogItem] = list(loras)
+        items: list[LoraPromptGuidance] = list(loras)
         if ic_lora is not None and ic_lora.prompt_template is None:
             items.append(ic_lora)
         return prompt if not items else enforce_trigger_placements(prompt, items)
@@ -789,7 +856,7 @@ class PromptEnhancementHandler(StateHandlerBase):
     def _generation_system_prompt(
         self,
         *,
-        loras: list[LoraCatalogItem],
+        loras: Sequence[LoraPromptGuidance],
         image_path: str | None,
         keyframes: list[KeyframeStill] | None,
         conditioning_type: ConditioningType | None,
@@ -819,6 +886,7 @@ class PromptEnhancementHandler(StateHandlerBase):
         provider: Literal["local", "api"],
         gemma_root: str | None,
         local_model_id: LTXLocalModelId | None,
+        negative_prompt: str = "",
     ) -> str:
         """The rewrite of an IC-LoRA, Extend, or Retake job that sees its source video.
 
@@ -837,8 +905,9 @@ class PromptEnhancementHandler(StateHandlerBase):
                     provider=provider,
                     gemma_root=gemma_root,
                     seed=seed,
+                    negative_prompt=negative_prompt,
                 )
-            return _ic_lora_rewrite(
+            return ic_lora_rewrite(
                 ic_lora,
                 lambda system_prompt: self._run_video_rewrite(
                     prompt,
@@ -848,6 +917,7 @@ class PromptEnhancementHandler(StateHandlerBase):
                     provider=provider,
                     gemma_root=gemma_root,
                     seed=seed,
+                    negative_prompt=negative_prompt,
                 ),
             )
 
@@ -861,6 +931,7 @@ class PromptEnhancementHandler(StateHandlerBase):
         provider: Literal["local", "api"],
         gemma_root: str | None,
         sheet_path: str | None = None,
+        negative_prompt: str = "",
     ) -> str:
         """The rewrite of an image-list IC-LoRA job. It sees the constructed reference sheet.
 
@@ -868,7 +939,7 @@ class PromptEnhancementHandler(StateHandlerBase):
         or a template that can't be filled raises out to the caller's typed-prompt fallback.
         """
         frames = self._sheet_frames(panel_paths, sheet_path=sheet_path)
-        return _ic_lora_rewrite(
+        return ic_lora_rewrite(
             ic_lora,
             lambda system_prompt: self._run_video_rewrite(
                 prompt,
@@ -878,11 +949,12 @@ class PromptEnhancementHandler(StateHandlerBase):
                 provider=provider,
                 gemma_root=gemma_root,
                 seed=seed,
+                negative_prompt=negative_prompt,
             ),
         )
 
     def _enhance_loras(
-        self, loras: list[LoraCatalogItem], req: EnhancePromptRequest, gemma_root: str | None
+        self, loras: Sequence[LoraPromptGuidance], req: EnhancePromptRequest, gemma_root: str | None
     ) -> str:
         # None of the plain LoRAs in the catalog have a prompt_template today (only IC-LoRAs
         # do) — the multi-select path is always a free rewrite.
@@ -908,7 +980,7 @@ class PromptEnhancementHandler(StateHandlerBase):
             else req
         )
         try:
-            return _ic_lora_rewrite(
+            return ic_lora_rewrite(
                 ic_lora,
                 lambda system_prompt: self._run_free_rewrite(
                     target, system_prompt, gemma_root, frames
@@ -924,15 +996,17 @@ class PromptEnhancementHandler(StateHandlerBase):
         gemma_root: str | None,
         frames: Sequence[SceneFrame] | None = None,
     ) -> str:
+        negative_prompt = (req.negativePrompt or "") if self.state.app_settings.nag_scale > 0 else ""
         if frames is not None:
             return self._run_video_rewrite(
                 req.prompt,
                 frames,
                 system_prompt,
-                role=_video_role(req),
+                role=video_role(req),
                 provider=req.provider,
                 gemma_root=gemma_root,
                 seed=self._random_seed(),
+                negative_prompt=negative_prompt,
             )
         # Reject an invalid/unreadable/oversized path before it reaches either provider — the
         # API path in particular would otherwise base64-encode and ship arbitrary file bytes to
@@ -969,6 +1043,7 @@ class PromptEnhancementHandler(StateHandlerBase):
                     keyframes=keyframes,
                     duration=req.duration,
                     fps=req.fps,
+                    negative_prompt=negative_prompt,
                 )
             return self._gemini_pipeline.enhance_t2v(
                 req.prompt,
@@ -976,6 +1051,7 @@ class PromptEnhancementHandler(StateHandlerBase):
                 seed=seed,
                 api_key=api_key,
                 model=resolved_model,
+                negative_prompt=negative_prompt,
             )
 
         logger.info("Enhancing prompt via local Gemma")
@@ -991,8 +1067,14 @@ class PromptEnhancementHandler(StateHandlerBase):
                 keyframes=keyframes,
                 duration=req.duration,
                 fps=req.fps,
+                negative_prompt=negative_prompt,
             )
-        return pipeline.enhance_t2v(req.prompt, system_prompt=system_prompt, seed=seed)
+        return pipeline.enhance_t2v(
+            req.prompt,
+            system_prompt=system_prompt,
+            seed=seed,
+            negative_prompt=negative_prompt,
+        )
 
     def _validated_keyframes(self, req: EnhancePromptRequest) -> list[KeyframeStill] | None:
         if req.mediaType == "image" or not req.keyframes:
@@ -1017,10 +1099,18 @@ class PromptEnhancementHandler(StateHandlerBase):
         provider: Literal["local", "api"],
         gemma_root: str | None,
         seed: int,
+        negative_prompt: str = "",
     ) -> str:
         """One rewrite call that sees the source video's stills, on either provider."""
         reply = self._call_video_rewrite(
-            prompt, frames, system_prompt, role=role, provider=provider, gemma_root=gemma_root, seed=seed
+            prompt,
+            frames,
+            system_prompt,
+            role=role,
+            provider=provider,
+            gemma_root=gemma_root,
+            seed=seed,
+            negative_prompt=negative_prompt,
         )
         # The panel labels are input only. A small model sometimes copies them into the reply.
         return strip_panel_labels(reply) if role == "panels" else reply
@@ -1035,6 +1125,7 @@ class PromptEnhancementHandler(StateHandlerBase):
         provider: Literal["local", "api"],
         gemma_root: str | None,
         seed: int,
+        negative_prompt: str = "",
     ) -> str:
         look_images = sum(1 for frame in frames if frame.is_reference)
         logger.info(
@@ -1055,11 +1146,14 @@ class PromptEnhancementHandler(StateHandlerBase):
                 role,
                 api_key=self.state.app_settings.gemini_api_key.strip(),
                 model=resolved_model,
+                negative_prompt=negative_prompt,
             )
         logger.info("Enhancing prompt with video frames via local Gemma")
         assert gemma_root is not None
         pipeline = self._load_prompt_enhancer_pipeline(gemma_root)
-        return pipeline.enhance_with_video_frames(prompt, frames, system_prompt, seed, role)
+        return pipeline.enhance_with_video_frames(
+            prompt, frames, system_prompt, seed, role, negative_prompt=negative_prompt
+        )
 
     def _load_prompt_enhancer_pipeline(self, gemma_root: str) -> PromptEnhancerPipeline:
         self._pipelines.evict_resident_pipeline()

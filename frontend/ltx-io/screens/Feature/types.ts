@@ -1,4 +1,5 @@
 import type { BudgetReadout } from "@/lib/budget-figure";
+import type { MemoryFitsModel, MemoryMeterModel, OptionMemory } from "@/lib/memory-meter";
 import type { HomeFeatureId } from "../../../lib/home-features";
 import type { MotionPath } from "../../lib/motionPathSampler";
 
@@ -19,6 +20,8 @@ export type FieldOption<TValue extends string | number = string | number> = {
   budget?: BudgetReadout | null;
   /** A caveat the budget badge carries in its tooltip, because the badge replaces the warning icon. */
   budgetNote?: string;
+  /** This option's memory ask with the other choices kept: the row label and the hover preview. */
+  memory?: OptionMemory;
 };
 
 export type AssetRef = {
@@ -29,11 +32,21 @@ export function toDurableAssetRef(asset: { id: string }): AssetRef {
   return { assetId: asset.id };
 }
 
+/** One still on the timeline of a `keyframes` field. The `id` is a React key and is never sent. */
+export type FeatureKeyframe = {
+  id: string;
+  asset: AssetRef;
+  frameIndex: number;
+  /** 0 holds nothing and 1 holds the image fully. */
+  strength: number;
+};
+
 export type FeatureFieldKind =
   | "textarea"
   | "options"
   | "image-asset"
   | "image-assets"
+  | "keyframes"
   | "slider"
   | "audio-asset"
   | "video-asset"
@@ -44,6 +57,7 @@ export type FeatureFieldSpec =
   | { kind: "options"; value: string | number | null }
   | { kind: "image-asset"; value: AssetRef | null }
   | { kind: "image-assets"; value: AssetRef[] }
+  | { kind: "keyframes"; value: FeatureKeyframe[] }
   | { kind: "slider"; value: number }
   | { kind: "audio-asset"; value: AssetRef | null }
   | { kind: "video-asset"; value: AssetRef | null }
@@ -85,6 +99,9 @@ export type ImageAssetFieldKey<TSchema extends FeatureFieldSchema> =
 export type ImageAssetsFieldKey<TSchema extends FeatureFieldSchema> =
   FieldKeyOfKind<TSchema, "image-assets">;
 
+export type KeyframesFieldKey<TSchema extends FeatureFieldSchema> =
+  FieldKeyOfKind<TSchema, "keyframes">;
+
 export type SliderFieldKey<TSchema extends FeatureFieldSchema> =
   FieldKeyOfKind<TSchema, "slider">;
 
@@ -101,6 +118,8 @@ type FeatureFieldBase<TKey extends string> = {
   id: string;
   label: string;
   dataKey: TKey;
+  /** Help text shown on hover next to the label. */
+  tooltip?: string;
 };
 
 export type TextareaFieldDefForKey<
@@ -109,6 +128,9 @@ export type TextareaFieldDefForKey<
 > = FeatureFieldBase<TKey> & {
   kind: "textarea";
   placeholder?: string;
+  helpText?: string;
+  disabledReason?: string | null;
+  compact?: boolean;
 };
 
 export type TextareaFieldDef<TSchema extends FeatureFieldSchema> = {
@@ -165,6 +187,25 @@ export type ImageAssetsFieldDef<TSchema extends FeatureFieldSchema> = {
     TKey
   >;
 }[ImageAssetsFieldKey<TSchema>];
+
+export type KeyframesFieldDefForKey<
+  TSchema extends FeatureFieldSchema,
+  TKey extends KeyframesFieldKey<TSchema>,
+> = FeatureFieldBase<TKey> & {
+  kind: "keyframes";
+  /** The most stills the field takes. */
+  maxCount: number;
+  /**
+   * The timeline is the clip length and frame rate, which other fields hold. The field reads
+   * them but never writes them. A change of either one re-times the stills in the definition.
+   */
+  durationKey: OptionsFieldKey<TSchema>;
+  fpsKey: OptionsFieldKey<TSchema>;
+};
+
+export type KeyframesFieldDef<TSchema extends FeatureFieldSchema> = {
+  [TKey in KeyframesFieldKey<TSchema>]: KeyframesFieldDefForKey<TSchema, TKey>;
+}[KeyframesFieldKey<TSchema>];
 
 export type SliderFieldDefForKey<
   TSchema extends FeatureFieldSchema,
@@ -239,13 +280,30 @@ export type FeatureFormField<TSchema extends FeatureFieldSchema> =
   | OptionsFieldDef<TSchema>
   | ImageAssetFieldDef<TSchema>
   | ImageAssetsFieldDef<TSchema>
+  | KeyframesFieldDef<TSchema>
   | SliderFieldDef<TSchema>
   | AudioAssetFieldDef<TSchema>
   | VideoAssetFieldDef<TSchema>
   | MotionPathFieldDef<TSchema>;
 
+/**
+ * The fields the Advanced section renders. Every one is an options field whose first option is
+ * Auto and whose `defaultValue` is that option, so "Reset to Auto" has one value to set.
+ */
+export type AdvancedFormField<TSchema extends FeatureFieldSchema> = OptionsFieldDef<TSchema> & {
+  defaultValue: NonNullable<OptionsFieldDef<TSchema>["defaultValue"]>;
+};
+
 export type FeatureFormModel<TSchema extends FeatureFieldSchema> = {
   fields: FeatureFormField<TSchema>[];
+  /** Options fields for a collapsed Advanced section. No section when empty. */
+  advancedFields?: AdvancedFormField<TSchema>[];
+  /** The memory meter under the settings. Features without a priced cell leave it out. */
+  memory?: MemoryMeterModel | null;
+  /** Before the input that sets the number is picked: which sizes fit. Shown when `memory` is not. */
+  memoryFits?: MemoryFitsModel | null;
+  /** Estimated generation time shown under Generate when `memory` is absent. */
+  estimatedTimeText?: string | null;
 };
 
 export type FeatureFieldChange<TSchema extends FeatureFieldSchema> = {
@@ -292,6 +350,15 @@ export function createFeatureFieldChange<
   fieldId: string;
   dataKey: TKey;
   value: AssetRef[];
+}): FeatureFieldChange<TSchema>;
+export function createFeatureFieldChange<
+  TSchema extends FeatureFieldSchema,
+  TKey extends KeyframesFieldKey<TSchema>,
+>(change: {
+  kind: "keyframes";
+  fieldId: string;
+  dataKey: TKey;
+  value: FeatureKeyframe[];
 }): FeatureFieldChange<TSchema>;
 export function createFeatureFieldChange<
   TSchema extends FeatureFieldSchema,
@@ -386,6 +453,16 @@ export function readImageAssetsFieldValue<
   return readConstrainedFieldValue<TSchema, TKey, AssetRef[]>(values, dataKey);
 }
 
+export function readKeyframesFieldValue<
+  TSchema extends FeatureFieldSchema,
+  TKey extends KeyframesFieldKey<TSchema>,
+>(values: FeatureValues<TSchema>, dataKey: TKey): FeatureKeyframe[] {
+  return readConstrainedFieldValue<TSchema, TKey, FeatureKeyframe[]>(
+    values,
+    dataKey,
+  );
+}
+
 export function readSliderFieldValue<
   TSchema extends FeatureFieldSchema,
   TKey extends SliderFieldKey<TSchema>,
@@ -442,6 +519,10 @@ export type ValidationIssue = {
    * Defaults to blocking.
    */
   blocksGenerate?: boolean;
+  /** Budget risk renders yellow and does not use the error color. */
+  tone?: "risk";
+  /** Set on budget-risk issues. Drives the generate hint and the T3 confirm. */
+  tier?: "tight" | "over" | "unmeasured";
 };
 
 export type FeatureDefinition<

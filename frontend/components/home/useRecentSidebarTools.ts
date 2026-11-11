@@ -18,8 +18,7 @@ const RECENT_FEATURES_QUERY_KEY = generationQueryKeys.recentFeatures(
 );
 
 /**
- * Distinct features from the newest generations, shared by desktop and remote. The backend
- * leaves out a feature that needs the `highResVideoToVideo` flag while the flag is off.
+ * Distinct features from the newest generations, shared by desktop and remote.
  */
 export function useRecentSidebarTools(): readonly HomeFeatureId[] {
   const { api } = useExploreRuntime();

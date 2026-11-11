@@ -44,7 +44,7 @@ export function Info({
   align?: TooltipAlign;
   sideOffset?: number;
   alignOffset?: number;
-  maxWidth?: number;
+  maxWidth?: number | string;
   className?: string;
   size?: InfoSize;
   delay?: number;

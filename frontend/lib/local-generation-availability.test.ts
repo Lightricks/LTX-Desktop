@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { localUnavailableMessage } from "./local-generation-availability.ts";
-import type { BudgetMode } from "./budget-risk.ts";
 import type {
   VideoGenerationModelSpecItem,
   VideoGenerationModelSpecsResponse,
@@ -38,9 +37,8 @@ function specsWith(options: {
 function unavailable(
   specs: VideoGenerationModelSpecsResponse | null,
   platform: string | null = null,
-  budgetMode: BudgetMode = "standard",
 ) {
-  return localUnavailableMessage(specs, platform, budgetMode);
+  return localUnavailableMessage(specs, platform);
 }
 
 describe("localUnavailableMessage", () => {
@@ -120,7 +118,7 @@ describe("localUnavailableMessage", () => {
         specsWith({ cells: false, reason: "stream_over" }),
         "darwin",
       ),
-      "This Mac's memory allowance can't run any of the available settings.",
+      "Memory available for video on this Mac can't run any of the available settings.",
     );
   });
 
@@ -157,27 +155,6 @@ describe("localUnavailableMessage", () => {
     assert.equal(
       unavailable(specs),
       "This machine can't run any of the available generation settings.",
-    );
-  });
-
-  it("explains an empty standard grid when the payload is reckless and every cell was dropped", () => {
-    const specs = specsWith({ cells: false, reason: "stream_over" });
-    specs.budgetMode = "reckless";
-    specs.local_models[0]?.spec &&
-      (specs.local_models[0].spec.dropped_cells = [
-        {
-          resolution: "540p",
-          fps: 24,
-          duration: 5,
-          reason: "stream_over",
-          message: "needs 40",
-          audio: false,
-        },
-      ]);
-    assert.equal(unavailable(specs, null, "reckless"), null);
-    assert.equal(
-      unavailable(specs, null, "standard"),
-      "This machine's graphics card can't run any of the available settings.",
     );
   });
 

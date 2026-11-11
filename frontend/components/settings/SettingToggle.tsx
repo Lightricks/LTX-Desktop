@@ -38,7 +38,7 @@ export function SettingToggle({
 
   if (rowLayout === "preference") {
     return (
-      <div className={styles.preferenceRow}>
+      <div className={nested ? `${styles.preferenceRow} ${styles.preferenceRowNested}` : styles.preferenceRow}>
         <div className={styles.preferenceRowCopy}>
           <label htmlFor={switchId} id={titleId} className={styles.preferenceRowTitle}>
             {title}

@@ -6,6 +6,7 @@ export type PromptProvenance = "typed" | "enhanced";
 
 export interface PromptHistoryEntry {
   text: string;
+  negativeText?: string;
   provenance: PromptProvenance;
 }
 
@@ -14,16 +15,23 @@ export interface PromptHistoryState {
   index: number;
 }
 
+function sameNegativeText(entryNegative: string | undefined, liveNegative: string | undefined): boolean {
+  if (liveNegative === undefined) return true;
+  return (entryNegative ?? "") === liveNegative;
+}
+
 /** Derived, never stored: the live prompt text is the only thing an edit changes. */
 export function resolvePromptProvenance(
   prompt: string,
   history: PromptHistoryEntry[],
   index: number,
+  _negativePrompt?: string,
 ): PromptProvenance {
   const current = index >= 0 ? history[index] : undefined;
   if (current === undefined) return "typed";
   // Undo/redo puts an entry's exact text back, so matching text means we are still on that
   // entry. Any edit (including trailing whitespace) diverges from it and is the user's own text.
+  // Editing only the negative prompt keeps the approved positive rewrite intact on Generate.
   return current.text === prompt ? current.provenance : "typed";
 }
 
@@ -36,18 +44,36 @@ export function appendEnhanceResult(input: {
   history: PromptHistoryEntry[];
   index: number;
   sourcePrompt: string;
+  sourceNegativePrompt?: string;
   sourceProvenance: PromptProvenance;
   enhancedPrompt: string;
 }): PromptHistoryState {
   const truncated = input.history.slice(0, input.index + 1);
   const last = truncated[truncated.length - 1];
   const withSource =
-    last !== undefined && last.text === input.sourcePrompt
+    last !== undefined &&
+    last.text === input.sourcePrompt &&
+    sameNegativeText(last.negativeText, input.sourceNegativePrompt)
       ? truncated
-      : [...truncated, { text: input.sourcePrompt, provenance: input.sourceProvenance }];
+      : [
+          ...truncated,
+          {
+            text: input.sourcePrompt,
+            ...(input.sourceNegativePrompt !== undefined
+              ? { negativeText: input.sourceNegativePrompt }
+              : {}),
+            provenance: input.sourceProvenance,
+          },
+        ];
   const history = [
     ...withSource,
-    { text: input.enhancedPrompt, provenance: "enhanced" as const },
+    {
+      text: input.enhancedPrompt,
+      ...(input.sourceNegativePrompt !== undefined
+        ? { negativeText: input.sourceNegativePrompt }
+        : {}),
+      provenance: "enhanced" as const,
+    },
   ];
   return { history, index: history.length - 1 };
 }
@@ -60,9 +86,19 @@ export function appendEnhanceResult(input: {
 export function historyForRestoredPrompt(
   prompt: string,
   provenance: PromptProvenance | undefined,
+  negativePrompt?: string,
 ): PromptHistoryState {
   if (provenance !== "enhanced") return { history: [], index: -1 };
-  return { history: [{ text: prompt, provenance: "enhanced" }], index: 0 };
+  return {
+    history: [
+      {
+        text: prompt,
+        ...(negativePrompt !== undefined ? { negativeText: negativePrompt } : {}),
+        provenance: "enhanced",
+      },
+    ],
+    index: 0,
+  };
 }
 
 export function parsePromptProvenance(value: unknown): PromptProvenance | undefined {
@@ -73,8 +109,13 @@ export function parsePromptProvenance(value: unknown): PromptProvenance | undefi
 export function shouldApplyEnhanceResult(
   livePrompt: string,
   sourcePrompt: string,
+  liveNegativePrompt?: string,
+  sourceNegativePrompt?: string,
 ): boolean {
-  return livePrompt === sourcePrompt;
+  return (
+    livePrompt === sourcePrompt &&
+    sameNegativeText(sourceNegativePrompt, liveNegativePrompt)
+  );
 }
 
 /**
@@ -84,14 +125,20 @@ export function shouldApplyEnhanceResult(
 export function restorePromptHistory(input: {
   stored: PromptHistoryState | undefined;
   prompt: string;
+  negativePrompt?: string;
   lastGenerationPrompt: string | undefined;
+  lastGenerationNegativePrompt?: string;
   lastGenerationProvenance: PromptProvenance | undefined;
 }): PromptHistoryState {
   if (input.stored !== undefined && input.stored.history.length > 0) {
     return input.stored;
   }
   if (input.lastGenerationPrompt === input.prompt) {
-    return historyForRestoredPrompt(input.prompt, input.lastGenerationProvenance);
+    return historyForRestoredPrompt(
+      input.prompt,
+      input.lastGenerationProvenance,
+      input.negativePrompt,
+    );
   }
   return input.stored ?? { history: [], index: -1 };
 }

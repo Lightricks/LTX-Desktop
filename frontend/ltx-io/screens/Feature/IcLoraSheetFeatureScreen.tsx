@@ -42,8 +42,9 @@ function IcLoraSheetForm({
     () =>
       createIcLoraSheetDefinition(recipe, {
         audio_mode: controls.defaultAudioMode,
+        default_negative_prompt: controls.defaultNegativePrompt,
       }),
-    [recipe, controls.defaultAudioMode],
+    [recipe, controls.defaultAudioMode, controls.defaultNegativePrompt],
   );
   const context = useMemo<IcLoraSheetContext>(
     () => ({

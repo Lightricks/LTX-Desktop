@@ -1,7 +1,8 @@
 import { clsx } from "clsx";
-import { Fragment, useCallback, useEffect, useRef } from "react";
+import { Fragment, useCallback, useEffect, useRef, type ReactNode } from "react";
 
 import { homeFeatureIcon } from "@/components/home/homeFeatureIcons";
+import { CUSTOM_LORA_HOME_FEATURE } from "@/lib/custom-lora";
 import { Text } from "@ds/Text/Text";
 
 import styles from "./LtxioQuickSearch.module.scss";
@@ -37,6 +38,25 @@ function groupRows(rows: readonly QuickSearchRow[]) {
     });
   }
   return groups;
+}
+
+function rowTitleAndIcon(row: QuickSearchRow): { title: string; icon: ReactNode } {
+  switch (row.kind) {
+    case "feature":
+      return { title: row.feature.title, icon: homeFeatureIcon(row.feature.id) };
+    case "custom-lora":
+      // A saved LoRA uses the icon of the Custom LoRA feature.
+      return { title: row.lora.name, icon: homeFeatureIcon(CUSTOM_LORA_HOME_FEATURE.id) };
+    case "page":
+      return {
+        title: row.destination.title,
+        icon: quickSearchIconForPageId(row.destination.id),
+      };
+    default: {
+      const unhandled: never = row;
+      throw new Error(`Unhandled quick search row: ${JSON.stringify(unhandled)}`);
+    }
+  }
 }
 
 export function QuickSearchResults({
@@ -97,11 +117,7 @@ export function QuickSearchResults({
     >
       {groupRows(rows).map((group) => {
         const options = group.items.map(({ row, index }) => {
-          const isFeature = row.kind === "feature";
-          const title = isFeature ? row.feature.title : row.destination.title;
-          const icon = isFeature
-            ? homeFeatureIcon(row.feature.id)
-            : quickSearchIconForPageId(row.destination.id);
+          const { title, icon } = rowTitleAndIcon(row);
           return (
             <button
               key={row.id}

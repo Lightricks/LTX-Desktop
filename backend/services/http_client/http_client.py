@@ -13,6 +13,14 @@ class HttpTransportError(Exception):
     connection reset, or broken chunked stream) — the request didn't complete."""
 
 
+class HttpBodyTooLargeError(Exception):
+    """Raised by a capped GET when the response body is larger than the allowed size."""
+
+
+class HttpRedirectRefusedError(Exception):
+    """Raised by a capped GET when a redirect changes the scheme to an unsafe one or loops (CWE-918)."""
+
+
 class HttpResponseLike(Protocol):
     @property
     def status_code(self) -> int:
@@ -50,7 +58,13 @@ class HTTPClient(Protocol):
         url: str,
         headers: dict[str, str] | None = None,
         timeout: int = 30,
+        max_bytes: int | None = None,
     ) -> HttpResponseLike:
+        """With max_bytes, a body larger than that raises HttpBodyTooLargeError (CWE-770).
+
+        A capped GET follows at most 3 redirects, never from https to another scheme, sends
+        ``headers`` only to the first host, and gives up when ``timeout`` seconds pass in total.
+        """
         ...
 
     def put(

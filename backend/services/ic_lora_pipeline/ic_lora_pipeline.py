@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from api_types import ImageConditioningInput
 from runtime_config.ic_lora_tiling import IcLoraTiling
+from services.fast_video_pipeline.nag_config import NagConfig
 
 if TYPE_CHECKING:
     import torch
@@ -50,5 +51,6 @@ class IcLoraPipeline(Protocol):
         mute_audio: bool = False,
         conditioning_mask_path: str | None = None,
         chunk_pixel_frames: int | None = None,
+        nag: NagConfig | None = None,
     ) -> None:
         ...

@@ -44,17 +44,23 @@ def test_a_single_pass_cell_is_never_listed() -> None:
     *_rest, chunked = _plain(31.84)
     listed = {(c.resolution, c.fps, c.duration) for c in chunked}
     assert ("1080p", 24, 10) not in listed
-    # Below 1080p only the cells one pass cannot fit on the card (720p at 20 s and 48 or 50 fps)
-    # run in windows. No resolution is named: the rule is the same one that windows 1080p.
-    assert not [c for c in chunked if c.resolution == "540p"]
-    assert {(c.fps, c.duration) for c in chunked if c.resolution == "720p"} == {(48, 20), (50, 20)}
+    # Below 1080p only the cells one pass cannot take run in windows. No resolution is named: the
+    # rule is the same one that windows 1080p. A 20 s 540p clip at 24 fps is 35k tokens, inside
+    # the fit. At 48 fps it is 70k, past it, so Cautious takes it in windows.
+    assert ("540p", 24, 20) not in listed
+    assert ("540p", 48, 20) in listed
+    assert {(c.fps, c.duration) for c in chunked if c.resolution == "720p" and c.duration <= 20} == {
+        (48, 20),
+        (50, 20),
+    }
 
 
-def test_a_card_below_the_measured_one_does_not_list_1080p() -> None:
+def test_a_card_below_the_measured_one_lists_its_1080p_windows_without_a_card_floor() -> None:
     kept, *_rest, chunked = _plain(24)
     assert kept is not None
-    assert not [c for c in chunked if c.resolution == "1080p"]
-    assert 20 not in kept["1080p"].fps_to_durations.get(24, [])
+    cell = next(c for c in chunked if (c.resolution, c.fps, c.duration) == ("1080p", 24, 20))
+    assert (cell.windows, cell.window_frames) == (3, 185)
+    assert 20 in kept["1080p"].fps_to_durations[24]
 
 
 def test_the_a2v_grid_lists_its_own_cells_as_audio() -> None:
@@ -70,23 +76,24 @@ def test_the_a2v_grid_lists_its_own_cells_as_audio() -> None:
 
 
 def test_a_refused_mac_1440p_cell_carries_the_window_a_run_would_use() -> None:
-    # Mac 1440p is an unmeasured cell, so Standard refuses it and Reckless can offer it. The
-    # refusal knows the windows that run would take, so a picker can say so.
+    # Mac 1440p past five windows is an unmeasured cell, so Cautious refuses it and Brave can
+    # offer it. The refusal knows the windows that run would take, so a picker can say so.
     assert _SPEC.supported_resolutions_durations is not None
     jf = _job_filter(memory_gb=96, process_mode="full_models_loading", **_mac_profile(pool_gib=48))
     _kept, dropped, *_rest = _filter_local_fast_resolution_map(
         _SPEC.supported_resolutions_durations, _CAPS, job_filter=jf
     )
-    cell = next(c for c in dropped if (c.resolution, c.fps, c.duration) == ("1440p", 24, 10))
+    cell = next(c for c in dropped if (c.resolution, c.fps, c.duration) == ("1440p", 48, 20))
     assert cell.reason == "unmeasured_cell"
-    assert (cell.windows, cell.window_frames) == (2, 129)
+    assert (cell.windows, cell.window_frames) == (9, 129)
 
 
-def test_a_refusal_that_would_run_in_one_pass_carries_no_window() -> None:
+def test_a_busy_card_refusal_carries_no_window() -> None:
+    """A shortfall that frees up keeps its one-pass refusal, so no window is promised."""
     assert _SPEC.supported_resolutions_durations is not None
     _kept, dropped, *_rest = _filter_local_fast_resolution_map(
-        _SPEC.supported_resolutions_durations, _CAPS, job_filter=_windows_measured_filter(12, 64)
+        _SPEC.supported_resolutions_durations, _CAPS, job_filter=_windows_measured_filter(31.84, 64, free_gib=16)
     )
-    single_pass = [c for c in dropped if c.resolution in ("540p", "720p", "1080p")]
+    single_pass = [c for c in dropped if c.resolution in ("540p", "720p", "1080p") and c.fps == 24 and c.duration <= 10]
     assert single_pass
     assert all(c.windows is None and c.window_frames is None for c in single_pass)

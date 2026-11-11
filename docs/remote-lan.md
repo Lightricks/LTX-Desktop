@@ -69,7 +69,15 @@ The Remote server exposes only the Explore surface:
   available, plus `defaultProvider` (Gemini if a Desktop key is stored,
   otherwise local Gemma when downloaded). Does not return API keys or
   filesystem paths.
-- `POST /api/enhance-prompt` — rewrite the prompt. Image frames and the source
+- `POST /api/generations/text-to-image` — queued Z-Image Turbo image, on the same
+  queue and `/api/generations` list, get, retry, cancel, and delete as video.
+  Body `provider` is `local` or `fal`; omit it to follow the Desktop setting. The
+  phone can spend the Desktop's stored fal key and local GPU. It never reads or
+  changes the key.
+- `GET /api/image-generation/status` — which image providers can run now and
+  why not (`localBlocker`, `falBlocker` codes only), plus `defaultProvider`.
+- `POST /api/enhance-prompt` — rewrite the prompt. `mediaType: "image"` rewrites a
+  text-to-image prompt and takes no image asset ids. Image frames and the source
   video (`videoAssetId`, with `icLoraId` for an IC-LoRA) are asset ids, never
   paths. A video can stand in for the prompt. A Retake also sends `replacedWindow`
   (`start`, `end` in seconds), so the stills come from around the part it replaces. Body `provider` is `local` or `api`; omit it to use
@@ -98,7 +106,7 @@ These stay off `:41955`:
 - Desktop path ingest (`POST /api/assets`).
 - Model downloads and Hugging Face auth (except the LoRA recipe preflight
   already on this port).
-- Image generation (Gen Space only).
+- Gen Space image generation and editing (`POST /api/generate-image`).
 
 The assistant's tools run inside the shared `AppHandler`, not through these
 routes. Jobs started from a phone chat report `analytics_client="remote"`.

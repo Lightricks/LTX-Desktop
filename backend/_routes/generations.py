@@ -4,14 +4,21 @@ from fastapi import APIRouter, Depends, Path, Query
 
 from api_types import (
     CreateAudioToVideoRequest,
+    CreateCustomLoraRequest,
     IcLoraRecipeCreate,
+    IcLoraTilePreflightRequest,
+    IcLoraTilePreflightResponse,
     CreateExtendRequest,
     CreateImageToVideoRequest,
+    CreateKeyframesRequest,
     CreateLoraRecipeRequest,
     CreateRetakeRequest,
+    CreateTextToImageRequest,
     CreateTextToVideoRequest,
     EditPreflightRequest,
     EditPreflightResponse,
+    IcLoraRecipeMemoryRequest,
+    IcLoraRecipeMemoryResponse,
     Generation,
     QueueSnapshot,
     ReorderGenerationQueueRequest,
@@ -114,6 +121,19 @@ def route_create_text_to_video(
 
 
 @router.post(
+    "/generations/text-to-image",
+    response_model=Generation,
+    tags=["generations"],
+)
+def route_create_text_to_image(
+    req: CreateTextToImageRequest, handler: AppHandler = Depends(get_state_service)
+) -> Generation:
+    return handler.queued_generations.create_text_to_image(
+        req, analytics_client="desktop"
+    )
+
+
+@router.post(
     "/generations/image-to-video",
     response_model=Generation,
     tags=["generations"],
@@ -122,6 +142,19 @@ def route_create_image_to_video(
     req: CreateImageToVideoRequest, handler: AppHandler = Depends(get_state_service)
 ) -> Generation:
     return handler.queued_generations.create_image_to_video(
+        req, analytics_client="desktop"
+    )
+
+
+@router.post(
+    "/generations/keyframes",
+    response_model=Generation,
+    tags=["generations"],
+)
+def route_create_keyframes(
+    req: CreateKeyframesRequest, handler: AppHandler = Depends(get_state_service)
+) -> Generation:
+    return handler.queued_generations.create_keyframes(
         req, analytics_client="desktop"
     )
 
@@ -141,6 +174,19 @@ def route_create_lora_recipe(
 ) -> Generation:
     return handler.queued_generations.create_lora_recipe(
         recipe_id, req, analytics_client="desktop"
+    )
+
+
+@router.post(
+    "/generations/custom-lora",
+    response_model=Generation,
+    tags=["generations"],
+)
+def route_create_custom_lora(
+    req: CreateCustomLoraRequest, handler: AppHandler = Depends(get_state_service)
+) -> Generation:
+    return handler.queued_generations.create_custom_lora(
+        req, analytics_client="desktop"
     )
 
 
@@ -171,6 +217,20 @@ def route_create_retake(
 
 
 @router.post(
+    "/generations/ic-lora-recipes/{recipe_id}/memory",
+    response_model=IcLoraRecipeMemoryResponse,
+    tags=["generations"],
+)
+def route_ic_lora_recipe_memory(
+    req: IcLoraRecipeMemoryRequest,
+    recipe_id: str = Path(pattern=_RECIPE_ID_PATTERN, max_length=64),
+    handler: AppHandler = Depends(get_state_service),
+) -> IcLoraRecipeMemoryResponse:
+    # Path-free DTO (sizes and verdicts only): no remote projection needed.
+    return handler.ic_lora.recipe_memory(recipe_id, req)
+
+
+@router.post(
     "/generations/ic-lora-recipes/{recipe_id}",
     response_model=Generation,
     tags=["generations"],
@@ -183,6 +243,19 @@ def route_create_ic_lora_recipe(
     return handler.queued_generations.create_ic_lora_recipe(
         recipe_id, req, analytics_client="desktop"
     )
+
+
+@router.post(
+    "/generations/ic-lora-recipes/{recipe_id}/preflight",
+    response_model=IcLoraTilePreflightResponse,
+    tags=["generations"],
+)
+def route_preflight_ic_lora_tile_sizes(
+    req: IcLoraTilePreflightRequest,
+    recipe_id: str = Path(pattern=_RECIPE_ID_PATTERN),
+    handler: AppHandler = Depends(get_state_service),
+) -> IcLoraTilePreflightResponse:
+    return handler.queued_generations.preflight_ic_lora_tile_sizes(recipe_id, req)
 
 
 @router.post(

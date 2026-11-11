@@ -271,6 +271,21 @@
   background: var(--semantic-bg-primary);
 }
 
+.blankCover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: var(--semantic-bg-tertiary);
+  color: var(--semantic-fg-secondary);
+}
+
+.blankCoverIcon {
+  width: var(--scale-32);
+  height: var(--scale-32);
+}
+
 .previewMedia {
   display: block;
   width: 100%;

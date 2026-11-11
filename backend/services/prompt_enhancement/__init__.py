@@ -6,6 +6,7 @@ from services.prompt_enhancement.i2v_frames import (
     resolve_video_frames,
 )
 from services.prompt_enhancement.system_prompt import (
+    LoraPromptGuidance,
     build_audio_visual_caption_system_prompt,
     build_conditioning_system_prompt,
     build_default_free_rewrite_system_prompt,
@@ -23,10 +24,13 @@ from services.prompt_enhancement.system_prompt import (
     parse_template_fill_response,
     render_catalog_item_block,
     video_role_max_output_tokens,
+    with_negative_prompt_rules,
+    with_user_negative_prompt,
     with_video_role_rules,
 )
 
 __all__ = [
+    "LoraPromptGuidance",
     "build_audio_visual_caption_system_prompt",
     "build_conditioning_system_prompt",
     "build_default_free_rewrite_system_prompt",
@@ -44,6 +48,8 @@ __all__ = [
     "parse_template_fill_response",
     "render_catalog_item_block",
     "video_role_max_output_tokens",
+    "with_negative_prompt_rules",
+    "with_user_negative_prompt",
     "with_video_role_rules",
     "KeyframeStill",
     "SceneFrame",

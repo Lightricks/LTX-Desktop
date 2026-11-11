@@ -45,17 +45,14 @@ export function mergeDurationControlOptions(
 ): MergedDurationControl {
   const kept = (control.options ?? []) as (number | string)[];
   const dropped = control.dropped_options ?? [];
-  // A drop with a tier is a memory bet, which reckless runs. Only hard refusals empty the list.
-  if (kept.length === 0 && !dropped.some((entry) => entry.tier != null)) {
+  if (kept.length === 0) {
     return {
       options: [],
       emptyMessage: dropped[0]?.message ?? "No durations are available on this machine.",
     };
   }
   const cells = new Map((preflightCells ?? []).map((cell) => [cell.duration, cell]));
-  const advisories = new Map(
-    dropped.filter((entry) => entry.tier == null).map((entry) => [entry.value, entry.message]),
-  );
+  const advisories = new Map(dropped.map((entry) => [entry.value, entry.message]));
   const values = [...kept];
   for (const entry of dropped) {
     if (!values.includes(entry.value)) values.push(entry.value);
@@ -69,8 +66,10 @@ export function mergeDurationControlOptions(
     options: values.map((value) => {
       const label = labelFor(value);
       const cell = cells.get(Number(value));
-      const status = cell === undefined ? null : preflightCellStatus(cell, "reckless");
-      if (status?.status === "blocked") {
+      const status = cell === undefined ? null : preflightCellStatus(cell);
+      // GenSpace and the editor have no risk confirm, so a Brave bet disables
+      // like a refusal.
+      if (status != null && status.status !== "clear") {
         return {
           value: String(value),
           label,
@@ -79,7 +78,7 @@ export function mergeDurationControlOptions(
           ...(status.readout ? { budget: status.readout } : {}),
         };
       }
-      // A passing or downgraded cell clears the advisory; unevaluated values keep it.
+      // Passing cells clear the advisory; unevaluated values keep it.
       const advisory = cell === undefined ? advisories.get(Number(value)) : undefined;
       return advisory === undefined
         ? { value: String(value), label }

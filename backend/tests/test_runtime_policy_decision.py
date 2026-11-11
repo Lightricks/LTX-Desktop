@@ -282,9 +282,29 @@ def test_linux_unknown_ram_fails_closed_to_disk_streaming() -> None:
 
 
 def test_windows_routes_disk_on_nvme_only() -> None:
-    """NVMe sustains the ~70 GB mapped reads; SATA (~130 s) does not earn the switch."""
-    assert should_disk_stream_cuda_weights("Windows", 64, drive_type="nvme") is True
+    """Windows NVMe falls back to disk below the CPU floor (or for Edit); SATA stays on CPU."""
     assert should_disk_stream_cuda_weights("Windows", 32, drive_type="nvme") is True
+    assert should_disk_stream_cuda_weights("Windows", 40, drive_type="nvme") is False
+    assert should_disk_stream_cuda_weights("Windows", 64, drive_type="nvme") is False
+    assert (
+        should_disk_stream_cuda_weights(
+            "Windows", 48, drive_type="nvme", cpu_ram_floor_gb=64
+        )
+        is True
+    )
+    assert (
+        should_disk_stream_cuda_weights(
+            "Windows", 64, drive_type="nvme", cpu_ram_floor_gb=64
+        )
+        is False
+    )
+    assert (
+        should_disk_stream_cuda_weights(
+            "Windows", 64, drive_type="nvme", cpu_ram_floor_gb=None
+        )
+        is True
+    )
+    assert should_disk_stream_cuda_weights("Windows", None, drive_type="nvme") is True
     assert should_disk_stream_cuda_weights("Windows", 64, drive_type="ssd") is False
     assert should_disk_stream_cuda_weights("Windows", 64, drive_type="hdd") is False
     assert should_disk_stream_cuda_weights("Windows", 64, drive_type=None) is False

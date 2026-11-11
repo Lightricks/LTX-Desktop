@@ -1,13 +1,15 @@
 import { budgetTooltip, type BudgetReadout } from "./budget-figure.ts";
 
-/** Reckless-mode warning tier. The backend decides the tier; this module only renders it. */
+/** Budget warning tiers. The backend decides admission and tier; this module only renders them. */
 
-export type BudgetMode = "standard" | "reckless";
+export type BudgetMode = "brave" | "cautious";
 
 export type WarningTone = "caveat" | "risk";
 
-/** Tight is a kept cell. Over and unmeasured are the tiers that block in standard mode. */
+/** Tight is a passive note. Over and unmeasured are the bets Brave asks about and Cautious refuses. */
 export type SelectionTier = "tight" | "over" | "unmeasured";
+
+export type ConfirmableTier = Exclude<SelectionTier, "tight">;
 
 export type SelectionRisk = {
   tier: SelectionTier;
@@ -21,38 +23,9 @@ const TIER_RANK: Record<SelectionTier, number> = {
   unmeasured: 3,
 };
 
+/** The backend only emits the two names; anything else is the default. */
 export function readBudgetMode(value: string | null | undefined): BudgetMode {
-  return value === "reckless" ? "reckless" : "standard";
-}
-
-/**
- * Tier of the warning a refusal becomes when reckless mode turns it into a
- * selectable option. Null for a hard refusal.
- */
-export function rejectReasonTier(reason: string): "over" | "unmeasured" | null {
-  if (reason === "stream_over" || reason === "ram_shortfall") return "over";
-  if (reason === "unmeasured_cell") return "unmeasured";
-  return null;
-}
-
-/** Measurement refusals reckless mode may turn into a warned, selectable option. */
-export function isDowngradableRejectReason(reason: string): boolean {
-  return rejectReasonTier(reason) !== null;
-}
-
-/**
- * A failing preflight cell still blocks unless reckless mode downgraded it.
- * Cells with no tier are hard refusals in every mode.
- */
-export function preflightCellBlocks(
-  cell: { ok: boolean; tier?: "over" | "unmeasured" | null },
-  budgetMode: BudgetMode,
-): boolean {
-  if (cell.ok) return false;
-  return !(
-    budgetMode === "reckless" &&
-    (cell.tier === "over" || cell.tier === "unmeasured")
-  );
+  return value === "cautious" ? "cautious" : "brave";
 }
 
 export type PreflightCellStatus =
@@ -60,62 +33,48 @@ export type PreflightCellStatus =
   | {
       status: "warned";
       message: string | null;
-      tier: "over" | "unmeasured";
+      tier: ConfirmableTier;
       readout: BudgetReadout | null;
     }
   | { status: "blocked"; message: string | null; readout: BudgetReadout | null };
 
-/** A downgraded failure is warned. A passing cell with a confirmable tier is warned only in reckless mode. */
+/** `ok` already applies the echoed mode. An ok cell with a bet tier is warned. */
 export function preflightCellStatus(
   cell:
     | {
         ok: boolean;
         message?: string | null;
-        tier?: "over" | "unmeasured" | null;
+        tier?: ConfirmableTier | null;
         readout?: BudgetReadout | null;
       }
     | null
     | undefined,
-  budgetMode: BudgetMode,
 ): PreflightCellStatus {
   if (cell == null) return { status: "clear" };
   const message = cell.message ?? null;
   const readout = cell.readout ?? null;
-  if (cell.ok) {
-    if (
-      budgetMode === "reckless" &&
-      (cell.tier === "over" || cell.tier === "unmeasured")
-    ) {
-      return { status: "warned", message, tier: cell.tier, readout };
-    }
-    return { status: "clear" };
+  if (!cell.ok) return { status: "blocked", message, readout };
+  if (isConfirmableBudgetTier(cell.tier)) {
+    return { status: "warned", message, tier: cell.tier, readout };
   }
-  if (!preflightCellBlocks(cell, budgetMode)) {
-    return {
-      status: "warned",
-      message,
-      tier: cell.tier === "unmeasured" ? "unmeasured" : "over",
-      readout,
-    };
-  }
-  return { status: "blocked", message, readout };
+  return { status: "clear" };
 }
 
 /** Over and unmeasured ask before generate. Tight stays on the option icon. */
 export function isConfirmableBudgetTier(
   tier: string | null | undefined,
-): tier is "over" | "unmeasured" {
+): tier is ConfirmableTier {
   return tier === "over" || tier === "unmeasured";
 }
 
-export function hasDowngradableDrop(
-  cells: readonly { audio: boolean; reason: string }[] | null | undefined,
-  audio?: boolean,
-): boolean {
-  return (cells ?? []).some(
-    (cell) =>
-      (audio === undefined || cell.audio === audio) &&
-      isDowngradableRejectReason(cell.reason),
+/** The issue Generate confirms before it runs, or null when nothing needs asking. */
+export function confirmableBudgetIssue<T extends { tier?: string | null }>(
+  issues: readonly T[],
+): (T & { tier: ConfirmableTier }) | null {
+  return (
+    issues.find((issue): issue is T & { tier: ConfirmableTier } =>
+      isConfirmableBudgetTier(issue.tier),
+    ) ?? null
   );
 }
 
@@ -141,21 +100,29 @@ export function riskOptionFields(
   return {};
 }
 
-export const RECKLESS_FAILURE_BACKSTOP = "This job ran in Reckless mode.";
-
-export const RECKLESS_REMOTE_ATTRIBUTION =
-  "Reckless mode is on for your Desktop — this job may fail or stall.";
+export const BET_FAILURE_BACKSTOP = "This job was started despite a memory warning.";
 
 export const NOTHING_FITS_STRIP =
   "Nothing fits this machine — every option may fail or stall.";
 
-export const T2_SESSION_NOTICE =
-  "Over-budget jobs are allowed while Reckless mode is on.";
-
-export const T3_CONFIRM_TITLE = "Generate anyway?";
-
-export const T3_CONFIRM_PAGING =
-  "This can hang the app while paging. You can stop it once it starts running.";
+export function riskConfirmCopy(tier: ConfirmableTier): { title: string; body: string } {
+  switch (tier) {
+    case "over":
+      return {
+        title: "Generate anyway?",
+        body: "Your computer may become very slow or freeze while generating. You can stop it once it starts running.",
+      };
+    case "unmeasured":
+      return {
+        title: "Not tested on this machine",
+        body: "It may run out of memory or slow to a crawl. You can stop it once it starts running.",
+      };
+    default: {
+      const unhandled: never = tier;
+      return unhandled;
+    }
+  }
+}
 
 export function generateHintForTier(
   tier: SelectionTier | null | undefined,
@@ -170,10 +137,10 @@ export function queueRiskTooltip(
   readout?: BudgetReadout | null,
 ): string {
   const line = readout ? budgetTooltip(readout) : message;
-  return `Queued in Reckless mode — ${line}`;
+  return `Queued despite a warning. ${line}`;
 }
 
-export function withRecklessBackstop(body: string, ranReckless: boolean): string {
-  if (!ranReckless) return body;
-  return `${body} ${RECKLESS_FAILURE_BACKSTOP}`;
+export function withBetBackstop(body: string, ranOnBet: boolean): string {
+  if (!ranOnBet) return body;
+  return `${body} ${BET_FAILURE_BACKSTOP}`;
 }

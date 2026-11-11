@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from runtime_config.assets_layout import in_flight_folder
 from runtime_config.runtime_policy import LocalGenerationMode
 
 if TYPE_CHECKING:
@@ -44,6 +45,9 @@ class RuntimeConfig:
     system: str = ""
     # Exact CUDA device total VRAM in bytes. None if CUDA is unavailable or the query failed.
     vram_bytes: int | None = None
+    # Free CUDA VRAM sampled once at backend startup before any model loads, used as the
+    # usable ceiling for total_only (picker, model specs, queue create).
+    usable_vram_bytes: int | None = None
     # Exact total system RAM in bytes. None if the query failed.
     total_ram_bytes: int | None = None
     # Drive class of the checkpoint volume, probed once at startup. None when unknown.
@@ -55,6 +59,15 @@ class RuntimeConfig:
     # measured budget route: pre-Ada streaming runs bf16, which the fp8-fit
     # laws never saw. Default True preserves current routing where unprobed.
     fp8_capable: bool = True
+    # Kill switch for parallel queue lanes. False registers only the local lane: every job
+    # then runs one at a time on the local slot, as before lanes existed.
+    parallel_queue_lanes: bool = True
+    # User-chosen assets folder (LTX_ASSETS_DIR). None means <app_data_dir>/assets.
+    assets_dir: Path | None = None
+
+    @property
+    def in_flight_dir(self) -> Path:
+        return in_flight_folder(self.app_data_dir, self.assets_dir)
 
     @property
     def force_api_generations(self) -> bool:

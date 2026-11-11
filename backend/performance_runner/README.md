@@ -60,7 +60,7 @@ dashboard in a browser. Ctrl+C stops both.
 
 > The runner measures **local** generation. The backend decides local-vs-API at
 > startup from the hardware available _at that moment_ — on Apple Silicon, **total**
-> unified RAM (32 GiB minimum), not free RAM. If it comes up in API-only mode,
+> unified RAM (24 GiB minimum; see the README's System requirements), not free RAM. If it comes up in API-only mode,
 > `perf:dev` stops because this machine is below the local-gen floor.
 
 > **`perf:dev` measures the dev backend** — the same interpreter `pnpm dev` uses, with
@@ -273,7 +273,7 @@ uv run python soak_test.py --n 3 --label bump_e4 --set-cache on   # E4 stage-cac
 | those plus `last_frames_not_black`  | E2 MPS tail-frame zeroing   | each of last ~8 frames has non-zero luma (fails closed without ffmpeg) |
 | `iclora_stage2_on`                  | E3 two-stage IC-LoRA        | completes with `skip_stage_2=false` (stage 2 is not forced onto streaming) |
 | `soak_test.py --n 3 --set-cache on` | E4 stage-cache soak         | flat reserved-VRAM floor               |
-| `mkf_interpolation`                 | guiding-latent swap         | output exists                          |
+| `mkf_interpolation`                 | guide-all image binding     | output exists                          |
 | `cancel_mid_denoise`                | interrupt hook              | generate returns `cancelled` after `phase=inference` |
 | `iclora_day_to_night`               | shipped skip_stage_2 tiling | no OOM / crawl                         |
 

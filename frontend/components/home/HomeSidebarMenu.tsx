@@ -25,6 +25,9 @@ import {
   type HomeSidebarNavItem,
   type HomeSidebarNavItemId,
 } from "./home-sidebar-items";
+import { isCustomLoraNavId } from "@/lib/custom-lora";
+// eslint-disable-next-line no-restricted-imports
+import { useCustomLoras, useRecentCustomLoraIds } from "@/ltx-io/hooks/useCustomLoras";
 import { homeFeatureIcon } from "./homeFeatureIcons";
 import styles from "./DesktopHomeSidebar.module.scss";
 import { useRecentSidebarProjects } from "./useRecentSidebarProjects";
@@ -82,7 +85,8 @@ function iconForNavItem(id: HomeSidebarNavItemId): ReactNode {
     case "projects":
       return <ProjectsIcon />;
     default:
-      return homeFeatureIcon(id);
+      // A saved LoRA uses the icon of the Custom LoRA feature.
+      return homeFeatureIcon(isCustomLoraNavId(id) ? "custom-lora" : id);
   }
 }
 
@@ -98,10 +102,16 @@ export function HomeSidebarMenu({
   const location = useLocation();
   const recentFeatureIds = useRecentSidebarTools();
   const recentProjects = useRecentSidebarProjects();
+  const savedLoras = useCustomLoras().data;
+  const recentLoraIds = useRecentCustomLoraIds();
   const navEntries = planHomeSidebarNavEntries(
     plan,
     recentFeatureIds,
     recentProjects,
+    {
+      saved: savedLoras ?? [],
+      recentIds: recentLoraIds,
+    },
   );
   const footerItems = planHomeSidebarFooterItems(plan);
 

@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import path from 'path'
 import os from 'os'
-import { getProjectAssetsPath } from './app-state'
+import { getAssetsDir, getProjectAssetsPath } from './app-state'
 
 export const isDev = !app.isPackaged
 
@@ -25,6 +25,6 @@ export function getAllowedRoots(): string[] {
   if (!isDev && process.resourcesPath) {
     roots.push(process.resourcesPath)
   }
-  roots.push(getProjectAssetsPath())
+  roots.push(getProjectAssetsPath(), getAssetsDir())
   return roots
 }

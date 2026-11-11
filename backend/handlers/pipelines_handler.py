@@ -40,18 +40,17 @@ from runtime_config.model_download_specs import (
 )
 from runtime_config.evict_retry import evict_retry_filter
 from runtime_config.runtime_policy import LocalGenerationMode, streaming_prefetch_count_for_mode
+from runtime_config.budget_admission import Admission, PricedJob, Refused, RiskAllowance, admit
+from runtime_config.device_calibration import JobEnvelope
+from runtime_config.eta import estimate_envelope_wall_time
+from runtime_config.memory_meter import job_filter_machine_factor
 from runtime_config.video_job_budget import (
+    WINDOWS_ICLORA_CPU_STREAMING_RAM_GB,
     LocalJobFilter,
-    VideoJobDecision,
-    VideoJobLoad,
-    VideoJobReject,
-    decide_edit_job,
     max_edit_frames_that_load,
+    price_edit_job,
     reject_message_and_code,
-    risk_allowed,
-    risk_for_reject,
-    risk_if_allowed,
-    unmeasured_load_risk,
+    video_job_reject,
     vram_snapshot_suffix,
 )
 from services.retake_pipeline.window import (
@@ -101,38 +100,52 @@ _EDIT_HOME_ACTION = "Lower the resolution."
 
 @dataclass(frozen=True)
 class _EditVerdict:
-    """One edit cell verdict. ``cause`` chains the window ValueError so
-    create-time raises keep ``from exc`` chaining; the matrix drops it.
-    ``message``/``code`` ride None on ok — failing verdicts always set both."""
+    """One edit cell verdict under the live mode. ``cause`` chains the window
+    ValueError so create-time raises keep ``from exc`` chaining; the matrix
+    drops it. ``ok`` means create would enqueue it. ``risk`` is the bet: the
+    admitted one on ok, the one the mode refused otherwise (None for a hard
+    refusal). Failing verdicts always set ``message``/``code``; an ok verdict
+    with a bet carries the bet line as ``message``."""
 
     ok: bool
     message: str | None = None
     code: str | None = None
     cause: BaseException | None = None
     risk: GenerationRisk | None = None
+    estimated_seconds: int | None = None
 
 
-def _risk_for_edit_reject(
-    decision: VideoJobReject,
-    job_filter: LocalJobFilter,
-) -> GenerationRisk | None:
-    """Bet a failing edit cell could downgrade to, ignoring the live mode.
-
-    Callers that enqueue or run still check the mode. The preflight cell
-    always carries this, so a hard refusal and an over-budget cell differ.
-    """
-    return risk_for_reject(decision, job_filter)
-
-
-def _edit_duration_offered(verdict: _EditVerdict, job_filter: LocalJobFilter) -> bool:
-    """Whether the trim slider may sit on this duration.
-
-    A clean load always counts. In Reckless, a downgradable refusal counts
-    too, so the slider does not clamp to zero for a job create would enqueue.
-    """
-    if verdict.ok:
-        return True
-    return risk_allowed(None, job_filter) and verdict.risk is not None
+def _budget_verdict(
+    admission: Admission,
+    refusal: tuple[str, str] | None,
+    *,
+    job_filter: LocalJobFilter | None = None,
+) -> _EditVerdict:
+    if isinstance(admission, Refused):
+        assert refusal is not None  # _decide_edit_budget pairs every refusal
+        message, code = refusal
+        return _EditVerdict(ok=False, message=message, code=code, risk=admission.bet)
+    risk = admission.risk
+    estimated_seconds: int | None = None
+    if job_filter is not None:
+        system = (
+            job_filter.profile.system
+            if job_filter.profile.system in ("Windows", "Linux", "Darwin")
+            else "Windows"
+        )
+        est = estimate_envelope_wall_time(
+            admission.envelope,
+            system=system,
+            machine_factor=job_filter_machine_factor(job_filter),
+            conv_vae=job_filter.conv_vae,
+        )
+        estimated_seconds = None if est is None else est.seconds
+    return _EditVerdict(
+        ok=True,
+        message=None if risk is None else risk.message,
+        risk=risk,
+        estimated_seconds=estimated_seconds,
+    )
 
 
 class PipelinesHandler(StateHandlerBase):
@@ -316,18 +329,19 @@ class PipelinesHandler(StateHandlerBase):
             self._assert_invariants()
 
     def load_image_generation_pipeline_to_gpu(self) -> ImageGenerationPipeline:
-        with self._lock:
-            if self.state.gpu_slot is not None:
-                active = self.state.gpu_slot.active_pipeline
-                if isinstance(active, ImageGenerationPipeline):
-                    return active
-                self._ensure_no_running_generation()
+        resident = self._resident_matching(ImageGenerationPipeline, lambda _: True)
+        if resident is not None:
+            return resident
 
         image_generation_pipeline: ImageGenerationPipeline | None = None
 
         # Cold zit loads read weights off disk: same proof-of-life hold as
         # the GPU swaps so a slow load reads as busy, not hung.
         with liveness_hold():
+            # A resident video pipeline is released before zit allocates, as in
+            # _swap_gpu_pipeline: both models must not be resident at once on a
+            # tight card. A queued image job often runs right after a video job.
+            self._evict_gpu_pipeline_for_swap()
             with self._lock:
                 match self.state.cpu_slot:
                     case CpuSlot(active_pipeline=stored):
@@ -520,7 +534,10 @@ class PipelinesHandler(StateHandlerBase):
                     self.config.device,
                     prefetch,
                     lora_strength,
-                    offload_mode=self._offload_mode(load_mode),
+                    offload_mode=self._offload_mode(
+                        load_mode,
+                        cpu_ram_floor_gb=WINDOWS_ICLORA_CPU_STREAMING_RAM_GB,
+                    ),
                     video_vae_path=paths.video_vae_path,
                     audio_vae_path=paths.audio_vae_path,
                     duration_head_path=paths.duration_head_path,
@@ -600,6 +617,30 @@ class PipelinesHandler(StateHandlerBase):
             state = self._swap_gpu_pipeline(_create)
         return state
 
+    def _admit_edit_budget(
+        self,
+        priced: PricedJob,
+        *,
+        job_filter: LocalJobFilter,
+        queued_home: bool = False,
+        allowance: RiskAllowance | None = None,
+    ) -> tuple[Admission, tuple[str, str] | None]:
+        admission = admit(
+            priced,
+            allowance if allowance is not None else RiskAllowance.for_mode(job_filter.budget_mode),
+        )
+        if not isinstance(admission, Refused):
+            return admission, None
+        reject = video_job_reject(admission)
+        if queued_home:
+            return admission, reject_message_and_code(
+                reject,
+                job_filter,
+                action=_EDIT_HOME_ACTION,
+                free_short_action=_EDIT_HOME_ACTION,
+            )
+        return admission, reject_message_and_code(reject, job_filter)
+
     def _decide_edit_budget(
         self,
         width: int,
@@ -608,31 +649,20 @@ class PipelinesHandler(StateHandlerBase):
         *,
         job_filter: LocalJobFilter,
         queued_home: bool = False,
-    ) -> tuple[VideoJobDecision, tuple[str, str] | None]:
-        """Decided edit load plus the reject pair, if it rejects.
+        allowance: RiskAllowance | None = None,
+    ) -> tuple[Admission, tuple[str, str] | None]:
+        """Edit admission plus the refusal pair, if it refuses.
 
         Single decide + message mapping shared by the raise path
         (``_edit_load_mode``) and the verdict path (create-time preflight,
         preflight matrix): one decide call, one message builder, no drift.
         """
-        decision = decide_edit_job(
-            width,
-            height,
-            frames,
+        return self._admit_edit_budget(
+            price_edit_job(width, height, frames, job_filter=job_filter),
             job_filter=job_filter,
+            queued_home=queued_home,
+            allowance=allowance,
         )
-        if isinstance(decision, VideoJobReject):
-            if queued_home:
-                message, code = reject_message_and_code(
-                    decision,
-                    job_filter,
-                    action=_EDIT_HOME_ACTION,
-                    free_short_action=_EDIT_HOME_ACTION,
-                )
-            else:
-                message, code = reject_message_and_code(decision, job_filter)
-            return decision, (message, code)
-        return decision, None
 
     def _edit_load_mode(
         self,
@@ -642,38 +672,27 @@ class PipelinesHandler(StateHandlerBase):
         *,
         queued_home: bool = False,
         allow_evict_retry: bool = False,
-        allow_risk: bool | None = None,
-        unmeasured_bet: bool = False,
-    ) -> LocalGenerationMode:
-        """Per-job full vs stream. Missing shape keeps the process mode.
+        allowance: RiskAllowance | None = None,
+    ) -> tuple[LocalGenerationMode, JobEnvelope | None]:
+        """Per-job full vs stream, and the priced envelope. Missing shape keeps the process mode.
 
         Does not change ``local_generations_mode``. Uses the edit headroom, so a
         31 GB card streams a long 720p retake/extend as well as 1080p. Real
         loads pass ``allow_evict_retry``: a total-possible CUDA reject whose
-        shortfall live weights cover gets one evict-and-resample before the 422.
-        ``allow_risk=None`` follows the filter's live mode (every request-scoped
-        caller); executors pass the stored annotation so a mode flip never
+        shortfall live weights cover gets one evict-and-resample before admission.
+        ``allowance=None`` follows the filter's live mode (every request-scoped
+        caller); executors pass the stored allowance so a mode flip never
         re-gates a queued job. An over bet streams, including when the
         shortfall later grows. An unmeasured bet does not cover a later
         memory miss. Hard rejects raise in every mode.
         """
         if width is None or height is None or frames is None:
-            return self.config.local_generations_mode
+            return self.config.local_generations_mode, None
         job_filter = self._local_job_filter()
-        decision, reject = self._decide_edit_budget(
-            width,
-            height,
-            frames,
-            job_filter=job_filter,
-            queued_home=queued_home,
-        )
-        if isinstance(decision, VideoJobReject) and allow_evict_retry:
+        priced = price_edit_job(width, height, frames, job_filter=job_filter)
+        if allow_evict_retry:
             rebuilt = evict_retry_filter(
-                feature="edit",
-                is_vram_occupancy_miss=(decision.reason == "stream_over"),
-                stream_gib=decision.stream_gib,
-                seq=decision.seq,
-                full_gib=decision.full_gib,
+                priced=priced,
                 job_filter=job_filter,
                 live_allocated_bytes=self._gpu.get_cuda_live_allocated_bytes(),
                 reserved_bytes=self._gpu.get_cuda_reserved_bytes(),
@@ -683,64 +702,45 @@ class PipelinesHandler(StateHandlerBase):
             )
             if rebuilt is not None:
                 job_filter = rebuilt
-                decision, reject = self._decide_edit_budget(
-                    width,
-                    height,
-                    frames,
-                    job_filter=job_filter,
-                    queued_home=queued_home,
-                )
-        if isinstance(decision, VideoJobReject):
-            assert reject is not None  # _decide_edit_budget pairs every reject
-            message, code = reject
-            risk = risk_if_allowed(
-                risk_for_reject(decision, job_filter),
-                job_filter,
-                allow_risk,
-                unmeasured_bet=unmeasured_bet,
-            )
-            if risk is not None:
-                logger.info(
-                    "[video-edit] job budget seq=%.0f full=%.1fGiB stream=%.1fGiB -> risk:%s over_gib=%s over_ram_gb=%s%s",
-                    decision.seq,
-                    decision.full_gib,
-                    decision.stream_gib,
-                    risk.tier,
-                    risk.over_gib,
-                    risk.over_ram_gb,
-                    vram_snapshot_suffix(
-                        allocated_bytes=self._gpu.get_cuda_live_allocated_bytes(),
-                        reserved_bytes=self._gpu.get_cuda_reserved_bytes(),
-                        free_bytes=job_filter.budget.free_vram_bytes,
-                    ),
-                )
-                return "streaming_models_loading"
-            logger.info(
-                "[video-edit] job budget seq=%.0f full=%.1fGiB stream=%.1fGiB -> reject%s",
-                decision.seq,
-                decision.full_gib,
-                decision.stream_gib,
-                vram_snapshot_suffix(
-                    allocated_bytes=self._gpu.get_cuda_live_allocated_bytes(),
-                    reserved_bytes=self._gpu.get_cuda_reserved_bytes(),
-                    free_bytes=job_filter.budget.free_vram_bytes,
-                ),
-            )
-            raise HTTPError(422, message, code=code)
-        logger.info(
-            "[video-edit] job budget seq=%.0f full=%.1fGiB stream=%.1fGiB -> %s%s",
-            decision.seq,
-            decision.full_gib,
-            decision.stream_gib,
-            decision.mode,
-            vram_snapshot_suffix(
-                allocated_bytes=self._gpu.get_cuda_live_allocated_bytes(),
-                reserved_bytes=self._gpu.get_cuda_reserved_bytes(),
-                free_bytes=job_filter.budget.free_vram_bytes,
-            ),
+                priced = price_edit_job(width, height, frames, job_filter=job_filter)
+        admission, refusal = self._admit_edit_budget(
+            priced,
+            job_filter=job_filter,
+            queued_home=queued_home,
+            allowance=allowance,
         )
-        assert isinstance(decision, VideoJobLoad)
-        return decision.mode
+        snapshot = vram_snapshot_suffix(
+            allocated_bytes=self._gpu.get_cuda_live_allocated_bytes(),
+            reserved_bytes=self._gpu.get_cuda_reserved_bytes(),
+            free_bytes=job_filter.budget.free_vram_bytes,
+        )
+        if isinstance(admission, Refused):
+            assert refusal is not None  # _decide_edit_budget pairs every refusal
+            logger.info(
+                "[video-edit] job budget seq=%.0f full=%.1fGiB stream=%.1fGiB -> reject:%s%s",
+                priced.seq,
+                priced.full_gib,
+                priced.stream_gib,
+                admission.reject.reason,
+                snapshot,
+            )
+            message, code = refusal
+            raise HTTPError(422, message, code=code)
+        risk = admission.risk
+        logger.info(
+            "[video-edit] job budget seq=%.0f full=%.1fGiB stream=%.1fGiB -> %s%s%s",
+            priced.seq,
+            priced.full_gib,
+            priced.stream_gib,
+            admission.load.mode,
+            (
+                f" risk:{risk.tier} over_gib={risk.over_gib} over_ram_gb={risk.over_ram_gb}"
+                if risk is not None
+                else ""
+            ),
+            snapshot,
+        )
+        return admission.load.mode, admission.envelope
 
     def high_res_video_enabled(self) -> bool:
         return self._high_res_enabled()
@@ -791,7 +791,7 @@ class PipelinesHandler(StateHandlerBase):
         same file metadata, the same frame cap, the same load gate — so an
         over-budget create 422s here instead of enqueueing a job that fails
         in the runner with a bare code. Raises HTTPError; returns the bet
-        annotation for a downgraded reject in reckless mode, else None.
+        annotation for an admitted risky job, else None.
         ``feature`` must agree with the params type (wiring check only —
         the params type is authoritative for dispatch).
         """
@@ -818,7 +818,6 @@ class PipelinesHandler(StateHandlerBase):
         job_filter: LocalJobFilter,
         start_time: float,
         duration: float,
-        allow_risk: bool | None = None,
     ) -> _EditVerdict:
         """Retake window + budget verdict. Window math is shared with the executor."""
         prepared = prepare_retake_window(
@@ -840,28 +839,15 @@ class PipelinesHandler(StateHandlerBase):
         # Window math and refusal copy read the picture size; the budget reads
         # the letterboxed canvas the model actually encodes (never smaller).
         canvas = generation_letterbox(target_width, target_height)
-        decision, reject = self._decide_edit_budget(
-            canvas.canvas_width,
-            canvas.canvas_height,
-            prepared.window.encode_frames,
-            job_filter=job_filter,
-            queued_home=True,
-        )
-        if reject is not None:
-            assert isinstance(decision, VideoJobReject)  # reject pair implies reject
-            message, code = reject
-            return _EditVerdict(
-                ok=False,
-                message=message,
-                code=code,
-                risk=_risk_for_edit_reject(decision, job_filter),
-            )
-        assert isinstance(decision, VideoJobLoad)
-        return _EditVerdict(
-            ok=True,
-            risk=unmeasured_load_risk(
-                decision, job_filter, feature="edit", allow_risk=allow_risk
+        return _budget_verdict(
+            *self._decide_edit_budget(
+                canvas.canvas_width,
+                canvas.canvas_height,
+                prepared.window.encode_frames,
+                job_filter=job_filter,
+                queued_home=True,
             ),
+            job_filter=job_filter,
         )
 
     def _extend_verdict(
@@ -875,7 +861,6 @@ class PipelinesHandler(StateHandlerBase):
         job_filter: LocalJobFilter,
         duration: float,
         mode: ExtendMode,
-        allow_risk: bool | None = None,
     ) -> _EditVerdict:
         """Extend window + budget verdict. Window math is shared with the executor."""
         prepared = prepare_extend_window(
@@ -897,45 +882,22 @@ class PipelinesHandler(StateHandlerBase):
         # Same picture/canvas split as the retake verdict: messages name the
         # picture, the budget prices the canvas.
         canvas = generation_letterbox(target_width, target_height)
-        decision, reject = self._decide_edit_budget(
-            canvas.canvas_width,
-            canvas.canvas_height,
-            prepared.window.context_frames + prepared.extend_frames,
-            job_filter=job_filter,
-            queued_home=True,
-        )
-        if reject is not None:
-            assert isinstance(decision, VideoJobReject)  # reject pair implies reject
-            message, code = reject
-            return _EditVerdict(
-                ok=False,
-                message=message,
-                code=code,
-                risk=_risk_for_edit_reject(decision, job_filter),
-            )
-        assert isinstance(decision, VideoJobLoad)
-        return _EditVerdict(
-            ok=True,
-            risk=unmeasured_load_risk(
-                decision, job_filter, feature="edit", allow_risk=allow_risk
+        return _budget_verdict(
+            *self._decide_edit_budget(
+                canvas.canvas_width,
+                canvas.canvas_height,
+                prepared.window.context_frames + prepared.extend_frames,
+                job_filter=job_filter,
+                queued_home=True,
             ),
+            job_filter=job_filter,
         )
 
     @staticmethod
-    def _raise_verdict_or_risk(
-        verdict: _EditVerdict,
-        job_filter: LocalJobFilter,
-        allow_risk: bool | None,
-    ) -> GenerationRisk | None:
-        """Raise a failing verdict as the create-time 422, unless reckless
-        downgraded it — then hand the bet back for the annotation.
-
-        A clean legacy load can also carry an unmeasured bet. That one is
-        already mode-gated on the verdict.
-        """
+    def _raise_verdict_or_risk(verdict: _EditVerdict) -> GenerationRisk | None:
+        """Raise a failing verdict as the create-time 422, else hand back the
+        admitted bet for the annotation."""
         if verdict.ok:
-            return verdict.risk
-        if verdict.risk is not None and risk_allowed(allow_risk, job_filter):
             return verdict.risk
         assert verdict.message is not None and verdict.code is not None
         if verdict.cause is not None:
@@ -947,7 +909,7 @@ class PipelinesHandler(StateHandlerBase):
 
         Same verdicts execute would reach (shared window math, same frame
         cap, same load gate), raised as the create 422 instead of failing
-        in the runner. A downgraded reckless reject returns its annotation.
+        in the runner. An admitted risky job returns its annotation.
         """
         fps, source_width, source_height, source_frames = read_source_metadata(
             asset_path
@@ -977,8 +939,6 @@ class PipelinesHandler(StateHandlerBase):
                 start_time=params.startTime,
                 duration=params.duration,
             ),
-            job_filter,
-            None,
         )
 
     def _preflight_extend(self, asset_path: str, params: ExtendParams) -> GenerationRisk | None:
@@ -986,7 +946,7 @@ class PipelinesHandler(StateHandlerBase):
 
         Same verdicts execute would reach (shared window math, same frame
         cap, same load gate), raised as the create 422 instead of failing
-        in the runner. A downgraded reckless reject returns its annotation.
+        in the runner. An admitted risky job returns its annotation.
         """
         fps, source_width, source_height, source_frames = read_source_metadata(
             asset_path
@@ -1017,8 +977,6 @@ class PipelinesHandler(StateHandlerBase):
                 duration=params.duration,
                 mode=params.mode,
             ),
-            job_filter,
-            None,
         )
 
     @staticmethod
@@ -1121,13 +1079,13 @@ class PipelinesHandler(StateHandlerBase):
                         mode=mode,
                     )
 
-            if not _edit_duration_offered(verdict_at(min_duration), job_filter) or hi_cap <= 0:
+            if not verdict_at(min_duration).ok or hi_cap <= 0:
                 max_duration = 0.0
             elif hi_cap <= min_duration:
                 max_duration = hi_cap
             else:
                 max_duration = self._max_passing_duration(
-                    lambda d: _edit_duration_offered(verdict_at(d), job_filter),
+                    lambda d: verdict_at(d).ok,
                     min_duration,
                     hi_cap,
                 )
@@ -1157,6 +1115,7 @@ class PipelinesHandler(StateHandlerBase):
                             None if verdict.risk is None else verdict.risk.shortfall_kind
                         ),
                         readout=None if verdict.risk is None else verdict.risk.readout,
+                        estimated_seconds=verdict.estimated_seconds,
                     )
                 )
         return EditPreflightResponse(
@@ -1181,9 +1140,9 @@ class PipelinesHandler(StateHandlerBase):
         height: int | None = None,
         frames: int | None = None,
         queued_home: bool = False,
-        allow_risk: bool | None = None,
-        unmeasured_bet: bool = False,
-    ) -> RetakePipelineState:
+        allowance: RiskAllowance | None = None,
+    ) -> tuple[RetakePipelineState, JobEnvelope | None]:
+        """The pipeline for this edit job, and the envelope a clean run of it records."""
         self._install_text_patches_if_needed()
 
         quantized = device_supports_fp8(self.config.device)
@@ -1192,14 +1151,13 @@ class PipelinesHandler(StateHandlerBase):
         # job can load 2.3 while Settings stays on 2.5, and the two do not share an encoder.
         gemma_root = self._text_handler.resolve_gemma_root(model_id=model_id)
         paths = self._resolve_ltx_paths(model_id, gemma_root)
-        load_mode = self._edit_load_mode(
+        load_mode, envelope = self._edit_load_mode(
             width,
             height,
             frames,
             queued_home=queued_home,
             allow_evict_retry=True,
-            allow_risk=allow_risk,
-            unmeasured_bet=unmeasured_bet,
+            allowance=allowance,
         )
 
         state = self._resident_matching(
@@ -1226,7 +1184,10 @@ class PipelinesHandler(StateHandlerBase):
                     streaming_prefetch_count=streaming_prefetch_count_for_mode(load_mode),
                     loras=[],
                     quantization=quantization,
-                    offload_mode=self._offload_mode(load_mode),
+                    offload_mode=self._offload_mode(
+                        load_mode,
+                        cpu_ram_floor_gb=None,
+                    ),
                     video_vae_path=paths.video_vae_path,
                     audio_vae_path=paths.audio_vae_path,
                     duration_head_path=paths.duration_head_path,
@@ -1242,4 +1203,4 @@ class PipelinesHandler(StateHandlerBase):
                 )
 
             state = self._swap_gpu_pipeline(_create)
-        return state
+        return state, envelope

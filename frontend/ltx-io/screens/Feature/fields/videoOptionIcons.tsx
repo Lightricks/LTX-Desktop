@@ -24,6 +24,7 @@ const RESOLUTION_ICON_MAP: Partial<Record<string, ReactNode>> = {
   "720p": <ResolutionSmIcon aria-hidden />,
   "1080p": <ResolutionSmIcon aria-hidden />,
   "1440p": <ResolutionMdIcon aria-hidden />,
+  "2048p": <ResolutionLgIcon aria-hidden />,
   "2160p": <ResolutionLgIcon aria-hidden />,
   "4320p": <ResolutionXlIcon aria-hidden />,
 };

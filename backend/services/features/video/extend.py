@@ -12,6 +12,8 @@ from handlers.video_resolution import (
     read_source_metadata,
     resolve_requested_home_edit_size,
 )
+from runtime_config.budget_admission import RiskAllowance
+from runtime_config.device_calibration import JobEnvelope
 from services.features.video.edit_executor import VideoEditExecutor
 from services.features.video.job_common import model_from_spec
 from services.fast_video_pipeline.windowed_run import measured_edit
@@ -44,6 +46,7 @@ class _PreparedExtend:
     extend_frames: int
     dest_path: Path
     windowed_path: str
+    ran: JobEnvelope | None
 
 
 class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExtend]):
@@ -70,8 +73,7 @@ class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExte
         dest: Path,
         windowed_path: str,
         *,
-        allow_risk: bool,
-        unmeasured_bet: bool = False,
+        allowance: RiskAllowance = RiskAllowance.none(),
     ) -> _PreparedExtend:
         fps, source_width, source_height, source_frames = read_source_metadata(
             video.path
@@ -158,14 +160,13 @@ class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExte
             window, extend_frames = shrunk.window, shrunk.extend_frames
             return window.context_frames + extend_frames
 
-        pipeline_state = self._load_edit_window(
+        pipeline_state, ran = self._load_edit_window(
             local_model_id=local_model_id,
             width=box.canvas_width,
             height=box.canvas_height,
             frames=window.context_frames + extend_frames,
             total_cap=frame_cap,
-            allow_risk=allow_risk,
-            unmeasured_bet=unmeasured_bet,
+            allowance=allowance,
             generation_id=generation.id,
             log_name="Extend",
             rewindow=rewindow,
@@ -201,6 +202,7 @@ class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExte
             extend_frames=extend_frames,
             dest_path=dest,
             windowed_path=windowed_path,
+            ran=ran,
         )
 
     def generate(self, prepared: _PreparedExtend) -> None:
@@ -209,6 +211,7 @@ class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExte
             self._generate(prepared)
 
     def _generate(self, prepared: _PreparedExtend) -> None:
+        nag = self.resolve_nag(prepared.params, prepared.pipeline_state)
         prepared.pipeline_state.pipeline.extend(
             video_path=prepared.video.path,
             prompt=prepared.params.prompt,
@@ -216,7 +219,7 @@ class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExte
             mode=prepared.params.mode,
             seed=prepared.seed,
             output_path=prepared.windowed_path,
-            negative_prompt=self._default_negative_prompt,
+            negative_prompt=prepared.params.negativePrompt or self._default_negative_prompt,
             regenerate_audio=True,
             enhance_prompt=False,
             distilled=True,
@@ -227,6 +230,7 @@ class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExte
             target_frames=prepared.window.context_frames,
             encode_start_time=prepared.window.start_time(prepared.fps),
             encode_max_duration=prepared.window.max_duration(prepared.fps),
+            nag=nag,
         )
 
     def stitch(self, prepared: _PreparedExtend) -> None:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from runtime_config.device_calibration import RunMemoryBaseline, RunMemoryEnd
+from services.gpu_info import run_peak
 from services.interfaces import GpuTelemetryPayload
 
 
@@ -25,6 +27,11 @@ class FakeGpuInfo:
         # one gate call, so a static field cannot model the freed memory).
         self.free_vram_bytes_fn: Callable[[], int | None] | None = None
         self.live_allocated_bytes_fn: Callable[[], int | None] | None = None
+        self.swap_used_bytes: int | None = None
+        # What the run watch reports at the end; all-None reads as no evidence.
+        self.run_end = RunMemoryEnd(
+            peak_reserved_bytes=None, min_free_vram_bytes=None, swap_used_bytes=None
+        )
 
     def get_gpu_info(self) -> GpuTelemetryPayload:
         return self.gpu_info
@@ -68,3 +75,18 @@ class FakeGpuInfo:
 
     def get_mps_pool_bytes(self) -> int | None:
         return self.mps_pool_bytes
+
+    def get_swap_used_bytes(self) -> int | None:
+        return self.swap_used_bytes
+
+    def begin_run_memory_watch(self) -> RunMemoryBaseline:
+        run_peak.begin_run()
+        return RunMemoryBaseline(
+            free_vram_bytes=self.get_free_cuda_vram_bytes(),
+            reserved_bytes=self.reserved_bytes,
+            swap_used_bytes=self.swap_used_bytes,
+        )
+
+    def end_run_memory_watch(self) -> RunMemoryEnd:
+        run_peak.end_run()
+        return self.run_end

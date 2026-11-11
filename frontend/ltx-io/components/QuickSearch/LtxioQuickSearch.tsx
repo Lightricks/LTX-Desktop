@@ -14,7 +14,8 @@ import { Button } from "@/ds/Button/Button";
 import { useKeyboardShortcut } from "@ds/lib/useKeyboardShortcut";
 import { useThemedPortalContainer } from "@ds/styles/themes/useTheme";
 import { useRecentSidebarTools } from "@/components/home/useRecentSidebarTools";
-import { useHighResVideoToVideoEnabled } from "../../hooks/useHighResVideoToVideoEnabled.ts";
+import { useCustomLoras } from "../../hooks/useCustomLoras.ts";
+import { useHomeFeatureFlags } from "../../hooks/useHomeFeatureFlags.ts";
 
 import type { QuickSearchNavigateOptions } from "./quickSearchNavigation.ts";
 
@@ -22,6 +23,7 @@ import { useQuickSearch } from "./QuickSearchContext.tsx";
 import { QuickSearchEmptyState } from "./QuickSearchEmptyState.tsx";
 import { QuickSearchFilters } from "./QuickSearchFilters.tsx";
 import {
+  QuickSearchCustomLoraPreview,
   QuickSearchFeaturePreview,
   QuickSearchPagePreview,
 } from "./QuickSearchPreview.tsx";
@@ -52,17 +54,27 @@ export function LtxioQuickSearch({
   const stickActiveItem = useRef(false);
   const trimmedQuery = query.trim();
 
-  const highResVideoToVideo = useHighResVideoToVideoEnabled();
+  const featureFlags = useHomeFeatureFlags();
+
+  const savedLoras = useCustomLoras().data;
+  const customLoras = useMemo(() => savedLoras ?? [], [savedLoras]);
 
   const browseSections = useMemo(
-    () => buildQuickSearchBrowseSections(recentFeatureIds, highResVideoToVideo),
-    [recentFeatureIds, highResVideoToVideo],
+    () =>
+      buildQuickSearchBrowseSections(
+        recentFeatureIds,
+        featureFlags,
+        customLoras,
+      ),
+    [recentFeatureIds, featureFlags, customLoras],
   );
 
   const rows = useMemo(() => {
-    if (trimmedQuery) return searchQuickSearchRows(trimmedQuery, highResVideoToVideo);
+    if (trimmedQuery) {
+      return searchQuickSearchRows(trimmedQuery, featureFlags, customLoras);
+    }
     return browseSectionsToRows(browseSections);
-  }, [browseSections, trimmedQuery, highResVideoToVideo]);
+  }, [browseSections, trimmedQuery, featureFlags, customLoras]);
 
   const filters = useMemo(
     () =>
@@ -127,11 +139,21 @@ export function LtxioQuickSearch({
   };
 
   const activateRow = (row: QuickSearchRow) => {
-    if (row.kind === "feature") {
-      openFeature(row.feature.path);
-      return;
+    switch (row.kind) {
+      case "feature":
+        openFeature(row.feature.path);
+        return;
+      case "custom-lora":
+        openFeature(row.path);
+        return;
+      case "page":
+        openPage(row.destination.path, row.destination.id === "page-home");
+        return;
+      default: {
+        const unhandled: never = row;
+        throw new Error(`Unhandled quick search row: ${JSON.stringify(unhandled)}`);
+      }
     }
-    openPage(row.destination.path, row.destination.id === "page-home");
   };
 
   const scrollToSection = (sectionId: string) => {
@@ -207,6 +229,13 @@ export function LtxioQuickSearch({
       <QuickSearchFeaturePreview
         key={activeRow.id}
         feature={activeRow.feature}
+        onOpen={() => activateRow(activeRow)}
+        onPointerInteractionEnd={() => inputRef.current?.focus()}
+      />
+    ) : activeRow?.kind === "custom-lora" ? (
+      <QuickSearchCustomLoraPreview
+        key={activeRow.id}
+        lora={activeRow.lora}
         onOpen={() => activateRow(activeRow)}
         onPointerInteractionEnd={() => inputRef.current?.focus()}
       />

@@ -20,7 +20,9 @@ from _routes.hf_auth import router as hf_auth_router
 from _routes.health import router as health_router
 from _routes.ic_lora import router as ic_lora_router
 from _routes.lora_catalog import router as lora_catalog_router
+from _routes.custom_lora import router as custom_lora_router
 from _routes.image_gen import router as image_gen_router
+from _routes.image_gen import status_router as image_status_router
 from _routes.prompt_enhancement import router as prompt_enhancement_router
 from _routes.models import router as models_router
 from _routes.suggest_gap_prompt import router as suggest_gap_prompt_router
@@ -34,6 +36,7 @@ from _routes.generation_seed import router as generation_seed_router
 from _routes.runtime_policy import router as runtime_policy_router
 from _routes.feature_flags import router as feature_flags_router
 from _routes.settings import router as settings_router
+from _routes.ui_preferences import router as ui_preferences_router
 from _routes.remote import router as remote_status_router
 from api_types import HTTPErrorResponse
 from http_exception_handlers import install_http_exception_handlers
@@ -147,6 +150,7 @@ def create_app(
     app.include_router(models_router)
     app.include_router(settings_router)
     app.include_router(image_gen_router)
+    app.include_router(image_status_router)
     app.include_router(suggest_gap_prompt_router)
     app.include_router(assistant_router)
     app.include_router(retake_router)
@@ -157,9 +161,11 @@ def create_app(
     app.include_router(generation_seed_router)
     app.include_router(ic_lora_router)
     app.include_router(lora_catalog_router)
+    app.include_router(custom_lora_router)
     app.include_router(prompt_enhancement_router)
     app.include_router(runtime_policy_router)
     app.include_router(feature_flags_router)
+    app.include_router(ui_preferences_router)
     app.include_router(hf_auth_router)
     app.include_router(remote_status_router)
 

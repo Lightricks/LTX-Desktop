@@ -26,6 +26,7 @@ DashboardWindow = Literal["7d", "30d", "all"]
 _ACTIVITY_FEATURES = (
     "text-to-video",
     "image-to-video",
+    "keyframes",
     "audio-to-video",
     "lora",
     "retake",
@@ -33,7 +34,7 @@ _ACTIVITY_FEATURES = (
     "ic-lora",
 )
 _RENDER_GROUPS = frozenset(
-    {"text-to-video", "image-to-video", "audio-to-video", "lora"}
+    {"text-to-video", "image-to-video", "keyframes", "audio-to-video", "lora"}
 )
 _EDIT_FEATURES = frozenset({"retake", "extend"})
 _LORA_GROUPS = frozenset({"lora", "ic-lora"})

@@ -29,10 +29,6 @@ _SHEET_SUFFIX = ".png"
 _MAX_CACHED_SHEETS = 8
 
 
-def _in_flight_dir(app_data_dir: Path) -> Path:
-    return app_data_dir / "assets" / ".in-flight"
-
-
 def _sheet_key(paths: Sequence[str], width: int, height: int) -> str:
     digest = hashlib.sha256(f"{width}x{height}".encode())
     for raw in paths:
@@ -61,14 +57,15 @@ def _evict_old_sheets(in_flight_dir: Path, *, keep: Path) -> None:
 
 
 def ensure_reference_sheet(
-    paths: Sequence[str], width: int, height: int, *, app_data_dir: Path
+    paths: Sequence[str], width: int, height: int, *, in_flight_dir: Path
 ) -> Path:
     """Return the cached reference sheet in ``.in-flight``, building it if absent.
 
     Only ``sheet-*.png`` files are evicted; other files in ``.in-flight`` are untouched.
     """
-    in_flight = _in_flight_dir(app_data_dir)
-    in_flight.mkdir(parents=True, exist_ok=True)
+    in_flight = in_flight_dir
+    # No parents: a gone custom assets folder must not be created without its marker.
+    in_flight.mkdir(exist_ok=True)
     dest = in_flight / f"{_SHEET_PREFIX}{_sheet_key(paths, width, height)}{_SHEET_SUFFIX}"
     if not dest.is_file():
         # A unique name, so two builders of the same sheet do not replace each other's file.

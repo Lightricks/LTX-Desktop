@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
-  getVisibleGenerations,
   hasNewSucceededGeneration,
   isInFlightGeneration,
   readGenerationParams,
@@ -40,51 +39,6 @@ describe("hasNewSucceededGeneration", () => {
     assert.equal(
       hasNewSucceededGeneration([gen("a", "succeeded")], [gen("a", "succeeded")]),
       false,
-    );
-  });
-});
-
-describe("getVisibleGenerations", () => {
-  it("keeps every in-flight row but caps finished rows at the limit", () => {
-    const rows = [
-      gen("r1", "running"),
-      gen("s1", "succeeded"),
-      gen("q1", "queued"),
-      gen("s2", "succeeded"),
-      gen("f1", "failed"),
-      gen("s3", "succeeded"),
-    ];
-
-    const visible = getVisibleGenerations(rows, 2);
-
-    // All in-flight kept; only the first 2 finished (s1, s2) survive the cap.
-    assert.deepEqual(
-      visible.map((row) => row.id),
-      ["r1", "s1", "q1", "s2"],
-    );
-  });
-
-  it("preserves input order (newest-first is the caller's contract)", () => {
-    const rows = [
-      gen("s1", "succeeded"),
-      gen("r1", "running"),
-      gen("s2", "cancelled"),
-    ];
-    assert.deepEqual(
-      getVisibleGenerations(rows, 10).map((row) => row.id),
-      ["s1", "r1", "s2"],
-    );
-  });
-
-  it("never drops in-flight rows even when finished rows exceed the cap", () => {
-    const rows = [
-      gen("s1", "succeeded"),
-      gen("s2", "succeeded"),
-      gen("r1", "running"),
-    ];
-    assert.deepEqual(
-      getVisibleGenerations(rows, 1).map((row) => row.id),
-      ["s1", "r1"],
     );
   });
 });

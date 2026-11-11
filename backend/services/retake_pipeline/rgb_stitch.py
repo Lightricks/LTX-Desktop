@@ -202,24 +202,32 @@ def write_rgb_video(
 ) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     rate = exact_rate(fps)
-    with av.open(str(dest), mode="w") as container:
-        stream = container.add_stream("libx264", rate=rate)  # type: ignore[reportUnknownMemberType]
-        stream.width = width
-        stream.height = height
-        stream.pix_fmt = "yuv420p"
-        # yuv420p is limited-range. Tagging these full-range RGB frames as
-        # JPEG/full makes the decoder skip the limited-to-full expand, so black
-        # comes back as 16. Limited (MPEG) is the tag that round-trips.
-        stream.codec_context.colorspace = 1
-        stream.codec_context.color_primaries = 1
-        stream.codec_context.color_trc = 1
-        stream.codec_context.color_range = 1
-        pts = 0
-        for pixels in frames:
-            video_frame = av.VideoFrame.from_ndarray(pixels, format="rgb24")
-            video_frame.pts = pts
-            pts += 1
-            for packet in stream.encode(video_frame):
+    try:
+        with av.open(str(dest), mode="w") as container:
+            stream = container.add_stream("libx264", rate=rate)  # type: ignore[reportUnknownMemberType]
+            stream.width = width
+            stream.height = height
+            stream.pix_fmt = "yuv420p"
+            # yuv420p is limited-range. Tagging these full-range RGB frames as
+            # JPEG/full makes the decoder skip the limited-to-full expand, so black
+            # comes back as 16. Limited (MPEG) is the tag that round-trips.
+            stream.codec_context.colorspace = 1
+            stream.codec_context.color_primaries = 1
+            stream.codec_context.color_trc = 1
+            stream.codec_context.color_range = 1
+            pts = 0
+            for pixels in frames:
+                video_frame = av.VideoFrame.from_ndarray(pixels, format="rgb24")
+                video_frame.pts = pts
+                pts += 1
+                for packet in stream.encode(video_frame):
+                    container.mux(packet)
+            for packet in stream.encode():
                 container.mux(packet)
-        for packet in stream.encode():
-            container.mux(packet)
+    finally:
+        # A failed encode leaves the frame generator suspended inside its own `with av.open(...)`,
+        # which keeps the source file open. On Windows that blocks the caller's cleanup unlink
+        # (WinError 32) and hides the real error, so close the generator here.
+        close = getattr(frames, "close", None)
+        if close is not None:
+            close()

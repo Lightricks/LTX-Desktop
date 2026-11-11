@@ -23,6 +23,7 @@ from threading import Event, Lock, Thread
 from mps_prebuilt_ext import mps_memory_sample, reset_mps_sdpa_stats
 from server_utils.generation_liveness import liveness_hold
 from server_utils.units import gib
+from services.gpu_info.run_peak import fold_and_reset_cuda_peak, note_free_sample
 
 logger = logging.getLogger(__name__)
 _active = Lock()
@@ -36,6 +37,7 @@ def cuda_memory_sample() -> str | None:
         return None
     try:
         free, total = torch.cuda.mem_get_info()
+        note_free_sample(int(free))
         # Retries are cudaMalloc failures that flushed the cache; a count that climbs
         # while reserved sits at capacity is allocator thrash, not slow compute.
         retries = int(torch.cuda.memory_stats().get("num_alloc_retries", 0))
@@ -59,13 +61,7 @@ def _device_sample() -> str | None:
 def _reset_stats() -> None:
     """Reset per-run counters so a heartbeat's peak/backend counts start fresh."""
     reset_mps_sdpa_stats()  # no-op off MPS
-    try:
-        import torch  # noqa: PLC0415
-
-        if torch.cuda.is_available():
-            torch.cuda.reset_peak_memory_stats()
-    except Exception:
-        pass
+    fold_and_reset_cuda_peak()
 
 
 @contextmanager

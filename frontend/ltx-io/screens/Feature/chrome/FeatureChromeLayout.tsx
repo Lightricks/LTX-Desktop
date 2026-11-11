@@ -1,7 +1,8 @@
 import { useCallback, useMemo } from "react";
-import { Outlet, useMatches, useOutletContext } from "react-router";
+import { Outlet, useMatches, useOutletContext, useParams } from "react-router";
 
 import { PageHeader } from "@/components/home/PageHeader";
+import { CUSTOM_LORA_HOME_FEATURE } from "@/lib/custom-lora";
 import {
   type DesktopHomeOutletContext,
   pageHeaderQueueControlFromOutlet,
@@ -10,6 +11,7 @@ import {
 import { getHomeFeature } from "@/lib/home-features";
 
 import { useModalContext } from "../../../components/shared/Modal/ModalContext";
+import { useCustomLoras } from "../../../hooks/useCustomLoras";
 
 import { FeatureBreadcrumbs } from "./FeatureBreadcrumbs";
 import styles from "./FeatureChromeLayout.module.scss";
@@ -20,14 +22,21 @@ import { selectHomeFeatureId } from "./homeFeatureRouteHandle";
 
 export function FeatureChromeLayout() {
   const featureId = selectHomeFeatureId(useMatches());
+  const { customLoraId } = useParams();
+  // Only the page of one saved custom LoRA has this param. Its breadcrumb and details are the LoRA's.
+  const customLoras = useCustomLoras({ enabled: customLoraId !== undefined });
+  const customLora = customLoras.data?.find((lora) => lora.id === customLoraId);
   const { showModal } = useModalContext();
   const outletContext = useOutletContext<DesktopHomeOutletContext | null | undefined>();
   const queueControl = pageHeaderQueueControlFromOutlet(outletContext);
   const showHistoryNav = showHistoryNavFromOutlet(outletContext);
   const usesPageHeader = queueControl != null;
 
+  // A custom LoRA has no info dialog. Other features still open theirs from the "i" button.
+  const hasDetails = featureId !== CUSTOM_LORA_HOME_FEATURE.id;
+
   const openFeatureDetails = useCallback(() => {
-    if (featureId == null) return;
+    if (featureId == null || featureId === CUSTOM_LORA_HOME_FEATURE.id) return;
     showModal({
       content: <FeatureDetailsModal featureId={featureId} />,
       modalName: FEATURE_DETAILS_MODAL_NAME,
@@ -42,13 +51,13 @@ export function FeatureChromeLayout() {
     const feature = getHomeFeature(featureId);
     return (
       <FeatureBreadcrumbs
-        trail={featureCrumbTrail(feature)}
-        detailsLabel={`About ${feature.title}`}
+        trail={featureCrumbTrail(feature, customLora?.name)}
+        detailsLabel={`About ${customLora?.name ?? feature.title}`}
         variant={usesPageHeader ? "topBar" : "default"}
-        onOpenDetails={openFeatureDetails}
+        onOpenDetails={hasDetails ? openFeatureDetails : undefined}
       />
     );
-  }, [featureId, openFeatureDetails, usesPageHeader]);
+  }, [customLora, featureId, hasDetails, openFeatureDetails, usesPageHeader]);
 
   if (featureId == null) {
     return <Outlet />;
@@ -63,6 +72,7 @@ export function FeatureChromeLayout() {
           showHistoryNav={showHistoryNav}
           leading={breadcrumbs}
           queueControl={queueControl}
+          beforeActions={outletContext?.beforeHeaderActions}
         />
       ) : (
         breadcrumbs

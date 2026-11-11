@@ -1,19 +1,18 @@
+import { Text } from "@ds/Text/Text";
+import CustomLoraIcon from "@ds/assets/Icons/CustomLora.svg?react";
+import ExternalLinkIcon from "@ds/assets/Icons/ExternalLink.svg?react";
 import { useEffect, useRef, useState } from "react";
 
-import { Button } from "@/ds/Button/Button";
-import { Text } from "@ds/Text/Text";
-import ExternalLinkIcon from "@ds/assets/Icons/ExternalLink.svg?react";
 import { openExternalBrowserUrl } from "@/components/home/home-external-links";
-import {
-  HOME_FEATURE_MEDIA,
-  type HomeFeatureMedia,
-} from "@/components/home/home-media";
+import { HOME_FEATURE_MEDIA, type HomeFeatureMedia } from "@/components/home/home-media";
 import {
   browserFeaturePreviewCanPlayType,
   canAttachFeaturePreviewSrc,
   silenceFeaturePreview,
 } from "@/components/home/homeFeaturePreviewMedia";
 import { usePrefersReducedMotion } from "@/components/home/usePrefersReducedMotion";
+import { Button } from "@/ds/Button/Button";
+import { customLoraPosterUrl } from "@/lib/custom-lora-covers";
 import type { HomeFeatureDefinition, HomeFeatureId } from "@/lib/home-features";
 import { getLoraRecipe, isLoraRecipeId } from "@/lib/lora-recipes";
 
@@ -22,7 +21,11 @@ import { buildFeatureDetails } from "../../screens/Feature/chrome/featureChromeM
 import { resolveFeatureCompare } from "../../screens/Feature/chrome/featureCompare";
 
 import styles from "./LtxioQuickSearch.module.scss";
-import type { QuickSearchPageDestination } from "./quickSearchModel.ts";
+import {
+  CUSTOM_LORA_LABEL,
+  type QuickSearchCustomLora,
+  type QuickSearchPageDestination,
+} from "./quickSearchModel.ts";
 
 function PreviewMedia({ media }: { media: HomeFeatureMedia }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -85,9 +88,11 @@ export function QuickSearchFeaturePreview({
   onPointerInteractionEnd?: () => void;
 }) {
   const featureId = feature.id as HomeFeatureId;
-  const media = HOME_FEATURE_MEDIA[featureId];
+  const media =
+    featureId === "custom-lora" ? undefined : HOME_FEATURE_MEDIA[featureId];
   const compare = resolveFeatureCompare(featureId);
-  const huggingFace = buildFeatureDetails(featureId).externalLink;
+  const huggingFace =
+    featureId === "custom-lora" ? null : buildFeatureDetails(featureId).externalLink;
   const listing =
     "listing" in feature && feature.listing
       ? feature.listing
@@ -190,6 +195,78 @@ export function QuickSearchPagePreview({
           hierarchy="primary"
           size="lg"
           label={`Open ${destination.title}`}
+          className={styles.previewAction}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onOpen}
+        />
+      </div>
+    </aside>
+  );
+}
+
+/**
+ * Preview of a LoRA the user saved. The cover is the picture they chose. With no picture, the
+ * cover is blank and shows the brush icon. There is no demo clip and no intro text. The Hugging
+ * Face button shows only when the LoRA came from a Hugging Face link.
+ */
+export function QuickSearchCustomLoraPreview({
+  lora,
+  onOpen,
+  onPointerInteractionEnd,
+}: {
+  lora: QuickSearchCustomLora;
+  onOpen: () => void;
+  onPointerInteractionEnd?: () => void;
+}) {
+  const huggingFaceUrl = lora.page_url ?? null;
+  const coverUrl = customLoraPosterUrl(lora.cover_url);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const showCover = coverUrl != null && failedUrl !== coverUrl;
+  return (
+    <aside className={styles.preview} onPointerUp={onPointerInteractionEnd}>
+      <div className={styles.previewScroll}>
+        <div className={styles.previewMediaFrame}>
+          {showCover ? (
+            <img
+              className={styles.previewMedia}
+              src={coverUrl}
+              alt=""
+              draggable={false}
+              onError={() => setFailedUrl(coverUrl)}
+            />
+          ) : (
+            <span className={styles.blankCover}>
+              <CustomLoraIcon className={styles.blankCoverIcon} aria-hidden />
+            </span>
+          )}
+        </div>
+        <div className={styles.previewHeader}>
+          <Text as="h3" variant="heading" size="sm" className={styles.previewTitle}>
+            {lora.name}
+          </Text>
+          <Text as="span" variant="body" size="md" className={styles.previewAbout}>
+            {CUSTOM_LORA_LABEL}
+          </Text>
+        </div>
+      </div>
+      <div className={styles.previewActions}>
+        {huggingFaceUrl != null ? (
+          <Button
+            appearance="neutral"
+            hierarchy="secondary"
+            size="lg"
+            label="Hugging Face"
+            leftIcon={<ExternalLinkIcon />}
+            className={styles.previewAction}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => openExternalBrowserUrl(huggingFaceUrl)}
+          />
+        ) : null}
+        <Button
+          appearance="neutral"
+          hierarchy="primary"
+          size="lg"
+          label="Open workflow"
           className={styles.previewAction}
           onMouseDown={(event) => event.preventDefault()}
           onClick={onOpen}

@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import RLock
 from typing import TYPE_CHECKING, Generic, TypeVar
-from uuid import uuid4
 
 from _routes._errors import HTTPError
 from api_types import (
@@ -25,10 +24,10 @@ from api_types import (
     LoraListItem,
     LoraListResponse,
 )
-from handlers.base import StateHandlerBase, with_state_lock
+from handlers.base import StateHandlerBase
 from handlers.checkpoint_files import commit_staged_checkpoint, stage_checkpoint
+from handlers.download_sessions import DownloadSessionTracker
 from handlers.hf_auth_utils import optional_hf_token, require_hf_token
-from runtime_config.ic_lora_high_res import HIGH_RES_ONLY_IC_LORAS
 from runtime_config.ic_lora_job_budget import with_budgeted_duration_controls
 from runtime_config.model_download_specs import (
     catalog_item_visible_for_installed_ltx,
@@ -38,41 +37,25 @@ from runtime_config.model_download_specs import (
     missing_checkpoints,
     resolve_catalog_staging_dir,
     resolve_catalog_staging_root,
-    resolve_lora_path,
     resolve_ic_lora_path,
+    resolve_lora_path,
 )
 from services.interfaces import GpuInfo, ModelDownloader, TaskRunner
 from services.lora_catalog import LoraCatalogProvider
 from services.lora_catalog.media_urls import with_resolved_media
-from state.app_state_types import (
-    AppState,
-    CatalogDownloadSession,
-    DownloadSessionComplete,
-    DownloadSessionError,
-    DownloadSessionId,
-    DownloadSessionResult,
-)
+from state.app_state_types import AppState
 
 if TYPE_CHECKING:
     from runtime_config.runtime_config import RuntimeConfig
 
 logger = logging.getLogger(__name__)
 
-# Cap retained completed sessions so a long-running app doesn't accrue them forever.
-# The client only needs a terminal status once; oldest-out is fine (dicts keep insertion order).
-_MAX_COMPLETED_SESSIONS = 32
-
-ProgressResponseT = TypeVar("ProgressResponseT", IcLoraDownloadProgressResponse, LoraDownloadProgressResponse)
-
-
-def _record_completed(
-    completed: dict[DownloadSessionId, DownloadSessionResult],
-    session_id: DownloadSessionId,
-    result: DownloadSessionResult,
-) -> None:
-    completed[session_id] = result
-    while len(completed) > _MAX_COMPLETED_SESSIONS:
-        completed.pop(next(iter(completed)))
+ProgressResponseT = TypeVar(
+    "ProgressResponseT", IcLoraDownloadProgressResponse, LoraDownloadProgressResponse
+)
+ActiveResponseT = TypeVar(
+    "ActiveResponseT", ActiveIcLoraDownloadResponse, ActiveLoraDownloadResponse
+)
 
 
 def _lookup_ic_lora(catalog: LoraCatalogProvider, item_id: str) -> LoraCatalogItem | None:
@@ -81,12 +64,6 @@ def _lookup_ic_lora(catalog: LoraCatalogProvider, item_id: str) -> LoraCatalogIt
 
 def _lookup_lora(catalog: LoraCatalogProvider, item_id: str) -> LoraCatalogItem | None:
     return catalog.get_lora(item_id)
-
-
-def _session_progress_pct(session: CatalogDownloadSession) -> float:
-    if not session.expected_bytes:
-        return 0.0
-    return min(99.0, session.downloaded_bytes / session.expected_bytes * 100)
 
 
 def _ic_lora_progress(
@@ -132,41 +109,14 @@ def _lora_progress(
 
 
 @dataclass(frozen=True)
-class _CatalogKind(Generic[ProgressResponseT]):
-    """Per-kind plumbing so IC-LoRA and plain-LoRA downloads share one implementation.
+class _CatalogKind(Generic[ProgressResponseT, ActiveResponseT]):
+    """Per-kind plumbing so IC-LoRA and plain-LoRA downloads share one implementation."""
 
-    Each kind keeps its own state slot (so an IC-LoRA and a plain-LoRA download can run at
-    once) and its own wire response type; everything else is identical.
-    """
-
-    session_attr: str  # AppState attribute holding the active CatalogDownloadSession | None
-    completed_attr: str  # AppState attribute holding the completed-sessions dict
     task_name: str
     not_found: str
-    resolve_path: Callable[[Path, str, str], Path]  # (models_dir, item_id, filename) -> final file path
+    resolve_path: Callable[[Path, str, str], Path]
     lookup: Callable[[LoraCatalogProvider, str], LoraCatalogItem | None]
-    build_progress: Callable[..., ProgressResponseT]
-
-
-_IC_LORA: _CatalogKind[IcLoraDownloadProgressResponse] = _CatalogKind(
-    session_attr="ic_lora_download_session",
-    completed_attr="completed_ic_lora_download_sessions",
-    task_name="ic-lora-download",
-    not_found="UNKNOWN_IC_LORA",
-    resolve_path=resolve_ic_lora_path,
-    lookup=_lookup_ic_lora,
-    build_progress=_ic_lora_progress,
-)
-
-_PLAIN_LORA: _CatalogKind[LoraDownloadProgressResponse] = _CatalogKind(
-    session_attr="lora_download_session",
-    completed_attr="completed_lora_download_sessions",
-    task_name="lora-download",
-    not_found="UNKNOWN_LORA",
-    resolve_path=resolve_lora_path,
-    lookup=_lookup_lora,
-    build_progress=_lora_progress,
-)
+    tracker: DownloadSessionTracker[ProgressResponseT, ActiveResponseT]
 
 
 class LoraCatalogHandler(StateHandlerBase):
@@ -179,30 +129,52 @@ class LoraCatalogHandler(StateHandlerBase):
         task_runner: TaskRunner,
         config: "RuntimeConfig",
         gpu_info: GpuInfo,
-        high_res_enabled: Callable[[], bool] = lambda: False,
     ) -> None:
         super().__init__(state, lock, config, gpu_info=gpu_info)
-        self._high_res_enabled = high_res_enabled
         self._catalog = catalog
         self._model_downloader = model_downloader
         self._task_runner = task_runner
+        self._ic_lora = _CatalogKind(
+            task_name="ic-lora-download",
+            not_found="UNKNOWN_IC_LORA",
+            resolve_path=resolve_ic_lora_path,
+            lookup=_lookup_ic_lora,
+            tracker=DownloadSessionTracker(
+                state,
+                lock,
+                session_attr="ic_lora_download_session",
+                completed_attr="completed_ic_lora_download_sessions",
+                build_progress=_ic_lora_progress,
+                build_active=lambda session_id, item_id, progress: ActiveIcLoraDownloadResponse(
+                    session_id=session_id, ic_lora_id=item_id, progress=progress
+                ),
+            ),
+        )
+        self._plain_lora = _CatalogKind(
+            task_name="lora-download",
+            not_found="UNKNOWN_LORA",
+            resolve_path=resolve_lora_path,
+            lookup=_lookup_lora,
+            tracker=DownloadSessionTracker(
+                state,
+                lock,
+                session_attr="lora_download_session",
+                completed_attr="completed_lora_download_sessions",
+                build_progress=_lora_progress,
+                build_active=lambda session_id, item_id, progress: ActiveLoraDownloadResponse(
+                    session_id=session_id, lora_id=item_id, progress=progress
+                ),
+            ),
+        )
         # A crash leaves the staging folder of a session. No download runs yet, so all of it is stale.
         shutil.rmtree(resolve_catalog_staging_root(self.models_dir), ignore_errors=True)
 
     # --- listing ---
-    # Catalog download.variants is always non-empty; the first variant is the default
-    # checkpoint (preferred when listing "downloaded", when generation omits variant_id,
-    # and when a download request omits variant_id).
     def list_ic_loras(self, fresh: bool = False) -> IcLoraListResponse:
         catalog = self._catalog.get_catalog()
-        # Display on total: duration options must not drop total-fitting cells
-        # just because free is momentarily depressed; generate stays authoritative.
         job_filter = self._local_job_filter(total_only=True)
         items: list[IcLoraListItem] = []
-        high_res = self._high_res_enabled()
         for r in catalog.ic_loras:
-            if r.id in HIGH_RES_ONLY_IC_LORAS and not high_res:
-                continue
             if not fresh and not catalog_item_visible_for_installed_ltx(r.supported_models, self.models_dir):
                 continue
             variant_ids = downloaded_ic_lora_variant_ids(
@@ -228,7 +200,9 @@ class LoraCatalogHandler(StateHandlerBase):
         catalog = self._catalog.get_catalog()
         items: list[LoraListItem] = []
         for item in catalog.loras:
-            if not fresh and not catalog_item_visible_for_installed_ltx(item.supported_models, self.models_dir):
+            if not fresh and not catalog_item_visible_for_installed_ltx(
+                item.supported_models, self.models_dir
+            ):
                 continue
             variant_ids = downloaded_lora_variant_ids(
                 self.models_dir, item.id, [(v.id, v.filename) for v in item.download.variants]
@@ -244,13 +218,6 @@ class LoraCatalogHandler(StateHandlerBase):
 
     # --- download (shared between both kinds) ---
     def _resolve_download_token(self, *, requires_hf_login: bool, use_hf_auth: bool) -> str | None:
-        """Token to attach to a catalog download.
-
-        Gated items (a per-entry ``requires_hf_login``) must authenticate — ``require_hf_token``
-        raises 403 if not signed in. Otherwise ``use_hf_auth`` is opt-in: attach the in-app token
-        when signed in, but still allow anonymous public downloads when signed out (we never force
-        sign-in for a public repo).
-        """
         if requires_hf_login:
             return require_hf_token(self.state, self._lock)
         if use_hf_auth:
@@ -259,7 +226,7 @@ class LoraCatalogHandler(StateHandlerBase):
 
     def _start_download(
         self,
-        kind: _CatalogKind[ProgressResponseT],
+        kind: _CatalogKind[ProgressResponseT, ActiveResponseT],
         item_id: str,
         use_hf_auth: bool,
         variant_id: str | None = None,
@@ -269,46 +236,24 @@ class LoraCatalogHandler(StateHandlerBase):
         item = kind.lookup(self._catalog, item_id)
         if item is None:
             raise HTTPError(404, kind.not_found)
-        if kind is _IC_LORA and item.id in HIGH_RES_ONLY_IC_LORAS and not self._high_res_enabled():
-            # Hidden from the list without the flag, so a download is unknown too. A create
-            # for a known recipe answers 422 HIGH_RES_NOT_ENABLED instead: the id exists there.
-            raise HTTPError(404, kind.not_found)
         variant = item.download.resolve_variant(variant_id)
         if variant is None:
             raise HTTPError(404, "UNKNOWN_DOWNLOAD_VARIANT")
-        # Resolve the token first (before opening a session): a gated item can raise 403 here.
         hf_token = self._resolve_download_token(
             requires_hf_login=item.requires_hf_login, use_hf_auth=use_hf_auth
         )
         dest = kind.resolve_path(self.models_dir, item.id, variant.filename)
-        # An entry that reads processor models (Video Guide) fetches the missing ones after its
-        # file. A retry keeps a file that is already installed.
         fetch_file = not dest.exists()
         missing_cps = missing_checkpoints(self.models_dir, item.requires_checkpoints)
-        with self._lock:
-            if getattr(self.state, kind.session_attr) is not None:
-                raise HTTPError(409, "DOWNLOAD_ALREADY_RUNNING")
-            session_id = DownloadSessionId(uuid4().hex)
-            setattr(
-                self.state,
-                kind.session_attr,
-                CatalogDownloadSession(
-                    id=session_id,
-                    item_id=item_id,
-                    downloaded_bytes=0,
-                    expected_bytes=(variant.size_bytes if fetch_file else 0)
-                    + sum(get_model_cp_spec(cp).expected_size_bytes for cp in missing_cps),
-                ),
-            )
+        expected_bytes = (variant.size_bytes if fetch_file else 0) + sum(
+            get_model_cp_spec(cp).expected_size_bytes for cp in missing_cps
+        )
+        session_id = kind.tracker.open(item_id, expected_bytes)
 
         def _progress_from(base: int) -> Callable[[int], None]:
-            return lambda n: self._update_progress(kind, session_id, base + n)
+            return lambda n: kind.tracker.update_progress(session_id, base + n)
 
         def _work() -> None:
-            # Stage into this session's own folder and atomically move on success, so an interrupted
-            # download never leaves a partial file at the final path (where it would report
-            # "downloaded" and get used by generation). The model download clears its own staging
-            # folder, so the two never share one.
             staging_dir = resolve_catalog_staging_dir(self.models_dir, session_id)
             staging_dir.mkdir(parents=True, exist_ok=True)
             try:
@@ -326,82 +271,54 @@ class LoraCatalogHandler(StateHandlerBase):
                     finished_bytes = variant.size_bytes
                 for cp in missing_cps:
                     stage_checkpoint(
-                        self._model_downloader, staging_dir, cp, hf_token, _progress_from(finished_bytes)
+                        self._model_downloader,
+                        staging_dir,
+                        cp,
+                        hf_token,
+                        _progress_from(finished_bytes),
                     )
                     commit_staged_checkpoint(self.models_dir, staging_dir, cp)
                     finished_bytes += get_model_cp_spec(cp).expected_size_bytes
             finally:
                 shutil.rmtree(staging_dir, ignore_errors=True)
-            self._finish(kind, session_id)
+            kind.tracker.finish(session_id)
+
+        def _fail(exc: Exception) -> None:
+            logger.error("%s failed: %s", kind.task_name, exc)
+            kind.tracker.fail(session_id, str(exc))
 
         self._task_runner.run_background(
             _work,
             task_name=kind.task_name,
-            on_error=lambda exc: self._fail(kind, session_id, str(exc)),
+            on_error=_fail,
             daemon=True,
         )
         return CatalogDownloadStartResponse(status="started", sessionId=session_id)
-
-    @with_state_lock
-    def _update_progress(self, kind: _CatalogKind[ProgressResponseT], session_id: DownloadSessionId, downloaded: int) -> None:
-        s: CatalogDownloadSession | None = getattr(self.state, kind.session_attr)
-        if s is not None and s.id == session_id:
-            s.downloaded_bytes = downloaded
-
-    def _completed(self, kind: _CatalogKind[ProgressResponseT]) -> dict[DownloadSessionId, DownloadSessionResult]:
-        return getattr(self.state, kind.completed_attr)
-
-    @with_state_lock
-    def _finish(self, kind: _CatalogKind[ProgressResponseT], session_id: DownloadSessionId) -> None:
-        _record_completed(self._completed(kind), session_id, DownloadSessionComplete())
-        setattr(self.state, kind.session_attr, None)
-
-    @with_state_lock
-    def _fail(self, kind: _CatalogKind[ProgressResponseT], session_id: DownloadSessionId, error: str) -> None:
-        logger.error("%s failed: %s", kind.task_name, error)
-        _record_completed(self._completed(kind), session_id, DownloadSessionError(error_message=error))
-        setattr(self.state, kind.session_attr, None)
-
-    @with_state_lock
-    def _get_progress(self, kind: _CatalogKind[ProgressResponseT], session_id: str) -> ProgressResponseT:
-        sid = DownloadSessionId(session_id)
-        s: CatalogDownloadSession | None = getattr(self.state, kind.session_attr)
-        if s is not None and s.id == sid:
-            return kind.build_progress(
-                "downloading",
-                item_id=s.item_id,
-                downloaded_bytes=s.downloaded_bytes,
-                expected_bytes=s.expected_bytes,
-                progress=_session_progress_pct(s),
-                speed_bytes_per_sec=s.speed_bytes_per_sec,
-            )
-        result = self._completed(kind).get(sid)
-        if result is None:
-            raise HTTPError(404, "UNKNOWN_DOWNLOAD_SESSION")
-        if isinstance(result, DownloadSessionError):
-            return kind.build_progress("error", error=result.error_message)
-        return kind.build_progress("complete", progress=100.0)
 
     # --- thin per-kind entry points (the routes call these) ---
     def start_ic_lora_download(
         self, ic_lora_id: str, use_hf_auth: bool = False, variant_id: str | None = None
     ) -> CatalogDownloadStartResponse:
-        return self._start_download(_IC_LORA, ic_lora_id, use_hf_auth, variant_id=variant_id)
+        return self._start_download(
+            self._ic_lora, ic_lora_id, use_hf_auth, variant_id=variant_id
+        )
 
     def get_ic_lora_download_progress(self, session_id: str) -> IcLoraDownloadProgressResponse:
-        return self._get_progress(_IC_LORA, session_id)
+        return self._ic_lora.tracker.get_progress(session_id)
 
     def start_lora_download(
         self, lora_id: str, use_hf_auth: bool = False, variant_id: str | None = None
     ) -> CatalogDownloadStartResponse:
-        return self._start_download(_PLAIN_LORA, lora_id, use_hf_auth, variant_id=variant_id)
+        return self._start_download(
+            self._plain_lora, lora_id, use_hf_auth, variant_id=variant_id
+        )
 
     def get_lora_download_progress(self, session_id: str) -> LoraDownloadProgressResponse:
-        return self._get_progress(_PLAIN_LORA, session_id)
+        return self._plain_lora.tracker.get_progress(session_id)
 
     def _delete_installation(
         self,
-        kind: _CatalogKind[ProgressResponseT],
+        kind: _CatalogKind[ProgressResponseT, ActiveResponseT],
         item_id: str,
         variant_id: str | None = None,
     ) -> None:
@@ -413,10 +330,7 @@ class LoraCatalogHandler(StateHandlerBase):
         variant = item.download.resolve_variant(variant_id)
         if variant is None:
             raise HTTPError(404, "UNKNOWN_DOWNLOAD_VARIANT")
-        with self._lock:
-            session: CatalogDownloadSession | None = getattr(self.state, kind.session_attr)
-            if session is not None and session.item_id == item_id:
-                raise HTTPError(409, "DOWNLOAD_ALREADY_RUNNING")
+        kind.tracker.refuse_if_item_active(item_id)
         path = kind.resolve_path(self.models_dir, item.id, variant.filename)
         if not path.is_file():
             raise HTTPError(404, "LORA_NOT_INSTALLED")
@@ -426,41 +340,13 @@ class LoraCatalogHandler(StateHandlerBase):
             parent.rmdir()
 
     def delete_lora(self, lora_id: str, variant_id: str | None = None) -> None:
-        self._delete_installation(_PLAIN_LORA, lora_id, variant_id)
+        self._delete_installation(self._plain_lora, lora_id, variant_id)
 
     def delete_ic_lora(self, ic_lora_id: str, variant_id: str | None = None) -> None:
-        self._delete_installation(_IC_LORA, ic_lora_id, variant_id)
+        self._delete_installation(self._ic_lora, ic_lora_id, variant_id)
 
-    @with_state_lock
     def get_active_lora_download(self) -> ActiveLoraDownloadResponse:
-        """The in-flight plain-LoRA download, if any, so a remounting screen can reattach.
+        return self._plain_lora.tracker.get_active()
 
-        Returns nulls when idle; otherwise the session id (to resume polling
-        ``get_lora_download_progress``) and the lora id being fetched.
-        """
-        session = self.state.lora_download_session
-        if session is None:
-            return ActiveLoraDownloadResponse(session_id=None, lora_id=None, progress=None)
-        return ActiveLoraDownloadResponse(
-            session_id=str(session.id),
-            lora_id=session.item_id,
-            progress=_session_progress_pct(session),
-        )
-
-    @with_state_lock
     def get_active_ic_lora_download(self) -> ActiveIcLoraDownloadResponse:
-        """The in-flight IC-LoRA download, if any. Mirrors ``get_active_lora_download``.
-
-        IC-LoRA downloads keep their own state slot, so both kinds can run at once and each
-        needs its own reattach point after a remount or a renderer reload.
-        """
-        session = self.state.ic_lora_download_session
-        if session is None:
-            return ActiveIcLoraDownloadResponse(
-                session_id=None, ic_lora_id=None, progress=None
-            )
-        return ActiveIcLoraDownloadResponse(
-            session_id=str(session.id),
-            ic_lora_id=session.item_id,
-            progress=_session_progress_pct(session),
-        )
+        return self._ic_lora.tracker.get_active()

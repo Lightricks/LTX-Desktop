@@ -1,10 +1,7 @@
 import type { components } from '../generated/backend-openapi'
 
 import {
-  hasDowngradableDrop,
-  isDowngradableRejectReason,
-  rejectReasonTier,
-  readBudgetMode,
+  isConfirmableBudgetTier,
   worseRisk,
   type BudgetMode,
   type SelectionRisk,
@@ -17,6 +14,7 @@ export type DownloadedLocalVideoGenerationModelSpecItem =
   components['schemas']['DownloadedLocalVideoGenerationModelSpecItem']
 export type OfferingId = DownloadedLocalVideoGenerationModelSpecItem['model']
 export type VideoGenerationResolutionSpec = components['schemas']['LTXVideoGenerationResolutionSpec']
+export type VideoGenerationAspectSpec = components['schemas']['LTXVideoGenerationAspectSpec']
 export type VideoGenerationOfferingCapabilities = NonNullable<
   VideoGenerationModelSpecItem['spec']['capabilities']
 >
@@ -33,6 +31,9 @@ export type DroppedFastAspectCell = components['schemas']['DroppedFastAspectCell
 export type WarnedFastCell = components['schemas']['WarnedFastCell']
 export type ChunkedFastCell = components['schemas']['ChunkedFastCell']
 export type WarnedFastAspectCell = components['schemas']['WarnedFastAspectCell']
+export type FastCellAsk = components['schemas']['FastCellAsk']
+export type MemoryCapacity = components['schemas']['MemoryCapacity']
+export type JobMemoryAsk = components['schemas']['JobMemoryAsk']
 export type { BudgetMode, SelectionRisk, SelectionTier }
 
 /** Canonical resolution order for merged kept+disabled pickers. */
@@ -147,7 +148,7 @@ export interface ResolvedVideoGenerationOptions {
   disabledDurationOptions: DisabledVideoGenerationOption<VideoGenerationDuration>[]
   /** Shapes the current cell cannot run (cell-scoped, unlike the lists above). Empty while the cell is unknown. */
   disabledAspectRatioOptions: DisabledVideoGenerationOption<VideoGenerationAspectRatio>[]
-  /** Selectable cells with a budget warning. Empty in standard mode except tight/unmeasured kept cells. */
+  /** Selectable cells with a server-composed budget warning (tight, or a Brave bet). */
   warnedResolutionOptions: WarnedVideoGenerationOption<VideoGenerationResolution>[]
   warnedFpsOptions: WarnedVideoGenerationOption<VideoGenerationFps>[]
   warnedDurationOptions: WarnedVideoGenerationOption<VideoGenerationDuration>[]
@@ -155,7 +156,7 @@ export interface ResolvedVideoGenerationOptions {
   /**
    * Selectable cells the backend runs in overlapping windows, per picker. Resolution and fps
    * options are judged at the selected duration, so both are empty while the duration is
-   * automatic. Standard and reckless alike: an offered cell with no entry runs in one pass.
+   * automatic. Brave and Cautious alike: an offered cell with no entry runs in one pass.
    * A resolution that does not offer the selected fps and duration has no entry either, and
    * is not a single pass: choosing it changes the duration, so its windows are unknown.
    */
@@ -185,8 +186,6 @@ interface ResolveVideoGenerationOptionsParams<T extends VideoGenerationSettingsS
   hasAudio?: boolean
   minimumDuration?: number
   durationSelection?: DurationSelectionMode
-  /** Reckless promotes downgradable drops into the offered grid. Defaults to standard. */
-  budgetMode?: BudgetMode
 }
 
 function getResolutionMap(
@@ -419,8 +418,48 @@ function disabledDurationsForItem(
         cell.fps === fps &&
         (minimumDuration === undefined || cell.duration >= minimumDuration),
     )
-    .map((cell) => ({ value: cell.duration, message: cell.message }))
+    .map((cell) => ({
+      value: cell.duration,
+      message: cell.message,
+      ...(cell.readout ? { readout: cell.readout } : {}),
+    }))
     .sort((a, b) => a.value - b.value)
+}
+
+const ASPECT_CANVAS_WEIGHT: Record<VideoGenerationAspectRatio, number> = {
+  '1:1': 1,
+  '4:5': 5 / 4,
+  '4:3': 4 / 3,
+  '3:2': 3 / 2,
+  '16:9': 16 / 9,
+  '9:16': 16 / 9,
+  '21:9': 21 / 9,
+}
+
+export function specForAspect(
+  spec: VideoGenerationModelSpecItem['spec'],
+  aspectRatio: string | null | undefined,
+): VideoGenerationModelSpecItem['spec'] {
+  if (!aspectRatio || !isVideoGenerationAspectRatio(aspectRatio)) return spec
+  const aspectSpec = spec.aspect_specs?.[aspectRatio]
+  if (!aspectSpec) return spec
+  return {
+    ...spec,
+    supported_resolutions_durations: aspectSpec.supported_resolutions_durations,
+    a2v_supported_resolutions_durations: aspectSpec.a2v_supported_resolutions_durations,
+    dropped_cells: aspectSpec.dropped_cells ?? [],
+    warned_cells: aspectSpec.warned_cells ?? [],
+    chunked_cells: aspectSpec.chunked_cells ?? [],
+    cell_asks: aspectSpec.cell_asks ?? [],
+  }
+}
+
+export function itemForAspect(
+  item: VideoGenerationModelSpecItem,
+  aspectRatio: string | null | undefined,
+): VideoGenerationModelSpecItem {
+  const nextSpec = specForAspect(item.spec, aspectRatio)
+  return nextSpec === item.spec ? item : { ...item, spec: nextSpec }
 }
 
 /**
@@ -435,8 +474,32 @@ function disabledAspectsForItem(
   resolution: VideoGenerationResolution,
   fps: VideoGenerationFps,
   duration: VideoGenerationDuration | null,
+  aspectRatios: readonly VideoGenerationAspectRatio[],
 ): DisabledVideoGenerationOption<VideoGenerationAspectRatio>[] {
   if (!item || duration == null) return []
+  const aspectSpecs = item.spec.aspect_specs
+  if (aspectSpecs) {
+    const out: DisabledVideoGenerationOption<VideoGenerationAspectRatio>[] = []
+    for (const ratio of aspectRatios) {
+      const aspectSpec = aspectSpecs[ratio]
+      if (!aspectSpec) continue
+      const cell = (aspectSpec.dropped_cells ?? []).find(
+        (candidate) =>
+          candidate.audio === hasAudio &&
+          candidate.resolution === resolution &&
+          candidate.fps === fps &&
+          candidate.duration === duration,
+      )
+      if (cell) {
+        out.push({
+          value: ratio,
+          message: cell.message,
+          ...(cell.readout ? { readout: cell.readout } : {}),
+        })
+      }
+    }
+    return out
+  }
   return (item.spec.dropped_aspect_cells ?? [])
     .filter(
       (cell) =>
@@ -450,6 +513,47 @@ function disabledAspectsForItem(
       message: cell.message,
       ...(cell.readout ? { readout: cell.readout } : {}),
     }))
+}
+
+function warnedAspectsForItem(
+  item: VideoGenerationModelSpecItem,
+  grid: FastGridWarnings,
+  hasAudio: boolean,
+  resolution: VideoGenerationResolution,
+  fps: VideoGenerationFps,
+  duration: VideoGenerationDuration | null,
+  selectedAspectRatio: VideoGenerationAspectRatio | null,
+  aspectRatios: readonly VideoGenerationAspectRatio[],
+): WarnedVideoGenerationOption<VideoGenerationAspectRatio>[] {
+  if (duration == null) return []
+  const aspectSpecs = item.spec.aspect_specs
+  if (aspectSpecs && selectedAspectRatio != null) {
+    const baseWeight = ASPECT_CANVAS_WEIGHT[selectedAspectRatio]
+    const rows = new Map<VideoGenerationAspectRatio, SelectionRisk>()
+    for (const ratio of aspectRatios) {
+      if (ASPECT_CANVAS_WEIGHT[ratio] <= baseWeight) continue
+      const aspectSpec = aspectSpecs[ratio]
+      if (!aspectSpec) continue
+      for (const cell of aspectSpec.warned_cells ?? []) {
+        if (
+          cell.audio === hasAudio &&
+          cell.resolution === resolution &&
+          cell.fps === fps &&
+          cell.duration === duration
+        ) {
+          const prev = rows.get(ratio) ?? null
+          const next = worseRisk(prev, {
+            message: cell.message,
+            tier: cell.tier,
+            readout: cell.readout,
+          })
+          if (next) rows.set(ratio, next)
+        }
+      }
+    }
+    return warnedFromRows(rows)
+  }
+  return warnedFromRows(grid.aspectWarnings.get(`${resolution}|${fps}|${duration}`))
 }
 
 function chooseOption<T>(current: string | number | null, options: T[]): T | null {
@@ -552,15 +656,10 @@ export function getApiOfferingCapabilities(
   return specs.api_models.find((item) => item.pipeline === pipeline)?.spec.capabilities ?? null
 }
 
-type ResolutionMap = VideoGenerationModelSpecItem['spec']['supported_resolutions_durations']
-
 type RiskRows<K extends string | number> = Map<string, Map<K, SelectionRisk>>
 
-/** Offered map plus the warnings attached when a cell was kept or promoted. */
-export type OfferedFastGrid = {
-  map: ResolutionMap
-  droppedCells: DroppedFastCell[]
-  droppedAspectCells: DroppedFastAspectCell[]
+/** The server's warned cells for one matrix, indexed for the pickers. */
+type FastGridWarnings = {
   /** Grouped by `resolution|fps`. */
   durationWarnings: RiskRows<VideoGenerationDuration>
   /** Grouped by `resolution|fps|duration`. */
@@ -582,43 +681,15 @@ function rememberRisk<K extends string | number>(
   if (worse) groupRows.set(id, worse)
 }
 
-function copyResolutionMap(source: ResolutionMap | null | undefined): ResolutionMap {
-  const map = {} as ResolutionMap
-  if (!source) return map
-  for (const [resolution, spec] of Object.entries(source)) {
-    const fpsToDurations: Record<string, VideoGenerationDuration[]> = {}
-    for (const [fps, durations] of Object.entries(spec.fps_to_durations)) {
-      fpsToDurations[fps] = [...durations]
-    }
-    map[resolution] = {
-      fps_to_durations: fpsToDurations as VideoGenerationResolutionSpec['fps_to_durations'],
-      aspect_ratios: [...(spec.aspect_ratios ?? [])],
-    }
-  }
-  return map
-}
-
-function splicePromotedDurations(map: ResolutionMap, cells: readonly DroppedFastCell[]): void {
-  const siblingAspects =
-    Object.values(map)[0]?.aspect_ratios ?? [...VIDEO_GENERATION_ASPECT_RATIOS]
-  for (const cell of cells) {
-    const fpsKey = String(cell.fps)
-    const existing = map[cell.resolution]
-    if (!existing) {
-      map[cell.resolution] = {
-        fps_to_durations: {
-          [fpsKey]: [cell.duration],
-        } as VideoGenerationResolutionSpec['fps_to_durations'],
-        aspect_ratios: [...siblingAspects],
-      }
-      continue
-    }
-    const list = existing.fps_to_durations[fpsKey] ?? []
-    if (!list.includes(cell.duration)) {
-      existing.fps_to_durations[fpsKey] = [...list, cell.duration].sort(
-        (left, right) => left - right,
-      )
-    }
+function warnedOption<T extends string | number>(
+  value: T,
+  risk: SelectionRisk,
+): WarnedVideoGenerationOption<T> {
+  return {
+    value,
+    message: risk.message,
+    tier: risk.tier,
+    ...(risk.readout ? { readout: risk.readout } : {}),
   }
 }
 
@@ -626,49 +697,16 @@ function warnedFromRows<T extends string | number>(
   rows: ReadonlyMap<T, SelectionRisk> | undefined,
 ): WarnedVideoGenerationOption<T>[] {
   if (!rows) return []
-  return [...rows.entries()].map(([value, risk]) => ({
-    value,
-    message: risk.message,
-    tier: risk.tier,
-    ...(risk.readout ? { readout: risk.readout } : {}),
-  }))
+  return [...rows.entries()].map(([value, risk]) => warnedOption(value, risk))
 }
 
-function keptDurationCount(
+function fastGridWarnings(
   spec: VideoGenerationModelSpecItem['spec'],
-  mapKey: 'a2v_supported_resolutions_durations' | 'supported_resolutions_durations',
-  resolution: string,
-  fps: number,
-): number {
-  return spec[mapKey]?.[resolution]?.fps_to_durations?.[String(fps)]?.length ?? 0
-}
-
-/** A free-VRAM or busy-card drop still 422s at create, so it stays disabled. */
-function promotableFastDrop(cell: DroppedFastCell | DroppedFastAspectCell): boolean {
-  if (!isDowngradableRejectReason(cell.reason)) return false
-  if (cell.shortfall_kind === 'free') return false
-  if (cell.readout?.kind === 'gpu_busy') return false
-  return true
-}
-
-/**
- * One pass over an item. Downgradable drops join the map and the warning
- * index together; hard refusals stay in the dropped lists. Standard mode
- * returns the kept map and records only kept-cell warnings.
- */
-export function offeredFastGrid(
-  spec: VideoGenerationModelSpecItem['spec'],
-  budgetMode: BudgetMode,
   hasAudio: boolean,
-): OfferedFastGrid {
-  const mapKey = hasAudio
-    ? 'a2v_supported_resolutions_durations'
-    : 'supported_resolutions_durations'
+): FastGridWarnings {
   const durationWarnings: RiskRows<VideoGenerationDuration> = new Map()
   const aspectWarnings: RiskRows<VideoGenerationAspectRatio> = new Map()
   const chunkedCells = new Map<string, ChunkedRun>()
-  const promote = budgetMode === 'reckless'
-
   for (const cell of spec.chunked_cells ?? []) {
     if (cell.audio !== hasAudio) continue
     chunkedCells.set(`${cell.resolution}|${cell.fps}|${cell.duration}`, {
@@ -676,7 +714,6 @@ export function offeredFastGrid(
       windowFrames: cell.window_frames,
     })
   }
-
   for (const cell of spec.warned_cells ?? []) {
     if (cell.audio !== hasAudio) continue
     rememberRisk(durationWarnings, `${cell.resolution}|${cell.fps}`, cell.duration, {
@@ -694,88 +731,7 @@ export function offeredFastGrid(
       { message: cell.message, tier: cell.tier, readout: cell.readout },
     )
   }
-
-  const droppedCells: DroppedFastCell[] = []
-  const promoted: DroppedFastCell[] = []
-  for (const cell of spec.dropped_cells ?? []) {
-    if (
-      cell.audio === hasAudio &&
-      promote &&
-      promotableFastDrop(cell) &&
-      !(hasAudio && keptDurationCount(spec, mapKey, cell.resolution, cell.fps) === 0)
-    ) {
-      promoted.push(cell)
-      // The run a promoted cell would get is windowed too, so say so as for a kept cell.
-      if (cell.windows != null && cell.window_frames != null) {
-        chunkedCells.set(`${cell.resolution}|${cell.fps}|${cell.duration}`, {
-          windows: cell.windows,
-          windowFrames: cell.window_frames,
-        })
-      }
-      rememberRisk(durationWarnings, `${cell.resolution}|${cell.fps}`, cell.duration, {
-        message: cell.message,
-        tier: rejectReasonTier(cell.reason) ?? 'over',
-        readout: cell.readout,
-      })
-      continue
-    }
-    droppedCells.push(cell)
-  }
-
-  const droppedAspectCells: DroppedFastAspectCell[] = []
-  for (const cell of spec.dropped_aspect_cells ?? []) {
-    if (
-      cell.audio === hasAudio &&
-      promote &&
-      promotableFastDrop(cell) &&
-      !(hasAudio && keptDurationCount(spec, mapKey, cell.resolution, cell.fps) === 0)
-    ) {
-      rememberRisk(
-        aspectWarnings,
-        `${cell.resolution}|${cell.fps}|${cell.duration}`,
-        cell.aspectRatio,
-        { message: cell.message, tier: rejectReasonTier(cell.reason) ?? 'over', readout: cell.readout },
-      )
-      continue
-    }
-    droppedAspectCells.push(cell)
-  }
-
-  const map = promoted.length === 0 ? (spec[mapKey] ?? {}) : copyResolutionMap(spec[mapKey])
-  if (promoted.length > 0) splicePromotedDurations(map, promoted)
-  return { map, droppedCells, droppedAspectCells, durationWarnings, aspectWarnings, chunkedCells }
-}
-
-function withOfferedGrid(
-  item: VideoGenerationModelSpecItem,
-  budgetMode: BudgetMode,
-  hasAudio: boolean,
-): { item: VideoGenerationModelSpecItem; grid: OfferedFastGrid } {
-  const grid = offeredFastGrid(item.spec, budgetMode, hasAudio)
-  const mapKey = hasAudio
-    ? 'a2v_supported_resolutions_durations'
-    : 'supported_resolutions_durations'
-  return {
-    grid,
-    item: {
-      ...item,
-      spec: {
-        ...item.spec,
-        [mapKey]: grid.map,
-        dropped_cells: grid.droppedCells,
-        dropped_aspect_cells: grid.droppedAspectCells,
-      },
-    },
-  }
-}
-
-/** Resolution map after reckless promotion. Standard mode returns the kept map. */
-export function budgetedResolutionMap(
-  item: VideoGenerationModelSpecItem,
-  budgetMode: BudgetMode,
-  hasAudio = false,
-): ResolutionMap {
-  return offeredFastGrid(item.spec, budgetMode, hasAudio).map
+  return { durationWarnings, aspectWarnings, chunkedCells }
 }
 
 export function resolveVideoGenerationOptions<T extends VideoGenerationSettingsShape>({
@@ -784,17 +740,14 @@ export function resolveVideoGenerationOptions<T extends VideoGenerationSettingsS
   hasAudio = false,
   minimumDuration,
   durationSelection = 'preserve',
-  budgetMode = 'standard',
 }: ResolveVideoGenerationOptionsParams<T>): ResolvedVideoGenerationOptions {
-  const offered = modelSpecs.map((item) => withOfferedGrid(item, budgetMode, hasAudio))
-  const offeredSpecs = offered.map((entry) => entry.item)
-  const gridsByPipeline = new Map(offered.map((entry) => [entry.item.pipeline, entry.grid]))
-  const modelOptions = getCompatibleModelOptions(offeredSpecs, { hasAudio, minimumDuration })
+  const aspectSpecs = modelSpecs.map((item) => itemForAspect(item, settings.aspectRatio))
+  const modelOptions = getCompatibleModelOptions(aspectSpecs, { hasAudio, minimumDuration })
   const selectedModelItem = modelOptions.find((item) => item.pipeline === settings.model) ?? modelOptions[0] ?? null
   // Dropped cells render from the selected row; with no compatible row the
   // first row still explains the empty grid (resolutions only — fps and
   // durations need a selection for context).
-  const displayItem = selectedModelItem ?? offeredSpecs[0] ?? null
+  const displayItem = selectedModelItem ?? aspectSpecs[0] ?? null
   if (!selectedModelItem) {
     return emptyResolvedOptions(modelOptions, {
       disabledResolutionOptions: disabledResolutionsForItem(displayItem, hasAudio, []),
@@ -864,35 +817,39 @@ export function resolveVideoGenerationOptions<T extends VideoGenerationSettingsS
     selectedResolution,
     selectedFps,
     selectedDuration,
+    aspectRatioOptions,
   )
-  const grid = gridsByPipeline.get(selectedModelItem.pipeline)
+  const grid = fastGridWarnings(selectedModelItem.spec, hasAudio)
   const warnedDurationOptions = warnedFromRows(
-    grid?.durationWarnings.get(`${selectedResolution}|${selectedFps}`),
+    grid.durationWarnings.get(`${selectedResolution}|${selectedFps}`),
   )
   const warnedFpsOptions = fpsOptions.flatMap((fps) => {
     const risk =
       selectedDuration == null
         ? undefined
-        : grid?.durationWarnings.get(`${selectedResolution}|${fps}`)?.get(selectedDuration)
-    return risk == null ? [] : [{ value: fps, message: risk.message, tier: risk.tier }]
+        : grid.durationWarnings.get(`${selectedResolution}|${fps}`)?.get(selectedDuration)
+    return risk == null ? [] : [warnedOption(fps, risk)]
   })
   const warnedResolutionOptions = resolutionOptions.flatMap((resolution) => {
     const risk =
       selectedDuration == null
         ? undefined
-        : grid?.durationWarnings.get(`${resolution}|${selectedFps}`)?.get(selectedDuration)
-    return risk == null ? [] : [{ value: resolution, message: risk.message, tier: risk.tier }]
+        : grid.durationWarnings.get(`${resolution}|${selectedFps}`)?.get(selectedDuration)
+    return risk == null ? [] : [warnedOption(resolution, risk)]
   })
-  const warnedAspectRatioOptions = warnedFromRows(
-    selectedDuration == null
-      ? undefined
-      : grid?.aspectWarnings.get(
-          `${selectedResolution}|${selectedFps}|${selectedDuration}`,
-        ),
+  const warnedAspectRatioOptions = warnedAspectsForItem(
+    selectedModelItem,
+    grid,
+    hasAudio,
+    selectedResolution,
+    selectedFps,
+    selectedDuration,
+    selectedAspectRatio,
+    aspectRatioOptions,
   )
 
   const chunkedAt = (resolution: string, fps: number, duration: number): ChunkedRun | undefined =>
-    grid?.chunkedCells.get(`${resolution}|${fps}|${duration}`)
+    grid.chunkedCells.get(`${resolution}|${fps}|${duration}`)
   const chunkedDurationOptions = durationOptions.flatMap((duration) => {
     const run = chunkedAt(selectedResolution, selectedFps, duration)
     return run == null ? [] : [{ value: duration, ...run }]
@@ -970,14 +927,26 @@ export function fastSelectionRisk(
     return null
   }
   const resolution = selection.resolution as VideoGenerationResolution
-  const budgetMode = readBudgetMode(specs?.budgetMode)
   const audio = selection.audio ?? false
-  const grid = offeredFastGrid(item.spec, budgetMode, audio)
+  const aspect = selection.aspectRatio
+  if (
+    aspect != null &&
+    aspect !== 'auto' &&
+    isVideoGenerationAspectRatio(aspect) &&
+    item.spec.aspect_specs?.[aspect] != null
+  ) {
+    const aspectGrid = fastGridWarnings(specForAspect(item.spec, aspect), audio)
+    return (
+      aspectGrid.durationWarnings
+        .get(`${resolution}|${selection.fps}`)
+        ?.get(selection.duration as VideoGenerationDuration) ?? null
+    )
+  }
+  const grid = fastGridWarnings(item.spec, audio)
   const durationRisk =
     grid.durationWarnings
       .get(`${resolution}|${selection.fps}`)
       ?.get(selection.duration as VideoGenerationDuration) ?? null
-  const aspect = selection.aspectRatio
   if (aspect == null || aspect === 'auto' || !isVideoGenerationAspectRatio(aspect)) {
     return durationRisk
   }
@@ -988,40 +957,200 @@ export function fastSelectionRisk(
   return worseRisk(durationRisk, aspectRisk)
 }
 
-function countKeptCells(
-  item: { spec: VideoGenerationModelSpecItem['spec'] },
-  audio: boolean,
-): number {
-  const map = audio
-    ? item.spec.a2v_supported_resolutions_durations
-    : item.spec.supported_resolutions_durations
-  if (!map) return 0
-  let count = 0
-  for (const spec of Object.values(map)) {
-    for (const durations of Object.values(spec.fps_to_durations)) {
-      count += durations.length
+export type FastCellSelection = {
+  model: string
+  resolution: string
+  fps: number
+  duration: number | null
+  aspectRatio: string | null
+  audio?: boolean
+}
+
+function selectionSpec(
+  specs: VideoGenerationModelSpecsResponse | null | undefined,
+  selection: FastCellSelection,
+): VideoGenerationModelSpecItem['spec'] | null {
+  const item = offeringItem(specs, selection.model)
+  if (!item) return null
+  return selection.aspectRatio === 'auto' ? item.spec : specForAspect(item.spec, selection.aspectRatio)
+}
+
+/** What the cell asks of the compared memory, kept or withheld. Null while the cell is unknown. */
+export function fastCellAsk(
+  specs: VideoGenerationModelSpecsResponse | null | undefined,
+  selection: FastCellSelection,
+): FastCellAsk | null {
+  if (selection.duration == null) return null
+  const spec = selectionSpec(specs, selection)
+  const audio = selection.audio ?? false
+  return (
+    spec?.cell_asks?.find(
+      (cell) =>
+        cell.resolution === selection.resolution &&
+        cell.fps === selection.fps &&
+        cell.duration === selection.duration &&
+        cell.audio === audio,
+    ) ?? null
+  )
+}
+
+/** Durations the pickers offer for the selection's resolution and fps (kept, bets included). */
+export function offeredFastDurations(
+  specs: VideoGenerationModelSpecsResponse | null | undefined,
+  selection: FastCellSelection,
+): readonly number[] {
+  const spec = selectionSpec(specs, selection)
+  const grid = selection.audio ? spec?.a2v_supported_resolutions_durations : spec?.supported_resolutions_durations
+  return grid?.[selection.resolution]?.fps_to_durations[String(selection.fps)] ?? []
+}
+
+/** The cell is offered in the pickers under the echoed mode (kept, bets included). */
+export function isFastCellOffered(
+  specs: VideoGenerationModelSpecsResponse | null | undefined,
+  selection: FastCellSelection,
+): boolean {
+  if (selection.duration == null) return false
+  return offeredFastDurations(specs, selection).includes(selection.duration)
+}
+
+type ResolutionMap = VideoGenerationModelSpecItem['spec']['supported_resolutions_durations']
+type FastSpec = VideoGenerationModelSpecItem['spec']
+
+function betDropReason(tier: SelectionTier): DroppedFastCell['reason'] {
+  return tier === 'unmeasured' ? 'unmeasured_cell' : 'stream_over'
+}
+
+function stripAspectSpecBets(aspectSpec: VideoGenerationAspectSpec): VideoGenerationAspectSpec {
+  const bets = (aspectSpec.warned_cells ?? []).filter((cell) => isConfirmableBudgetTier(cell.tier))
+  if (bets.length === 0) return aspectSpec
+  const betKeys = new Set(
+    bets.map((cell) => `${cell.audio}|${cell.resolution}|${cell.fps}|${cell.duration}`),
+  )
+  const chunkedByKey = new Map(
+    (aspectSpec.chunked_cells ?? []).map((cell) => [
+      `${cell.audio}|${cell.resolution}|${cell.fps}|${cell.duration}`,
+      cell,
+    ]),
+  )
+  const strip = (map: ResolutionMap, audio: boolean): ResolutionMap => {
+    const out: ResolutionMap = {}
+    for (const [resolution, resolutionSpec] of Object.entries(map)) {
+      const fpsToDurations: Record<string, number[]> = {}
+      for (const [fps, durations] of Object.entries(resolutionSpec.fps_to_durations)) {
+        const left = durations.filter(
+          (duration) => !betKeys.has(`${audio}|${resolution}|${fps}|${duration}`),
+        )
+        if (left.length > 0) fpsToDurations[fps] = left
+      }
+      if (Object.keys(fpsToDurations).length > 0) {
+        out[resolution] = {
+          ...resolutionSpec,
+          fps_to_durations: fpsToDurations as VideoGenerationResolutionSpec['fps_to_durations'],
+        }
+      }
     }
+    return out
   }
-  return count
+  return {
+    ...aspectSpec,
+    supported_resolutions_durations: strip(aspectSpec.supported_resolutions_durations, false),
+    a2v_supported_resolutions_durations:
+      aspectSpec.a2v_supported_resolutions_durations == null
+        ? aspectSpec.a2v_supported_resolutions_durations
+        : strip(aspectSpec.a2v_supported_resolutions_durations, true),
+    warned_cells: (aspectSpec.warned_cells ?? []).filter(
+      (cell) => !isConfirmableBudgetTier(cell.tier),
+    ),
+    chunked_cells: (aspectSpec.chunked_cells ?? []).filter(
+      (cell) => !betKeys.has(`${cell.audio}|${cell.resolution}|${cell.fps}|${cell.duration}`),
+    ),
+    dropped_cells: [
+      ...(aspectSpec.dropped_cells ?? []),
+      ...bets.map(({ resolution, fps, duration, tier, message, readout, audio }) => {
+        const chunked = chunkedByKey.get(`${audio}|${resolution}|${fps}|${duration}`)
+        return {
+          resolution,
+          fps,
+          duration,
+          reason: betDropReason(tier),
+          message,
+          readout,
+          audio,
+          ...(chunked ? { windows: chunked.windows, window_frames: chunked.window_frames } : {}),
+        }
+      }),
+    ],
+  }
+}
+
+function stripBetCells(spec: FastSpec): FastSpec {
+  const bets = (spec.warned_cells ?? []).filter((cell) => isConfirmableBudgetTier(cell.tier))
+  const aspectBets = (spec.warned_aspect_cells ?? []).filter((cell) =>
+    isConfirmableBudgetTier(cell.tier),
+  )
+  const strippedAspectSpecs = spec.aspect_specs
+    ? (Object.fromEntries(
+        Object.entries(spec.aspect_specs).map(([ratio, aspectSpec]) => [
+          ratio,
+          stripAspectSpecBets(aspectSpec),
+        ]),
+      ) as NonNullable<FastSpec['aspect_specs']>)
+    : undefined
+  if (bets.length === 0 && aspectBets.length === 0 && !strippedAspectSpecs) return spec
+  const baseStripped = stripAspectSpecBets({
+    supported_resolutions_durations: spec.supported_resolutions_durations,
+    a2v_supported_resolutions_durations: spec.a2v_supported_resolutions_durations,
+    dropped_cells: spec.dropped_cells ?? undefined,
+    warned_cells: spec.warned_cells ?? undefined,
+    chunked_cells: spec.chunked_cells ?? undefined,
+  })
+  return {
+    ...spec,
+    supported_resolutions_durations: baseStripped.supported_resolutions_durations,
+    a2v_supported_resolutions_durations: baseStripped.a2v_supported_resolutions_durations,
+    warned_cells: baseStripped.warned_cells,
+    warned_aspect_cells: (spec.warned_aspect_cells ?? []).filter(
+      (cell) => !isConfirmableBudgetTier(cell.tier),
+    ),
+    ...(spec.chunked_cells ? { chunked_cells: baseStripped.chunked_cells } : {}),
+    ...(strippedAspectSpecs ? { aspect_specs: strippedAspectSpecs } : {}),
+    dropped_cells: baseStripped.dropped_cells,
+    dropped_aspect_cells: [
+      ...(spec.dropped_aspect_cells ?? []),
+      ...aspectBets.map(({ resolution, fps, duration, aspectRatio, tier, message, readout, audio }) => ({
+        resolution,
+        fps,
+        duration,
+        aspectRatio,
+        reason: betDropReason(tier),
+        message,
+        readout,
+        audio,
+      })),
+    ],
+  }
 }
 
 /**
- * Reckless, and every kept cell is gone, but a downgradable drop still exists.
- * The form renders with a warning instead of the empty-machine card.
+ * The specs with every Brave bet moved from the kept grid to the disabled
+ * list, its warning as the refusal. For surfaces with no risk confirm
+ * (GenSpace, the editor gap fill), which must not start a bet unasked.
  */
-export function localFastGridIsOnlyOverBudget(
-  specs: VideoGenerationModelSpecsResponse | null | undefined,
-  audio = false,
-): boolean {
-  if (specs == null || readBudgetMode(specs.budgetMode) !== 'reckless') return false
-  const items =
-    (specs.downloaded_local_models ?? []).length > 0
-      ? specs.downloaded_local_models ?? []
-      : specs.local_models
-  if (items.length === 0) return false
-  const kept = items.some((item) => countKeptCells(item, audio) > 0)
-  if (kept) return false
-  return items.some((item) => hasDowngradableDrop(item.spec.dropped_cells, audio))
+export function withoutBetCells(
+  specs: VideoGenerationModelSpecsResponse,
+): VideoGenerationModelSpecsResponse {
+  return {
+    ...specs,
+    local_models: specs.local_models.map((item) => ({ ...item, spec: stripBetCells(item.spec) })),
+    ...(specs.downloaded_local_models
+      ? {
+          downloaded_local_models: specs.downloaded_local_models.map((item) => ({
+            ...item,
+            spec: stripBetCells(item.spec),
+          })),
+        }
+      : {}),
+  }
 }
 
 export function sanitizeVideoGenerationSettings<T extends VideoGenerationSettingsShape>(
@@ -1031,7 +1160,6 @@ export function sanitizeVideoGenerationSettings<T extends VideoGenerationSetting
     hasAudio?: boolean
     minimumDuration?: number
     durationSelection?: DurationSelectionMode
-    budgetMode?: BudgetMode
   } = {},
 ): T | null {
   const resolved = resolveVideoGenerationOptions({
@@ -1040,7 +1168,6 @@ export function sanitizeVideoGenerationSettings<T extends VideoGenerationSetting
     hasAudio: options.hasAudio,
     minimumDuration: options.minimumDuration,
     durationSelection: options.durationSelection,
-    budgetMode: options.budgetMode,
   })
   if (
     !resolved.hasCompatibleOptions

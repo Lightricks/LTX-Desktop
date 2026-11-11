@@ -23,7 +23,9 @@ from services.records import AssetRecord, OutputSpec, UnavailableError
 from services.unavailable_store import UnavailableStore
 from state import build_initial_state, set_state_service_for_tests
 from state.app_state_types import HfAuthenticated
+from runtime_config.budget_admission import unmeasured_refusal_message
 from tests.conftest import TEST_ADMIN_TOKEN
+from tests.fakes.generation import FakeJobSession, LocalLiveQueueControl
 from tests.http_error_assertions import assert_http_error
 
 
@@ -37,6 +39,9 @@ class _RecordingQueueControl:
 
     def interrupt(self, generation_id: str, attempt_count: int) -> None:
         del generation_id, attempt_count
+
+    def live_state(self, generation_id: str) -> None:
+        del generation_id
 
 
 def _png(path: Path, size: tuple[int, int] = (16, 16)) -> Path:
@@ -636,10 +641,7 @@ def test_create_audio_to_video_budgets_static_1080p_when_filter_drops_the_durati
         response,
         status_code=422,
         code="VIDEO_JOB_TOO_LARGE",
-        message=(
-            "This job needs 41.7 GB of GPU memory but this card has 31.0 GB. "
-            "Lower the resolution, duration, frame rate, or aspect width."
-        ),
+        message=unmeasured_refusal_message("windowed_range"),
     )
     assert _store(test_state).list_generations("audio-to-video") == []
 
@@ -1606,10 +1608,10 @@ def test_queue_snapshot_lists_running_then_ranked_queued_work(
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["active"]["generation"]["id"] == running.id
-    assert body["active"]["generation"]["status"] == "running"
-    assert body["active"]["input_assets"][0]["id"] == input_asset.id
-    assert body["active"]["progress"] is None
+    assert body["active"][0]["generation"]["id"] == running.id
+    assert body["active"][0]["generation"]["status"] == "running"
+    assert body["active"][0]["input_assets"][0]["id"] == input_asset.id
+    assert body["active"][0]["progress"] is None
     assert [entry["generation"]["id"] for entry in body["queued"]] == [
         third.id,
         second.id,
@@ -1624,6 +1626,9 @@ def test_queue_snapshot_includes_progress_only_for_matching_active_id(
 ) -> None:
     with _reserved_generation_start(test_state):
         store = _store(test_state)
+        test_state.queued_generations._queue_control = LocalLiveQueueControl(
+            test_state.generation
+        )
         active = store.insert_generation("text-to-video", _spec("active"))
         queued = store.insert_generation("text-to-video", _spec("queued"))
         claimed = store.claim_next_queued()
@@ -1637,9 +1642,9 @@ def test_queue_snapshot_includes_progress_only_for_matching_active_id(
         matched = client.get("/api/generation-queue")
 
     assert unmatched.status_code == 200, unmatched.text
-    assert unmatched.json()["active"]["progress"] is None
+    assert unmatched.json()["active"][0]["progress"] is None
     assert matched.status_code == 200, matched.text
-    progress = matched.json()["active"]["progress"]
+    progress = matched.json()["active"][0]["progress"]
     assert progress == {
         "phase": "",
         "progress": 0,
@@ -1668,8 +1673,8 @@ def test_queue_snapshot_keeps_cancelling_active_and_queued_without_progress(
     assert cancelled.json()["status"] == "cancelling"
     assert snapshot.status_code == 200, snapshot.text
     body = snapshot.json()
-    assert body["active"]["generation"]["id"] == active.id
-    assert body["active"]["generation"]["status"] == "cancelling"
+    assert body["active"][0]["generation"]["id"] == active.id
+    assert body["active"][0]["generation"]["status"] == "cancelling"
     assert body["queued"][0]["generation"]["id"] == queued.id
     assert body["queued"][0]["progress"] is None
 
@@ -1688,7 +1693,7 @@ def test_http_reorder_moves_queued_generation_before_target(client, test_state) 
         persisted = client.get("/api/generation-queue")
 
     assert reordered.status_code == 200, reordered.text
-    assert reordered.json()["active"] is None
+    assert reordered.json()["active"] == []
     assert [entry["generation"]["id"] for entry in reordered.json()["queued"]] == [
         first.id,
         third.id,
@@ -1702,6 +1707,9 @@ def test_http_reorder_returns_post_mutation_queue_snapshot(
 ) -> None:
     with _reserved_generation_start(test_state):
         store = _store(test_state)
+        test_state.queued_generations._queue_control = LocalLiveQueueControl(
+            test_state.generation
+        )
         input_asset = store.ingest_upload(str(_png(tmp_path / "start.png")))
         running = store.insert_generation(
             "image-to-video",
@@ -1731,10 +1739,10 @@ def test_http_reorder_returns_post_mutation_queue_snapshot(
     assert reordered.status_code == 200, reordered.text
     body = reordered.json()
     assert "id" not in body
-    assert body["active"]["generation"]["id"] == running.id
-    assert body["active"]["generation"]["status"] == "running"
-    assert body["active"]["input_assets"][0]["id"] == input_asset.id
-    assert body["active"]["progress"] == {
+    assert body["active"][0]["generation"]["id"] == running.id
+    assert body["active"][0]["generation"]["status"] == "running"
+    assert body["active"][0]["input_assets"][0]["id"] == input_asset.id
+    assert body["active"][0]["progress"] == {
         "phase": "",
         "progress": 0,
         "currentStep": None,
@@ -2383,6 +2391,7 @@ def test_handler_construction_does_not_fail_running_generations(test_state) -> N
         preflight_edit_matrix=lambda **kwargs: None,  # type: ignore[return-value]
         preflight_queued_ic_lora_recipe=lambda **kwargs: None,
         preflight_queued_synthesized_ic_lora=lambda **kwargs: None,
+        preflight_ic_lora_tile_sizes=lambda **kwargs: None,  # type: ignore[return-value]
     )
     loaded = store.get_generation(generation.id)
     assert loaded is not None
@@ -2455,7 +2464,7 @@ def test_i2v_executor_uses_store_rebound_by_app_handler(
     with pytest.raises(
         ValueError, match="text-to-video requires a single 'output' allocation"
     ):
-        executor.execute(generation, ())
+        executor.execute(generation, (), FakeJobSession())
 
 
 def test_boot_recovery_fallback_rebinds_i2v_asset_resolver(
@@ -2479,7 +2488,7 @@ def test_boot_recovery_fallback_rebinds_i2v_asset_resolver(
     executor = handler.executor_registry.get("image-to-video")
 
     with pytest.raises(UnavailableError):
-        executor.execute(generation, ())
+        executor.execute(generation, (), FakeJobSession())
 
 
 def test_boot_recovery_failure_replaces_handler_and_queue_store(

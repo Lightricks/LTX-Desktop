@@ -9,7 +9,8 @@ import pytest
 import torch
 from ltx_core.model.video_vae import TileSizeConfig
 from ltx_pipelines.ic_lora import ICLoraPipeline
-from ltx_pipelines.utils.types import ImageConditioningInput
+from ltx_pipelines.utils.media_io import PlaybackSegment
+from ltx_pipelines.utils.types import ImageConditioningInput, LoadedImageConditioning
 
 from services.ic_lora_pipeline.ic_lora_inference import InferenceResult, encode_result
 from services.ic_lora_pipeline.tiled_ic_lora_pipeline import (
@@ -64,7 +65,6 @@ def test_video_conditionings_passes_desktop_encode_tiling(monkeypatch) -> None:
         return ["reference"]
 
     def fake_images(chunk, **kwargs):  # noqa: ARG001
-        captured["image_color_space"] = kwargs.get("color_space")
         return ["image"]
 
     monkeypatch.setattr(
@@ -101,7 +101,6 @@ def test_video_conditionings_passes_desktop_encode_tiling(monkeypatch) -> None:
     assert captured["temporal"] == 2
     assert captured["strength"] == 0.7
     assert captured["color_space"] is color_space
-    assert captured["image_color_space"] is color_space
     # Audio-only chunks carry no video, so nothing is encoded.
     assert make(SimpleNamespace(video=None, layout=SimpleNamespace(pixel_frames=0))) == []
 
@@ -125,7 +124,12 @@ def test_stage_without_ic_lora_takes_upstream_closure(monkeypatch) -> None:
     assert seen["stage_config"] is stage_config
 
 
-def _still_ctx(*images: ImageConditioningInput) -> SimpleNamespace:
+def _loaded(path: str, frame_idx: int) -> LoadedImageConditioning:
+    binding = ImageConditioningInput.at(path, frame_idx, 1.0).binding
+    return LoadedImageConditioning(still=path, strength=1.0, binding=binding)  # type: ignore[arg-type]
+
+
+def _still_ctx(*images: LoadedImageConditioning) -> SimpleNamespace:
     return SimpleNamespace(
         images=list(images),
         num_frames=121,
@@ -164,10 +168,10 @@ def test_negative_frame_still_is_appended_after_the_reference_video(monkeypatch)
         "ltx_pipelines.chunks.conditionings.reference_video_conditionings_for_chunk", fake_reference
     )
     monkeypatch.setattr(
-        "services.ic_lora_pipeline.tiled_ic_lora_pipeline.combined_image_conditionings", fake_stills
+        "services.ic_lora_pipeline.tiled_ic_lora_pipeline.image_conditionings", fake_stills
     )
-    first_frame = ImageConditioningInput("first.png", 0, 1.0)
-    still = ImageConditioningInput("look.png", -1, 1.0)
+    first_frame = _loaded("first.png", 0)
+    still = _loaded("look.png", -1)
     chunk = SimpleNamespace(
         video=torch.zeros(1, 4, 2, 16, 24),
         layout=SimpleNamespace(pixel_frames=9),
@@ -184,14 +188,14 @@ def test_negative_frame_still_is_appended_after_the_reference_video(monkeypatch)
 
 
 def test_still_at_another_negative_index_is_rejected() -> None:
-    ctx = _still_ctx(ImageConditioningInput("look.png", -2, 1.0))
+    ctx = _still_ctx(_loaded("look.png", -2))
 
     with pytest.raises(ValueError, match="frame_idx -1"):
         _still_pipeline()._video_conditionings(ctx, SimpleNamespace(apply_ic_lora=True), {})
 
 
 def test_still_with_a_reference_downscale_is_rejected() -> None:
-    ctx = _still_ctx(ImageConditioningInput("look.png", -1, 1.0))
+    ctx = _still_ctx(_loaded("look.png", -1))
 
     with pytest.raises(ValueError, match="reference_downscale_factor 1"):
         _still_pipeline(downscale=2)._video_conditionings(ctx, SimpleNamespace(apply_ic_lora=True), {})
@@ -199,7 +203,7 @@ def test_still_with_a_reference_downscale_is_rejected() -> None:
 
 def test_stage_without_ic_lora_rejects_a_negative_frame_still() -> None:
     """The upstream closure refuses a negative index, so a still never reaches a plain stage."""
-    ctx = _still_ctx(ImageConditioningInput("look.png", -1, 1.0))
+    ctx = _still_ctx(_loaded("look.png", -1))
 
     with pytest.raises(ValueError, match="outside the planned stitched range"):
         _still_pipeline()._video_conditionings(ctx, SimpleNamespace(apply_ic_lora=False), {})
@@ -215,14 +219,15 @@ def test_failed_encode_closes_the_video_generator_so_the_reference_is_released(m
         finally:
             state["closed"] = True
 
-    def failing_encode(*, video, **kwargs):  # noqa: ARG001
-        next(iter(video))
+    def failing_encode(segments, **kwargs):  # noqa: ARG001
+        next(iter(segments))
         raise RuntimeError("encoder died")
 
-    monkeypatch.setattr("ltx_pipelines.utils.media_io.encode_video", failing_encode)
+    monkeypatch.setattr("ltx_pipelines.utils.media_io.encode_media_segments", failing_encode)
     video = windows()
+    segments = (PlaybackSegment(video=chunk, audio=None) for chunk in video)
     result = InferenceResult(
-        video=video, audio=None, num_frames=18, tiling_config=None, streams=(video,)
+        segments=segments, num_frames=18, tiling_config=None, streams=(segments, video)
     )
 
     with pytest.raises(RuntimeError, match="encoder died"):

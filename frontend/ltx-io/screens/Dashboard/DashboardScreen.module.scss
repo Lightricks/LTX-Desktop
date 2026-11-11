@@ -15,6 +15,7 @@
   line-height: 17px;
   --dash-t2v: #3b6fd8;
   --dash-i2v: #d08a2a;
+  --dash-keyframes: #7da02e;
   --dash-a2v: #2f9e8f;
   --dash-lora: #7a5af5;
   --dash-retake: #8b909a;
@@ -27,6 +28,7 @@
   [data-theme="dark"] & {
     --dash-t2v: #8eb4ff;
     --dash-i2v: #f0b45a;
+    --dash-keyframes: #b4d36a;
     --dash-a2v: #6dcec0;
     --dash-lora: #b59cff;
     --dash-retake: #b7bcc4;
@@ -292,6 +294,8 @@
 .swatch[data-series="text-to-video"] { background: var(--dash-t2v); }
 .segment[data-series="image-to-video"],
 .swatch[data-series="image-to-video"] { background: var(--dash-i2v); }
+.segment[data-series="keyframes"],
+.swatch[data-series="keyframes"] { background: var(--dash-keyframes); }
 .segment[data-series="audio-to-video"],
 .swatch[data-series="audio-to-video"] { background: var(--dash-a2v); }
 .segment[data-series="lora"],

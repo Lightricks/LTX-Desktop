@@ -1,0 +1,46 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.headerEnd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+}
+
+.count {
+  color: var(--semantic-fg-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.subtitle {
+  max-width: 280px;
+  text-align: center;
+  white-space: normal;
+}
+
+// The timeline and the list. A drop on it adds images, so it shows the same drag highlight.
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  min-width: 0;
+  padding: var(--spacing-xs);
+  border: 1px dashed transparent;
+  border-radius: var(--radius-md);
+}
+
+// Ten rows are tall. The list scrolls so the options below stay in view.
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-height: 420px;
+  min-width: 0;
+  overflow-y: auto;
+}

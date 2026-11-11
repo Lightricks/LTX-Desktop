@@ -18,12 +18,12 @@ supported-markers = [
 
 [[manifest.dependency-metadata]]
 name = "ltx-core"
-version = "1.4.1"
-requires-dist = ["torch~=2.7", "torchaudio", "torchvision", "einops", "numpy", "colour-science", "av", "transformers>=5.8.0,<5.15", "safetensors", "accelerate", "scipy>=1.14", "mps-sdpa>=0.2.0 ; platform_machine == 'arm64' and sys_platform == 'darwin'"]
+version = "1.6.0"
+requires-dist = ["torch~=2.7", "torchaudio", "torchvision", "einops", "numpy", "colour-science", "transformers>=5.8.0,<5.15", "safetensors", "accelerate", "scipy>=1.14", "mps-sdpa>=0.2.0 ; platform_machine == 'arm64' and sys_platform == 'darwin'"]
 
 [[manifest.dependency-metadata]]
 name = "ltx-pipelines"
-version = "1.4.1"
+version = "1.6.0"
 requires-dist = ["ltx-core", "av", "tqdm", "pillow", "openimageio", "cloudpickle>=3.1"]
 
 [[package]]
@@ -1150,11 +1150,10 @@ wheels = [
 
 [[package]]
 name = "ltx-core"
-version = "1.4.1"
-source = { git = "https://github.com/Lightricks/LTX-2.git?subdirectory=packages%2Fltx-core&tag=v1.4.1#2d6e71c88be37b55a2dd698c2dff447edfbe5898" }
+version = "1.6.0"
+source = { git = "https://github.com/Lightricks/LTX-2.git?subdirectory=packages%2Fltx-core&tag=v1.6.0#c1b4675863c07c59c92e502446cccdaedbe5889c" }
 dependencies = [
     { name = "accelerate", marker = "python_full_version == '3.13.*' or sys_platform != 'win32'" },
-    { name = "av", marker = "python_full_version == '3.13.*' or sys_platform != 'win32'" },
     { name = "colour-science", marker = "python_full_version == '3.13.*' or sys_platform != 'win32'" },
     { name = "einops", marker = "python_full_version == '3.13.*' or sys_platform != 'win32'" },
     { name = "mps-sdpa", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
@@ -1200,6 +1199,7 @@ dependencies = [
     { name = "pydantic-ai-slim", extra = ["google", "openai"], marker = "python_full_version == '3.13.*' or sys_platform != 'win32'" },
     { name = "pynvml", marker = "(python_full_version == '3.13.*' and sys_platform == 'win32') or (sys_platform != 'darwin' and sys_platform != 'win32')" },
     { name = "python-multipart", marker = "python_full_version == '3.13.*' or sys_platform != 'win32'" },
+    { name = "pyyaml", marker = "python_full_version == '3.13.*' or sys_platform != 'win32'" },
     { name = "sageattention", version = "1.0.6", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'darwin' and sys_platform != 'win32'" },
     { name = "sageattention", version = "2.2.0+cu128torch2.10.0andhigher.post5", source = { url = "https://github.com/woct0rdho/SageAttention/releases/download/v2.2.0-windows.post5/sageattention-2.2.0+cu128torch2.10.0andhigher.post5-cp310-abi3-win_amd64.whl" }, marker = "python_full_version == '3.13.*' and sys_platform == 'win32'" },
     { name = "sentencepiece", marker = "python_full_version == '3.13.*' or sys_platform != 'win32'" },
@@ -1243,8 +1243,8 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23.0" },
     { name = "imageio", specifier = ">=2.37.2" },
     { name = "imageio-ffmpeg", specifier = ">=0.6.0" },
-    { name = "ltx-core", git = "https://github.com/Lightricks/LTX-2.git?subdirectory=packages%2Fltx-core&tag=v1.4.1" },
-    { name = "ltx-pipelines", git = "https://github.com/Lightricks/LTX-2.git?subdirectory=packages%2Fltx-pipelines&tag=v1.4.1" },
+    { name = "ltx-core", git = "https://github.com/Lightricks/LTX-2.git?subdirectory=packages%2Fltx-core&tag=v1.6.0" },
+    { name = "ltx-pipelines", git = "https://github.com/Lightricks/LTX-2.git?subdirectory=packages%2Fltx-pipelines&tag=v1.6.0" },
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "natten", marker = "sys_platform == 'win32'", url = "https://storage.googleapis.com/ltx-desktop-artifacts/wheels/natten-0.21.6+torch2100cu128-cp313-cp313-win_amd64.whl" },
     { name = "ninja", marker = "sys_platform == 'darwin'", specifier = ">=1.11" },
@@ -1260,6 +1260,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-split", marker = "extra == 'test'", specifier = ">=0.11.0" },
     { name = "python-multipart", specifier = ">=0.0.32" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "requests", marker = "extra == 'test'", specifier = ">=2.34.2" },
     { name = "sageattention", marker = "sys_platform != 'darwin' and sys_platform != 'win32'", specifier = ">=1.0.0" },
     { name = "sageattention", marker = "sys_platform == 'win32'", url = "https://github.com/woct0rdho/SageAttention/releases/download/v2.2.0-windows.post5/sageattention-2.2.0+cu128torch2.10.0andhigher.post5-cp310-abi3-win_amd64.whl" },
@@ -1281,8 +1282,8 @@ provides-extras = ["test", "dev"]
 
 [[package]]
 name = "ltx-pipelines"
-version = "1.4.1"
-source = { git = "https://github.com/Lightricks/LTX-2.git?subdirectory=packages%2Fltx-pipelines&tag=v1.4.1#2d6e71c88be37b55a2dd698c2dff447edfbe5898" }
+version = "1.6.0"
+source = { git = "https://github.com/Lightricks/LTX-2.git?subdirectory=packages%2Fltx-pipelines&tag=v1.6.0#c1b4675863c07c59c92e502446cccdaedbe5889c" }
 dependencies = [
     { name = "av", marker = "python_full_version == '3.13.*' or sys_platform != 'win32'" },
     { name = "cloudpickle", marker = "python_full_version == '3.13.*' or sys_platform != 'win32'" },

@@ -53,7 +53,7 @@
     "id": "refine-details",
     "catalogId": "refine-details",
     "kind": "video",
-    "requiresHighRes": true
+    "highResWithoutFlag": true
   },
   {
     "id": "motion-track",

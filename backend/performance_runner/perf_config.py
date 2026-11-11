@@ -282,9 +282,10 @@ def ltx_versions() -> list[dict[str, Any]]:
 
 
 def activate_ltx_model(want: str) -> str:
-    """Activate by model_id or Settings label ('2.5', '2.3'). Must already be installed."""
+    """Activate by model_id, Settings label ('LTX 2.5') or bare version ('2.5'). Must already be installed."""
     versions = ltx_versions()
-    match = next((v for v in versions if v.get("model_id") == want or v.get("label") == want), None)
+    accepted = {want, f"LTX {want}"}
+    match = next((v for v in versions if v.get("model_id") in accepted or v.get("label") in accepted), None)
     if match is None:
         known = ", ".join(str(v.get("label") or v.get("model_id")) for v in versions) or "none"
         raise RuntimeError(f"unknown LTX version {want!r} (known: {known})")

@@ -22,17 +22,18 @@ const stringVersionForbidden: Expect<
 const desktopSpecsKey = generationQueryKeys.specs(3);
 const remoteSpecsKey = generationQueryKeys.specs(null);
 
-type SpecsBudgetMode = "standard" | "reckless" | "server";
+type SpecsBudgetMode = "brave" | "cautious" | "server";
+type SpecsNeverSplit = boolean | "server";
 const desktopSpecsKeyType: Expect<
   Equal<
     typeof desktopSpecsKey,
-    readonly ["video-generation-model-specs", 3, SpecsBudgetMode]
+    readonly ["video-generation-model-specs", 3, SpecsBudgetMode, SpecsNeverSplit]
   >
 > = true;
 const remoteSpecsKeyType: Expect<
   Equal<
     typeof remoteSpecsKey,
-    readonly ["video-generation-model-specs", null, SpecsBudgetMode]
+    readonly ["video-generation-model-specs", null, SpecsBudgetMode, SpecsNeverSplit]
   >
 > = true;
 
