@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
-import { X, Download, FolderOpen, Film, Package, Loader2, Check, AlertCircle, ChevronDown } from 'lucide-react'
+import { X, Download, FolderOpen, Film, Music, Package, Loader2, Check, AlertCircle, ChevronDown } from 'lucide-react'
 import { Button } from './ui/button'
 import { DEFAULT_SUBTITLE_STYLE } from '../types/project-model'
 import type { Track, TimelineClip } from '../types/project-model'
@@ -20,6 +20,8 @@ interface ExportModalProps {
 
 type ExportStatus = 'idle' | 'exporting' | 'done' | 'error'
 type ExportCodec = 'h264' | 'prores' | 'vp9'
+type ExportMode = 'video' | 'audio'
+type AudioFormat = 'mp3' | 'aac' | 'wav' | 'flac'
 
 interface ExportSettings {
   codec: ExportCodec
@@ -29,11 +31,31 @@ interface ExportSettings {
   quality: number // CRF for h264, profile for prores, bitrate(Mbps) for vp9
 }
 
+interface ExportAudioSettings {
+  format: AudioFormat
+  sampleRate: number
+  bitrate: number // kbps, only used for lossy formats
+}
+
 const CODEC_INFO: Record<ExportCodec, { label: string; ext: string; description: string; filterName: string }> = {
   h264: { label: 'H.264 / MP4', ext: 'mp4', description: 'Most compatible format', filterName: 'MP4 Video' },
   prores: { label: 'ProRes / MOV', ext: 'mov', description: 'Professional editing format', filterName: 'QuickTime Movie' },
   vp9: { label: 'VP9 / WebM', ext: 'webm', description: 'Web-optimized format', filterName: 'WebM Video' },
 }
+
+const AUDIO_FORMAT_INFO: Record<AudioFormat, { label: string; ext: string; description: string; filterName: string; lossy: boolean }> = {
+  mp3: { label: 'MP3', ext: 'mp3', description: 'Most compatible, small size', filterName: 'MP3 Audio', lossy: true },
+  aac: { label: 'AAC', ext: 'm4a', description: 'Smaller size, high quality', filterName: 'AAC Audio', lossy: true },
+  wav: { label: 'WAV', ext: 'wav', description: 'Uncompressed', filterName: 'WAV Audio', lossy: false },
+  flac: { label: 'FLAC', ext: 'flac', description: 'Lossless compression', filterName: 'FLAC Audio', lossy: false },
+}
+
+const SAMPLE_RATES = [
+  { value: 44100, label: '44.1 kHz' },
+  { value: 48000, label: '48 kHz' },
+]
+
+const BITRATES = [128, 192, 256, 320]
 
 const RESOLUTIONS = [
   { label: '4K (3840 x 2160)', width: 3840, height: 2160 },
@@ -220,7 +242,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
   }, [clips, tracks])
 
   const [exportStatus, setExportStatus] = useState<ExportStatus>('idle')
-  const [exportType, setExportType] = useState<'package' | 'video' | null>(null)
+  const [exportType, setExportType] = useState<'package' | 'video' | 'audio' | null>(null)
   const [exportProgress, setExportProgress] = useState(0)
   const [exportError, setExportError] = useState<string | null>(null)
   const [exportPath, setExportPath] = useState<string | null>(null)
@@ -228,12 +250,18 @@ export function ExportModal({ projectName }: ExportModalProps) {
   const abortRef = useRef(false)
 
   // Export settings
+  const [exportMode, setExportMode] = useState<ExportMode>('video')
   const [settings, setSettings] = useState<ExportSettings>({
     codec: 'h264',
     width: 1920,
     height: 1080,
     fps: 24,
     quality: 18, // CRF 18 for h264
+  })
+  const [audioSettings, setAudioSettings] = useState<ExportAudioSettings>({
+    format: 'mp3',
+    sampleRate: 44100,
+    bitrate: 192,
   })
   const [burnSubtitles, setBurnSubtitles] = useState(true)
 
@@ -355,6 +383,56 @@ export function ExportModal({ projectName }: ExportModalProps) {
     }
   }, [burnSubtitles, exportClips, letterbox, projectName, settings, subtitleData, timeline])
 
+  const handleExportAudio = useCallback(async () => {
+    if (!timeline || clips.length === 0) return
+    setExportType('audio')
+    setExportStatus('exporting')
+    setExportProgress(0)
+    setExportError(null)
+    setExportFrameInfo('Preparing...')
+    abortRef.current = false
+
+    try {
+      const formatInfo = AUDIO_FORMAT_INFO[audioSettings.format]
+
+      const filePath = await window.electronAPI?.showSaveDialog({
+        title: `Export ${formatInfo.label}`,
+        defaultPath: `${projectName}_${timeline.name}.${formatInfo.ext}`,
+        filters: [
+          { name: formatInfo.filterName, extensions: [formatInfo.ext] },
+          { name: 'All Files', extensions: ['*'] },
+        ],
+      })
+
+      if (!filePath) {
+        setExportStatus('idle')
+        return
+      }
+
+      setExportFrameInfo('Mixing audio...')
+
+      const result = await window.electronAPI?.exportAudio({
+        clips: exportClips,
+        outputPath: filePath,
+        format: audioSettings.format,
+        sampleRate: audioSettings.sampleRate,
+        bitrate: audioSettings.bitrate,
+      })
+
+      if (result && !result.success) {
+        throw new Error(result.error)
+      }
+
+      setExportProgress(100)
+      setExportPath(filePath)
+      setExportFrameInfo('Export complete')
+      setExportStatus('done')
+    } catch (err) {
+      setExportError(String(err))
+      setExportStatus('error')
+    }
+  }, [audioSettings, exportClips, projectName, timeline])
+
   const handleCancel = useCallback(async () => {
     abortRef.current = true
     window.electronAPI?.exportCancel({ sessionId: 'current' }).catch(() => {})
@@ -385,11 +463,11 @@ export function ExportModal({ projectName }: ExportModalProps) {
               <div className="flex items-center gap-3">
                 <Loader2 className="h-5 w-5 text-blue-400 animate-spin" />
                 <span className="text-sm text-zinc-300">
-                  {exportType === 'package' ? 'Generating FCPXML...' : 'Rendering video...'}
+                  {exportType === 'package' ? 'Generating FCPXML...' : exportType === 'audio' ? 'Extracting audio...' : 'Rendering video...'}
                 </span>
               </div>
               <div className="w-full bg-zinc-800 rounded-full h-2 overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-blue-500 rounded-full transition-all duration-300"
                   style={{ width: `${exportProgress}%` }}
                 />
@@ -398,7 +476,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
                 <p className="text-xs text-zinc-500">{exportProgress}% complete</p>
                 {exportFrameInfo && <p className="text-xs text-zinc-500">{exportFrameInfo}</p>}
               </div>
-              {exportType === 'video' && (
+              {(exportType === 'video' || exportType === 'audio') && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -505,158 +583,260 @@ export function ExportModal({ projectName }: ExportModalProps) {
                 </div>
               </button>
 
-              {/* Divider */}
+              {/* Divider + mode toggle */}
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-zinc-800" />
-                <span className="text-[10px] text-zinc-600 uppercase tracking-wider font-semibold">Video Export</span>
+                <span className="text-[10px] text-zinc-600 uppercase tracking-wider font-semibold">Export</span>
                 <div className="flex-1 h-px bg-zinc-800" />
               </div>
-
-              {/* Format selector */}
-              <div>
-                <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-2 block">Format</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(Object.keys(CODEC_INFO) as ExportCodec[]).map(codec => (
-                    <button
-                      key={codec}
-                      onClick={() => handleCodecChange(codec)}
-                      className={`p-2.5 rounded-lg border text-center transition-all ${
-                        settings.codec === codec
-                          ? 'border-blue-500 bg-blue-500/10 text-white'
-                          : 'border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300'
-                      }`}
-                    >
-                      <p className="text-xs font-semibold">{CODEC_INFO[codec].label.split(' / ')[0]}</p>
-                      <p className="text-[9px] text-zinc-500 mt-0.5">.{CODEC_INFO[codec].ext}</p>
-                    </button>
-                  ))}
-                </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setExportMode('video')}
+                  className={`flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-semibold transition-all ${
+                    exportMode === 'video'
+                      ? 'border-blue-500 bg-blue-500/10 text-white'
+                      : 'border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300'
+                  }`}
+                >
+                  <Film className="h-4 w-4" />
+                  Video
+                </button>
+                <button
+                  onClick={() => setExportMode('audio')}
+                  className={`flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-semibold transition-all ${
+                    exportMode === 'audio'
+                      ? 'border-blue-500 bg-blue-500/10 text-white'
+                      : 'border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300'
+                  }`}
+                >
+                  <Music className="h-4 w-4" />
+                  Audio
+                </button>
               </div>
 
-              {/* Resolution & Frame rate row */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-1.5 block">Resolution</label>
-                  <div className="relative">
-                    <select
-                      value={`${settings.width}x${settings.height}`}
-                      onChange={(e) => {
-                        const [w, h] = e.target.value.split('x').map(Number)
-                        setSettings(prev => ({ ...prev, width: w, height: h }))
-                      }}
-                      className="w-full appearance-none bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 pr-8 cursor-pointer"
-                    >
-                      {RESOLUTIONS.map(r => (
-                        <option key={`${r.width}x${r.height}`} value={`${r.width}x${r.height}`}>
-                          {r.label}
-                        </option>
+              {exportMode === 'video' && (
+                <>
+                  {/* Format selector */}
+                  <div>
+                    <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-2 block">Format</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(Object.keys(CODEC_INFO) as ExportCodec[]).map(codec => (
+                        <button
+                          key={codec}
+                          onClick={() => handleCodecChange(codec)}
+                          className={`p-2.5 rounded-lg border text-center transition-all ${
+                            settings.codec === codec
+                              ? 'border-blue-500 bg-blue-500/10 text-white'
+                              : 'border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300'
+                          }`}
+                        >
+                          <p className="text-xs font-semibold">{CODEC_INFO[codec].label.split(' / ')[0]}</p>
+                          <p className="text-[9px] text-zinc-500 mt-0.5">.{CODEC_INFO[codec].ext}</p>
+                        </button>
                       ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-1.5 block">Frame Rate</label>
-                  <div className="relative">
-                    <select
-                      value={settings.fps}
-                      onChange={(e) => setSettings(prev => ({ ...prev, fps: parseInt(e.target.value) }))}
-                      className="w-full appearance-none bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 pr-8 cursor-pointer"
-                    >
-                      {FRAME_RATES.map(fps => (
-                        <option key={fps} value={fps}>{fps} fps</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
-                  </div>
-                </div>
-              </div>
 
-              {/* Quality */}
-              <div>
-                <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-1.5 block">Quality</label>
-                {settings.codec === 'h264' && (
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="range"
-                      min={15}
-                      max={28}
-                      step={1}
-                      value={settings.quality}
-                      onChange={(e) => setSettings(prev => ({ ...prev, quality: parseInt(e.target.value) }))}
-                      className="flex-1 h-1.5 accent-blue-500 cursor-pointer"
-                      // Note: lower CRF = higher quality (inverted display)
-                    />
-                    <span className="text-xs text-zinc-400 w-16 text-right">
-                      {settings.quality <= 18 ? 'High' : settings.quality <= 23 ? 'Medium' : 'Low'}
-                      <span className="text-zinc-600 ml-1">({settings.quality})</span>
-                    </span>
+                  {/* Resolution & Frame rate row */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-1.5 block">Resolution</label>
+                      <div className="relative">
+                        <select
+                          value={`${settings.width}x${settings.height}`}
+                          onChange={(e) => {
+                            const [w, h] = e.target.value.split('x').map(Number)
+                            setSettings(prev => ({ ...prev, width: w, height: h }))
+                          }}
+                          className="w-full appearance-none bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 pr-8 cursor-pointer"
+                        >
+                          {RESOLUTIONS.map(r => (
+                            <option key={`${r.width}x${r.height}`} value={`${r.width}x${r.height}`}>
+                              {r.label}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-1.5 block">Frame Rate</label>
+                      <div className="relative">
+                        <select
+                          value={settings.fps}
+                          onChange={(e) => setSettings(prev => ({ ...prev, fps: parseInt(e.target.value) }))}
+                          className="w-full appearance-none bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 pr-8 cursor-pointer"
+                        >
+                          {FRAME_RATES.map(fps => (
+                            <option key={fps} value={fps}>{fps} fps</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
+                      </div>
+                    </div>
                   </div>
-                )}
-                {settings.codec === 'prores' && (
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {PRORES_PROFILES.map(p => (
-                      <button
-                        key={p.value}
-                        onClick={() => setSettings(prev => ({ ...prev, quality: p.value }))}
-                        className={`py-1.5 px-2 rounded-md text-xs font-medium transition-all ${
-                          settings.quality === p.value
-                            ? 'bg-blue-500/20 border border-blue-500 text-blue-300'
-                            : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:border-zinc-600'
-                        }`}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {settings.codec === 'vp9' && (
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="range"
-                      min={2}
-                      max={20}
-                      step={1}
-                      value={settings.quality}
-                      onChange={(e) => setSettings(prev => ({ ...prev, quality: parseInt(e.target.value) }))}
-                      className="flex-1 h-1.5 accent-blue-500 cursor-pointer"
-                    />
-                    <span className="text-xs text-zinc-400 w-20 text-right">
-                      {settings.quality} Mbps
-                    </span>
-                  </div>
-                )}
-              </div>
 
-              {/* Options */}
-              {hasSubtitles && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-px bg-zinc-800" />
-                    <span className="text-[10px] text-zinc-600 uppercase tracking-wider font-semibold">Options</span>
-                    <div className="flex-1 h-px bg-zinc-800" />
+                  {/* Quality */}
+                  <div>
+                    <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-1.5 block">Quality</label>
+                    {settings.codec === 'h264' && (
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="range"
+                          min={15}
+                          max={28}
+                          step={1}
+                          value={settings.quality}
+                          onChange={(e) => setSettings(prev => ({ ...prev, quality: parseInt(e.target.value) }))}
+                          className="flex-1 h-1.5 accent-blue-500 cursor-pointer"
+                          // Note: lower CRF = higher quality (inverted display)
+                        />
+                        <span className="text-xs text-zinc-400 w-16 text-right">
+                          {settings.quality <= 18 ? 'High' : settings.quality <= 23 ? 'Medium' : 'Low'}
+                          <span className="text-zinc-600 ml-1">({settings.quality})</span>
+                        </span>
+                      </div>
+                    )}
+                    {settings.codec === 'prores' && (
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {PRORES_PROFILES.map(p => (
+                          <button
+                            key={p.value}
+                            onClick={() => setSettings(prev => ({ ...prev, quality: p.value }))}
+                            className={`py-1.5 px-2 rounded-md text-xs font-medium transition-all ${
+                              settings.quality === p.value
+                                ? 'bg-blue-500/20 border border-blue-500 text-blue-300'
+                                : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                            }`}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {settings.codec === 'vp9' && (
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="range"
+                          min={2}
+                          max={20}
+                          step={1}
+                          value={settings.quality}
+                          onChange={(e) => setSettings(prev => ({ ...prev, quality: parseInt(e.target.value) }))}
+                          className="flex-1 h-1.5 accent-blue-500 cursor-pointer"
+                        />
+                        <span className="text-xs text-zinc-400 w-20 text-right">
+                          {settings.quality} Mbps
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <label className="flex items-center gap-2.5 cursor-pointer group">
-                    <input
-                      type="checkbox"
-                      checked={burnSubtitles}
-                      onChange={(e) => setBurnSubtitles(e.target.checked)}
-                      className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 accent-blue-500 cursor-pointer"
-                    />
-                    <span className="text-xs text-zinc-300 group-hover:text-white transition-colors">Burn-in subtitles</span>
-                  </label>
-                </div>
+
+                  {/* Options */}
+                  {hasSubtitles && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-px bg-zinc-800" />
+                        <span className="text-[10px] text-zinc-600 uppercase tracking-wider font-semibold">Options</span>
+                        <div className="flex-1 h-px bg-zinc-800" />
+                      </div>
+                      <label className="flex items-center gap-2.5 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={burnSubtitles}
+                          onChange={(e) => setBurnSubtitles(e.target.checked)}
+                          className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 accent-blue-500 cursor-pointer"
+                        />
+                        <span className="text-xs text-zinc-300 group-hover:text-white transition-colors">Burn-in subtitles</span>
+                      </label>
+                    </div>
+                  )}
+
+                  {/* Export button */}
+                  <button
+                    onClick={handleExportVideo}
+                    disabled={clips.length === 0}
+                    className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Film className="h-4 w-4" />
+                    Export Video
+                  </button>
+                </>
               )}
 
-              {/* Export button */}
-              <button
-                onClick={handleExportVideo}
-                disabled={clips.length === 0}
-                className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors"
-              >
-                <Film className="h-4 w-4" />
-                Export Video
-              </button>
+              {exportMode === 'audio' && (
+                <>
+                  {/* Format selector */}
+                  <div>
+                    <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-2 block">Format</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {(Object.keys(AUDIO_FORMAT_INFO) as AudioFormat[]).map(format => (
+                        <button
+                          key={format}
+                          onClick={() => setAudioSettings(prev => ({ ...prev, format }))}
+                          className={`p-2.5 rounded-lg border text-center transition-all ${
+                            audioSettings.format === format
+                              ? 'border-blue-500 bg-blue-500/10 text-white'
+                              : 'border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300'
+                          }`}
+                        >
+                          <p className="text-xs font-semibold">{AUDIO_FORMAT_INFO[format].label}</p>
+                          <p className="text-[9px] text-zinc-500 mt-0.5">.{AUDIO_FORMAT_INFO[format].ext}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Sample rate */}
+                  <div>
+                    <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-1.5 block">Sample Rate</label>
+                    <div className="relative">
+                      <select
+                        value={audioSettings.sampleRate}
+                        onChange={(e) => setAudioSettings(prev => ({ ...prev, sampleRate: parseInt(e.target.value) }))}
+                        className="w-full appearance-none bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 pr-8 cursor-pointer"
+                      >
+                        {SAMPLE_RATES.map(r => (
+                          <option key={r.value} value={r.value}>{r.label}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* Quality (bitrate) — lossy formats only */}
+                  {AUDIO_FORMAT_INFO[audioSettings.format].lossy && (
+                    <div>
+                      <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-1.5 block">Quality</label>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {BITRATES.map(rate => (
+                          <button
+                            key={rate}
+                            onClick={() => setAudioSettings(prev => ({ ...prev, bitrate: rate }))}
+                            className={`py-1.5 px-2 rounded-md text-xs font-medium transition-all ${
+                              audioSettings.bitrate === rate
+                                ? 'bg-blue-500/20 border border-blue-500 text-blue-300'
+                                : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                            }`}
+                          >
+                            {rate} kbps
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Export button */}
+                  <button
+                    onClick={handleExportAudio}
+                    disabled={clips.length === 0}
+                    className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Music className="h-4 w-4" />
+                    Export Audio
+                  </button>
+                </>
+              )}
 
               {clips.length === 0 && (
                 <p className="text-xs text-zinc-500 text-center">Add clips to the timeline to export.</p>
