@@ -68,6 +68,8 @@ import services.patches.diffusion_stage_cache as _diffusion_stage_cache  # pyrig
 del _diffusion_stage_cache
 import services.patches.mps_transfer_sync as _mps_transfer_sync  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core waits for queued MPS compute before a transfer and a 1080p stage 2 passes on a 48 GB Mac without it
 del _mps_transfer_sync
+import services.patches.mps_tiling_weights_sync as _mps_tiling_weights_sync  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core _device_weights uploads with non_blocking=allow_async_transfer(...) and Refine Details gives a real picture on a Mac without it (LTX-Desktop#199)
+del _mps_tiling_weights_sync
 import services.patches.diffvae_decode_vram as _diffvae_decode_vram  # pyright: ignore[reportUnusedImport]  # Remove once upstream decode tiling is confirmed sufficient (E1)
 del _diffvae_decode_vram
 import services.patches.natten_libnatten_gate as _natten_libnatten_gate  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core natten_available checks HAS_LIBNATTEN
