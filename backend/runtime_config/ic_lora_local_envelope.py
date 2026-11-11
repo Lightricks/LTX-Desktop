@@ -1,6 +1,6 @@
 """Measured IC-LoRA spatial envelope (LTX-2 1.3.0).
 
-NOT re-measured on 1.4.1. 1.4 moved the reference encode into the chunk flow, so re-run the
+NOT re-measured on 1.5.0 or 1.6.0. 1.4+ moved the reference encode into the chunk flow, so re-run the
 bump gate's IC-LoRA scenarios (``iclora_stage2_on``, ``iclora_day_to_night``) on CUDA and
 confirm these limits still hold before tightening or loosening them.
 

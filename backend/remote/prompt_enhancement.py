@@ -11,7 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from _routes._errors import HTTPError
 from api_types import (
     IC_LORA_SHEET_MAX_IMAGES,
+    LOCAL_MULTI_KEYFRAME_MAX_COUNT,
     EnhancePromptRequest,
+    KeyframeRef,
     EnhancePromptResponse,
     LTXVideoGenAspectRatio,
     LTXVideoGenResolution,
@@ -19,6 +21,7 @@ from api_types import (
     ReplacedWindow,
 )
 from app_handler import AppHandler
+from runtime_config.nag_limits import NEGATIVE_PROMPT_MAX_LENGTH
 from services.prompt_enhancement.resolve_enhance_assets import resolve_enhance_media_assets
 from state import get_state_service
 
@@ -30,18 +33,27 @@ class RemoteEnhancePromptRequest(BaseModel):
 
     model_config = ConfigDict(strict=True, extra="forbid")
     prompt: str
+    negativePrompt: str | None = Field(default=None, max_length=NEGATIVE_PROMPT_MAX_LENGTH)
     loraCatalogIds: list[str] = Field(default_factory=list)
+    # The saved custom LoRA. The id is checked against a strict pattern where it is read.
+    customLoraIds: list[str] = Field(default_factory=list, max_length=1)
     icLoraId: str | None = None
     imageAssetId: str | None = None
     lastImageAssetId: str | None = None
     # The panel images of an image-list IC-LoRA (Ingredients), in order.
     imageAssetIds: list[str] = Field(default_factory=list[str], max_length=IC_LORA_SHEET_MAX_IMAGES)
+    # The stills of a Keyframes clip. `duration` and `fps` give the rewrite their clock times.
+    keyframeAssets: list[KeyframeRef] = Field(
+        default_factory=list[KeyframeRef], max_length=LOCAL_MULTI_KEYFRAME_MAX_COUNT
+    )
+    duration: int | None = Field(default=None, gt=0)
+    fps: int | None = Field(default=None, gt=0)
     aspectRatio: LTXVideoGenAspectRatio | None = None
     resolution: LTXVideoGenResolution | None = None
     videoAssetId: str | None = None
     replacedWindow: ReplacedWindow | None = None
     provider: Literal["local", "api"] | None = None
-    mediaType: Literal["video"] = "video"
+    mediaType: Literal["video", "image"] = "video"
 
     @field_validator("imageAssetId", "lastImageAssetId", "videoAssetId", mode="before")
     @classmethod
@@ -74,6 +86,7 @@ class RemoteEnhancePromptRequest(BaseModel):
             not self.prompt.strip()
             and not self.imageAssetId
             and not self.imageAssetIds
+            and not self.keyframeAssets
             and not self.videoAssetId
         ):
             raise ValueError("Prompt is required unless an image or video is provided")
@@ -116,11 +129,16 @@ def route_remote_enhance_prompt(
     try:
         desktop_req = EnhancePromptRequest(
             prompt=req.prompt,
+            negativePrompt=req.negativePrompt,
             loraCatalogIds=req.loraCatalogIds,
+            customLoraIds=req.customLoraIds,
             icLoraId=req.icLoraId,
             imageAssetId=req.imageAssetId,
             lastImageAssetId=req.lastImageAssetId,
             imageAssetIds=req.imageAssetIds,
+            keyframeAssets=req.keyframeAssets,
+            duration=req.duration,
+            fps=req.fps,
             aspectRatio=req.aspectRatio,
             resolution=req.resolution,
             videoAssetId=req.videoAssetId,

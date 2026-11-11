@@ -52,8 +52,8 @@ from runtime_config.eta import (
     EtaFeature,
     EtaLoadMode,
     WallTimeEstimate,
+    default_machine_factor,
     estimate_fast_wall_time_s,
-    is_measured_hardware_class,
 )
 from runtime_config.evict_retry import evict_retry_filter
 from runtime_config.ltx_capabilities import (
@@ -68,17 +68,18 @@ from runtime_config.ltx_capabilities import (
 )
 from runtime_config.low_performance_machine import detect_low_performance_machine
 from runtime_config.models_scanner import resolve_lora_ref
+from runtime_config.budget_admission import Admitted, Refused, RiskAllowance, admit
+from runtime_config.reject_reasons import PassShape
+from runtime_config.device_calibration import JobEnvelope
 from runtime_config.runtime_policy import LocalGenerationMode
 from runtime_config.video_job_budget import (
     LOCAL_GENERATION_UNSUPPORTED,
     LOCAL_GENERATION_UNSUPPORTED_MESSAGE,
     LocalJobFilter,
-    VideoJobLoad,
-    VideoJobReject,
+    decide_video_job,
+    price_video_job,
     reject_message_and_code,
-    risk_for_reject,
-    risk_if_allowed,
-    unmeasured_load_risk,
+    video_job_reject,
     vram_snapshot_suffix,
 )
 from _routes._errors import HTTPError
@@ -105,13 +106,18 @@ from server_utils.media_validation import (
 )
 from server_utils.oriented_image import open_oriented_rgb, oriented_image_file
 from services.denoising_progress import distilled_total_steps
+from services.fast_video_pipeline.nag_config import (
+    NagDecision,
+    decide_nag,
+    log_nag_decision,
+)
 from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
 from services.interfaces import GpuInfo, LTXAPIClient
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError
 from services.ltx_api_client.ltx_api_errors import map_ltx_api_client_error, missing_ltx_api_key_error
 from services.patches import diffusion_stage_cache
 from state.app_state_types import AppState
-from state.app_settings import should_video_generate_with_ltx_api
+from state.app_settings import resolved_use_conv_vae, should_video_generate_with_ltx_api
 
 if TYPE_CHECKING:
     from runtime_config.runtime_config import RuntimeConfig
@@ -124,15 +130,6 @@ def _upload_oriented_image(client: LTXAPIClient, *, api_key: str, path: Path) ->
         return client.upload_file(api_key=api_key, file_path=str(upload_path))
 
 
-def _lora_catalog_ids(loras: list[LoraEntry]) -> list[str]:
-    """The catalog ids among the selected LoRAs, for catalog-aware prompt enhancement.
-
-    A custom LoRA carries none and stays weights-only: its filename is deliberately not
-    matched against the catalog, which would attach a stranger's trigger phrase to it.
-    """
-    return [entry.catalogId for entry in loras if entry.catalogId is not None]
-
-
 FORCED_API_RESOLUTION_MAP: dict[str, dict[str, dict[str, str]]] = forced_api_resolution_map()
 
 
@@ -140,8 +137,22 @@ def _a2v_fps_durations(
     item: LTXVideoGenerationModelSpecItem | None,
     resolution: LTXLocalA2VResolution,
     fps: LTXVideoGenFps,
+    *,
+    aspect_ratio: LTXQueuedAspectRatio = "16:9",
 ) -> list[int]:
-    duration_map = None if item is None else item.spec.a2v_supported_resolutions_durations
+    if item is None:
+        return []
+    aspect: LtxAspectRatio = "16:9" if aspect_ratio == "auto" else aspect_ratio
+    aspect_spec = (
+        item.spec.aspect_specs.get(aspect)
+        if item.spec.aspect_specs is not None
+        else None
+    )
+    duration_map = (
+        aspect_spec.a2v_supported_resolutions_durations
+        if aspect_spec is not None
+        else item.spec.a2v_supported_resolutions_durations
+    )
     if duration_map is None:
         return []
     resolution_spec = duration_map.get(resolution)
@@ -231,11 +242,18 @@ class VideoGenerationHandler(StateHandlerBase):
             mode=canvas_mode,
         )
         frames = compute_num_frames(req.duration, req.fps)
-        load_mode, risk = self._video_job_load_mode(
+        admitted = self._video_job_load(
             budget_width, budget_height, frames, job_filter=job_filter
         )
+        load_mode, risk = admitted.load.mode, admitted.risk
         est = self._estimate_wall_time(
-            budget_width, budget_height, frames, load_mode, req.feature
+            budget_width,
+            budget_height,
+            frames,
+            load_mode,
+            req.feature,
+            chunk_pixel_frames=admitted.load.chunk_pixel_frames,
+            stage_2=not local_canvas(req.resolution, mode=canvas_mode).skip_stage_2,
         )
         if est is None:
             return EstimateVideoResponse(estimate=None, risk=risk)
@@ -247,7 +265,11 @@ class VideoGenerationHandler(StateHandlerBase):
         )
 
     def derive_local_a2v_params(
-        self, params: CreateAudioToVideoParams, audio_duration_ms: int
+        self,
+        params: CreateAudioToVideoParams,
+        audio_duration_ms: int,
+        *,
+        pass_shape: PassShape,
     ) -> AudioToVideoParams:
         num_frames = self._local_a2v_num_frames(
             resolution=params.resolution,
@@ -255,6 +277,7 @@ class VideoGenerationHandler(StateHandlerBase):
             fps=params.fps,
             aspect_ratio=params.aspectRatio,
             audio_duration_ms=audio_duration_ms,
+            pass_shape=pass_shape,
         )
         return AudioToVideoParams(
             **params.model_dump(mode="python"),
@@ -262,7 +285,11 @@ class VideoGenerationHandler(StateHandlerBase):
         )
 
     def validate_local_a2v_request(
-        self, params: AudioToVideoParams, audio_duration_ms: int
+        self,
+        params: AudioToVideoParams,
+        audio_duration_ms: int,
+        *,
+        pass_shape: PassShape,
     ) -> None:
         num_frames = self._local_a2v_num_frames(
             resolution=params.resolution,
@@ -270,6 +297,7 @@ class VideoGenerationHandler(StateHandlerBase):
             fps=params.fps,
             aspect_ratio=params.aspectRatio,
             audio_duration_ms=audio_duration_ms,
+            pass_shape=pass_shape,
         )
         if params.numFrames != num_frames:
             raise HTTPError(
@@ -342,6 +370,7 @@ class VideoGenerationHandler(StateHandlerBase):
         fps: LTXVideoGenFps,
         aspect_ratio: LTXQueuedAspectRatio,
         audio_duration_ms: int,
+        pass_shape: PassShape,
     ) -> int:
         # Envelope of the checkpoint that will actually run, not the catalog
         # preferred row (2.3 1.1 while only 1.0 is on disk).
@@ -406,9 +435,13 @@ class VideoGenerationHandler(StateHandlerBase):
             )
         # Total, like queued create: create and execute agree on the shape.
         # Free fit is the execute gate's problem.
-        job_filter = self._local_job_filter(model_id=a2v_model_id, total_only=True)
+        job_filter = self._local_job_filter(
+            model_id=a2v_model_id, total_only=True, pass_shape=pass_shape
+        )
         filtered_item = self._fast_local_spec_item(a2v_model_id, job_filter=job_filter)
-        kept = _a2v_fps_durations(filtered_item, resolution, fps)
+        kept = _a2v_fps_durations(
+            filtered_item, resolution, fps, aspect_ratio=aspect_ratio
+        )
         if not kept:
             # The picker dropped the whole row. That stays a hard refusal in
             # every mode: there is no warned cell to accept. A derived shape
@@ -459,8 +492,8 @@ class VideoGenerationHandler(StateHandlerBase):
         a2v_audio_duration_seconds: float | None = None,
         local_model_id: LTXLocalModelId,
         explore_generation: bool = True,
-        risk_allowance: bool | None = None,
-        unmeasured_bet: bool = False,
+        allowance: RiskAllowance | None = None,
+        pass_shape: PassShape | None = None,
     ) -> GenerateVideoResponse:
         # Local-only Home/Remote entry: checkpoint is required. GenSpace
         # ``generate()`` still uses Settings via ``_generate_local_reserved_validated``.
@@ -477,8 +510,8 @@ class VideoGenerationHandler(StateHandlerBase):
             a2v_audio_duration_seconds=a2v_audio_duration_seconds,
             local_model_id=local_model_id,
             explore_generation=explore_generation,
-            risk_allowance=risk_allowance,
-            unmeasured_bet=unmeasured_bet,
+            allowance=allowance,
+            pass_shape=pass_shape,
         )
 
     def _validate_generate_video_request(
@@ -509,8 +542,8 @@ class VideoGenerationHandler(StateHandlerBase):
         a2v_audio_duration_seconds: float | None = None,
         local_model_id: LTXLocalModelId | None = None,
         explore_generation: bool = False,
-        risk_allowance: bool | None = None,
-        unmeasured_bet: bool = False,
+        allowance: RiskAllowance | None = None,
+        pass_shape: PassShape | None = None,
     ) -> GenerateVideoResponse:
         resolution = req.resolution
         duration = req.duration
@@ -536,8 +569,8 @@ class VideoGenerationHandler(StateHandlerBase):
                 audio_duration_seconds=a2v_audio_duration_seconds,
                 local_model_id=job_model_id,
                 explore_generation=explore_generation,
-                risk_allowance=risk_allowance,
-                unmeasured_bet=unmeasured_bet,
+                allowance=allowance,
+                pass_shape=pass_shape,
             )
 
         logger.info("Resolution %s - using fast pipeline", resolution)
@@ -551,7 +584,7 @@ class VideoGenerationHandler(StateHandlerBase):
         width = snap_up_to_multiple(width, 64)
         height = snap_up_to_multiple(height, 64)
 
-        job_filter = self._local_job_filter(model_id=job_model_id)
+        job_filter = self._local_job_filter(model_id=job_model_id, pass_shape=pass_shape)
         if duration is None:
             item = next(
                 candidate
@@ -564,7 +597,10 @@ class VideoGenerationHandler(StateHandlerBase):
             )
             try:
                 min_seconds, max_seconds = supported_duration_range(
-                    item, resolution=resolution, fps=fps
+                    item,
+                    resolution=resolution,
+                    fps=fps,
+                    aspect_ratio=req.aspectRatio,
                 )
             except KeyError:
                 # Validated against the static ceiling but fully
@@ -580,13 +616,12 @@ class VideoGenerationHandler(StateHandlerBase):
                     aspect_ratio=req.aspectRatio,
                     fps=fps,
                     allow_evict_retry=True,
-                    allow_risk=risk_allowance,
-                    unmeasured_bet=unmeasured_bet,
+                    allowance=allowance,
                 )
                 # The static probe may have evicted the resident pipeline to
                 # admit the range; re-sample so the gate below prices the
                 # freed card instead of the stale pre-evict filter.
-                job_filter = self._local_job_filter(model_id=job_model_id)
+                job_filter = self._local_job_filter(model_id=job_model_id, pass_shape=pass_shape)
             num_frames: int | AutoDurationSpec = AutoDurationSpec(
                 min_seconds=float(min_seconds),
                 max_seconds=float(max_seconds),
@@ -637,14 +672,13 @@ class VideoGenerationHandler(StateHandlerBase):
         budget_width, budget_height = budget_shape(
             local_caps(job_model_id), resolution, req.aspectRatio, mode="video"
         )
-        load_mode, chunk_pixel_frames = self._plan_video_job(
+        load_mode, chunk_pixel_frames, envelope = self._plan_video_job(
             budget_width,
             budget_height,
             self._budget_frame_count(num_frames, fps),
             job_filter=job_filter,
             allow_evict_retry=True,
-            allow_risk=risk_allowance,
-            unmeasured_bet=unmeasured_bet,
+            allowance=allowance,
         )
 
         try:
@@ -652,6 +686,14 @@ class VideoGenerationHandler(StateHandlerBase):
             # enhancement needs the VRAM a resident pipeline holds, and evicting a pipeline is
             # refused once a generation is running. Budget 422 already happened so Gemma is
             # not loaded for a job this machine cannot run.
+            nag_decision = self._decide_nag(
+                req.negativePrompt,
+                scale=req.nagScale,
+                alpha=req.nagAlpha,
+                tau=req.nagTau,
+                local_encoding=self._text.should_use_local_encoding(job_model_id),
+                compiled=True,
+            )
             resolved_prompt = self._prompt_enhancement.resolve_for_generation(
                 req.prompt,
                 provenance=req.promptProvenance,
@@ -662,9 +704,10 @@ class VideoGenerationHandler(StateHandlerBase):
                 keyframes=enhance_keyframes,
                 duration=req.duration,
                 fps=req.fps,
-                lora_catalog_ids=_lora_catalog_ids(req.loras),
+                loras=req.loras,
                 local_model_id=job_model_id,
                 explore_generation=explore_generation,
+                negative_prompt=nag_decision.enhancer_negative,
             )
             # Recipe-scoped: applied after enhancement so the LLM rewrites the user
             # scene, then the fixed scaffold wraps the result. None (and thus
@@ -705,11 +748,13 @@ class VideoGenerationHandler(StateHandlerBase):
             self._generation.start_generation(
                 generation_id,
                 estimated=self._estimate_wall_time(
-                    width,
-                    height,
+                    budget_width,
+                    budget_height,
                     self._budget_frame_count(num_frames, fps),
                     load_mode,
                     "i2v" if has_image_input else "t2v",
+                    chunk_pixel_frames=chunk_pixel_frames,
+                    stage_2=not canvas.skip_stage_2,
                 ),
             )
 
@@ -732,9 +777,16 @@ class VideoGenerationHandler(StateHandlerBase):
                 ltx_model_id=job_model_id,
                 skip_stage_2=canvas.skip_stage_2,
                 chunk_pixel_frames=chunk_pixel_frames,
+                nag_scale=req.nagScale,
+                nag_alpha=req.nagAlpha,
+                nag_tau=req.nagTau,
             )
 
-            self._generation.complete_generation(written_path)
+            self._generation.complete_generation(
+                written_path,
+                # Auto duration priced its ceiling and ran shorter: not a proof of the ceiling.
+                ran=None if isinstance(num_frames, AutoDurationSpec) else envelope,
+            )
             return self._complete_response(written_path, load_mode)
 
         except HTTPError as e:
@@ -747,6 +799,34 @@ class VideoGenerationHandler(StateHandlerBase):
                 return self._cancelled_response(load_mode)
 
             raise HTTPError(500, str(e)) from e
+
+    def _decide_nag(
+        self,
+        negative_prompt: str,
+        *,
+        scale: float | None,
+        alpha: float | None,
+        tau: float | None,
+        local_encoding: bool,
+        compiled: bool = False,
+    ) -> NagDecision:
+        with self._lock:
+            default_nag_scale = self.state.app_settings.nag_scale
+            compile_enabled = (
+                compiled
+                and self.state.app_settings.use_torch_compile
+                and not self.config.use_sage_attention
+            )
+        return decide_nag(
+            negative_prompt,
+            os.environ,
+            scale=scale,
+            alpha=alpha,
+            tau=tau,
+            default_scale=default_nag_scale,
+            local_encoding=local_encoding,
+            compiled=compile_enabled,
+        )
 
     def _resolve_loras(
         self,
@@ -790,6 +870,9 @@ class VideoGenerationHandler(StateHandlerBase):
         ltx_model_id: LTXLocalModelId | None = None,
         skip_stage_2: bool = False,
         chunk_pixel_frames: int | None = None,
+        nag_scale: float | None = None,
+        nag_alpha: float | None = None,
+        nag_tau: float | None = None,
     ) -> str:
         t_total_start = time.perf_counter()
         gen_mode = "keyframes" if keyframe_images else "i2v" if image is not None else "t2v"
@@ -836,6 +919,29 @@ class VideoGenerationHandler(StateHandlerBase):
             t_text_end = time.perf_counter()
             logger.info("[%s] Text encoding (%s): %.2fs", gen_mode, encoding_method, t_text_end - t_text_start)
 
+            # Negative prompt through NAG. API text encoding returns zeros for any prompt
+            # after the first, so NAG needs local encoding.
+            with self._lock:
+                default_nag_scale = self.state.app_settings.nag_scale
+                compile_enabled = (
+                    self.state.app_settings.use_torch_compile
+                    and not self.config.use_sage_attention
+                )
+            nag = log_nag_decision(
+                logger,
+                gen_mode,
+                decide_nag(
+                    negative_prompt,
+                    os.environ,
+                    scale=nag_scale,
+                    alpha=nag_alpha,
+                    tau=nag_tau,
+                    default_scale=default_nag_scale,
+                    local_encoding=encoding_method == "local",
+                    compiled=pipeline_state.is_compiled or compile_enabled,
+                ),
+            )
+
             self._generation.raise_if_cancelled()
             self._generation.update_progress("inference", 15)
 
@@ -859,6 +965,7 @@ class VideoGenerationHandler(StateHandlerBase):
                     guide_all_images=bool(keyframe_images),
                     skip_stage_2=skip_stage_2,
                     chunk_pixel_frames=chunk_pixel_frames,
+                    nag=nag,
                 )
             t_inference_end = time.perf_counter()
             logger.info("[%s] Inference: %.2fs", gen_mode, t_inference_end - t_inference_start)
@@ -894,8 +1001,8 @@ class VideoGenerationHandler(StateHandlerBase):
         audio_duration_seconds: float | None = None,
         local_model_id: LTXLocalModelId | None = None,
         explore_generation: bool = False,
-        risk_allowance: bool | None = None,
-        unmeasured_bet: bool = False,
+        allowance: RiskAllowance | None = None,
+        pass_shape: PassShape | None = None,
     ) -> GenerateVideoResponse:
         model_id = local_model_id
         if model_id is None:
@@ -954,14 +1061,13 @@ class VideoGenerationHandler(StateHandlerBase):
         # Decided pre-try like the Fast path: a 422 here propagates without
         # failing a generation that never started, and the cancelled branch
         # below always sees a bound mode.
-        load_mode, chunk_pixel_frames = self._plan_video_job(
+        load_mode, chunk_pixel_frames, envelope = self._plan_video_job(
             width,
             height,
             num_frames,
-            job_filter=self._local_job_filter(model_id=model_id),
+            job_filter=self._local_job_filter(model_id=model_id, pass_shape=pass_shape),
             allow_evict_retry=True,
-            allow_risk=risk_allowance,
-            unmeasured_bet=unmeasured_bet,
+            allowance=allowance,
         )
 
         try:
@@ -973,6 +1079,14 @@ class VideoGenerationHandler(StateHandlerBase):
 
             # Same ordering as Fast: budget 422 before Gemma so an over-size cell
             # does not evict a warmed pipeline for a rewrite that will not run.
+            nag_decision = self._decide_nag(
+                req.negativePrompt,
+                scale=req.nagScale,
+                alpha=req.nagAlpha,
+                tau=req.nagTau,
+                local_encoding=self._text.should_use_local_encoding(model_id),
+                compiled=False,
+            )
             resolved_prompt = self._prompt_enhancement.resolve_for_generation(
                 req.prompt,
                 provenance=req.promptProvenance,
@@ -980,10 +1094,11 @@ class VideoGenerationHandler(StateHandlerBase):
                 explicit_generation_seed=req.seed is not None,
                 image_path=image_path,
                 last_image_path=last_image_path,
-                lora_catalog_ids=_lora_catalog_ids(req.loras),
+                loras=req.loras,
                 local_model_id=model_id,
                 explore_generation=explore_generation,
                 audio_path=audio_path_str,
+                negative_prompt=nag_decision.enhancer_negative,
             )
             enhanced_prompt = resolved_prompt.prompt + self.config.camera_motion_prompts.get(req.cameraMotion, "")
 
@@ -994,7 +1109,12 @@ class VideoGenerationHandler(StateHandlerBase):
             self._generation.start_generation(
                 generation_id,
                 estimated=self._estimate_wall_time(
-                    width, height, num_frames, load_mode, "a2v"
+                    width,
+                    height,
+                    num_frames,
+                    load_mode,
+                    "a2v",
+                    chunk_pixel_frames=chunk_pixel_frames,
                 ),
             )
 
@@ -1003,10 +1123,25 @@ class VideoGenerationHandler(StateHandlerBase):
 
             self._generation.update_progress("loading_model", 5)
             self._generation.update_progress("encoding_text", 10)
+            encoding_method = (
+                "api" if not self._text.should_use_local_encoding(model_id) else "local"
+            )
             self._text.prepare_text_encoding(
                 enhanced_prompt,
                 enhance_prompt=resolved_prompt.enhance_via_api,
                 model_id=model_id,
+            )
+            nag = log_nag_decision(
+                logger,
+                "a2v",
+                self._decide_nag(
+                    req.negativePrompt,
+                    scale=req.nagScale,
+                    alpha=req.nagAlpha,
+                    tau=req.nagTau,
+                    local_encoding=encoding_method == "local",
+                    compiled=False,
+                ),
             )
             self._generation.raise_if_cancelled()
             self._generation.update_progress("inference", 15)
@@ -1031,6 +1166,7 @@ class VideoGenerationHandler(StateHandlerBase):
                     ),
                     output_path=str(output_path),
                     chunk_pixel_frames=chunk_pixel_frames,
+                    nag=nag,
                 )
 
             # Denoiser interrupt cannot abort VAE decode / ffmpeg; a Stop after the last
@@ -1041,7 +1177,7 @@ class VideoGenerationHandler(StateHandlerBase):
                 raise GenerationCancelledError()
 
             self._generation.update_progress("complete", 100)
-            self._generation.complete_generation(str(output_path))
+            self._generation.complete_generation(str(output_path), ran=envelope)
             return self._complete_response(str(output_path), load_mode)
 
         except HTTPError as e:
@@ -1146,20 +1282,18 @@ class VideoGenerationHandler(StateHandlerBase):
         *,
         job_filter: LocalJobFilter,
         allow_evict_retry: bool = False,
-        allow_risk: bool | None = None,
-        unmeasured_bet: bool = False,
-    ) -> tuple[LocalGenerationMode, int | None]:
-        """Load mode and temporal window (pixel frames, None = one pass) for this job."""
-        load, _ = self._video_job_load(
+        allowance: RiskAllowance | None = None,
+    ) -> tuple[LocalGenerationMode, int | None, JobEnvelope]:
+        """Load mode, temporal window (pixel frames, None = one pass), and the priced envelope."""
+        admitted = self._video_job_load(
             width,
             height,
             frames,
             job_filter=job_filter,
             allow_evict_retry=allow_evict_retry,
-            allow_risk=allow_risk,
-            unmeasured_bet=unmeasured_bet,
+            allowance=allowance,
         )
-        return load.mode, load.chunk_pixel_frames
+        return admitted.load.mode, admitted.load.chunk_pixel_frames, admitted.envelope
 
     def _video_job_load_mode(
         self,
@@ -1169,19 +1303,17 @@ class VideoGenerationHandler(StateHandlerBase):
         *,
         job_filter: LocalJobFilter,
         allow_evict_retry: bool = False,
-        allow_risk: bool | None = None,
-        unmeasured_bet: bool = False,
+        allowance: RiskAllowance | None = None,
     ) -> tuple[LocalGenerationMode, GenerationRisk | None]:
-        load, risk = self._video_job_load(
+        admitted = self._video_job_load(
             width,
             height,
             frames,
             job_filter=job_filter,
             allow_evict_retry=allow_evict_retry,
-            allow_risk=allow_risk,
-            unmeasured_bet=unmeasured_bet,
+            allowance=allowance,
         )
-        return load.mode, risk
+        return admitted.load.mode, admitted.risk
 
     def _video_job_load(
         self,
@@ -1191,30 +1323,28 @@ class VideoGenerationHandler(StateHandlerBase):
         *,
         job_filter: LocalJobFilter,
         allow_evict_retry: bool = False,
-        allow_risk: bool | None = None,
-        unmeasured_bet: bool = False,
-    ) -> tuple[VideoJobLoad, GenerationRisk | None]:
-        """422 or pick full vs stream (and the window) for this job. Does not change process mode.
+        allowance: RiskAllowance | None = None,
+    ) -> Admitted:
+        """422 or admit this job: full vs stream, the window, and any bet. Does not change process mode.
 
         Real-generation paths pass ``allow_evict_retry``: a total-possible CUDA
         reject whose shortfall live weights cover gets one evict-and-resample
-        before the 422. Read-only callers (estimate) and total-only preflights
+        before admission. Read-only callers (estimate) and total-only preflights
         must leave it off — the former must never mutate GPU state, the latter
-        reject total-short by construction. ``allow_risk=None`` follows the
-        filter's live mode (every request-scoped caller); executors pass an
-        explicit bool parsed from the stored annotation so a mode flip never
-        re-gates a queued job. An over bet streams, including when the
+        reject total-short by construction. ``allowance=None`` follows the
+        filter's live mode (every request-scoped caller); executors pass the
+        allowance stored at create, and a filter built with the stored shape,
+        so a settings flip never re-gates or re-cuts a queued job. An over bet streams, including when the
         shortfall later grows. An unmeasured bet does not cover a later
         memory miss. Hard rejects raise in every mode.
         """
-        decision = job_filter.decide(width, height, frames)
-        if isinstance(decision, VideoJobReject) and allow_evict_retry:
+        allowance = allowance if allowance is not None else RiskAllowance.for_mode(job_filter.budget_mode)
+        priced = price_video_job(
+            width, height, frames, job_filter=job_filter, allowance=allowance
+        )
+        if allow_evict_retry:
             rebuilt = evict_retry_filter(
-                feature="fast",
-                is_vram_occupancy_miss=(decision.reason == "stream_over"),
-                stream_gib=decision.stream_gib,
-                seq=decision.seq,
-                full_gib=decision.full_gib,
+                priced=priced,
                 job_filter=job_filter,
                 live_allocated_bytes=self._gpu.get_cuda_live_allocated_bytes(),
                 reserved_bytes=self._gpu.get_cuda_reserved_bytes(),
@@ -1223,79 +1353,53 @@ class VideoGenerationHandler(StateHandlerBase):
                 rebuild=lambda: self._local_job_filter(
                     model_id=job_filter.profile.model_id,
                     total_only=job_filter.budget.total_only,
+                    pass_shape=job_filter.pass_shape,
                 ),
             )
             if rebuilt is not None:
                 job_filter = rebuilt
-                decision = job_filter.decide(width, height, frames)
+                priced = price_video_job(
+                    width, height, frames, job_filter=job_filter, allowance=allowance
+                )
+        admission = admit(priced, allowance)
         window = (
-            f" window={decision.chunk_pixel_frames}f"
-            if decision.chunk_pixel_frames is not None
+            f" window={priced.chunk_pixel_frames}f"
+            if priced.chunk_pixel_frames is not None
             else ""
         )
-        if isinstance(decision, VideoJobReject):
-            risk = risk_if_allowed(
-                risk_for_reject(decision, job_filter),
-                job_filter,
-                allow_risk,
-                unmeasured_bet=unmeasured_bet,
-            )
-            if risk is not None:
-                logger.info(
-                    "[video] job budget seq=%.0f full=%.1fGiB stream=%.1fGiB -> risk:%s over_gib=%s over_ram_gb=%s%s%s",
-                    decision.seq,
-                    decision.full_gib,
-                    decision.stream_gib,
-                    risk.tier,
-                    risk.over_gib,
-                    risk.over_ram_gb,
-                    window,
-                    vram_snapshot_suffix(
-                        allocated_bytes=self._gpu.get_cuda_live_allocated_bytes(),
-                        reserved_bytes=self._gpu.get_cuda_reserved_bytes(),
-                        free_bytes=job_filter.budget.free_vram_bytes,
-                    ),
-                )
-                return (
-                    VideoJobLoad(
-                        mode="streaming_models_loading",
-                        seq=decision.seq,
-                        full_gib=decision.full_gib,
-                        stream_gib=decision.stream_gib,
-                        chunk_pixel_frames=decision.chunk_pixel_frames,
-                    ),
-                    risk,
-                )
+        snapshot = vram_snapshot_suffix(
+            allocated_bytes=self._gpu.get_cuda_live_allocated_bytes(),
+            reserved_bytes=self._gpu.get_cuda_reserved_bytes(),
+            free_bytes=job_filter.budget.free_vram_bytes,
+        )
+        if isinstance(admission, Refused):
             logger.info(
-                "[video] job budget seq=%.0f full=%.1fGiB stream=%.1fGiB -> reject%s%s",
-                decision.seq,
-                decision.full_gib,
-                decision.stream_gib,
+                "[video] job budget seq=%.0f full=%.1fGiB stream=%.1fGiB -> reject:%s%s%s",
+                priced.seq,
+                priced.full_gib,
+                priced.stream_gib,
+                admission.reject.reason,
                 window,
-                vram_snapshot_suffix(
-                    allocated_bytes=self._gpu.get_cuda_live_allocated_bytes(),
-                    reserved_bytes=self._gpu.get_cuda_reserved_bytes(),
-                    free_bytes=job_filter.budget.free_vram_bytes,
-                ),
+                snapshot,
             )
-            message, code = reject_message_and_code(decision, job_filter)
+            message, code = reject_message_and_code(video_job_reject(admission), job_filter)
             raise HTTPError(422, message, code=code)
+        risk = admission.risk
         logger.info(
-            "[video] job budget seq=%.0f full=%.1fGiB stream=%.1fGiB -> %s%s%s",
-            decision.seq,
-            decision.full_gib,
-            decision.stream_gib,
-            decision.mode,
-            window,
-            vram_snapshot_suffix(
-                allocated_bytes=self._gpu.get_cuda_live_allocated_bytes(),
-                reserved_bytes=self._gpu.get_cuda_reserved_bytes(),
-                free_bytes=job_filter.budget.free_vram_bytes,
+            "[video] job budget seq=%.0f full=%.1fGiB stream=%.1fGiB -> %s%s%s%s",
+            priced.seq,
+            priced.full_gib,
+            priced.stream_gib,
+            admission.load.mode,
+            (
+                f" risk:{risk.tier} over_gib={risk.over_gib} over_ram_gb={risk.over_ram_gb}"
+                if risk is not None
+                else ""
             ),
+            window,
+            snapshot,
         )
-        return decision, unmeasured_load_risk(
-            decision, job_filter, feature="fast", allow_risk=allow_risk
-        )
+        return admission
 
     def _load_offload_for_response(
         self, load_mode: LocalGenerationMode | None
@@ -1317,8 +1421,11 @@ class VideoGenerationHandler(StateHandlerBase):
         frames: int,
         load_mode: LocalGenerationMode,
         feature: EtaFeature,
+        *,
+        chunk_pixel_frames: int | None = None,
+        stage_2: bool = True,
     ) -> WallTimeEstimate | None:
-        """ETA v1 for the decided cell. None whenever the table has no answer."""
+        """Wall-time estimate and 3-part breakdown for the decided cell."""
         if load_mode == "full_models_loading":
             eta_load: EtaLoadMode = "full_models_loading"
         elif load_mode == "streaming_models_loading":
@@ -1328,6 +1435,13 @@ class VideoGenerationHandler(StateHandlerBase):
         _load, offload = self._load_offload_for_response(load_mode)
         if offload is None:
             return None
+        system = self.config.system if self.config.system in ("Windows", "Linux", "Darwin") else "Windows"
+        calibrated = self.state.device_calibration.machine_factor
+        machine_factor = (
+            calibrated
+            if calibrated is not None
+            else default_machine_factor(self.config.gpu_device_name)
+        )
         return estimate_fast_wall_time_s(
             width=width,
             height=height,
@@ -1335,11 +1449,11 @@ class VideoGenerationHandler(StateHandlerBase):
             load_mode=eta_load,
             offload_mode=offload,
             feature=feature,
-            machine_factor=(
-                1.0
-                if is_measured_hardware_class(self.config.gpu_device_name)
-                else None
-            ),
+            machine_factor=machine_factor,
+            system=system,
+            chunk_pixel_frames=chunk_pixel_frames,
+            stage_2=stage_2,
+            conv_vae=resolved_use_conv_vae(self.state.app_settings, system=self.config.system),
         )
 
     def _complete_response(
@@ -1371,22 +1485,20 @@ class VideoGenerationHandler(StateHandlerBase):
         aspect_ratio: LTXQueuedAspectRatio,
         duration: int | None,
         fps: LTXVideoGenFps,
+        pass_shape: PassShape,
     ) -> GenerationRisk | None:
         """Apply the measured LTX 2.5 Fast policy before a Home/Remote queue insert.
 
-        Raises hard rejects; returns the bet annotation for downgradable
-        rejects in reckless mode.
+        Raises refusals; returns the bet annotation for an admitted risky job.
         """
         model_id = resolve_offering_local_model_id(self.models_dir, offering)
         if model_id is None:
             model_id = OFFERING_LOCAL_MODEL_IDS[offering][0]
         # Queued admission gates on total ("will it ever fit"): a running job
         # depresses free, and the queue exists to wait for a free slot.
-        job_filter = self._local_job_filter(model_id=model_id, total_only=True)
-        if job_filter.budget_mode != "reckless" and not (
-            job_filter.profile.is_windows_fast or job_filter.profile.is_mac_fast
-        ):
-            return
+        job_filter = self._local_job_filter(
+            model_id=model_id, total_only=True, pass_shape=pass_shape
+        )
         # Callers resolve auto (i2v start-frame closest-match) before calling;
         # auto reaching here would budget the wrong shape silently.
         assert aspect_ratio != "auto"
@@ -1406,7 +1518,9 @@ class VideoGenerationHandler(StateHandlerBase):
             )
         else:
             frames = self._compute_num_frames(duration, fps)
-        return self._video_job_load_mode(width, height, frames, job_filter=job_filter)[1]
+        return self._video_job_load_mode(
+            width, height, frames, job_filter=job_filter
+        )[1]
 
     def preflight_queued_a2v_job(
         self,
@@ -1415,11 +1529,12 @@ class VideoGenerationHandler(StateHandlerBase):
         resolution: LTXLocalA2VResolution,
         aspect_ratio: LTXQueuedAspectRatio,
         num_frames: int,
+        pass_shape: PassShape,
     ) -> GenerationRisk | None:
         """Apply the A2V budget before a Home/Remote queue insert.
 
         Raises hard rejects; returns the bet annotation for downgradable
-        rejects in reckless mode. Runs on every route: the frame count was
+        rejects in Brave mode. Runs on every route: the frame count was
         derived from the static ceiling, so a duration the filter dropped is
         a budget result here rather than an invalid spec.
 
@@ -1434,7 +1549,9 @@ class VideoGenerationHandler(StateHandlerBase):
             model_id = OFFERING_LOCAL_MODEL_IDS[offering][0]
         # Queued admission gates on total ("will it ever fit"): a running job
         # depresses free, and the queue exists to wait for a free slot.
-        job_filter = self._local_job_filter(model_id=model_id, total_only=True)
+        job_filter = self._local_job_filter(
+            model_id=model_id, total_only=True, pass_shape=pass_shape
+        )
         aspect: LtxAspectRatio = "16:9" if aspect_ratio == "auto" else aspect_ratio
         try:
             width, height = budget_shape(
@@ -1442,7 +1559,9 @@ class VideoGenerationHandler(StateHandlerBase):
             )
         except KeyError as exc:
             raise HTTPError(400, "INVALID_LOCAL_A2V_RESOLUTION") from exc
-        return self._video_job_load_mode(width, height, num_frames, job_filter=job_filter)[1]
+        return self._video_job_load_mode(
+            width, height, num_frames, job_filter=job_filter
+        )[1]
 
     def _queued_auto_budget_frames(
         self,
@@ -1473,7 +1592,10 @@ class VideoGenerationHandler(StateHandlerBase):
             )
         try:
             _min_seconds, max_seconds = supported_duration_range(
-                item, resolution=resolution, fps=fps
+                item,
+                resolution=resolution,
+                fps=fps,
+                aspect_ratio=aspect_ratio,
             )
         except KeyError:
             # Fully budget-dropped resolution/fps: refuse with the compared
@@ -1498,8 +1620,7 @@ class VideoGenerationHandler(StateHandlerBase):
         aspect_ratio: LtxAspectRatio,
         fps: LTXVideoGenFps,
         allow_evict_retry: bool = False,
-        allow_risk: bool | None = None,
-        unmeasured_bet: bool = False,
+        allowance: RiskAllowance | None = None,
     ) -> tuple[int, int]:
         """Static (min, max) auto seconds, refusing with the enriched budget 422.
 
@@ -1509,8 +1630,8 @@ class VideoGenerationHandler(StateHandlerBase):
         max cell on live figures — ``_video_job_load_mode`` raises the
         enriched 422 naming what the job needs vs what the machine has; if it
         loads now (figures moved since list time), the static range stands.
-        ``allow_risk=None`` follows the filter's live mode; executors pass the
-        stored annotation so a mode flip never re-gates a queued job.
+        ``allowance=None`` follows the filter's live mode; executors pass the
+        stored allowance so a mode flip never re-gates a queued job.
         """
         static_item = next(
             (
@@ -1549,8 +1670,7 @@ class VideoGenerationHandler(StateHandlerBase):
             compute_num_frames(max_seconds, fps),
             job_filter=job_filter,
             allow_evict_retry=allow_evict_retry,
-            allow_risk=allow_risk,
-            unmeasured_bet=unmeasured_bet,
+            allowance=allowance,
         )
         return min_seconds, max_seconds
 
@@ -1568,7 +1688,7 @@ class VideoGenerationHandler(StateHandlerBase):
         The audio-derived frame count is quoted when that shape misses. When
         it loads, ``static_cell_frames`` (the shortest static cell) is quoted
         instead, so the figures match the drop that emptied the row.
-        ``allow_risk=False`` so reckless does not annotate a row the picker
+        ``RiskAllowance.none()`` so Brave does not annotate a row the picker
         no longer offers. A partial drop does not come here.
         """
         model_id = job_filter.profile.model_id
@@ -1582,14 +1702,19 @@ class VideoGenerationHandler(StateHandlerBase):
         except KeyError as exc:
             raise HTTPError(400, "INVALID_VIDEO_GENERATION_SPEC") from exc
         quoted_frames = num_frames
-        if not isinstance(job_filter.decide(width, height, num_frames), VideoJobReject):
+        if isinstance(
+            decide_video_job(
+                width, height, num_frames, job_filter=job_filter, allowance=RiskAllowance.none()
+            ),
+            Admitted,
+        ):
             quoted_frames = static_cell_frames
         self._video_job_load_mode(
             width,
             height,
             quoted_frames,
             job_filter=job_filter,
-            allow_risk=False,
+            allowance=RiskAllowance.none(),
         )
         raise HTTPError(
             422,

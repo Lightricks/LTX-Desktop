@@ -1,8 +1,9 @@
 import {
   preflightCellStatus,
-  readBudgetMode,
   type PreflightCellStatus,
 } from "../../lib/budget-risk.ts";
+import type { BudgetReadout } from "../../lib/budget-figure.ts";
+import { formatEstimatedDuration } from "../../lib/duration-format.ts";
 import type { components } from "../../generated/backend-openapi";
 
 export type EditPreflightResponse =
@@ -39,6 +40,16 @@ export function findPreflightCell(
   );
 }
 
+export function preflightEstimatedTimeText(
+  preflight: EditPreflightState | null | undefined,
+  key: string,
+  duration: number,
+): string | null {
+  const cell = findPreflightCell(preflight, key, duration);
+  if (cell == null || !cell.ok) return null;
+  return formatEstimatedDuration(cell.estimated_seconds);
+}
+
 export function preflightResolutionRow(
   preflight: EditPreflightState | null | undefined,
   key: string,
@@ -52,20 +63,30 @@ export function preflightResolutionRow(
  */
 export const PREFLIGHT_TOO_LARGE_MESSAGE = "Too large for this machine.";
 
-/** Failing cells fall back to "too large". */
+export const PREFLIGHT_UNMEASURED_MESSAGE = "Unmeasured on your hardware.";
+
+/** Failing cells fall back to "too large". A warned unmeasured cell does not. */
 export function preflightFallbackMessage(status: PreflightCellStatus): string {
   if (status.status === "clear") return "";
-  return status.message || PREFLIGHT_TOO_LARGE_MESSAGE;
+  if (status.message) return status.message;
+  if (status.status === "warned" && status.tier === "unmeasured") {
+    return PREFLIGHT_UNMEASURED_MESSAGE;
+  }
+  return PREFLIGHT_TOO_LARGE_MESSAGE;
 }
 
-export function preflightStatus(
-  preflight: EditPreflightState | null | undefined,
-  cell: EditPreflightCell | null | undefined,
-): PreflightCellStatus {
-  return preflightCellStatus(
-    cell,
-    readBudgetMode(preflight?.response.budgetMode),
-  );
+/**
+ * The option fields of a blocked cell: its refusal as the disabled reason, and the need/have
+ * readout when the budget sent one. Empty for any other status.
+ */
+export function blockedOptionFields(
+  status: PreflightCellStatus,
+): { disabledReason?: string; budget?: BudgetReadout } {
+  if (status.status !== "blocked") return {};
+  return {
+    disabledReason: preflightFallbackMessage(status),
+    ...(status.readout ? { budget: status.readout } : {}),
+  };
 }
 
 /**
@@ -77,7 +98,7 @@ export function resolutionPreflightStatus(
   key: string,
   minDuration: number,
 ): PreflightCellStatus {
-  return preflightStatus(preflight, findPreflightCell(preflight, key, minDuration));
+  return preflightCellStatus(findPreflightCell(preflight, key, minDuration));
 }
 
 /**
@@ -133,7 +154,7 @@ export function firstPassingResolutionKey<T extends string>(
   return (
     keysInDisplayOrder.find((key) => {
       const cell = findPreflightCell(preflight, key, minDuration);
-      return cell != null && preflightStatus(preflight, cell).status !== "blocked";
+      return cell != null && preflightCellStatus(cell).status !== "blocked";
     }) ?? null
   );
 }

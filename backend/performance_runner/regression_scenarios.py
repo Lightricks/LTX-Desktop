@@ -32,6 +32,7 @@ from scenarios import (
     SCENARIOS,
     VIDEO_ASSET,
     Scenario,
+    last_frames_not_black,
     output_exists,
     output_nonempty,
 )
@@ -138,6 +139,36 @@ add_regression("smoke_ia2v_270p", "Image+A2V 270p / 5s (first frame is the image
      {"prompt": "two cartoon animals chatting at a cafe table", "seed": 42, "audio": True,
       "imagePath": IMAGE_ASSET, "audioPath": AUDIO_ASSET, "resolution": "270p", "duration": 5},
      a2v_checks(with_image=True), tags=("ia2v", "speech"))
+
+# Full-size A2V checks for the single-window run (`DistilledA2VPipeline.__call__` runs as one
+# `stream_chunks` window). They sit in the `full` and `bump` tiers because the smoke canvas hides what
+# they look for: the decode now lands on the GPU as one tensor, a clip past 128 frames must keep a
+# live tail, and a still on the last frame must survive the frame snap. 6 s is 145 frames.
+A2V_BUMP = {"prompt": "a cartoon character telling a joke, talking to camera", "seed": 42,
+            "audio": True, "audioPath": AUDIO_ASSET, "duration": 6}
+A2V_BUMP_REF = "a2v_540p_6s"
+
+
+def a2v_bump_checks(*, first: str | None = None, last: str | None = None) -> list:
+    checks = [chk.media_ok(audio=True, duration=(5.5, 6.6)), chk.not_dead(), last_frames_not_black,
+              chk.audio_matches(AUDIO_ASSET)]
+    checks += [chk.frame_matches(first, at="first")] if first else []
+    return checks + ([chk.frame_matches(last, at="last")] if last else [])
+
+
+add_regression("bump_a2v_540p_6s", "A2V 540p / 6s (single window, reference for the same-seed repeat)",
+     {**A2V_BUMP, "resolution": "540p"},
+     [*a2v_bump_checks(), chk.remember(A2V_BUMP_REF)], tiers=("full",), tags=("a2v", "bump", "speech"), order=FIRST)
+add_regression("bump_a2v_1080p_6s", "A2V 1080p / 6s (145 frames: decode peak and live tail)",
+     {**A2V_BUMP, "resolution": "1080p"},
+     a2v_bump_checks(), tiers=("full",), tags=("a2v", "bump", "speech"))
+add_regression("bump_ia2v_first_last_540p", "Image+A2V 540p / 6s (first and last still honoured on the snapped grid)",
+     {**A2V_BUMP, "resolution": "540p", "imagePath": IMAGE_ASSET, "lastImagePath": KEYFRAME_B},
+     a2v_bump_checks(first=IMAGE_ASSET, last=KEYFRAME_B), tiers=("full",), tags=("ia2v", "bump", "speech"))
+add_regression("bump_a2v_540p_6s_repeat", "A2V 540p / 6s again (same seed reproduces with the ancestral sampler)",
+     {**A2V_BUMP, "resolution": "540p"},
+     [chk.media_ok(audio=True, duration=(5.5, 6.6)), chk.reproduces(A2V_BUMP_REF)],
+     tiers=("full",), tags=("a2v", "bump", "speech"), order=LAST)
 
 # -- image ------------------------------------------------------------------------------
 add_regression("smoke_t2i", "Text-to-Image",

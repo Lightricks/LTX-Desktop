@@ -1,5 +1,7 @@
-import { HOME_FEATURE_MEDIA } from "@/components/home/home-media";
-import type { HomeFeatureId } from "@/lib/home-features";
+import {
+  type GalleryHomeFeatureId,
+  HOME_FEATURE_MEDIA,
+} from "@/components/home/home-media";
 import { isIcLoraRecipeId } from "@/lib/ic-lora-recipes";
 import { isLoraRecipeId } from "@/lib/lora-recipes";
 
@@ -15,7 +17,7 @@ import { resolveFeatureCompare } from "./featureCompare";
  * A feature with a compare view shows its example next to its input.
  */
 export function resolveFeatureDetailsHero(
-  featureId: HomeFeatureId,
+  featureId: GalleryHomeFeatureId,
 ): FeatureDetailsHero {
   const compare = resolveFeatureCompare(featureId);
   if (compare) {

@@ -1,4 +1,5 @@
-"""IC-LoRA recipes above 1080p: the 1440p and 2160p cells (feature flag ``highResVideoToVideo``).
+"""IC-LoRA recipes above 1080p: the 1440p and 2160p cells (feature flag ``highResVideoToVideo``,
+except for the LoRAs in ``HIGH_RES_WITHOUT_FLAG_IC_LORAS``).
 
 The model runs in tiles, blended inside every denoising step, so the output can be
 larger than the local 1080p cell. The clip runs in short windows. Each window
@@ -6,8 +7,9 @@ re-renders the tail of the one before it and pins that tail at its start
 (``IcLoraTiling.window_frames`` and ``carry_frames``). The carry needs three latent
 frames (17 frames) at least. Upstream cross-fades the whole carry, and the frames a middle
 window keeps must be more than the carry. So 41 frames is the shortest window that works
-with a carry of 17, and each window adds 24 new frames. A window of 33 fails on a clip of
-three windows or more.
+with the default carry of 17, and each window adds 24 new frames. A window of 33 fails on a
+clip of three windows or more. A run can set a longer carry, and the shortest window then
+grows with it (``ic_lora_decode_window``).
 
 Measured on the RTX 5090 at 4K with a 1920x1088 tile (Day to Night and Water Simulation,
 233 frames, 9 windows): 50 s per step, about 7.8 minutes per window, 4,226 s for the
@@ -21,7 +23,7 @@ from __future__ import annotations
 from typing import Final, Literal
 
 from api_types import IcLoraSettings
-from runtime_config.ic_lora_tiling import IcLoraTiling
+from runtime_config.ic_lora_tiling import HIGH_RES_CARRY_FRAMES, IC_LORA_TILE_OVERLAP, IcLoraTiling
 from runtime_config.ltx_capabilities import TWO_PASS_PIXELS_16_9
 
 HighResResolution = Literal["1440p", "2160p"]
@@ -38,10 +40,16 @@ _CELL_BOX: Final[dict[HighResResolution, tuple[int, int]]] = {
 
 _CANVAS_GRID: Final = 64
 
-# Catalog IC-LoRAs that need the highResVideoToVideo flag, in every cell. Refine Details is the
-# detail stage of the 4K ladder (its card: "refines and upscales any clip to 4K"). This list
-# only gates the flag. Which cells are measured is measured_cells.py, whatever this says.
-HIGH_RES_ONLY_IC_LORAS: Final = frozenset({"refine-details"})
+# Catalog IC-LoRAs that offer the 1440p and 2160p cells without the highResVideoToVideo flag.
+# Refine Details is the detail stage of the 4K ladder (its card: "refines and upscales any clip
+# to 4K"), so its high cells are the point of the recipe. This list only gates the flag. Which
+# cells are measured is measured_cells.py, whatever this says.
+HIGH_RES_WITHOUT_FLAG_IC_LORAS: Final = frozenset({"refine-details"})
+
+
+def high_res_flag_satisfied(catalog_id: str, *, flag_enabled: bool) -> bool:
+    """True when the 1440p and 2160p cells are open to this catalog LoRA."""
+    return flag_enabled or catalog_id in HIGH_RES_WITHOUT_FLAG_IC_LORAS
 
 # Tile of a LoRA without its own tile plan. A LoRA with one keeps its tile size.
 # It is the local spatial cap, the size these LoRAs already run at in one pass. A 4K canvas
@@ -54,9 +62,10 @@ _DEFAULT_WINDOW_FRAMES: Final = 41
 def high_res_tiling(base: IcLoraTiling | None) -> IcLoraTiling:
     """The tile plan of a high cell, for any catalog LoRA.
 
-    The LoRA keeps its own tile size and its own window when the catalog sets them. A
-    LoRA without a window gets the shortest working one. The carry is fixed, and the
-    spatial cap is raised to the 2160p cell.
+    The LoRA keeps its own tile size, tile overlap and window when the catalog sets them. An
+    adaptive LoRA stays adaptive: the job budget picks its window. A LoRA without a window gets
+    the shortest working one. The carry is the high cell default
+    (a run can set its own after this), and the spatial cap is raised to the 2160p cell.
 
     Every tile of every step streams the whole transformer from disk, and that read
     costs the same for a short window as for a long one. So a longer window is cheaper
@@ -65,14 +74,17 @@ def high_res_tiling(base: IcLoraTiling | None) -> IcLoraTiling:
     long_side, short_side = (
         _DEFAULT_TILE if base is None else (base.long_side, base.short_side)
     )
-    window_frames = _DEFAULT_WINDOW_FRAMES
+    adaptive = base is not None and base.adaptive_window
+    window_frames = None if adaptive else _DEFAULT_WINDOW_FRAMES
     if base is not None and base.window_frames is not None:
         window_frames = base.window_frames
     return IcLoraTiling(
         long_side=long_side,
         short_side=short_side,
         window_frames=window_frames,
-        carry_frames=17,
+        adaptive_window=adaptive,
+        carry_frames=HIGH_RES_CARRY_FRAMES,
+        overlap_fraction=IC_LORA_TILE_OVERLAP if base is None else base.overlap_fraction,
         max_output_long_side=_CELL_BOX["2160p"][0],
         max_output_short_side=_CELL_BOX["2160p"][1],
     )

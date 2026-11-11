@@ -35,7 +35,6 @@ from services.features.video.job_common import (
     resolve_generation_seed,
     resolve_job_local_model_id,
     spec_risk_allowance,
-    spec_unmeasured_bet,
 )
 from services.features.video.text_to_video import (
     VIDEO_OUTPUT_PLAN,
@@ -43,6 +42,7 @@ from services.features.video.text_to_video import (
     require_video_output,
 )
 from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
+from services.generation_queue.sessions import JobSession
 from services.generation_queue.types import (
     ExecutionOutcome,
     OutputAllocation,
@@ -99,6 +99,10 @@ class SynthesizedIcLoraExecutor(ABC, Generic[TInputs]):
             prompt=apply_recipe_prompt_template(
                 recipe, params.prompt.strip() if recipe.prompt_template else params.prompt
             ),
+            negative_prompt=params.negativePrompt,
+            nag_scale=params.nagScale,
+            nag_alpha=params.nagAlpha,
+            nag_tau=params.nagTau,
             prompt_provenance=params.promptProvenance,
             conditioning_type="custom",
             resolution=TargetResolution(width=canvas[0], height=canvas[1]),
@@ -142,6 +146,7 @@ class SynthesizedIcLoraExecutor(ABC, Generic[TInputs]):
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
         self.validate_params(
             generation.spec, contract_version=generation.contract_version
@@ -166,8 +171,7 @@ class SynthesizedIcLoraExecutor(ABC, Generic[TInputs]):
                 local_model_id=local_model_id,
                 seed=resolve_generation_seed(params.seed),
                 explicit_generation_seed=params.seed is not None,
-                risk_allowance=spec_risk_allowance(generation.spec),
-                unmeasured_bet=spec_unmeasured_bet(generation.spec),
+                allowance=spec_risk_allowance(generation.spec),
                 panel_paths=job.panel_paths,
             )
         except Exception as exc:

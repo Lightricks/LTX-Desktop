@@ -50,9 +50,12 @@ class _Ledger:
         if path == queued.QUEUE_PATH:
             running = [i for i, s in self.status.items() if s in {"queued", "running"}]
             if not running:
-                return {"active": None}
+                return {"active": []}
             self.status[running[0]] = "running"
-            return {"active": {"generation": {"id": running[0]}, "progress": {"phase": self.phase}}}
+            # Another lane's job runs too. The driver must pick its own entry, not the first.
+            other = {"generation": {"id": "other-lane-job"}, "progress": {"phase": "validating_request"}}
+            mine = {"generation": {"id": running[0]}, "progress": {"phase": self.phase}}
+            return {"active": [other, mine]}
         generation_id = path.rsplit("/", 1)[1]
         self.polls[generation_id] = self.polls.get(generation_id, 0) + 1
         if self.status[generation_id] in {"queued", "running"} and self.polls[generation_id] >= self.polls_until_done:

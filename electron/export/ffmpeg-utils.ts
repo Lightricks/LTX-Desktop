@@ -174,6 +174,11 @@ export function getVideoDimensions(videoPath: string): { width: number; height: 
   return { width, height }
 }
 
+/** True while an ffmpeg job reads or writes files. */
+export function isFfmpegRunning(): boolean {
+  return activeExportProcess !== null
+}
+
 export function stopExportProcess(): void {
   if (activeExportProcess) {
     logger.info( 'Stopping active export process...')

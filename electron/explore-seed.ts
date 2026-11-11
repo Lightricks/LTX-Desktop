@@ -10,6 +10,9 @@ import {
   IC_LORA_SEED_DIR,
   icLoraSeedFilename,
   INGREDIENTS_SHEET_SEED_FILENAME,
+  KEYFRAMES_SEED_FILES,
+  KEYFRAMES_SEED_KINDS,
+  type KeyframesSeedKind,
   LAYOUT_TO_RENDER_IMAGE_SEED_FILENAME,
   MOTION_TRACK_IMAGE_SEED,
   VIDEO_GUIDE_IMAGE_SEED,
@@ -28,6 +31,19 @@ function icLoraSeedSpec(recipeId: string, title: string) {
     filename: icLoraSeedFilename(recipeId),
     missing: `${title} reference video is missing`,
   };
+}
+
+function keyframesSeedSpecs() {
+  return Object.fromEntries(
+    KEYFRAMES_SEED_KINDS.map((kind) => [
+      kind,
+      {
+        dir: EXPLORE_IMAGE_TO_VIDEO_SEED_DIR,
+        filename: KEYFRAMES_SEED_FILES[kind],
+        missing: "A Keyframes example image is missing",
+      },
+    ]),
+  ) as Record<KeyframesSeedKind, { dir: string; filename: string; missing: string }>;
 }
 
 const PACKAGED_SEEDS: Record<
@@ -90,6 +106,7 @@ const PACKAGED_SEEDS: Record<
     filename: VIDEO_GUIDE_IMAGE_SEED.filename,
     missing: "Video Guide start frame is missing",
   },
+  ...keyframesSeedSpecs(),
 };
 
 export function packagedSeedSpec(kind: PackagedSeedKind) {

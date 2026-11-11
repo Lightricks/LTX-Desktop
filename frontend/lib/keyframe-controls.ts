@@ -1,5 +1,6 @@
 import {
   findNearestFreeFrameIndex,
+  parseKeyframeSeconds,
   parseKeyframeTimecode,
 } from './keyframe-timeline.ts'
 
@@ -37,6 +38,19 @@ export function nudgeKeyframe(
   )
 }
 
+function placeNearest(
+  keyframes: readonly PositionedKeyframe[],
+  id: string,
+  wantedFrame: number | null,
+  lastFrame: number,
+): number | null {
+  const context = placementContext(keyframes, id)
+  if (!context || wantedFrame === null) return null
+
+  return findNearestFreeFrameIndex(context.others, wantedFrame, lastFrame)
+}
+
+/** The frame a typed `MM:SS.FF` time gives the keyframe, moved to the nearest free frame. */
 export function applyTimecode(
   keyframes: readonly PositionedKeyframe[],
   id: string,
@@ -44,9 +58,16 @@ export function applyTimecode(
   fps: number,
   lastFrame: number,
 ): number | null {
-  const context = placementContext(keyframes, id)
-  const parsedFrame = parseKeyframeTimecode(value, fps)
-  if (!context || parsedFrame === null) return null
+  return placeNearest(keyframes, id, parseKeyframeTimecode(value, fps), lastFrame)
+}
 
-  return findNearestFreeFrameIndex(context.others, parsedFrame, lastFrame)
+/** The frame typed seconds give the keyframe, moved to the nearest free frame inside the clip. */
+export function applySeconds(
+  keyframes: readonly PositionedKeyframe[],
+  id: string,
+  value: string,
+  fps: number,
+  lastFrame: number,
+): number | null {
+  return placeNearest(keyframes, id, parseKeyframeSeconds(value, fps), lastFrame)
 }

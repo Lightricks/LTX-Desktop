@@ -4,6 +4,7 @@ import {
   withDefaultOffering,
   type OfferingId,
 } from "../../../../lib/video-generation-model-specs.ts";
+import { preflightEstimatedTimeText } from "../../../lib/editPreflight.ts";
 import { roundDurationSeconds } from "../../../lib/roundDuration.ts";
 import { readGenerationParams } from "../../../lib/resultsFeedModel.ts";
 import {
@@ -16,6 +17,7 @@ import {
   type FieldOption,
   type ValidationIssue,
 } from "../types.ts";
+import { negativePromptField } from "./negativePrompt.ts";
 import {
   capabilityModelOptions,
   editPreflightIssues,
@@ -25,6 +27,7 @@ import {
   type EditResolutionKey,
   hasAdvertisedCapability,
   normalizeEditResolution,
+  readNegativePrompt,
   readPrompt,
   readVideoGenerationInput,
   resolveCapableModel,
@@ -42,6 +45,7 @@ const RETAKE_CREATE_MODE = "replace_audio_and_video" as const;
 export type RetakeSchema = {
   video: { kind: "video-asset"; value: AssetRef | null };
   prompt: { kind: "textarea" };
+  negativePrompt: { kind: "textarea" };
   model: { kind: "options"; value: OfferingId };
   resolution: { kind: "options"; value: EditResolutionKey };
   startTime: { kind: "slider"; value: number };
@@ -60,6 +64,8 @@ export const RETAKE_EXAMPLE_START_SECONDS = 5;
 export const RETAKE_EXAMPLE_DURATION_SECONDS = 3;
 export const RETAKE_EXAMPLE_PROMPT =
   "The woman turns her back to the camera and slowly walks away, her face showing a worried expression.";
+export const RETAKE_EXAMPLE_NEGATIVE_PROMPT =
+  "smiling, laughing, facing camera, walking forward, abrupt cut, seam jump, warped face, flicker";
 export const RETAKE_RANGE_LABEL = "Select the part you want to fix";
 export const RETAKE_VIDEO_RANGE = {
   startDataKey: "startTime",
@@ -72,6 +78,7 @@ export const RETAKE_VIDEO_RANGE = {
 export const RETAKE_DEFAULTS: RetakeValues = {
   video: null,
   prompt: RETAKE_EXAMPLE_PROMPT,
+  negativePrompt: RETAKE_EXAMPLE_NEGATIVE_PROMPT,
   model: "ltx-2.5-fast",
   resolution: "original",
   startTime: RETAKE_EXAMPLE_START_SECONDS,
@@ -144,6 +151,7 @@ export function fromGeneration(
   return {
     video: inputs.video,
     prompt: readPrompt(spec),
+    negativePrompt: readNegativePrompt(spec),
     model: restoreOfferingId(params.model, context.specs) ?? RETAKE_DEFAULTS.model,
     resolution: editResolutionKeyFromParams(params),
     startTime:
@@ -234,6 +242,7 @@ export function toCreateBody(
     inputs: { video: { assetId: values.video.assetId } },
     params: {
       prompt: values.prompt.trim(),
+      negativePrompt: values.negativePrompt.trim(),
       model: values.model,
       startTime: wire.startTime,
       duration: wire.duration,
@@ -257,7 +266,7 @@ function editResolutionParam(
 }
 
 export function buildRetakeForm(
-  _values: RetakeValues,
+  values: RetakeValues,
   context: RetakeContext,
 ): FeatureFormModel<RetakeSchema> {
   const resolutionOptions = editResolutionFieldOptions(
@@ -282,6 +291,7 @@ export function buildRetakeForm(
         dataKey: "prompt",
         placeholder: "Describe what should change in this region...",
       },
+      negativePromptField<RetakeSchema>(),
       ...(resolutionOptions.length > 0
         ? [
             {
@@ -303,6 +313,14 @@ export function buildRetakeForm(
         options: retakeModelOptions(context.specs),
       },
     ],
+    estimatedTimeText:
+      values.video == null
+        ? null
+        : preflightEstimatedTimeText(
+            context.preflight,
+            values.resolution,
+            retakeWireValues(values).duration,
+          ),
   };
 }
 

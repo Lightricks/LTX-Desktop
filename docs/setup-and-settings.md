@@ -2,35 +2,7 @@
 
 ## Platform requirements
 
-These values match the [LTX Desktop page](https://ltx.io/ltx-desktop). All platforms need **100 GB+ free disk space**, up to **160 GB+** with additional LoRAs and IC-LoRAs.
-
-### Windows (local generation)
-
-- Windows 10/11 (64-bit)
-- NVIDIA GPU with CUDA, **24 GB+ VRAM** (32 GB recommended)
-- 32 GB RAM
-
-### Linux (local generation)
-
-- Ubuntu 22.04+ or similar distro (x64 or arm64)
-- NVIDIA GPU with CUDA and the NVIDIA driver installed (PyTorch bundles the CUDA runtime), **24 GB+ VRAM** (32 GB recommended)
-- 32 GB RAM
-
-### macOS (local generation)
-
-- macOS 26+ (Tahoe) for local generation. The app itself needs macOS 14 or later. On macOS 14 and 15 the app shows the **Coming soon to your device** notice.
-- Apple Silicon (M1 or later) with **48 GB+**: full local generation
-- Apple Silicon with 32 GB: limited (540p and 5 s only)
-- Apple Silicon with less than 24 GB, or an Intel Mac: Gen Space API only. Intel Macs have no MPS backend.
-
-### Lower-spec machines
-
-The app offers local generation on lower-spec machines, but we do not recommend them. The app uses these floors (see `backend/runtime_config/runtime_policy.py` and `docs/local-compat-matrix.md`):
-
-- CUDA: **9 GiB VRAM** on Windows with an fp8-capable GPU, **15 GiB** otherwise (Linux, non-fp8 Windows; integer GiB from `total_memory // 1024**3`)
-- macOS: **32 GiB total RAM** (machine SKU, not free RAM at launch) and **macOS 26 or later**
-
-Below a floor, local generation is unavailable and the app shows the **Coming soon to your device** notice. An LTX API key is not required.
+Recommended specs, disk space and the hardware floors are in the README's [System requirements](../README.md#system-requirements). What each GPU and Mac size can run, the RAM each job needs, and Brave and Cautious modes are in [`hardware-compatibility.md`](hardware-compatibility.md).
 
 ## First run & data locations
 
@@ -62,7 +34,7 @@ Open **Settings** from the bottom of the sidebar.
 
 | Tab | What it controls |
 | --- | --- |
-| **General** | Appearance (theme: system, light, or dark); auto-enhance for local and API generation; fast decode (faster video decode with slightly lower fidelity); text encoding (LTX API or local encoder); NVIDIA performance options (Torch Compile and diffusion stage cache, experimental); anonymous analytics |
+| **General** | Appearance (theme: system, light, or dark); auto-enhance for local and API generation; fast decode (faster video decode with slightly lower fidelity); text encoding (LTX API or local encoder); NVIDIA performance options (Torch Compile and diffusion stage cache, experimental); Apple Silicon performance options (faster Fast decode, experimental, Mac only); anonymous analytics |
 | **Models** | Download and manage checkpoints, LoRAs, and encoder models. See [Managing models](models-and-loras.md#managing-models). Hidden in API-only mode |
 | **Legacy** | Options for Gen Space and the Video Editor: project assets folder, default base model, preference for cloud video and image generation, and seed lock |
 | **API Keys** | Optional LTX, fal, and Gemini keys. The app checks a key before it saves it, and you can remove a saved key |

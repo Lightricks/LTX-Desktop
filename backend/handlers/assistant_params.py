@@ -68,6 +68,7 @@ class AudioParams(AssistantParams):
 
 class ExtensionParams(AssistantParams):
     prompt: str = ""
+    negativePrompt: str = ""
     model: OfferingId
     # Two names because "duration" means clip length in every other tool.
     added_seconds: float | None = Field(default=None, ge=2, le=20, allow_inf_nan=False, description='"Add 3 seconds"')
@@ -79,6 +80,7 @@ class ExtensionParams(AssistantParams):
 class VideoRecipeParams(AssistantParams):
     model: OfferingId
     prompt: str = ""
+    negativePrompt: str = ""
     resolution: IcLoraRecipeResolution = Field(default="720p", description="720p unless the user asks; lower is much faster")
     # Omitted keeps the source rate; a faster rate than the source is refused.
     fps: float | None = Field(default=None, gt=0, allow_inf_nan=False)
@@ -96,6 +98,7 @@ IngredientsDuration: TypeAlias = Literal[5, 6, 8, 10, 20]
 class IngredientsParams(AssistantParams):
     model: OfferingId
     prompt: NonEmptyPrompt
+    negativePrompt: str = ""
     resolution: IngredientsResolution = Field(default="720p", description="720p unless the user asks; lower is much faster")
     duration: IngredientsDuration = 5
     aspectRatio: LTXVideoGenAspectRatio = "16:9"
@@ -103,6 +106,7 @@ class IngredientsParams(AssistantParams):
 
 class ReplacementParams(AssistantParams):
     prompt: str = ""
+    negativePrompt: str = ""
     model: OfferingId
     startTime: float = Field(ge=0, allow_inf_nan=False)
     duration: float = Field(ge=2, le=RETAKE_MAX_DURATION_SECONDS, allow_inf_nan=False)

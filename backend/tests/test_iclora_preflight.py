@@ -18,10 +18,8 @@ from api_types import (
     PreprocessingStep,
 )
 from frame_math import compute_num_frames
-from runtime_config.ic_lora_job_budget import (
-    TWO_STAGE_OVER_MEASURED_MESSAGE,
-    with_budgeted_duration_controls,
-)
+from runtime_config.budget_admission import unmeasured_refusal_message
+from runtime_config.ic_lora_job_budget import with_budgeted_duration_controls
 from runtime_config.video_job_budget import (
     VIDEO_JOB_TOO_LARGE,
     LocalJobFilter,
@@ -104,7 +102,7 @@ def _duration_control(item: IcLoraCatalogItem) -> IcLoraControl:
     return next(c for c in item.controls if c.id == "duration")
 
 
-def test_dropped_durations_carry_fence_and_budget_refusals(
+def test_dropped_two_stage_duration_past_the_ceiling_carries_curve_figures(
     test_state, create_fake_model_files
 ) -> None:
     create_fake_model_files()
@@ -118,9 +116,9 @@ def test_dropped_durations_carry_fence_and_budget_refusals(
     assert control.options == [5]
     assert control.dropped_options is not None
     assert [(d.value, d.reason) for d in control.dropped_options] == [
-        (20, "two_stage_over_measured")
+        (20, "stream_over")
     ]
-    assert control.dropped_options[0].message == TWO_STAGE_OVER_MEASURED_MESSAGE
+    assert control.dropped_options[0].over_gib is not None
 
     budgeted = with_budgeted_duration_controls(
         _duration_item([5, 20], skip_stage_2=True), job_filter=job_filter
@@ -310,11 +308,12 @@ def test_preflight_input_errors_match_generate(
     assert "Input not found" in missing.json()["message"]
 
 
-def test_preflight_two_stage_long_duration_fences(
+def test_preflight_two_stage_past_the_ceiling_is_refused_untested_in_cautious(
     client: TestClient, tmp_path: Path, create_fake_model_files, test_state
 ) -> None:
     create_fake_model_files()
     _configure_windows(test_state, vram_gib=31, total_ram_gib=64)
+    test_state.state.app_settings.budget_mode = "cautious"
     img = _write_png(tmp_path / "in.png", size=(1024, 1024))
     resp = client.post(
         "/api/ic-lora/preflight",
@@ -328,8 +327,9 @@ def test_preflight_two_stage_long_duration_fences(
     assert resp.status_code == 200
     (cell,) = resp.json()["cells"]
     assert cell["ok"] is False
-    assert cell["message"] == TWO_STAGE_OVER_MEASURED_MESSAGE
+    assert cell["message"] == unmeasured_refusal_message("two_stage_range")
     assert cell["code"] == VIDEO_JOB_TOO_LARGE
+    assert cell["tier"] == "unmeasured"
 
 
 def test_small_source_passes_list_time_dropped_duration(

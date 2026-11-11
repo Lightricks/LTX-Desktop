@@ -8,14 +8,15 @@ import time
 import pytest
 
 from _routes._errors import HTTPError
+from services.patches import mps_conv3d_as_conv2d
 from runtime_config.ic_lora_stage_mode import IcLoraStageMode
 from runtime_config.video_job_budget import (
     HardwareProfile,
     LocalJobFilter,
     MemoryBudget,
-    VideoJobLoad,
     decide_edit_job,
 )
+from runtime_config.budget_decision import VideoJobLoad
 from frame_math import compute_num_frames
 from handlers.generation_handler import GenerationSlotWaitAborted, _RESERVATION_TIMEOUT_S
 from services import generation_interrupt
@@ -36,6 +37,28 @@ def _ic_lora_model_spec():
 def test_start_generation_requires_gpu(test_state):
     with pytest.raises(RuntimeError, match="No active GPU pipeline"):
         test_state.generation.start_generation("gen-1")
+
+
+def test_start_generation_pushes_mps_toggle_into_patch(test_state, create_fake_model_files, monkeypatch):
+    monkeypatch.setattr(mps_conv3d_as_conv2d, "_enabled", False)
+    create_fake_model_files()
+    test_state.pipelines.load_gpu_pipeline("fast")
+    test_state.settings.update_settings(UpdateSettingsRequest(mpsConv3DAsConv2DEnabled=True, useConvVae=True))
+
+    test_state.generation.start_generation("gen-1")
+
+    assert mps_conv3d_as_conv2d._enabled is True
+
+
+def test_start_generation_keeps_mps_patch_off_without_fast_decode(test_state, create_fake_model_files, monkeypatch):
+    monkeypatch.setattr(mps_conv3d_as_conv2d, "_enabled", True)
+    create_fake_model_files()
+    test_state.pipelines.load_gpu_pipeline("fast")
+    test_state.settings.update_settings(UpdateSettingsRequest(mpsConv3DAsConv2DEnabled=True, useConvVae=False))
+
+    test_state.generation.start_generation("gen-1")
+
+    assert mps_conv3d_as_conv2d._enabled is False
 
 
 def test_generation_mutex_prevents_second_start(test_state, create_fake_model_files):
@@ -326,7 +349,7 @@ def test_retake_pipeline_eviction(test_state, create_fake_model_files):
     create_fake_model_files()
     test_state.pipelines.load_gpu_pipeline("fast")
 
-    retake_state = test_state.pipelines.load_retake_pipeline(distilled=True)
+    retake_state, _ = test_state.pipelines.load_retake_pipeline(distilled=True)
     assert isinstance(test_state.state.gpu_slot, GpuSlot)
     assert isinstance(test_state.state.gpu_slot.active_pipeline, RetakePipelineState)
     assert test_state.state.gpu_slot.active_pipeline is retake_state
@@ -349,7 +372,7 @@ def test_retake_pipeline_uses_text_encoder_of_the_requested_model(
         resolve_model_path(test_state.config.default_models_dir, spec_23.text_encoder_cp)
     )
 
-    state = test_state.pipelines.load_retake_pipeline(
+    state, _ = test_state.pipelines.load_retake_pipeline(
         distilled=True, ltx_model_id="ltx-2.3-22b-distilled-1.1"
     )
 
@@ -365,7 +388,7 @@ def test_retake_1080p_streams_without_flipping_process_mode(
     assert test_state.config.local_generations_mode == "full_models_loading"
     frames = compute_num_frames(10, 24)
 
-    state = test_state.pipelines.load_retake_pipeline(
+    state, _ = test_state.pipelines.load_retake_pipeline(
         distilled=True, width=1920, height=1088, frames=frames
     )
 
@@ -400,9 +423,9 @@ def test_long_1080p_edit_window_is_capped_to_what_31gb_loads(
             ),
         ),
     )
-    assert isinstance(decision, VideoJobLoad)
+    assert isinstance(decision.priced.decision, VideoJobLoad)
 
-    state = test_state.pipelines.load_retake_pipeline(
+    state, _ = test_state.pipelines.load_retake_pipeline(
         distilled=True, width=1920, height=1088, frames=cap
     )
     assert state.loading_mode == "streaming_models_loading"
@@ -489,7 +512,7 @@ def test_retake_540p_5s_stays_full(test_state, fake_services, create_fake_model_
     create_fake_model_files()
     frames = compute_num_frames(5, 24)
 
-    state = test_state.pipelines.load_retake_pipeline(
+    state, _ = test_state.pipelines.load_retake_pipeline(
         distilled=True, width=1024, height=576, frames=frames
     )
 
@@ -501,10 +524,10 @@ def test_retake_full_pipeline_is_not_reused_for_a_stream_job(
     test_state, fake_services, create_fake_model_files
 ):
     create_fake_model_files()
-    small = test_state.pipelines.load_retake_pipeline(
+    small, _ = test_state.pipelines.load_retake_pipeline(
         distilled=True, width=1024, height=576, frames=compute_num_frames(5, 24)
     )
-    large = test_state.pipelines.load_retake_pipeline(
+    large, _ = test_state.pipelines.load_retake_pipeline(
         distilled=True, width=1920, height=1088, frames=compute_num_frames(10, 24)
     )
 

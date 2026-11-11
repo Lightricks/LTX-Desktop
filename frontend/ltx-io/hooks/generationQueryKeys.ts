@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 
 import type { components } from "../../generated/backend-openapi.ts";
 import type { BoundApiClient } from "../../lib/api-client.ts";
+import type { BudgetMode } from "../../lib/budget-risk.ts";
 import type { ExploreAsset } from "../../lib/explore-contract.ts";
 import type { Generation } from "../lib/resultsFeedModel.ts";
 import { unwrapApiResult } from "../lib/unwrapApiResult.ts";
@@ -31,10 +32,13 @@ export const generationQueryKeys = {
   dashboard: (range: components["schemas"]["DashboardSelection"]["range"], tz: string) =>
     [...generationQueryKeys.dashboards, range, tz] as const,
   queue: ["generation-queue"] as const,
+  allSpecs: ["video-generation-model-specs"] as const,
   specs: <T extends ExploreModelsVersion>(
     modelsVersion: T,
-    budgetMode: "standard" | "reckless" | "server" = "server",
-  ) => ["video-generation-model-specs", modelsVersion, budgetMode] as const,
+    budgetMode: BudgetMode | "server" = "server",
+    neverSplitIntoParts: boolean | "server" = "server",
+  ) =>
+    [...generationQueryKeys.allSpecs, modelsVersion, budgetMode, neverSplitIntoParts] as const,
 };
 
 export type GenerationQueueApi = Pick<
@@ -56,22 +60,46 @@ export type ExploreQueueEntry = Omit<
 };
 
 export type ExploreQueueSnapshot = {
-  active: ExploreQueueEntry | null;
+  /** One entry per running job. Jobs on different lanes run at the same time. */
+  active: ExploreQueueEntry[];
   queued: ExploreQueueEntry[];
   done: ExploreQueueEntry[];
   failed: ExploreQueueEntry[];
   unseen_ids: string[];
 };
 
+/** An entry of an older snapshot has no `cancellable`. */
+type LegacyActiveEntry = Omit<ExploreQueueEntry, "cancellable"> & {
+  cancellable?: boolean;
+};
+
+/**
+ * Older snapshots (and cached ones) hold a single entry or null. Both read as a list.
+ * A missing `cancellable` reads as true, like the backend default: only an explicit
+ * false hides Cancel.
+ */
+function activeEntries(
+  active: LegacyActiveEntry | readonly LegacyActiveEntry[] | null | undefined,
+): ExploreQueueEntry[] {
+  if (active == null) return [];
+  const entries: readonly LegacyActiveEntry[] = Array.isArray(active)
+    ? active
+    : [active as LegacyActiveEntry];
+  return entries.map((entry) => ({
+    ...entry,
+    cancellable: entry.cancellable ?? true,
+  }));
+}
+
 export function normalizeQueueSnapshot(snapshot: {
-  active: ExploreQueueSnapshot["active"];
+  active?: LegacyActiveEntry | readonly LegacyActiveEntry[] | null;
   queued: ExploreQueueSnapshot["queued"];
   done?: ExploreQueueSnapshot["done"] | null;
   failed?: ExploreQueueSnapshot["failed"] | null;
   unseen_ids?: string[] | null;
 }): ExploreQueueSnapshot {
   return {
-    active: snapshot.active,
+    active: activeEntries(snapshot.active),
     queued: snapshot.queued,
     done: snapshot.done ?? [],
     failed: snapshot.failed ?? [],

@@ -45,6 +45,7 @@ Pull requests must pass `pnpm typecheck`, `pnpm backend:test`, and the frontend 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): how to contribute
 - [`backend/architecture.md`](../backend/architecture.md): backend architecture
 - [`remote-lan.md`](remote-lan.md): LAN Remote architecture
-- [`local-compat-matrix.md`](local-compat-matrix.md): tool and hardware compatibility
+- [`hardware-compatibility.md`](hardware-compatibility.md): what each GPU and Mac runs (canonical user-facing page)
+- [`local-compat-matrix.md`](local-compat-matrix.md): tool and hardware compatibility (generated; never hand-edit)
 - [`INSTALLER.md`](INSTALLER.md): building installers
 - [`TELEMETRY.md`](TELEMETRY.md): telemetry and privacy

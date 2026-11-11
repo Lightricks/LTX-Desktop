@@ -268,6 +268,32 @@ describe("createVideoSettingsOptionFields chunked notice", () => {
     assert.equal(warningOf(single, "resolution", "2160p"), undefined);
   });
 
+  it("hands the window notice to the budget badge of a Brave-admitted cell", () => {
+    // The badge replaces the warning icon, so the notice must travel as the badge's note.
+    const specs = specsWithChunked([cell("1080p", 20, 3)]);
+    const spec = specs.downloaded_local_models[0].spec;
+    spec.warned_cells = [
+      {
+        resolution: "1080p",
+        fps: 24,
+        duration: 20,
+        tier: "over",
+        message: "Needs more memory than this card has.",
+        audio: false,
+        readout: { kind: "gpu", need_gb: 40, have_gb: 32 },
+      },
+    ];
+    const fields = createVideoSettingsOptionFields<LandscapeSchema>(
+      landscapeValues({ resolution: "1080p", duration: 20, fps: 24 }),
+      specs,
+    );
+    const option = fields
+      .find((field) => field.dataKey === "duration")
+      ?.options.find((candidate) => candidate.value === 20);
+    assert.deepEqual(option?.budget, { kind: "gpu", need_gb: 40, have_gb: 32 });
+    assert.equal(option?.budgetNote, chunkedRunNotice(3));
+  });
+
   it("keeps the generic 4K warning where 4K does not offer the selected duration", () => {
     // 4K stops at 5 s here, so picking it from 1080p at 20 s changes the duration: its windows are unknown.
     const fields = createVideoSettingsOptionFields<LandscapeSchema>(

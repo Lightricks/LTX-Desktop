@@ -1,0 +1,414 @@
+@import "@ds/styles/themes/mixins.module.scss";
+
+// The add dialog is the form only.
+
+.page {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-secondary);
+  box-sizing: border-box;
+
+  [data-theme="dark"] & {
+    background: #101010;
+  }
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  gap: var(--spacing-lg);
+  // The focus ring sits just outside a field. This padding keeps it inside the
+  // scroll area, and the matching margin puts the fields back where they were.
+  margin: calc(-1 * var(--spacing-xs));
+  padding: var(--spacing-xs);
+  overflow-y: auto;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--spacing-md);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.title {
+  margin: 0;
+  color: var(--semantic-fg-primary);
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  color: var(--semantic-fg-secondary);
+}
+
+.required {
+  margin-left: var(--spacing-xxs);
+  color: var(--semantic-fg-primary);
+}
+
+.exampleTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.exampleRow {
+  position: relative;
+}
+
+.textareaWithRemove {
+  padding-right: calc(var(--spacing-md) + var(--spacing-lg));
+}
+
+.exampleRemove {
+  position: absolute;
+  top: var(--spacing-xs);
+  right: var(--spacing-xs);
+}
+
+.exampleRemove button {
+  background: transparent;
+  color: var(--semantic-fg-secondary);
+}
+
+.exampleRemove button:hover,
+.exampleRemove button:active,
+.exampleRemove button:focus-visible,
+.exampleRemove button:disabled {
+  background: transparent;
+}
+
+.hint {
+  margin: 0;
+  color: var(--semantic-fg-tertiary);
+}
+
+.hintDisabled {
+  color: var(--semantic-fg-disabled-primary);
+}
+
+.linkBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.linkField {
+  position: relative;
+}
+
+.inputWithStatus.inputWithStatus {
+  padding-right: calc(var(--spacing-md) + var(--dimensions-icon-md) + var(--spacing-sm));
+}
+
+.validIcon {
+  position: absolute;
+  top: 50%;
+  right: var(--spacing-md);
+  width: var(--dimensions-icon-md);
+  height: var(--dimensions-icon-md);
+  color: var(--semantic-fg-success-primary-enabled);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.or {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.orLine {
+  flex: 1;
+  height: 1px;
+  background: var(--semantic-bg-separator-primary);
+}
+
+.orLabel {
+  color: var(--semantic-fg-tertiary);
+}
+
+// Same look as the TextField on a feature form: primary background, a border only on hover.
+.input.input {
+  @include text_style_body_lg;
+
+  height: 40px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background-color: var(--semantic-bg-primary);
+  color: var(--semantic-fg-primary);
+  transition: border-color 150ms ease;
+
+  &:hover:not(:disabled),
+  &:focus:not(:disabled) {
+    border-color: var(--semantic-bg-separator-primary);
+    background-color: var(--semantic-bg-primary);
+  }
+
+  &:disabled {
+    color: var(--semantic-fg-disabled-primary);
+    background-color: var(--semantic-bg-disabled-secondary);
+    cursor: default;
+  }
+
+  &:disabled::placeholder {
+    color: var(--semantic-fg-disabled-primary);
+  }
+}
+
+.textarea {
+  @include text_style_body_lg;
+
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-primary);
+  color: var(--semantic-fg-primary);
+  outline: none;
+  padding: var(--spacing-md);
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 150ms ease;
+
+  &::placeholder {
+    color: var(--semantic-fg-tertiary);
+  }
+
+  &:hover:not(:disabled),
+  &:focus:not(:disabled) {
+    border-color: var(--semantic-bg-separator-primary);
+  }
+
+  &:disabled {
+    color: var(--semantic-fg-disabled-primary);
+  }
+}
+
+.coverFrame {
+  position: relative;
+  width: 200px;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--semantic-border-secondary);
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-primary);
+  box-sizing: border-box;
+}
+
+.coverImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.coverActions {
+  position: absolute;
+  top: var(--spacing-sm);
+  right: var(--spacing-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 148px;
+  border: 1px dashed var(--semantic-bg-separator-primary);
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-primary);
+  color: var(--semantic-fg-primary);
+  cursor: pointer;
+  transition: border-color 150ms ease;
+
+  &:hover,
+  &.dragOver {
+    border-color: var(--semantic-bg-separator-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--semantic-bg-focus);
+    outline-offset: 2px;
+  }
+}
+
+.dropzone.coverDrop {
+  width: 200px;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+}
+
+.coverDrop .dropBody {
+  padding: var(--spacing-sm);
+}
+
+.coverDrop .fileName {
+  white-space: normal;
+}
+
+.dropzoneDisabled {
+  cursor: default;
+  pointer-events: none;
+  background: var(--semantic-bg-disabled-secondary);
+
+  .fileName,
+  .dropHint,
+  .dropIcon {
+    color: var(--semantic-fg-disabled-primary);
+  }
+}
+
+.uploadedFile {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  min-width: 0;
+  height: 72px;
+  padding: var(--spacing-md);
+  border: 1px solid var(--semantic-border-secondary);
+  border-radius: var(--radius-lg);
+  background: var(--semantic-bg-primary);
+  box-sizing: border-box;
+}
+
+.fileTile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: auto;
+  height: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-secondary);
+  color: var(--semantic-fg-primary);
+}
+
+.fileTileIcon {
+  width: var(--dimensions-icon-xl);
+  height: var(--dimensions-icon-xl);
+}
+
+.uploadedMeta {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.uploadedName {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--semantic-fg-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uploadedSize {
+  color: var(--semantic-fg-secondary);
+  white-space: nowrap;
+}
+
+.uploadedActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.dropBody {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 100%;
+  padding: var(--spacing-lg);
+  pointer-events: none;
+  text-align: center;
+}
+
+.dropIcon {
+  width: var(--dimensions-icon-md);
+  height: var(--dimensions-icon-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.fileName,
+.dropHint {
+  max-width: 100%;
+  color: var(--semantic-fg-secondary);
+}
+
+.fileName {
+  margin-bottom: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error {
+  margin: 0;
+  color: var(--semantic-fg-danger-primary-enabled);
+}
+
+.actions {
+  display: flex;
+  flex: none;
+  margin-top: auto;
+  margin-inline: calc(-1 * var(--spacing-lg));
+  margin-bottom: calc(-1 * var(--spacing-lg));
+  padding: var(--spacing-lg);
+  border-top: 1px solid var(--semantic-border-secondary);
+  border-bottom-right-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+  background: transparent;
+  backdrop-filter: blur(32px);
+}
+
+.addButton.addButton {
+  width: 100%;
+}

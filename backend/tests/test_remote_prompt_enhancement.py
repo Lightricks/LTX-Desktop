@@ -172,6 +172,51 @@ def test_remote_enhance_resolves_image_asset_id(
     assert r.json()["enhancedPrompt"] == "a still, enhanced"
 
 
+def test_remote_enhance_reads_keyframe_asset_ids_with_a_blank_prompt(
+    test_state, tmp_path: Path
+) -> None:
+    test_state.state.app_settings.gemini_api_key = "gemini-key"
+    test_state.http.queue("post", _gemini_ok("a hall, enhanced"))
+    app = create_remote_app(handler=test_state, remote_token="pair-token")
+    with TestClient(app) as client:
+        uploaded = client.post(
+            "/api/assets/upload",
+            headers=AUTH,
+            files={"file": ("frame.png", _png_bytes(tmp_path), "image/png")},
+        )
+        assert uploaded.status_code == 200
+        r = client.post(
+            "/api/enhance-prompt",
+            headers=AUTH,
+            json={
+                "prompt": "",
+                "provider": "api",
+                "duration": 5,
+                "fps": 24,
+                "keyframeAssets": [{"assetId": uploaded.json()["id"], "frameIndex": 0}],
+            },
+        )
+    assert r.status_code == 200, r.text
+    assert r.json()["enhancedPrompt"] == "a hall, enhanced"
+
+
+def test_remote_enhance_accepts_the_empty_custom_lora_list_every_home_form_sends(
+    test_state,
+) -> None:
+    # The Home Enhance request always carries customLoraIds. A body model that forbids it
+    # fails Enhance on the phone for every feature.
+    test_state.state.app_settings.gemini_api_key = "gemini-key"
+    test_state.http.queue("post", _gemini_ok("enhanced"))
+    app = create_remote_app(handler=test_state, remote_token="pair-token")
+    with TestClient(app) as client:
+        r = client.post(
+            "/api/enhance-prompt",
+            headers=AUTH,
+            json={"prompt": "a cat", "provider": "api", "customLoraIds": []},
+        )
+    assert r.status_code == 200, r.text
+
+
 def test_full_settings_stay_off_remote(test_state) -> None:
     app = create_remote_app(handler=test_state, remote_token="pair-token")
     with TestClient(app) as client:
@@ -327,3 +372,32 @@ def test_remote_enhance_rejects_a_bad_selection_mix_with_422_not_500(
 
     assert r.status_code == 422
     assert "validation error" not in r.text
+
+
+def test_remote_enhance_accepts_media_type_image_with_the_image_system_prompt(test_state) -> None:
+    test_state.state.app_settings.gemini_api_key = "gemini-key"
+    test_state.http.queue("post", _gemini_ok("a shiny red sedan"))
+    app = create_remote_app(handler=test_state, remote_token="pair-token")
+    with TestClient(app) as client:
+        r = client.post(
+            "/api/enhance-prompt",
+            headers=AUTH,
+            json={"prompt": "a red car", "provider": "api", "mediaType": "image"},
+        )
+
+    assert r.status_code == 200
+    assert r.json()["enhancedPrompt"] == "a shiny red sedan"
+    instruction = test_state.http.calls[-1].json_payload["systemInstruction"]["parts"][0]["text"]
+    assert "Z-Image-Turbo" in instruction
+
+
+def test_remote_image_enhance_refuses_an_input_image_so_edit_stays_unreachable(test_state) -> None:
+    app = create_remote_app(handler=test_state, remote_token="pair-token")
+    with TestClient(app) as client:
+        r = client.post(
+            "/api/enhance-prompt",
+            headers=AUTH,
+            json={"prompt": "a red car", "mediaType": "image", "imageAssetId": "asset-1"},
+        )
+
+    assert r.status_code == 422

@@ -1,11 +1,10 @@
-import { Text } from "@ds/Text/Text";
-
 import formStyles from "../FeatureFormView.module.scss";
 import type {
   FeatureFieldSchema,
   SliderFieldDef,
   ValidationIssue,
 } from "../types";
+import { FieldLabel } from "./FieldLabel";
 
 export function SliderField<TSchema extends FeatureFieldSchema>({
   field,
@@ -22,9 +21,7 @@ export function SliderField<TSchema extends FeatureFieldSchema>({
   const decimals = field.step < 1 ? 2 : 0;
   return (
     <div className={formStyles.field}>
-      <Text as="span" variant="body" size="md" className={formStyles.fieldLabel}>
-        {field.label}
-      </Text>
+      <FieldLabel label={field.label} tooltip={field.tooltip} />
       <div className={formStyles.sliderControl}>
         <input
           type="range"

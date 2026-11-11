@@ -7,6 +7,7 @@ import {
   EXTEND_SEED_FILENAME,
   icLoraSeedFilename,
   INGREDIENTS_SHEET_SEED_FILENAME,
+  KEYFRAMES_SEED_FILES,
   LAYOUT_TO_RENDER_IMAGE_SEED_FILENAME,
   MOTION_TRACK_IMAGE_SEED,
   RESTORE_IMAGE_SEED_FILENAME,
@@ -43,12 +44,18 @@ import ingredientsSheetUrl from "../../../resources/explore-assets/ingredients-s
 import motionTrackImageUrl from "../../../resources/explore-assets/motion-track-input.jpg";
 import videoGuideSeedImageUrl from "../../../resources/explore-assets/video-guide-start-frame.jpg";
 import videoGuideSeedVideoUrl from "../../../resources/explore-assets/video-guide-reference.mp4";
+import keyframesAutumnUrl from "../../../resources/explore-assets/keyframes-autumn.jpg";
+import keyframesSpringUrl from "../../../resources/explore-assets/keyframes-spring.jpg";
+import keyframesSummerUrl from "../../../resources/explore-assets/keyframes-summer.jpg";
+import keyframesWinterUrl from "../../../resources/explore-assets/keyframes-winter.jpg";
 import audioToVideoExamplePosterUrl from "./audio-to-video/example-poster.webp";
 import audioToVideoExampleVideoUrl from "./audio-to-video/example.webm";
 import extendExamplePosterUrl from "./extend/example-poster.webp";
 import extendExampleVideoUrl from "./extend/example.webm";
 import imageToVideoExamplePosterUrl from "./image-to-video/example-poster.webp";
 import imageToVideoExampleVideoUrl from "./image-to-video/example.webm";
+import keyframesExamplePosterUrl from "./keyframes/example-poster.webp";
+import keyframesExampleVideoUrl from "./keyframes/example.webm";
 import retakeExamplePosterUrl from "./retake/example-poster.webp";
 import retakeExampleVideoUrl from "./retake/example.webm";
 import textToVideoExamplePosterUrl from "./text-to-video/example-poster.webp";
@@ -204,6 +211,26 @@ export const PACKAGED_EXPLORE_SEEDS = {
     url: videoGuideSeedImageUrl,
     mimeType: "image/jpeg",
   },
+  "keyframes-summer-image": {
+    filename: KEYFRAMES_SEED_FILES["keyframes-summer-image"],
+    url: keyframesSummerUrl,
+    mimeType: "image/jpeg",
+  },
+  "keyframes-autumn-image": {
+    filename: KEYFRAMES_SEED_FILES["keyframes-autumn-image"],
+    url: keyframesAutumnUrl,
+    mimeType: "image/jpeg",
+  },
+  "keyframes-winter-image": {
+    filename: KEYFRAMES_SEED_FILES["keyframes-winter-image"],
+    url: keyframesWinterUrl,
+    mimeType: "image/jpeg",
+  },
+  "keyframes-spring-image": {
+    filename: KEYFRAMES_SEED_FILES["keyframes-spring-image"],
+    url: keyframesSpringUrl,
+    mimeType: "image/jpeg",
+  },
 } as const;
 
 export type PackagedExploreSeedId = keyof typeof PACKAGED_EXPLORE_SEEDS;
@@ -237,6 +264,16 @@ export const PACKAGED_EXPLORE_EXAMPLES = {
   "audio-to-video-example-video": {
     filename: "example.webm",
     url: audioToVideoExampleVideoUrl,
+    mimeType: "video/webm",
+  },
+  "keyframes-example-poster": {
+    filename: "example-poster.webp",
+    url: keyframesExamplePosterUrl,
+    mimeType: "image/webp",
+  },
+  "keyframes-example-video": {
+    filename: "example.webm",
+    url: keyframesExampleVideoUrl,
     mimeType: "video/webm",
   },
   "retake-example-poster": {

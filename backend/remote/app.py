@@ -21,7 +21,9 @@ from _routes._errors import HTTPError, build_http_error_response
 from _routes.assets import phone_assets_router
 from _routes.assistant import phone_assistant_router
 from _routes.feature_flags import router as feature_flags_router
+from _routes.ui_preferences import router as ui_preferences_router
 from _routes.generation_seed import phone_generation_seed_router
+from _routes.image_gen import status_router as image_status_router
 from _routes.stats import phone_stats_router
 from _routes.generation import specs_router as generate_specs_router
 from api_types import HTTPErrorResponse
@@ -38,6 +40,7 @@ from security_headers import install_security_headers
 from state import get_state_service
 
 _BYTES_PATH = re.compile(r"^/api/assets/([^/]+)/(?:thumbnail/)?bytes$")
+_COVER_PATH = re.compile(r"^/api/custom-loras/([^/]+)/cover$")
 _EXCHANGE_PATH = "/api/pairing/exchange"
 
 FALLBACK_HTML = """<!DOCTYPE html>
@@ -175,14 +178,16 @@ def create_remote_app(
         if _is_public_path(request.url.path):
             return await call_next(request)
         bytes_match = _BYTES_PATH.match(request.url.path)
-        if bytes_match is not None:
+        cover_match = _COVER_PATH.match(request.url.path)
+        media_match = bytes_match or cover_match
+        if media_match is not None:
             if request.query_params.get("t") is not None:
                 return _unauthorized()
             try:
                 device = pairing.authenticate_media(
                     request.url.path,
                     urlsplit(str(request.url)).query,
-                    asset_id=bytes_match.group(1),
+                    asset_id=media_match.group(1),
                 )
             except PairingError as exc:
                 if exc.status_code == 503:
@@ -246,6 +251,8 @@ def create_remote_app(
     app.include_router(loras_router)
     app.include_router(hf_auth_router)
     app.include_router(feature_flags_router)
+    app.include_router(ui_preferences_router)
+    app.include_router(image_status_router)
     app.include_router(prompt_enhancement_router)
     app.include_router(phone_assistant_router)
 

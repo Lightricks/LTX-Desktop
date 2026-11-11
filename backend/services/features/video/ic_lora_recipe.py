@@ -25,9 +25,10 @@ from api_types import (
     TargetResolution,
 )
 from _routes._errors import HTTPError
+from runtime_config.budget_admission import RiskAllowance
 from runtime_config.ic_lora_high_res import (
     HIGH_RES_NOT_ENABLED,
-    HIGH_RES_ONLY_IC_LORAS,
+    high_res_flag_satisfied,
     high_res_cell,
     high_res_stage1,
 )
@@ -60,7 +61,6 @@ from services.features.video.job_common import (
     resolve_generation_seed,
     resolve_job_local_model_id,
     spec_risk_allowance,
-    spec_unmeasured_bet,
 )
 from services.features.video.text_to_video import (
     VIDEO_OUTPUT_PLAN,
@@ -69,6 +69,7 @@ from services.features.video.text_to_video import (
 )
 from services.ffmpeg import FFMPEG_PROTOCOL_WHITELIST, run_ffmpeg, timeout_for_pixels
 from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
+from services.generation_queue.sessions import JobSession
 from services.generation_queue.types import (
     ExecutionOutcome,
     OutputAllocation,
@@ -87,9 +88,6 @@ def _frame_outcome(clip_frames: int, run_frames: int) -> str:
     return "no change, already on the frame grid"
 
 
-logger = logging.getLogger(__name__)
-
-
 class ReservedIcLoraGenerator(Protocol):
     def generate_local_reserved(
         self,
@@ -102,8 +100,7 @@ class ReservedIcLoraGenerator(Protocol):
         explore_generation: bool = True,
         explicit_generation_seed: bool = False,
         high_res: bool = False,
-        risk_allowance: bool | None = None,
-        unmeasured_bet: bool = False,
+        allowance: RiskAllowance | None = None,
         panel_paths: Sequence[str] = (),
     ) -> object: ...
 
@@ -116,8 +113,7 @@ class ReservedIcLoraGenerator(Protocol):
         stored: IcLoraRecipeStoredParams,
         clip_frames: int,
         upscale: bool,
-        risk_allowance: bool | None,
-        unmeasured_bet: bool,
+        allowance: RiskAllowance | None = None,
     ) -> tuple[int, GenerationRisk | None]:
         """Frame count the run uses for a clip: snapped up, or down when up is over budget.
 
@@ -205,8 +201,8 @@ class IcLoraRecipeExecutor:
         self._high_res_enabled = high_res_enabled or (lambda: False)
 
     def _require_high_res(self) -> None:
-        """The 1440p and 2160p cells need the highResVideoToVideo flag."""
-        if not self._high_res_enabled():
+        """The 1440p and 2160p cells need the highResVideoToVideo flag, for most recipes."""
+        if not high_res_flag_satisfied(self._catalog_id, flag_enabled=self._high_res_enabled()):
             logger.warning(
                 "%s high-res cell refused: recipe=%s highResVideoToVideo=%s",
                 PREFIX, self._catalog_id, self._high_res_enabled(),
@@ -246,6 +242,7 @@ class IcLoraRecipeExecutor:
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
         self.validate_params(
             generation.spec, contract_version=generation.contract_version
@@ -314,7 +311,7 @@ class IcLoraRecipeExecutor:
             # Inside the try so a resolution with no local cell becomes a capability
             # failure, the same as image-to-video's pixel lookup.
             high_res = high_res_cell(params.resolution)
-            if high_res is not None or self._catalog_id in HIGH_RES_ONLY_IC_LORAS:
+            if high_res is not None:
                 self._require_high_res()
             if high_res is not None:
                 width, height = stage_canvas = high_res_stage1(
@@ -363,6 +360,7 @@ class IcLoraRecipeExecutor:
             fit = None
             clip_frames = video_frame_count(source)
             keep_source_audio = params.audioMode == "source" and meta.audioStreamCount > 0
+            allowance = spec_risk_allowance(generation.spec)
             if cutout_dest is None:
                 # The pipeline snaps a frame count down. Repeat the last frame up to the
                 # next valid count, and cut the output back to `clip_frames` after the run.
@@ -376,8 +374,7 @@ class IcLoraRecipeExecutor:
                     stored=params,
                     clip_frames=clip_frames,
                     upscale=self._upscales_to_cell,
-                    risk_allowance=spec_risk_allowance(generation.spec),
-                    unmeasured_bet=spec_unmeasured_bet(generation.spec),
+                    allowance=allowance,
                 )
                 logger.info(
                     "[ic-lora] recipe %s frames: clip=%d run=%d (%s)",
@@ -416,11 +413,19 @@ class IcLoraRecipeExecutor:
                 ic_lora_id=self._catalog_id,
                 input_path=str(model_input),
                 prompt=params.prompt,
+                negative_prompt=params.negativePrompt,
+                nag_scale=params.nagScale,
+                nag_alpha=params.nagAlpha,
+                nag_tau=params.nagTau,
                 prompt_provenance=params.promptProvenance,
                 conditioning_type="custom",
                 resolution=TargetResolution(width=width, height=height),
                 audio_mode=params.audioMode,
                 lora_strength=params.loras[0].scale,
+                tile_overlap=params.tilingOverlap,
+                tile_size=params.tilingSize,
+                carry_frames=params.carryFrames,
+                max_window_frames=params.maxWindowFrames,
                 variant_id=params.loras[0].variantId,
                 control_values=(
                     {IC_LORA_CONTROL_TYPE_ID: params.controlType}
@@ -444,8 +449,7 @@ class IcLoraRecipeExecutor:
                     seed=seed,
                     explicit_generation_seed=params.seed is not None,
                     high_res=high_res is not None,
-                    risk_allowance=spec_risk_allowance(generation.spec),
-                    unmeasured_bet=spec_unmeasured_bet(generation.spec),
+                    allowance=allowance,
                 )
             if isinstance(result, IcLoraGenerateCancelledResponse):
                 raise GenerationCancelledError()

@@ -141,7 +141,7 @@ def test_v1_database_upgrades_without_dropping_rows(tmp_path: Path) -> None:
     apply_migrations(conn, MIGRATIONS_DIR)
 
     version = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
-    assert version == 2
+    assert version == 4
     assert conn.execute("PRAGMA foreign_key_check").fetchone() is None
     columns = {
         row["name"] for row in conn.execute("PRAGMA table_info(generations)").fetchall()

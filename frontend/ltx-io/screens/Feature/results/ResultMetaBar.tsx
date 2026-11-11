@@ -12,6 +12,7 @@ import {
   type Generation,
 } from "../../../lib/resultsFeedModel";
 import { generationPresentation } from "../../../lib/generationPresentation.ts";
+import { useGenerationNegativePrompt } from "../../../hooks/useGenerationNegativePrompt.ts";
 import styles from "./ResultMetaBar.module.scss";
 
 const COPIED_FEEDBACK_MS = 2000;
@@ -57,12 +58,13 @@ function CopyPromptButton({ prompt }: { prompt: string }) {
 export function ResultMetaBar({ generation }: { generation: Generation }) {
   const { prompt, badges } = generationPresentation(generation);
   const timeAgo = formatRelativeTime(generation.created_at);
+  const negativePromptLine = useGenerationNegativePrompt(generation);
 
   if (!prompt && badges.length === 0 && !timeAgo) {
     return null;
   }
 
-  return (
+  const bar = (
     <Flex
       direction="row"
       align="center"
@@ -111,6 +113,16 @@ export function ResultMetaBar({ generation }: { generation: Generation }) {
           {timeAgo}
         </Text>
       </Flex>
+    </Flex>
+  );
+
+  if (negativePromptLine == null) return bar;
+  return (
+    <Flex direction="column" className={styles.withNegative}>
+      {bar}
+      <Text as="span" variant="body" size="md" className={styles.negativePrompt}>
+        {negativePromptLine}
+      </Text>
     </Flex>
   );
 }

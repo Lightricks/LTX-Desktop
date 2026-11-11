@@ -19,8 +19,9 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
+from runtime_config.budget_admission import PricedJob
+from runtime_config.budget_decision import VideoJobReject
 from runtime_config.video_job_budget import (
-    BudgetFeature,
     BudgetRoute,
     LocalJobFilter,
     budget_route,
@@ -64,7 +65,7 @@ def evict_retry_shortfall_gib(
     budget = job_filter.budget
     if budget.free_vram_bytes is None:
         return None
-    total = budget.total_vram_gib
+    total = budget.usable_vram_gib
     available = budget.available_vram_gib
     if total is None or available is None:
         return None
@@ -82,11 +83,7 @@ def evict_retry_shortfall_gib(
 
 def evict_retry_filter(
     *,
-    feature: BudgetFeature,
-    is_vram_occupancy_miss: bool,
-    stream_gib: float,
-    seq: float,
-    full_gib: float,
+    priced: PricedJob,
     job_filter: LocalJobFilter,
     live_allocated_bytes: int | None,
     reserved_bytes: int | None,
@@ -97,14 +94,17 @@ def evict_retry_filter(
     """Evict-and-resample once when the W-band covers the shortfall; else None.
 
     Logs the first-attempt line, runs the caller's evict, and returns the
-    caller's rebuilt filter for exactly one re-decide. None means keep the
-    reject — the policy declined, nothing was touched. The re-decide stays at
-    the call site, where the decision types differ per feature.
+    caller's rebuilt filter for exactly one re-price. None means keep the
+    priced verdict — the policy declined, nothing was touched.
     """
+    is_vram_occupancy_miss = (
+        isinstance(priced.decision, VideoJobReject)
+        and priced.decision.reason == "stream_over"
+    )
     shortfall = evict_retry_shortfall_gib(
-        route=budget_route(feature, job_filter.profile),
+        route=budget_route(priced.feature, job_filter.profile),
         is_vram_occupancy_miss=is_vram_occupancy_miss,
-        stream_gib=stream_gib,
+        stream_gib=priced.stream_gib,
         job_filter=job_filter,
         live_allocated_bytes=live_allocated_bytes,
     )
@@ -113,9 +113,9 @@ def evict_retry_filter(
     logger.info(
         "[%s] job budget seq=%.0f full=%.1fGiB stream=%.1fGiB -> reject; evict-retry (shortfall %.1fGiB covered by live weights)%s",
         log_prefix,
-        seq,
-        full_gib,
-        stream_gib,
+        priced.seq,
+        priced.full_gib,
+        priced.stream_gib,
         shortfall,
         vram_snapshot_suffix(
             allocated_bytes=live_allocated_bytes,

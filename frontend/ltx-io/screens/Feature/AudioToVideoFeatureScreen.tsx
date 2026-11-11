@@ -86,7 +86,7 @@ export function AudioToVideoFeatureScreen() {
       definition={audioToVideoDefinition}
       context={context}
       contextReady={contextReady}
-      generateEnabled={specsQuery.budgetModeReady}
+      generateEnabled={specsQuery.budgetSettingsReady}
       resourceError={resourceError}
       createGeneration={createGeneration}
       ResultFrameAdapter={ResultFrame}

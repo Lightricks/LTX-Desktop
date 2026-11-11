@@ -39,14 +39,11 @@ class IcLoraSheetRecipeExecutor(SynthesizedIcLoraExecutor[IcLoraSheetInputs]):
             ).path
             for ref in inputs.images
         ]
-        app_data_dir = (
-            control.parent.parent.parent
-            if control.parent.name == ".in-flight"
-            else control.parent
-        )
+        # The sheet goes beside the job output, in the store's in-flight folder.
+        in_flight_dir = control.parent
         try:
             sheet = ensure_reference_sheet(
-                image_paths, *canvas, app_data_dir=app_data_dir
+                image_paths, *canvas, in_flight_dir=in_flight_dir
             )
         except (OSError, ValueError) as exc:
             # A corrupt or unreadable panel image (Pillow raises OSError subclasses).

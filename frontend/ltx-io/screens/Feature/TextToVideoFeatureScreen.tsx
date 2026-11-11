@@ -22,7 +22,7 @@ export function TextToVideoFeatureScreen() {
       definition={textToVideoDefinition}
       context={context}
       contextReady={specsQuery.isSuccess}
-      generateEnabled={specsQuery.budgetModeReady}
+      generateEnabled={specsQuery.budgetSettingsReady}
       resourceError={specsQuery.error}
       createGeneration={createGeneration}
       ResultFrameAdapter={ResultFrame}

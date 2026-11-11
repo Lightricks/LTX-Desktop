@@ -2,44 +2,16 @@ import { Text } from "@ds/Text/Text";
 import MediaReplaceIcon from "@ds/assets/Icons/MediaReplace.svg?react";
 import PhotosIcon from "@ds/assets/Icons/Photos.svg?react";
 import RemoveIcon from "@ds/assets/Icons/Remove.svg?react";
-import { useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
-import { useEffect, useRef, useState } from "react";
 
-import { useUploadDnd } from "../../../components/shared/Upload/hooks/useUploadDnd";
-import { assetQueryKeys, isImageAsset } from "../../../hooks/assetQueryKeys";
-import { type PendingImport, useExploreRuntime } from "../../../runtime/ExploreRuntime";
 import formStyles from "../FeatureFormView.module.scss";
-import { type AssetRef, type ValidationIssue, toDurableAssetRef } from "../types";
-import {
-  IMAGE_ACCEPT,
-  IMAGE_EXTENSIONS,
-  imageIngestErrorMessage,
-  imageLookupErrorMessage,
-  isSupportedDroppedImage,
-  UNSUPPORTED_IMAGE_MESSAGE,
-} from "./imageAssetInput";
-import { collectImageBatch, describeImageBatch, planImageBatch } from "./imageBatch";
+import type { AssetRef, ValidationIssue } from "../types";
+import { IMAGE_ACCEPT } from "./imageAssetInput";
 import dropStyles from "./ImageDropzone.module.scss";
 import styles from "./ImageAssetsField.module.scss";
-import { useMediaAssetField } from "./useMediaAssetField";
+import { useImageAssetField } from "./useImageAssetField";
+import { useImageAssetsIngest } from "./useImageAssetsIngest";
 import { OverlayButton } from "./OverlayButton";
-
-/** One image slot: the single-image field logic with the image options filled in. */
-function useImageSlot(label: string, value: AssetRef | null, onChange: (value: AssetRef | null) => void) {
-  return useMediaAssetField({
-    value,
-    onChange,
-    accept: IMAGE_ACCEPT,
-    extensions: IMAGE_EXTENSIONS,
-    chooserTitle: label,
-    isSupportedDropped: isSupportedDroppedImage,
-    isExpectedAsset: isImageAsset,
-    unsupportedMessage: UNSUPPORTED_IMAGE_MESSAGE,
-    ingestErrorMessage: imageIngestErrorMessage,
-    lookupErrorMessage: imageLookupErrorMessage,
-  });
-}
 
 function Thumb({
   label,
@@ -50,7 +22,7 @@ function Thumb({
   value: AssetRef;
   onChange: (value: AssetRef | null) => void;
 }) {
-  const slot = useImageSlot(label, value, onChange);
+  const slot = useImageAssetField({ value, onChange, chooserTitle: label });
   return (
     <div className={styles.thumb} title={slot.errorMessage ?? undefined}>
       <input ref={slot.fileInputRef} className={dropStyles.hiddenInput} type="file" accept={slot.accept} />
@@ -60,7 +32,7 @@ function Thumb({
           label="Replace"
           ariaLabel="Replace image"
           icon={<MediaReplaceIcon />}
-          onClick={slot.choose}
+          onClick={slot.openLibrary}
         />
         <OverlayButton
           label="Remove"
@@ -90,74 +62,12 @@ export function ImageAssetsField({
   issue?: ValidationIssue;
   onChange: (value: AssetRef[]) => void;
 }) {
-  const { mediaInput } = useExploreRuntime();
-  const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [addError, setAddError] = useState<string | null>(null);
-  // An ingest ends after this render. It must add to the list as it is then.
-  const latest = useRef({ value, onChange });
-  useEffect(() => {
-    latest.current = { value, onChange };
+  const { fileInputRef, addError, clearAddError, isDragOver, dropProps } = useImageAssetsIngest({
+    label: field.label,
+    maxCount,
+    count: value.length,
+    onAdd: (added) => onChange([...value, ...added]),
   });
-
-  // Add a whole batch with one `onChange`. Separate adds would each start from the same old list.
-  const addImports = async (pending: PendingImport[], unsupported: number) => {
-    setAddError(null);
-    const plan = planImageBatch(pending, maxCount - latest.current.value.length);
-    const results = await Promise.allSettled(plan.take.map((run) => run()));
-    const batch = collectImageBatch(results, isImageAsset);
-    for (const asset of batch.assets) {
-      queryClient.setQueryData(assetQueryKeys.detail(asset.id), asset);
-    }
-    // Another add can finish first, so count the free slots again now.
-    const { value: current, onChange: change } = latest.current;
-    const accepted = batch.assets.slice(0, Math.max(0, maxCount - current.length));
-    if (accepted.length > 0) {
-      change([...current, ...accepted.map(toDurableAssetRef)]);
-    }
-    setAddError(
-      describeImageBatch({
-        unsupported: unsupported + batch.wrongKind,
-        overLimit: plan.overLimit + (batch.assets.length - accepted.length),
-        maxCount,
-        failures: batch.failures,
-      }),
-    );
-  };
-
-  const dropFiles = (files: File[]) => {
-    const supported = files.filter(isSupportedDroppedImage);
-    void addImports(
-      supported.map((file) => () => mediaInput.ingestDroppedFile(file)),
-      files.length - supported.length,
-    );
-  };
-
-  const pickFiles = () => {
-    setAddError(null);
-    mediaInput
-      .chooseMany({
-        title: field.label,
-        accept: IMAGE_ACCEPT,
-        extensions: IMAGE_EXTENSIONS,
-        fileInput: fileInputRef.current,
-      })
-      .then((pending) => addImports(pending, 0))
-      .catch((error: unknown) => setAddError(imageIngestErrorMessage(error)));
-  };
-
-  const upload = useUploadDnd({
-    isMultiple: true,
-    acceptedFilesTypes: IMAGE_ACCEPT,
-    onUpload: dropFiles,
-  });
-  const dropProps = {
-    onDragEnter: upload.handlers.handleDragEnter,
-    onDragOver: upload.handlers.handleDragOver,
-    onDragLeave: upload.handlers.handleDragLeave,
-    onDrop: upload.handlers.handleDrop,
-    onClick: pickFiles,
-  };
   const message = addError ?? issue?.message;
   return (
     <div className={formStyles.field}>
@@ -181,7 +91,7 @@ export function ImageAssetsField({
       {value.length === 0 ? (
         <button
           type="button"
-          className={clsx(dropStyles.dropzone, upload.isDragOver && dropStyles.dragOver)}
+          className={clsx(dropStyles.dropzone, isDragOver && dropStyles.dragOver)}
           {...dropProps}
         >
           <span className={dropStyles.empty}>
@@ -201,7 +111,7 @@ export function ImageAssetsField({
           {value.length < maxCount ? (
             <button
               type="button"
-              className={clsx(styles.addTile, upload.isDragOver && dropStyles.dragOver)}
+              className={clsx(styles.addTile, isDragOver && dropStyles.dragOver)}
               aria-label="Add image"
               {...dropProps}
             >
@@ -216,7 +126,7 @@ export function ImageAssetsField({
               value={image}
               onChange={(next) => {
                 // The old add message is about a list that no longer exists.
-                setAddError(null);
+                clearAddError();
                 onChange(
                   next == null
                     ? value.filter((_, at) => at !== index)

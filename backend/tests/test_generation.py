@@ -19,11 +19,15 @@ from api_types import (
     GenerateVideoRequest,
 )
 from frame_math import AutoDurationSpec, compute_num_frames
+from runtime_config.budget_admission import unmeasured_refusal_message
+from runtime_config.budget_evidence import JobShape
+from runtime_config.device_calibration import envelope_for
 from runtime_config.eta import WallTimeEstimate
 from runtime_config.model_download_specs import delete_cp_path, get_ltx_model_spec, resolve_model_path
 from services import generation_interrupt
 from services.generation_interrupt import GenerationCancelledError
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError
+from services.generation_queue.sessions import LocalJobSession
 from state.app_state_types import GpuSlot, VideoPipelineState
 from tests.http_error_assertions import assert_http_error
 from tests.fakes.services import FakeFastVideoPipeline
@@ -100,7 +104,7 @@ def _local_cell(fps_to_durations: dict[str, list[int]]) -> dict[str, object]:
     return {"fps_to_durations": fps_to_durations, "aspect_ratios": list(_LOCAL_CELL_ASPECTS)}
 
 
-def _fake_running_generation_state(test_state) -> None:
+def _fake_gpu_slot(test_state) -> None:
     pipeline = FakeFastVideoPipeline()
     test_state.state.gpu_slot = GpuSlot(
         active_pipeline=VideoPipelineState(
@@ -110,6 +114,10 @@ def _fake_running_generation_state(test_state) -> None:
             loading_mode="full_models_loading",
         ),
     )
+
+
+def _fake_running_generation_state(test_state) -> None:
+    _fake_gpu_slot(test_state)
     test_state.generation.start_generation("running")
 
 
@@ -455,7 +463,7 @@ class TestGenerate:
             status_code=422,
             code=VIDEO_JOB_TOO_LARGE,
             message=(
-                "This job needs 77.0 GB of GPU memory but this card has 8.0 GB. "
+                "This job needs 11.2 GB of GPU memory but this card has 8.0 GB. "
                 "Lower the resolution, duration, frame rate, or aspect width."
             ),
         )
@@ -890,7 +898,7 @@ class TestGenerate:
         assert call["width"] == 1280
         assert call["height"] == 704
 
-    def test_local_1440p_is_refused_as_unmeasured_until_reckless(
+    def test_local_1440p_is_refused_as_unmeasured_until_brave(
         self, client, test_state, fake_services, create_fake_model_files
     ):
         create_fake_model_files()
@@ -903,7 +911,7 @@ class TestGenerate:
         assert refused.json()["code"] == VIDEO_JOB_TOO_LARGE
         assert fake_services.fast_video_pipeline.generate_calls == []
 
-        test_state.state.app_settings.budget_mode = "reckless"
+        test_state.state.app_settings.budget_mode = "brave"
         accepted = client.post("/api/generate", json=body)
 
         assert accepted.status_code == 200
@@ -2762,10 +2770,7 @@ class TestVideoJobLoadMode:
             r,
             status_code=422,
             code=VIDEO_JOB_TOO_LARGE,
-            message=(
-                "This job needs 20.0 GB of GPU memory but this card has 8.0 GB. "
-                "Lower the resolution, duration, frame rate, or aspect width."
-            ),
+            message=unmeasured_refusal_message("windowed_range"),
         )
 
     def test_360p_20s_on_8gb_budgets_the_half_canvas(
@@ -2806,10 +2811,7 @@ class TestVideoJobLoadMode:
             wide,
             status_code=422,
             code=VIDEO_JOB_TOO_LARGE,
-            message=(
-                "This job needs 17.6 GB of GPU memory but this card has 16.0 GB. "
-                "Lower the resolution, duration, frame rate, or aspect width."
-            ),
+            message=unmeasured_refusal_message("windowed_range"),
         )
         assert fake_services.fast_video_pipeline.generate_calls == []
 
@@ -2833,10 +2835,7 @@ class TestVideoJobLoadMode:
             r,
             status_code=422,
             code=VIDEO_JOB_TOO_LARGE,
-            message=(
-                "This job needs 20.0 GB of GPU memory but this card has 16.0 GB. "
-                "Lower the resolution, duration, frame rate, or aspect width."
-            ),
+            message=unmeasured_refusal_message("windowed_range"),
         )
 
     def test_job_too_large_does_not_run_local_enhance(
@@ -2862,10 +2861,7 @@ class TestVideoJobLoadMode:
             r,
             status_code=422,
             code=VIDEO_JOB_TOO_LARGE,
-            message=(
-                "This job needs 20.0 GB of GPU memory but this card has 16.0 GB. "
-                "Lower the resolution, duration, frame rate, or aspect width."
-            ),
+            message=unmeasured_refusal_message("windowed_range"),
         )
         assert calls["n"] == 0
 
@@ -2899,10 +2895,7 @@ class TestVideoJobLoadMode:
             r,
             status_code=422,
             code=VIDEO_JOB_TOO_LARGE,
-            message=(
-                "This job needs 20.0 GB of GPU memory but this card has 16.0 GB. "
-                "Lower the resolution, duration, frame rate, or aspect width."
-            ),
+            message=unmeasured_refusal_message("windowed_range"),
         )
         assert calls["n"] == 0
 
@@ -3094,11 +3087,35 @@ def test_response_modes_derive_offload_from_routing(test_state) -> None:
     test_state.config.checkpoint_drive_type = "nvme"
     assert handler._load_offload_for_response("streaming_models_loading") == (
         "streaming_models_loading",
-        "DISK",
+        "CPU",
+    )
+    assert (
+        handler._offload_mode(
+            "streaming_models_loading", cpu_ram_floor_gb=None
+        ).name
+        == "DISK"
     )
     assert handler._load_offload_for_response("full_models_loading") == (
         "full_models_loading",
         "NONE",
+    )
+
+    test_state.config.total_ram_bytes = 48 * 1024**3
+    assert (
+        handler._offload_mode(
+            "streaming_models_loading", cpu_ram_floor_gb=64
+        ).name
+        == "DISK"
+    )
+    assert handler._load_offload_for_response("streaming_models_loading") == (
+        "streaming_models_loading",
+        "CPU",
+    )
+
+    test_state.config.total_ram_bytes = 32 * 1024**3
+    assert handler._load_offload_for_response("streaming_models_loading") == (
+        "streaming_models_loading",
+        "DISK",
     )
 
     test_state.config.checkpoint_drive_type = "ssd"
@@ -3117,12 +3134,20 @@ def _estimate_config(test_state, gpu_device_name: str | None) -> None:
 
 
 def test_estimate_wall_time_uses_routed_offload_on_measured_class(test_state) -> None:
-    """540p/5s streamed on a 5090 NVMe box: DISK-routed, measured ratio."""
+    """540p/5s streamed on a 5090 NVMe box: CPU at 64 GB, DISK fallback at 32 GB."""
     _estimate_config(test_state, "NVIDIA GeForce RTX 5090")
     est = test_state.video_generation._estimate_wall_time(
         1024, 576, compute_num_frames(5, 24), "streaming_models_loading", "t2v"
     )
-    assert est == WallTimeEstimate(seconds=round(158 * 0.87), basis="measured", t2v_reuse=False)
+    assert est == WallTimeEstimate(seconds=158, basis="measured", t2v_reuse=False)
+
+    test_state.config.total_ram_bytes = 32 * 1024**3
+    disk_est = test_state.video_generation._estimate_wall_time(
+        1024, 576, compute_num_frames(5, 24), "streaming_models_loading", "t2v"
+    )
+    assert disk_est == WallTimeEstimate(
+        seconds=round(158 * 1.07), basis="scaled", t2v_reuse=False
+    )
 
 
 def test_estimate_wall_time_flags_i2v_reuse(test_state) -> None:
@@ -3131,7 +3156,7 @@ def test_estimate_wall_time_flags_i2v_reuse(test_state) -> None:
         1024, 576, compute_num_frames(5, 24), "streaming_models_loading", "i2v"
     )
     assert est is not None
-    assert est.seconds == round(158 * 0.87)
+    assert est.seconds == 158
     assert est.t2v_reuse is True
 
 
@@ -3145,14 +3170,14 @@ def test_estimate_wall_time_none_off_measured_class(test_state) -> None:
     )
 
 
-def test_estimate_wall_time_none_for_unlisted_cell(test_state) -> None:
+def test_estimate_wall_time_scaled_for_unlisted_cell(test_state) -> None:
     _estimate_config(test_state, "NVIDIA GeForce RTX 5090")
-    assert (
-        test_state.video_generation._estimate_wall_time(
-            1280, 704, compute_num_frames(10, 24), "streaming_models_loading", "t2v"
-        )
-        is None
+    est = test_state.video_generation._estimate_wall_time(
+        1280, 704, compute_num_frames(10, 24), "streaming_models_loading", "t2v"
     )
+    assert est is not None
+    assert est.basis == "scaled"
+    assert est.load_s + est.denoise_s + est.decode_s == est.seconds
 
 
 class TestGenerateModelSpecs:
@@ -3277,6 +3302,7 @@ class TestGenerateModelSpecs:
         assert local_t2v["1080p"]["fps_to_durations"]["24"] == [2, 3, 4, 5, 6, 8, 10]
         assert local_t2v["720p"]["fps_to_durations"]["24"] == [2, 3, 4, 5, 6, 8, 10, 20]
 
+    @pytest.mark.usefixtures("single_pass_only")
     def test_windows_16gb_48_specs_use_limited_fast_envelope(
         self, client, test_state, create_fake_model_files
     ):
@@ -3300,6 +3326,7 @@ class TestGenerateModelSpecs:
             "1080p": _local_cell({"24": [5, 6], "25": [5, 6]}),
         }
 
+    @pytest.mark.usefixtures("single_pass_only")
     def test_windows_16gb_48_specs_dropped_cells_name_stream_over(
         self, client, test_state, create_fake_model_files
     ):
@@ -3334,6 +3361,7 @@ class TestGenerateModelSpecs:
         assert a2v_cell["over_ram_gb"] is None
         assert a2v_cell["shortfall_kind"] == "total"
 
+    @pytest.mark.usefixtures("single_pass_only")
     def test_windows_16gb_specs_aspect_rows_name_21_9_where_anchor_kept(
         self, client, test_state, create_fake_model_files
     ):
@@ -3364,6 +3392,7 @@ class TestGenerateModelSpecs:
                     "need_gb": pytest.approx(17.2, abs=0.05),
                     "have_gb": 16.0,
                 },
+                "unmeasured_basis": None,
             } in aspect_dropped
 
     def test_windows_16gb_specs_aspect_rows_never_cover_anchor_or_dropped_cells(
@@ -3416,6 +3445,7 @@ class TestGenerateModelSpecs:
             "over_ram_gb": 8,
             "shortfall_kind": None,
             "readout": {"kind": "ram", "need_gb": 40.0, "have_gb": 32.0},
+            "unmeasured_basis": None,
             "windows": None,
             "window_frames": None,
         } in dropped
@@ -3467,6 +3497,7 @@ class TestGenerateModelSpecs:
         assert local_spec["supported_resolutions_durations"] == {}
         assert local_spec["a2v_supported_resolutions_durations"] == {}
 
+    @pytest.mark.usefixtures("single_pass_only")
     def test_windows_16gb_32_nvme_specs_offer_streamed_cells(
         self, client, test_state, create_fake_model_files
     ):
@@ -3486,12 +3517,12 @@ class TestGenerateModelSpecs:
         assert local_t2v["720p"]["fps_to_durations"]["24"] == [2, 3, 4, 5, 6, 8, 10]
         assert local_t2v["1080p"]["fps_to_durations"]["24"] == [2, 3, 4, 5, 6]
 
-    def test_windows_16gb_24_nvme_specs_shortfall_reports_32_floor(
+    def test_windows_16gb_16_nvme_specs_shortfall_reports_24_floor(
         self, client, test_state, create_fake_model_files
     ):
-        """DISK path still short: the reported floor is the mapped one (32, not 40)."""
+        """DISK path still short: the reported floor is the NVMe disk one (24, not 40)."""
         create_fake_model_files()
-        _configure_windows_fast(test_state, vram_gib=16, total_ram_gib=24)
+        _configure_windows_fast(test_state, vram_gib=16, total_ram_gib=16)
         test_state.config.checkpoint_drive_type = "nvme"
 
         r = client.get("/api/generate/models-specs")
@@ -3499,8 +3530,8 @@ class TestGenerateModelSpecs:
         assert r.status_code == 200
         data = r.json()
         assert data["local_unavailable_reason"] == "ram_shortfall"
-        assert data["local_unavailable_required_ram_gb"] == 32
-        assert data["local_unavailable_detected_ram_gb"] == 24
+        assert data["local_unavailable_required_ram_gb"] == 24
+        assert data["local_unavailable_detected_ram_gb"] == 16
         assert data["local_models"][0]["spec"]["supported_resolutions_durations"] == {}
 
     def test_windows_unknown_ram_specs_payload_has_no_reason(
@@ -3520,6 +3551,7 @@ class TestGenerateModelSpecs:
         local_spec = data["local_models"][0]["spec"]
         assert local_spec["supported_resolutions_durations"] == {}
 
+    @pytest.mark.usefixtures("single_pass_only")
     def test_windows_16gb_40_specs_payload_has_cells_and_no_reason(
         self, client, test_state, create_fake_model_files
     ):
@@ -3536,6 +3568,7 @@ class TestGenerateModelSpecs:
         assert local_t2v["720p"]["fps_to_durations"]["24"] == [2, 3, 4, 5, 6, 8, 10]
         assert local_t2v["1080p"]["fps_to_durations"]["24"] == [2, 3, 4, 5, 6]
 
+    @pytest.mark.usefixtures("single_pass_only")
     def test_windows_specs_show_total_cells_despite_depressed_free(
         self, client, test_state, fake_services, create_fake_model_files
     ):
@@ -3583,6 +3616,7 @@ class TestGenerateModelSpecs:
         assert data["local_unavailable_required_ram_gb"] is None
         assert data["local_unavailable_detected_ram_gb"] is None
 
+    @pytest.mark.usefixtures("single_pass_only")
     def test_windows_12gb_48_specs_use_limited_fast_envelope(
         self, client, test_state, create_fake_model_files
     ):
@@ -3605,6 +3639,7 @@ class TestGenerateModelSpecs:
             "720p": _local_cell({"24": [5, 6, 8], "25": [5, 6, 8]}),
         }
 
+    @pytest.mark.usefixtures("single_pass_only")
     def test_windows_unknown_vram_bytes_specs_fall_back_to_integer(
         self, client, test_state, create_fake_model_files
     ):
@@ -3623,6 +3658,7 @@ class TestGenerateModelSpecs:
         assert local_t2v["720p"]["fps_to_durations"]["24"] == [2, 3, 4, 5, 6, 8, 10]
         assert local_t2v["1080p"]["fps_to_durations"]["24"] == [2, 3, 4, 5, 6]
 
+    @pytest.mark.usefixtures("single_pass_only")
     def test_windows_24gb_48_specs_use_complete_fast_envelope(
         self, client, test_state, create_fake_model_files
     ):
@@ -3652,33 +3688,31 @@ class TestGenerateModelSpecs:
         assert spec["supported_resolutions_durations"] == {}
         assert spec["a2v_supported_resolutions_durations"] == {}
 
-    def test_local_fast_1080p_20s_refused_with_copy_when_over_budget(self, client):
+    def test_local_fast_1080p_20s_listed_as_untested_windows_when_one_pass_cannot_fit(self, client):
         local_spec = client.get("/api/generate/models-specs").json()["local_models"][0]["spec"]
         local_t2v = local_spec["supported_resolutions_durations"]
         assert 20 not in local_t2v["1080p"]["fps_to_durations"]["24"]
-        # Over budget is refused with its measured copy, never silently absent.
+        # A clip that needs windows on an untested card is refused with its
+        # windows and shortest-window figure, never silently absent.
         for audio in (False, True):
             assert {
                 "resolution": "1080p",
                 "fps": 24,
                 "duration": 20,
-                "reason": "stream_over",
-                "message": (
-                    "This job needs 42.3 GB of GPU memory but this card has 31.0 GB. "
-                    "Lower the resolution, duration, frame rate, or aspect width."
-                ),
+                "reason": "unmeasured_cell",
+                "message": unmeasured_refusal_message("windowed_range"),
                 "audio": audio,
                 "over_gib": None,
                 "over_ram_gb": None,
-                "shortfall_kind": "total",
+                "shortfall_kind": None,
                 "readout": {
-                    "kind": "gpu",
-                    "need_gb": pytest.approx(42.3, abs=0.05),
-                    "have_gb": 31.0,
+                    "kind": "untested",
+                    "need_gb": pytest.approx(23.02, abs=0.05),
+                    "have_gb": None,
                 },
-                # This profile is not a measured Windows card, so no window is offered instead.
-                "windows": None,
-                "window_frames": None,
+                "unmeasured_basis": "windowed_range",
+                "windows": 3,
+                "window_frames": 241,
             } in local_spec["dropped_cells"]
 
     def test_local_auto_duration_requires_duration_head_on_disk(self, client, create_fake_model_files):
@@ -3769,7 +3803,7 @@ class TestWindowsFastDirectGeneration:
             code=VIDEO_JOB_TOO_LARGE,
             message=(
                 "This job needs 20.0 GB of GPU memory but only 19.0 GB is free "
-                "right now (of 24.0 GB total). Close other GPU apps and retry."
+                "right now (of 24.0 GB total). Close other heavy apps (like games, browsers, or video editors) and retry."
             ),
         )
 
@@ -3807,12 +3841,12 @@ class TestWindowsFastDirectGeneration:
         fake_services,
         create_fake_model_files,
     ):
-        """NVMe on Windows CUDA must stream weights from disk, not pin them in RAM."""
+        """Windows NVMe falls back to DISK at 32 GB RAM and uses CPU at 48 GB RAM."""
         from ltx_pipelines.utils.types import OffloadMode
 
         create_fake_model_files()
         _enable_local_text_encoding(test_state)
-        _configure_windows_fast(test_state, vram_gib=16, total_ram_gib=48)
+        _configure_windows_fast(test_state, vram_gib=16, total_ram_gib=32)
         test_state.config.device = torch.device("cuda")
         test_state.config.checkpoint_drive_type = "nvme"
 
@@ -3823,6 +3857,43 @@ class TestWindowsFastDirectGeneration:
 
         assert r.status_code == 200
         assert fake_services.fast_video_pipeline.last_offload_mode == OffloadMode.DISK
+
+        test_state.state.gpu_slot = None
+        _configure_windows_fast(test_state, vram_gib=16, total_ram_gib=48)
+        test_state.config.device = torch.device("cuda")
+        test_state.config.checkpoint_drive_type = "nvme"
+
+        r = client.post(
+            "/api/generate",
+            json={**_T2V_JSON, "resolution": "540p", "duration": 5},
+        )
+
+        assert r.status_code == 200
+        assert fake_services.fast_video_pipeline.last_offload_mode == OffloadMode.CPU
+
+        test_state.state.gpu_slot = None
+        test_state.pipelines.load_ic_lora(
+            "fake.safetensors", mode="streaming_models_loading"
+        )
+        assert fake_services.ic_lora_pipeline.last_offload_mode == OffloadMode.DISK
+
+        test_state.state.gpu_slot = None
+        _configure_windows_fast(test_state, vram_gib=16, total_ram_gib=63.45)
+        test_state.config.device = torch.device("cuda")
+        test_state.config.checkpoint_drive_type = "nvme"
+        test_state.pipelines.load_ic_lora(
+            "fake.safetensors", mode="streaming_models_loading"
+        )
+        assert fake_services.ic_lora_pipeline.last_offload_mode == OffloadMode.CPU
+
+        test_state.state.gpu_slot = None
+        test_state.pipelines.load_retake_pipeline(
+            width=1024, height=576, frames=121
+        )
+        assert (
+            fake_services.retake_pipeline.create_calls[-1]["offload_mode"]
+            == OffloadMode.DISK
+        )
 
     def test_streaming_complete_reports_streaming_and_cpu(
         self,
@@ -3869,6 +3940,7 @@ class TestWindowsFastDirectGeneration:
         assert data["load_mode"] == "full_models_loading"
         assert data["offload_mode"] == "NONE"
 
+    @pytest.mark.usefixtures("single_pass_only")
     def test_16gb_48_oversize_1080p10_is_too_large(
         self,
         client,
@@ -4072,6 +4144,92 @@ class TestGenerationProgress:
             "t2vReuse": False,
         }
 
+    def test_running_reports_remaining_seconds_from_the_estimate(self, client, test_state):
+        _fake_gpu_slot(test_state)
+        test_state.generation.start_generation(
+            "running",
+            estimated=WallTimeEstimate(
+                seconds=200,
+                basis="scaled",
+                t2v_reuse=False,
+                load_s=20,
+                denoise_s=160,
+                decode_s=20,
+            ),
+        )
+        test_state.generation.update_progress("inference", 50, 4, 8)
+
+        data = client.get("/api/generation/progress").json()
+
+        assert 0 < data["remainingSeconds"] < 200
+
+    def test_running_without_an_estimate_reports_no_remaining_seconds(self, client, test_state):
+        _fake_running_generation_state(test_state)
+        test_state.generation.update_progress("inference", 50, 4, 8)
+
+        data = client.get("/api/generation/progress").json()
+
+        assert data.get("remainingSeconds") is None
+
+    def test_decode_clock_starts_on_the_last_step_and_resets_on_an_earlier_one(self, test_state):
+        _fake_running_generation_state(test_state)
+
+        def decode_started() -> float | None:
+            running = test_state.state.active_generation.state
+            return running.decode_started_monotonic
+
+        test_state.generation.update_progress("inference", 40, 3, 8)
+        assert decode_started() is None
+        test_state.generation.update_progress("inference", 95, 8, 8)
+        started = decode_started()
+        assert started is not None
+        # The last step again keeps the first stamp.
+        test_state.generation.update_progress("inference", 95, 8, 8)
+        assert decode_started() == started
+        test_state.generation.update_progress("inference", 40, 3, 8)
+        assert decode_started() is None
+
+    def test_start_from_a_priced_envelope_derives_the_estimate(self, client, test_state):
+        _configure_5090_windows_fast(test_state)
+        _fake_gpu_slot(test_state)
+        ran = envelope_for(
+            JobShape(
+                feature="fast",
+                model_id="ltx-2.5-22b-distilled",
+                adapter_id="",
+                stage_mode="",
+                tiled=False,
+                chunked=False,
+                seq=9216.0,
+                canvas_px=1024 * 576,
+                windows=1,
+            ),
+            "streaming_models_loading",
+            14.0,
+        )
+
+        test_state.generation.start_generation("running", ran=ran)
+
+        estimate = client.get("/api/generation/progress").json()["estimate"]
+        assert estimate["basis"] == "scaled"
+        assert estimate["seconds"] > 0
+
+    def test_local_job_session_reports_remaining_seconds_only_for_its_own_job(self, test_state):
+        _fake_gpu_slot(test_state)
+        test_state.generation.start_generation(
+            "running",
+            estimated=WallTimeEstimate(
+                seconds=200, basis="scaled", t2v_reuse=False, load_s=20, denoise_s=160, decode_s=20
+            ),
+        )
+        test_state.generation.update_progress("inference", 50, 4, 8)
+
+        own = LocalJobSession(test_state.generation, "running").progress()
+        other = LocalJobSession(test_state.generation, "someone-else").progress()
+
+        assert own is not None and own.remaining_seconds is not None
+        assert other is None
+
     def test_running_reports_no_estimate_by_default(self, client, test_state):
         _fake_running_generation_state(test_state)
 
@@ -4103,7 +4261,19 @@ class TestGenerateEstimate:
         )
         assert r.status_code == 200
         assert r.json()["estimate"] == {
-            "seconds": round(158 * 0.87),
+            "seconds": 158,
+            "basis": "measured",
+            "t2vReuse": False,
+        }
+
+        test_state.config.total_ram_bytes = 32 * 1024**3
+        r_disk = client.post(
+            "/api/generate/estimate",
+            json={"resolution": "720p", "duration": 20, "fps": 24, "feature": "t2v"},
+        )
+        assert r_disk.status_code == 200
+        assert r_disk.json()["estimate"] == {
+            "seconds": round(280 * 1.06),
             "basis": "measured",
             "t2vReuse": False,
         }
@@ -4139,10 +4309,10 @@ class TestGenerateEstimate:
             assert r.status_code == 200
             estimate = r.json()["estimate"]
             assert estimate is not None
-            assert estimate["seconds"] == round(158 * 0.87)
+            assert estimate["seconds"] == 158
             assert estimate["t2vReuse"] is True
 
-    def test_unlisted_cell_returns_null_estimate(self, client, test_state):
+    def test_unlisted_cell_returns_scaled_estimate(self, client, test_state):
         _configure_5090_windows_fast(test_state)
 
         r = client.post(
@@ -4150,7 +4320,10 @@ class TestGenerateEstimate:
             json={"resolution": "720p", "duration": 10, "fps": 24, "feature": "t2v"},
         )
         assert r.status_code == 200
-        assert r.json()["estimate"] is None
+        estimate = r.json()["estimate"]
+        assert estimate is not None
+        assert estimate["basis"] == "scaled"
+        assert estimate["seconds"] > 0
 
     def test_off_class_hardware_returns_null_estimate(self, client, test_state):
         _configure_5090_windows_fast(test_state)
@@ -4178,6 +4351,7 @@ class TestGenerateEstimate:
         assert r.status_code == 200
         assert r.json()["estimate"] is None
 
+    @pytest.mark.usefixtures("single_pass_only")
     def test_oversize_cell_mirrors_generate_422(self, client, test_state):
         _configure_windows_fast(test_state, vram_gib=16)
 
@@ -4233,10 +4407,7 @@ class TestGenerateEstimate:
             wide,
             status_code=422,
             code=VIDEO_JOB_TOO_LARGE,
-            message=(
-                "This job needs 17.6 GB of GPU memory but this card has 16.0 GB. "
-                "Lower the resolution, duration, frame rate, or aspect width."
-            ),
+            message=unmeasured_refusal_message("windowed_range"),
         )
 
         landscape = client.post(

@@ -90,12 +90,10 @@ class LTXTextEncoder:
         self.ltx_api_base_url = ltx_api_base_url
         self._prompt_encoder_init_patched = False
         self._prompt_encoder_patched = False
-        self._cleanup_memory_patched = False
 
     def install_patches(self, state_getter: Callable[[], AppState]) -> None:
         self._install_prompt_encoder_init_patch()
         self._install_prompt_encoder_patch(state_getter)
-        self._install_cleanup_memory_patch(state_getter)
 
     def _install_prompt_encoder_init_patch(self) -> None:
         """Patch PromptEncoder.__init__ to accept a text-encoder-less ModelPaths (API encoding mode).
@@ -189,50 +187,6 @@ class LTXTextEncoder:
             logger.info("Installed PromptEncoder API embeddings patch")
         except Exception as exc:
             logger.warning("Failed to patch PromptEncoder: %s", exc, exc_info=True)
-
-    def _install_cleanup_memory_patch(self, state_getter: Callable[[], AppState]) -> None:
-        """Patch cleanup_memory to move cached text encoder to CPU before cleanup."""
-        if self._cleanup_memory_patched:
-            return
-
-        try:
-            from ltx_pipelines.utils import helpers as ltx_utils
-
-            original_cleanup_memory = ltx_utils.cleanup_memory
-
-            def patched_cleanup_memory() -> None:
-                state = state_getter()
-                te_state = state.text_encoder
-                if te_state is not None and te_state.cached_encoder is not None:
-                    try:
-                        te_state.cached_encoder.to(torch.device("cpu"))
-                    except Exception:
-                        logger.warning("Failed to move cached text encoder to CPU", exc_info=True)
-                original_cleanup_memory()
-
-            setattr(ltx_utils, "cleanup_memory", patched_cleanup_memory)
-
-            for module_name in (
-                "ltx_pipelines.utils.helpers",
-                "ltx_pipelines.distilled",
-                "ltx_pipelines.ti2vid_one_stage",
-                "ltx_pipelines.ti2vid_two_stages",
-                "ltx_pipelines.ic_lora",
-                "ltx_pipelines.a2vid_two_stage",
-                "ltx_pipelines.retake",
-                "ltx_pipelines.retake_pipeline",
-            ):
-                try:
-                    module = __import__(module_name, fromlist=["cleanup_memory"])
-                    if hasattr(module, "cleanup_memory"):
-                        setattr(module, "cleanup_memory", patched_cleanup_memory)
-                except Exception:
-                    logger.warning("Failed to patch cleanup_memory for module %s", module_name, exc_info=True)
-
-            self._cleanup_memory_patched = True
-            logger.info("Installed cleanup_memory patch")
-        except Exception as exc:
-            logger.warning("Failed to patch cleanup_memory: %s", exc, exc_info=True)
 
     def get_model_id_from_checkpoint(self, checkpoint_path: str) -> str | None:
         try:

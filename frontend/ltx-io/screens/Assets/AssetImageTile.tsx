@@ -1,5 +1,6 @@
 import type { ExploreListedAsset } from "@/lib/explore-contract";
 
+import { AssetMetaBadge } from "./AssetMetaBadge";
 import { VideoPlaceholder } from "./AssetVideoTile";
 import styles from "./MediaTile.module.scss";
 
@@ -15,12 +16,15 @@ export function AssetImageTile({
   const imageUrl = thumbnailUrl ?? mediaUrl;
 
   return imageUrl ? (
-    <img
-      className={styles.image}
-      src={imageUrl}
-      alt={asset.name}
-      draggable={false}
-    />
+    <>
+      <img
+        className={styles.image}
+        src={imageUrl}
+        alt={asset.name}
+        draggable={false}
+      />
+      <AssetMetaBadge metadata={asset.metadata} />
+    </>
   ) : (
     <VideoPlaceholder kind="missing" />
   );

@@ -1,4 +1,5 @@
 import { useSortable } from "@dnd-kit/sortable";
+import { AlertTriangle } from "lucide-react";
 import { motion, type HTMLMotionProps } from "framer-motion";
 import type { HTMLAttributes, KeyboardEvent, ReactNode, Ref } from "react";
 
@@ -12,12 +13,18 @@ import { Tooltip } from "@ds/Tooltip/Tooltip";
 
 import type { ExploreQueueEntry } from "../../hooks/generationQueryKeys.ts";
 import { generationPresentation } from "../../lib/generationPresentation.ts";
+import { useGenerationNegativePrompt } from "../../hooks/useGenerationNegativePrompt.ts";
 import type { ExploreAsset } from "@/lib/explore-contract";
+import { HOME_FEATURES } from "@/lib/home-features";
+import { DragGrip } from "../shared/DragGrip/DragGrip";
 import { generationQueueTooltipPortal } from "./generationQueueTooltipPortal.ts";
 import {
+  activeQueueRowDetail,
+  activeQueueTitleStatus,
   formatActiveQueueProgress,
-  formatActiveQueueProgressDetail,
   orderedQueueInputAssets,
+  queueRowBadges,
+  resultLocationForFeature,
 } from "./generationQueuePanelModel.ts";
 import { GenerationQueueInputAsset } from "./GenerationQueueInputAsset.tsx";
 import styles from "./GenerationQueuePanel.module.scss";
@@ -56,7 +63,7 @@ function sortableTransformStyle(
 }
 
 function QueueGripIcon() {
-  return <span className={styles.gripIcon} aria-hidden />;
+  return <DragGrip />;
 }
 
 function QueueDragHandle({
@@ -121,13 +128,22 @@ function QueueRowShell({
   onOpen,
 }: QueueRowShellProps) {
   const presentation = generationPresentation(entry.generation);
+  const negativePromptLine = useGenerationNegativePrompt(entry.generation);
+  const hasPromptRow = presentation.prompt.length > 0 || negativePromptLine != null;
   const inputAssets = orderedQueueInputAssets(entry);
   const previewAsset = pickQueuePreviewAsset(inputAssets);
   const title = presentation.label;
+  // A row on a provider lane says so. Without it, a later row can start first with no visible reason.
+  const badges = queueRowBadges(presentation.badges, entry.generation.lane);
+
+  // An image run has no Home screen to open on. Opening is the only way to read a done row,
+  // so such a row shows no unread dot.
+  const hasResultScreen =
+    resultLocationForFeature(entry.generation.feature, entry.generation.id, HOME_FEATURES) != null;
 
   const layoutAttrs = {
     "data-has-asset": previewAsset != null ? "" : undefined,
-    "data-has-prompt": presentation.prompt.length > 0 ? "" : undefined,
+    "data-has-prompt": hasPromptRow ? "" : undefined,
   };
 
   const body = (
@@ -147,16 +163,30 @@ function QueueRowShell({
             {title}
           </Text>
           {titleSuffix}
-          {showUnreadDot ? <DotBadge className={styles.doneUnreadDot} /> : null}
+          {showUnreadDot && hasResultScreen ? <DotBadge className={styles.doneUnreadDot} /> : null}
         </div>
-        {presentation.badges.length > 0 ? (
+        {badges.length > 0 || presentation.riskTooltip != null ? (
           <Flex
             gap="xxs"
             align="center"
             wrap="nowrap"
             className={styles.rowBadges}
           >
-            {presentation.badges.map((badge) => (
+            {presentation.riskTooltip != null ? (
+              <Tooltip
+                content={presentation.riskTooltip}
+                side="top"
+                portalContainer={generationQueueTooltipPortal}
+              >
+                <span
+                  className={styles.riskBadge}
+                  aria-label={presentation.riskTooltip}
+                >
+                  <AlertTriangle aria-hidden />
+                </span>
+              </Tooltip>
+            ) : null}
+            {badges.map((badge) => (
               <Badge
                 key={badge}
                 appearance="overlay"
@@ -168,23 +198,36 @@ function QueueRowShell({
           </Flex>
         ) : null}
       </div>
-      {presentation.prompt.length > 0 ? (
+      {hasPromptRow ? (
         <div className={styles.promptRow}>
-          <Text
-            as="p"
-            variant="body"
-            size="md"
-            title={presentation.prompt}
-            className={styles.prompt}
-          >
-            {presentation.prompt}
-          </Text>
+          {presentation.prompt.length > 0 ? (
+            <Text
+              as="p"
+              variant="body"
+              size="md"
+              title={presentation.prompt}
+              className={styles.prompt}
+            >
+              {presentation.prompt}
+            </Text>
+          ) : null}
+          {negativePromptLine != null ? (
+            <Text
+              as="p"
+              variant="body"
+              size="md"
+              title={negativePromptLine}
+              className={styles.negativePrompt}
+            >
+              {negativePromptLine}
+            </Text>
+          ) : null}
         </div>
       ) : null}
     </>
   );
 
-  if (openable && onOpen != null) {
+  if (openable && onOpen != null && hasResultScreen) {
     return (
       <div
         className={styles.rowOpenTarget}
@@ -202,12 +245,15 @@ function QueueRowShell({
   return <>{body}</>;
 }
 
-function rowLayoutDataAttrs(entry: ExploreQueueEntry) {
+/** The outer row grid. Matches the shell's own attributes, negative prompt line included. */
+function useRowLayoutDataAttrs(entry: ExploreQueueEntry) {
   const presentation = generationPresentation(entry.generation);
+  const negativePromptLine = useGenerationNegativePrompt(entry.generation);
   const previewAsset = pickQueuePreviewAsset(orderedQueueInputAssets(entry));
   return {
     "data-has-asset": previewAsset != null ? "" : undefined,
-    "data-has-prompt": presentation.prompt.length > 0 ? "" : undefined,
+    "data-has-prompt":
+      presentation.prompt.length > 0 || negativePromptLine != null ? "" : undefined,
   };
 }
 
@@ -232,14 +278,13 @@ export function ActiveQueueRow({
   onOpen,
   listItemMotion,
 }: ActiveQueueRowProps) {
+  const layoutAttrs = useRowLayoutDataAttrs(entry);
   const presentation = generationPresentation(entry.generation);
   const progress = entry.progress;
   const progressLabel =
     progress != null ? formatActiveQueueProgress(progress) : null;
-  const progressDetail =
-    progress != null
-      ? formatActiveQueueProgressDetail(progress)
-      : "Waiting for progress…";
+  const apiStatusLabel = activeQueueTitleStatus(entry.api_status);
+  const progressDetail = activeQueueRowDetail(progress, entry.api_status);
   const titleProgressSuffix = isCancelling ? (
     <Text
       as="span"
@@ -249,14 +294,14 @@ export function ActiveQueueRow({
     >
       {`\u00A0(Cancelling…)`}
     </Text>
-  ) : progressLabel != null ? (
+  ) : progressLabel != null || apiStatusLabel != null ? (
     <Text
       as="span"
       variant="heading"
       size="sm"
       className={styles.rowTitleProgress}
     >
-      {`\u00A0(${progressLabel})`}
+      {`\u00A0(${progressLabel ?? apiStatusLabel})`}
     </Text>
   ) : null;
 
@@ -268,7 +313,7 @@ export function ActiveQueueRow({
     >
       <div
         className={styles.rowLayout}
-        {...rowLayoutDataAttrs(entry)}
+        {...layoutAttrs}
         data-has-trailing=""
         data-has-drag-slot=""
       >
@@ -281,28 +326,30 @@ export function ActiveQueueRow({
           onOpen={onOpen}
         />
         <div className={styles.rowTrailing}>
-          <Tooltip
-            content={
-              isCancelling ? "Cancelling generation…" : "Cancel generation"
-            }
-            side="top"
-            portalContainer={generationQueueTooltipPortal}
-          >
-            <Button
-              appearance="neutral"
-              hierarchy="secondary"
-              size="md"
-              isIconOnly
-              leftIcon={<CloseIcon />}
-              aria-label={
-                isCancelling
-                  ? `Cancelling generation for ${presentation.label}`
-                  : `Cancel generation for ${presentation.label}`
+          {entry.cancellable ? (
+            <Tooltip
+              content={
+                isCancelling ? "Cancelling generation…" : "Cancel generation"
               }
-              disabled={cancelDisabled}
-              onClick={onCancel}
-            />
-          </Tooltip>
+              side="top"
+              portalContainer={generationQueueTooltipPortal}
+            >
+              <Button
+                appearance="neutral"
+                hierarchy="secondary"
+                size="md"
+                isIconOnly
+                leftIcon={<CloseIcon />}
+                aria-label={
+                  isCancelling
+                    ? `Cancelling generation for ${presentation.label}`
+                    : `Cancel generation for ${presentation.label}`
+                }
+                disabled={cancelDisabled}
+                onClick={onCancel}
+              />
+            </Tooltip>
+          ) : null}
         </div>
       </div>
       {isCancelling ? (
@@ -311,6 +358,8 @@ export function ActiveQueueRow({
         <span className={styles.srOnly}>
           {progressDetail} — {progressLabel} complete
         </span>
+      ) : apiStatusLabel != null ? (
+        <span className={styles.srOnly}>{progressDetail}</span>
       ) : null}
     </motion.li>
   );
@@ -337,13 +386,14 @@ export function FinishedQueueRow({
   onRemove,
   listItemMotion,
 }: FinishedQueueRowProps) {
+  const layoutAttrs = useRowLayoutDataAttrs(entry);
   const presentation = generationPresentation(entry.generation);
 
   return (
     <motion.li {...listItemMotion} className={styles.row}>
       <div
         className={styles.rowLayout}
-        {...rowLayoutDataAttrs(entry)}
+        {...layoutAttrs}
         data-has-trailing={onRemove != null ? "" : undefined}
       >
         <QueueRowShell
@@ -404,6 +454,7 @@ export function GenerationQueueSortableRow({
   onOpen,
   listItemMotion,
 }: QueuedSortableRowProps) {
+  const layoutAttrs = useRowLayoutDataAttrs(entry);
   const presentation = generationPresentation(entry.generation);
   const sortable = useSortable({
     id: entry.generation.id,
@@ -425,7 +476,7 @@ export function GenerationQueueSortableRow({
       <div ref={sortable.setNodeRef} style={sortableStyle}>
         <div
           className={styles.rowLayout}
-          {...rowLayoutDataAttrs(entry)}
+          {...layoutAttrs}
           data-has-trailing=""
           data-has-drag-slot=""
         >
@@ -485,11 +536,12 @@ export function GenerationQueueDragPreview({
   mediaUrlForAsset: (asset: ExploreAsset) => string | null;
   thumbUrlForAsset: (asset: ExploreAsset) => string | null;
 }) {
+  const layoutAttrs = useRowLayoutDataAttrs(entry);
   return (
     <div className={styles.row} data-overlay="" aria-hidden>
       <div
         className={styles.rowLayout}
-        {...rowLayoutDataAttrs(entry)}
+        {...layoutAttrs}
         data-has-trailing=""
         data-has-drag-slot=""
       >

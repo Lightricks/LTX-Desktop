@@ -34,9 +34,17 @@ async def _starlette_http_error_handler(_request: Request, exc: Exception) -> JS
 
 
 async def _validation_error_handler(_request: Request, exc: Exception) -> JSONResponse:
+    if isinstance(exc, RequestValidationError):
+        errors = exc.errors()
+        message = f"{len(errors)} validation error{'s' if len(errors) != 1 else ''}:\n"
+        for err in errors:
+            message += f"  {err}\n"
+        message = message.rstrip()
+    else:
+        message = str(exc)
     return JSONResponse(
         status_code=422,
-        content=build_http_error_response(422, str(exc)).model_dump(),
+        content=build_http_error_response(422, message).model_dump(),
     )
 
 

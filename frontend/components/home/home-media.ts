@@ -38,6 +38,8 @@ import motionTrackDiscoverPosterUrl from '@/assets/home/motion-track/discover-po
 import motionTrackDiscoverPreviewUrl from '@/assets/home/motion-track/discover-preview.mp4'
 import videoGuideDiscoverPosterUrl from '@/assets/home/video-guide/discover-poster.webp'
 import videoGuideDiscoverPreviewUrl from '@/assets/home/video-guide/discover-preview.mp4'
+import refineDetailsDiscoverPosterUrl from '@/assets/home/refine-details/discover-poster.webp'
+import refineDetailsDiscoverPreviewUrl from '@/assets/home/refine-details/discover-preview.mp4'
 import restoreDiscoverPosterUrl from '@/assets/home/restore/discover-poster.webp'
 import restoreDiscoverPreviewUrl from '@/assets/home/restore/discover-preview.mp4'
 import dayToNightDiscoverPosterUrl from '@/assets/home/day-to-night/discover-poster.webp'
@@ -50,6 +52,8 @@ import fpvMotionDiscoverPosterUrl from '@/assets/home/fpv-motion/discover-poster
 import fpvMotionDiscoverPreviewUrl from '@/assets/home/fpv-motion/discover-preview.mp4'
 import imageToVideoDiscoverPosterUrl from '@/assets/home/image-to-video/discover-poster.webp'
 import imageToVideoDiscoverPreviewUrl from '@/assets/home/image-to-video/discover-preview.mp4'
+import keyframesDiscoverPosterUrl from '@/assets/home/keyframes/discover-poster.webp'
+import keyframesDiscoverPreviewUrl from '@/assets/home/keyframes/discover-preview.mp4'
 import jibDownPosterUrl from '@/assets/home/jib-down/poster.webp'
 import jibDownPreviewUrl from '@/assets/home/jib-down/preview.webm'
 import jibUpPosterUrl from '@/assets/home/jib-up/poster.webp'
@@ -99,7 +103,9 @@ export const PEAK_CINEMATIC_EXAMPLES: readonly PeakCinematicExample[] = [
   },
 ]
 
-export const HOME_FEATURE_MEDIA: Record<HomeFeatureId, HomeFeatureMedia> = {
+export type GalleryHomeFeatureId = Exclude<HomeFeatureId, 'custom-lora'>
+
+export const HOME_FEATURE_MEDIA: Record<GalleryHomeFeatureId, HomeFeatureMedia> = {
   'text-to-video': {
     previewUrl: textToVideoDiscoverPreviewUrl,
     posterUrl: textToVideoDiscoverPosterUrl,
@@ -107,6 +113,10 @@ export const HOME_FEATURE_MEDIA: Record<HomeFeatureId, HomeFeatureMedia> = {
   'image-to-video': {
     previewUrl: imageToVideoDiscoverPreviewUrl,
     posterUrl: imageToVideoDiscoverPosterUrl,
+  },
+  keyframes: {
+    previewUrl: keyframesDiscoverPreviewUrl,
+    posterUrl: keyframesDiscoverPosterUrl,
   },
   'audio-to-video': {
     previewUrl: audioToVideoDiscoverPreviewUrl,
@@ -160,10 +170,9 @@ export const HOME_FEATURE_MEDIA: Record<HomeFeatureId, HomeFeatureMedia> = {
     previewUrl: ingredientsDiscoverPreviewUrl,
     posterUrl: ingredientsDiscoverPosterUrl,
   },
-  // Placeholder: the Restore card. Replace it with a Refine Details card.
   'refine-details': {
-    previewUrl: restoreDiscoverPreviewUrl,
-    posterUrl: restoreDiscoverPosterUrl,
+    previewUrl: refineDetailsDiscoverPreviewUrl,
+    posterUrl: refineDetailsDiscoverPosterUrl,
   },
   'motion-track': {
     previewUrl: motionTrackDiscoverPreviewUrl,

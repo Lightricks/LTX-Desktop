@@ -297,6 +297,14 @@ class TestPostSettings:
         assert test_state.state.app_settings.use_conv_vae is False
         assert client.get("/api/settings").json()["useConvVae"] is False
 
+    def test_mps_conv3d_toggle_defaults_off_and_round_trips_in_camel_case(self, client, test_state):
+        assert client.get("/api/settings").json()["mpsConv3DAsConv2DEnabled"] is False
+
+        r = client.post("/api/settings", json={"mpsConv3DAsConv2DEnabled": True})
+        assert r.status_code == 200
+        assert test_state.state.app_settings.mps_conv3d_as_conv2d_enabled is True
+        assert client.get("/api/settings").json()["mpsConv3DAsConv2DEnabled"] is True
+
     def test_use_conv_vae_change_unloads_gpu_pipeline(
         self, client, test_state, fake_services, create_fake_model_files
     ):
@@ -1074,3 +1082,17 @@ class TestListGeminiModels:
             DEFAULT_GEMINI_MODEL,
         ]
         assert len(test_state.http.calls) == 2
+
+
+@pytest.mark.parametrize("legacy_mode", ["standard", "reckless"])
+def test_settings_patch_folds_legacy_budget_mode_to_brave(
+    client, test_state, legacy_mode: str
+) -> None:
+    test_state.state.app_settings.budget_mode = "cautious"
+
+    response = client.post("/api/settings", json={"budgetMode": legacy_mode})
+
+    assert response.status_code == 200, response.text
+    assert test_state.state.app_settings.budget_mode == "brave"
+    assert client.get("/api/settings").json()["budgetMode"] == "brave"
+

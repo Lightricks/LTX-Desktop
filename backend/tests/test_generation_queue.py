@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 import wave
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -26,6 +26,8 @@ from api_types import (
     GenerationErrorCode,
 )
 from frame_math import compute_num_frames
+from runtime_config.budget_admission import RiskAllowance
+from runtime_config.reject_reasons import PassShape
 from runtime_config.ic_lora_local_envelope import IC_LORA_SOURCE_TOO_LARGE
 from runtime_config.video_job_budget import (
     LOCAL_GENERATION_RAM_SHORTFALL,
@@ -36,6 +38,7 @@ from services.analytics import AnalyticsService
 from services.features.video import TextToVideoExecutor
 from services.features.video.audio_to_video import AudioToVideoExecutor
 from services.features.video.image_to_video import ImageToVideoExecutor
+from services.features.video.keyframes import KeyframesExecutor
 from services.features.video.text_to_video import ReservedVideoGenerator
 from services.generation_queue.control import (
     SharedGenerationSlot,
@@ -44,6 +47,7 @@ from services.generation_queue.control import (
 from services.generation_queue.registry import ExecutorRegistry
 from services.generation_queue.runner import QueueRunner
 from services.patches import diffusion_stage_cache
+from services.generation_queue.sessions import JobSession
 from services.generation_queue.types import (
     ExecutionOutcome,
     GenerationExecutor,
@@ -60,7 +64,7 @@ from services.generation_interrupt import (
 )
 from tests.fakes import FakeResponse
 from tests.fakes.fake_gpu_info import FakeGpuInfo
-from tests.fakes.generation import FakeGenerationExecutor
+from tests.fakes.generation import FakeGenerationExecutor, FakeJobSession
 from tests.fakes.services import FakeHTTPClient, FakeTaskRunner
 
 
@@ -203,6 +207,7 @@ class _PartialFailureExecutor(_SkipParamValidation):
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
         del generation
         self.output_path = outputs[0].dest_path
@@ -227,13 +232,14 @@ class _DelayedSuccessExecutor(_SkipParamValidation):
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
         self.output_path = outputs[0].dest_path
         self.started.set()
         try:
             if not self.release.wait(timeout=3.0):
                 raise RuntimeError("delayed executor was not released")
-            return FakeGenerationExecutor().execute(generation, outputs)
+            return FakeGenerationExecutor().execute(generation, outputs, session)
         finally:
             self.finished.set()
 
@@ -253,6 +259,7 @@ class _BlockingFileWritingExecutor(_SkipParamValidation):
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
         del generation
         self.output_path = outputs[0].dest_path
@@ -292,11 +299,11 @@ class _BlockingClaimDb(SqliteStore):
         self.claim_started = threading.Event()
         self.allow_claim = threading.Event()
 
-    def claim_next_queued(self) -> GenerationRecord | None:
+    def claim_next_queued(self, lane: str = "local") -> GenerationRecord | None:
         self.claim_started.set()
         if not self.allow_claim.wait(timeout=2.0):
             raise RuntimeError("claim was not released")
-        return super().claim_next_queued()
+        return super().claim_next_queued(lane)
 
 
 class _BlockAfterClaimDb(SqliteStore):
@@ -305,8 +312,8 @@ class _BlockAfterClaimDb(SqliteStore):
         self.claimed = threading.Event()
         self.allow_continue = threading.Event()
 
-    def claim_next_queued(self) -> GenerationRecord | None:
-        claimed = super().claim_next_queued()
+    def claim_next_queued(self, lane: str = "local") -> GenerationRecord | None:
+        claimed = super().claim_next_queued(lane)
         if claimed is not None:
             self.claimed.set()
             if not self.allow_continue.wait(timeout=2.0):
@@ -319,9 +326,13 @@ class _ClaimBeforeCancellationDb(SqliteStore):
         super().__init__(app_data_dir)
         self.claimed: GenerationRecord | None = None
 
-    def request_generation_cancellation(self, generation_id: str) -> GenerationRecord:
+    def request_generation_cancellation(
+        self, generation_id: str, *, uncancellable_lanes: Collection[str] = ()
+    ) -> GenerationRecord:
         self.claimed = super().claim_next_queued()
-        return super().request_generation_cancellation(generation_id)
+        return super().request_generation_cancellation(
+            generation_id, uncancellable_lanes=uncancellable_lanes
+        )
 
 
 class _ExecuteRecorder(_SkipParamValidation):
@@ -338,9 +349,10 @@ class _ExecuteRecorder(_SkipParamValidation):
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
         self.executed.set()
-        return FakeGenerationExecutor().execute(generation, outputs)
+        return FakeGenerationExecutor().execute(generation, outputs, session)
 
 
 class _FailingFinalizationDb(SqliteStore):
@@ -397,11 +409,12 @@ class _FailFirstExecutor(_SkipParamValidation):
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
         self.execution_ids.append(generation.id)
         if _prompt(generation) == "first":
             raise RuntimeError("executor failed")
-        return FakeGenerationExecutor().execute(generation, outputs)
+        return FakeGenerationExecutor().execute(generation, outputs, session)
 
 
 class _DirectoryFailureExecutor(_SkipParamValidation):
@@ -416,13 +429,14 @@ class _DirectoryFailureExecutor(_SkipParamValidation):
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
         path = Path(outputs[0].dest_path)
         if _prompt(generation) == "first":
             path.mkdir()
             self.partial_paths[generation.id] = str(path)
             raise RuntimeError("executor failed after creating a directory")
-        return FakeGenerationExecutor().execute(generation, outputs)
+        return FakeGenerationExecutor().execute(generation, outputs, session)
 
 
 class _DeleteGenerationExecutor(_SkipParamValidation):
@@ -438,8 +452,9 @@ class _DeleteGenerationExecutor(_SkipParamValidation):
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
-        result = FakeGenerationExecutor().execute(generation, outputs)
+        result = FakeGenerationExecutor().execute(generation, outputs, session)
         if _prompt(generation) != "vanish":
             return result
         self.output_path = outputs[0].dest_path
@@ -477,9 +492,10 @@ class _CacheObservingExecutor(FakeGenerationExecutor):
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
         self.cache_resident_at_execute = diffusion_stage_cache._cached_model is not None  # noqa: SLF001
-        return super().execute(generation, outputs)
+        return super().execute(generation, outputs, session)
 
 
 class _MetaMovable:
@@ -548,6 +564,7 @@ class _OptionalOutputExecutor(_SkipParamValidation):
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
         del generation
         for output in outputs[: 2 if self._write_optional else 1]:
@@ -582,8 +599,8 @@ def test_runner_leaves_out_an_optional_output_the_executor_did_not_write(
 
 def test_runner_fails_when_a_required_output_is_missing(tmp_path: Path) -> None:
     class _WritesNothing(_OptionalOutputExecutor):
-        def execute(self, generation, outputs) -> ExecutionOutcome:
-            del generation, outputs
+        def execute(self, generation, outputs, session) -> ExecutionOutcome:
+            del generation, outputs, session
             return ExecutionOutcome()
 
     db = SqliteStore(tmp_path / "app_data")
@@ -1405,7 +1422,7 @@ class _ReservedVideoCall:
     output_path: Path | None
     prompt_wrap: Callable[[str], str] | None = None
     local_model_id: str | None = None
-    risk_allowance: bool | None = None
+    allowance: RiskAllowance | None = None
 
 
 class _RecordingReservedVideoGenerator:
@@ -1414,9 +1431,15 @@ class _RecordingReservedVideoGenerator:
         self.calls: list[_ReservedVideoCall] = []
 
     def validate_local_a2v_request(
-        self, params: AudioToVideoParams, audio_duration_ms: int
+        self,
+        params: AudioToVideoParams,
+        audio_duration_ms: int,
+        *,
+        pass_shape: PassShape,
     ) -> None:
-        self._inner.validate_local_a2v_request(params, audio_duration_ms)
+        self._inner.validate_local_a2v_request(
+            params, audio_duration_ms, pass_shape=pass_shape
+        )
 
     @property
     def models_dir(self) -> Path:
@@ -1435,8 +1458,8 @@ class _RecordingReservedVideoGenerator:
         a2v_num_frames: int | None = None,
         a2v_audio_duration_seconds: float | None = None,
         local_model_id: str | None = None,
-        risk_allowance: bool | None = None,
-        unmeasured_bet: bool = False,
+        allowance: RiskAllowance | None = None,
+        pass_shape: PassShape | None = None,
     ) -> GenerateVideoResponse:
         self.calls.append(
             _ReservedVideoCall(
@@ -1445,7 +1468,7 @@ class _RecordingReservedVideoGenerator:
                 output_path=output_path,
                 prompt_wrap=prompt_wrap,
                 local_model_id=local_model_id,
-                risk_allowance=risk_allowance,
+                allowance=allowance,
             )
         )
         return self._inner.generate_local_reserved(
@@ -1456,8 +1479,8 @@ class _RecordingReservedVideoGenerator:
             a2v_num_frames=a2v_num_frames,
             a2v_audio_duration_seconds=a2v_audio_duration_seconds,
             local_model_id=local_model_id,
-            risk_allowance=risk_allowance,
-            unmeasured_bet=unmeasured_bet,
+            allowance=allowance,
+            pass_shape=pass_shape,
         )
 
 
@@ -1473,9 +1496,13 @@ class _RecordingReservedVideoGeneratorStub:
         self.models_dir = models_dir if models_dir is not None else Path("/nonexistent-models-dir")
 
     def validate_local_a2v_request(
-        self, params: AudioToVideoParams, audio_duration_ms: int
+        self,
+        params: AudioToVideoParams,
+        audio_duration_ms: int,
+        *,
+        pass_shape: PassShape,
     ) -> None:
-        del params, audio_duration_ms
+        del params, audio_duration_ms, pass_shape
 
     def generate_local_reserved(
         self,
@@ -1487,10 +1514,10 @@ class _RecordingReservedVideoGeneratorStub:
         a2v_num_frames: int | None = None,
         a2v_audio_duration_seconds: float | None = None,
         local_model_id: str | None = None,
-        risk_allowance: bool | None = None,
-        unmeasured_bet: bool = False,
+        allowance: RiskAllowance | None = None,
+        pass_shape: PassShape | None = None,
     ) -> GenerateVideoCompleteResponse:
-        del a2v_num_frames, a2v_audio_duration_seconds, unmeasured_bet
+        del a2v_num_frames, a2v_audio_duration_seconds, pass_shape
         self.calls.append(
             _ReservedVideoCall(
                 request=req,
@@ -1498,7 +1525,7 @@ class _RecordingReservedVideoGeneratorStub:
                 output_path=output_path,
                 prompt_wrap=prompt_wrap,
                 local_model_id=local_model_id,
-                risk_allowance=risk_allowance,
+                allowance=allowance,
             )
         )
         if self._error is not None:
@@ -1563,7 +1590,7 @@ def test_text_to_video_rejects_unsupported_contract_version(test_state) -> None:
     with pytest.raises(ValueError, match="contract_version"):
         executor.plan_outputs(_generation(contract_version=2))
     with pytest.raises(ValueError, match="contract_version"):
-        executor.execute(_generation(contract_version=2), ())
+        executor.execute(_generation(contract_version=2), (), FakeJobSession())
 
 
 @pytest.mark.parametrize("pipeline_id", ["fast", "pro", "pro-2.5", "fast-2.5"])
@@ -1600,7 +1627,7 @@ def test_text_to_video_rejects_capability_invalid_params_before_pipeline(
     shutdown = threading.Event()
     with test_state.generation.wait_for_generation_slot(shutdown):
         with pytest.raises(CapabilityFailedError) as exc_info:
-            executor.execute(generation, outputs)
+            executor.execute(generation, outputs, FakeJobSession())
 
     assert exc_info.value.code == "INVALID_VIDEO_GENERATION_SPEC"
     assert exc_info.value.detail == (
@@ -1637,7 +1664,7 @@ def test_text_to_video_maps_valid_params_to_generation_request(
 
     shutdown = threading.Event()
     with test_state.generation.wait_for_generation_slot(shutdown):
-        executor.execute(generation, outputs)
+        executor.execute(generation, outputs, FakeJobSession())
 
     assert dest.exists()
     assert not dest.is_relative_to(test_state.config.outputs_dir)
@@ -1682,7 +1709,7 @@ def test_text_to_video_maps_structural_params_without_local_validation(
     )
 
     with pytest.raises(CapabilityFailedError) as exc_info:
-        executor.execute(generation, outputs)
+        executor.execute(generation, outputs, FakeJobSession())
 
     assert exc_info.value.code == "LTX_MODEL_NOT_INSTALLED"
     assert recorder.calls == []
@@ -1714,7 +1741,7 @@ def test_recipe_executor_forwards_studio_scaffold_wrap(
         OutputAllocation(plan=plans[0], asset_id="asset-1", dest_path=str(dest)),
     )
 
-    executor.execute(generation, outputs)
+    executor.execute(generation, outputs, FakeJobSession())
 
     assert len(recorder.calls) == 1
     wrap = recorder.calls[0].prompt_wrap
@@ -1777,7 +1804,7 @@ def test_i2v_recipe_executor_forwards_scaffold_and_start_image(
         OutputAllocation(plan=plans[0], asset_id="asset-1", dest_path=str(dest)),
     )
 
-    executor.execute(generation, outputs)
+    executor.execute(generation, outputs, FakeJobSession())
 
     assert len(recorder.calls) == 1
     captured = recorder.calls[0]
@@ -1822,7 +1849,7 @@ def test_text_to_video_maps_2_3_offering_without_changing_active_settings(
 
     shutdown = threading.Event()
     with test_state.generation.wait_for_generation_slot(shutdown):
-        executor.execute(generation, outputs)
+        executor.execute(generation, outputs, FakeJobSession())
 
     captured = recorder.calls[0]
     assert captured.request.model == "fast"
@@ -1881,7 +1908,7 @@ def test_image_to_video_maps_2_3_offering_without_changing_active_settings(
 
     shutdown = threading.Event()
     with test_state.generation.wait_for_generation_slot(shutdown):
-        executor.execute(generation, outputs)
+        executor.execute(generation, outputs, FakeJobSession())
 
     captured = recorder.calls[0]
     assert captured.request.model == "fast"
@@ -1917,7 +1944,7 @@ def test_text_to_video_rejects_undownloaded_offering(
     shutdown = threading.Event()
     with test_state.generation.wait_for_generation_slot(shutdown):
         with pytest.raises(CapabilityFailedError) as exc_info:
-            executor.execute(generation, outputs)
+            executor.execute(generation, outputs, FakeJobSession())
 
     assert exc_info.value.code == "LTX_MODEL_NOT_INSTALLED"
 
@@ -1945,7 +1972,7 @@ def test_image_to_video_maps_asset_ids_to_executor_paths(
         OutputAllocation(plan=plans[0], asset_id="asset-1", dest_path=str(dest)),
     )
 
-    executor.execute(generation, outputs)
+    executor.execute(generation, outputs, FakeJobSession())
 
     assert len(recorder.calls) == 1
     captured = recorder.calls[0]
@@ -1958,6 +1985,51 @@ def test_image_to_video_maps_asset_ids_to_executor_paths(
     assert captured.output_path == dest
     assert start.path not in str(generation.spec)
     assert end.path not in str(generation.spec)
+
+
+def test_keyframes_executor_sends_each_still_with_its_frame_and_strength(
+    test_state, create_fake_model_files, tmp_path: Path
+) -> None:
+    db = SqliteStore(test_state.config.app_data_dir)
+    late = db.ingest_upload(str(_png(tmp_path / "late.png", size=(16, 32))))
+    early = db.ingest_upload(str(_png(tmp_path / "early.png", size=(32, 16))))
+    recorder = _stub_reserved(test_state, create_fake_model_files)
+    executor = KeyframesExecutor(recorder, db)
+    generation = _generation(
+        generation_id="keyframes-mapped",
+        feature="keyframes",
+        params={
+            "prompt": "a fox runs",
+            "model": "ltx-2.5-fast",
+            "aspectRatio": "auto",
+            "resolution": "540p",
+            "duration": 5,
+            "fps": 24,
+        },
+        # The list is not in time order. The aspect must follow the earliest frame.
+        inputs={
+            "keyframes": [
+                {"assetId": late.id, "frameIndex": 100, "strength": 0.4},
+                {"assetId": early.id, "frameIndex": 0, "strength": 0.9},
+            ]
+        },
+    )
+    plans = executor.plan_outputs(generation)
+    outputs = (
+        OutputAllocation(plan=plans[0], asset_id="asset-1", dest_path=str(tmp_path / "k.mp4")),
+    )
+
+    executor.execute(generation, outputs, FakeJobSession())
+
+    request = recorder.calls[0].request
+    assert [(k.imagePath, k.frameIndex, k.strength) for k in request.keyframes] == [
+        (late.path, 100, 0.4),
+        (early.path, 0, 0.9),
+    ]
+    assert request.imagePath is None
+    assert request.aspectRatio == "16:9"
+    assert late.path not in str(generation.spec)
+    assert early.path not in str(generation.spec)
 
 
 @pytest.mark.parametrize(
@@ -1996,7 +2068,7 @@ def test_image_to_video_resolves_auto_aspect_ratio_from_start_frame(
         dest_path=str(tmp_path / "assets" / f"{case_id}.mp4"),
     )
 
-    executor.execute(generation, (output,))
+    executor.execute(generation, (output,), FakeJobSession())
 
     assert recorder.calls[0].request.aspectRatio == expected_ratio
     assert generation.spec["params"] == {
@@ -2038,7 +2110,7 @@ def test_image_to_video_auto_on_api_only_resolution_is_a_capability_failure(
     )
 
     with pytest.raises(CapabilityFailedError) as exc_info:
-        executor.execute(generation, (output,))
+        executor.execute(generation, (output,), FakeJobSession())
 
     assert exc_info.value.code == "INVALID_LOCAL_RESOLUTION"
     assert recorder.calls == []
@@ -2063,7 +2135,7 @@ def test_image_to_video_rejects_non_image_asset(
     )
 
     with pytest.raises(CapabilityFailedError) as exc_info:
-        executor.execute(generation, (output,))
+        executor.execute(generation, (output,), FakeJobSession())
 
     assert exc_info.value.code == "INPUT_ASSET_NOT_FOUND"
     assert exc_info.value.detail == "startFrame image is no longer available"
@@ -2092,7 +2164,7 @@ def test_image_to_video_execute_rejects_unavailable_start_frame(
     )
 
     with pytest.raises(CapabilityFailedError) as exc_info:
-        executor.execute(generation, (output,))
+        executor.execute(generation, (output,), FakeJobSession())
 
     assert exc_info.value.code == "INPUT_ASSET_NOT_FOUND"
     assert exc_info.value.detail == "startFrame image is no longer available"
@@ -2122,7 +2194,7 @@ def test_image_to_video_execute_rejects_missing_start_frame_record(
     )
 
     with pytest.raises(CapabilityFailedError) as exc_info:
-        executor.execute(generation, (output,))
+        executor.execute(generation, (output,), FakeJobSession())
 
     assert exc_info.value.code == "INPUT_ASSET_NOT_FOUND"
     assert exc_info.value.detail == "startFrame image is no longer available"
@@ -2154,7 +2226,7 @@ def test_image_to_video_execute_hides_http_error_filesystem_paths(
     )
 
     with pytest.raises(CapabilityFailedError) as exc_info:
-        executor.execute(generation, (output,))
+        executor.execute(generation, (output,), FakeJobSession())
 
     assert exc_info.value.code == "INPUT_ASSET_NOT_FOUND"
     assert exc_info.value.detail == "image input is no longer available"
@@ -2185,7 +2257,7 @@ def test_audio_to_video_maps_audio_asset_to_executor_path(
         OutputAllocation(plan=plans[0], asset_id="asset-1", dest_path=str(dest)),
     )
 
-    executor.execute(generation, outputs)
+    executor.execute(generation, outputs, FakeJobSession())
 
     assert len(recorder.calls) == 1
     captured = recorder.calls[0]
@@ -2226,7 +2298,7 @@ def test_audio_to_video_executes_advertised_1080p(
 
     shutdown = threading.Event()
     with test_state.generation.wait_for_generation_slot(shutdown):
-        executor.execute(generation, outputs)
+        executor.execute(generation, outputs, FakeJobSession())
 
     captured = recorder.calls[0]
     assert captured.request.resolution == "1080p"
@@ -2264,7 +2336,7 @@ def test_audio_to_video_hears_a_20s_clip_at_1080p_instead_of_the_kept_10s_prefix
 
     shutdown = threading.Event()
     with test_state.generation.wait_for_generation_slot(shutdown):
-        executor.execute(generation, outputs)
+        executor.execute(generation, outputs, FakeJobSession())
 
     call = fake_services.a2v_pipeline.generate_calls[0]
     assert call["audio_start_time"] == 0.0
@@ -2297,7 +2369,7 @@ def test_audio_to_video_maps_2_3_offering_without_changing_active_settings(
 
     shutdown = threading.Event()
     with test_state.generation.wait_for_generation_slot(shutdown):
-        executor.execute(generation, outputs)
+        executor.execute(generation, outputs, FakeJobSession())
 
     captured = recorder.calls[0]
     assert captured.request.model == "fast"
@@ -2331,7 +2403,7 @@ def test_audio_to_video_maps_start_frame_to_image_path(
         OutputAllocation(plan=plans[0], asset_id="asset-1", dest_path=str(dest)),
     )
 
-    executor.execute(generation, outputs)
+    executor.execute(generation, outputs, FakeJobSession())
 
     assert len(recorder.calls) == 1
     captured = recorder.calls[0]
@@ -2388,7 +2460,7 @@ def test_audio_to_video_resolves_auto_aspect_ratio_from_start_frame(
         dest_path=str(tmp_path / "assets" / f"{case_id}.mp4"),
     )
 
-    executor.execute(generation, (output,))
+    executor.execute(generation, (output,), FakeJobSession())
 
     assert recorder.calls[0].request.aspectRatio == expected_ratio
     assert generation.spec["params"]["aspectRatio"] == requested_ratio
@@ -2413,7 +2485,7 @@ def test_audio_to_video_auto_aspect_ratio_without_start_frame_uses_16_9(
         dest_path=str(tmp_path / "assets" / "a2v-auto.mp4"),
     )
 
-    executor.execute(generation, (output,))
+    executor.execute(generation, (output,), FakeJobSession())
 
     assert recorder.calls[0].request.aspectRatio == "16:9"
     assert generation.spec["params"]["aspectRatio"] == "auto"
@@ -2439,7 +2511,7 @@ def test_audio_to_video_rejects_non_audio_asset(
     )
 
     with pytest.raises(CapabilityFailedError) as exc_info:
-        executor.execute(generation, (output,))
+        executor.execute(generation, (output,), FakeJobSession())
 
     assert exc_info.value.code == "INPUT_ASSET_NOT_FOUND"
     assert exc_info.value.detail == "audio is no longer available"
@@ -2472,7 +2544,7 @@ def test_audio_to_video_rejects_non_image_start_frame(
     )
 
     with pytest.raises(CapabilityFailedError) as exc_info:
-        executor.execute(generation, (output,))
+        executor.execute(generation, (output,), FakeJobSession())
 
     assert exc_info.value.code == "INPUT_ASSET_NOT_FOUND"
     assert exc_info.value.detail == "startFrame image is no longer available"
@@ -2502,7 +2574,7 @@ def test_audio_to_video_execute_rejects_unavailable_audio(
     )
 
     with pytest.raises(CapabilityFailedError) as exc_info:
-        executor.execute(generation, (output,))
+        executor.execute(generation, (output,), FakeJobSession())
 
     assert exc_info.value.code == "INPUT_ASSET_NOT_FOUND"
     assert exc_info.value.detail == "audio is no longer available"
@@ -2538,7 +2610,7 @@ def test_audio_to_video_execute_rejects_unavailable_start_frame(
     )
 
     with pytest.raises(CapabilityFailedError) as exc_info:
-        executor.execute(generation, (output,))
+        executor.execute(generation, (output,), FakeJobSession())
 
     assert exc_info.value.code == "INPUT_ASSET_NOT_FOUND"
     assert exc_info.value.detail == "startFrame image is no longer available"
@@ -2569,7 +2641,7 @@ def test_audio_to_video_execute_rejects_missing_audio_record(
     )
 
     with pytest.raises(CapabilityFailedError) as exc_info:
-        executor.execute(generation, (output,))
+        executor.execute(generation, (output,), FakeJobSession())
 
     assert exc_info.value.code == "INPUT_ASSET_NOT_FOUND"
     assert exc_info.value.detail == "audio is no longer available"
@@ -2602,7 +2674,7 @@ def test_audio_to_video_execute_hides_http_error_filesystem_paths(
     )
 
     with pytest.raises(CapabilityFailedError) as exc_info:
-        executor.execute(generation, (output,))
+        executor.execute(generation, (output,), FakeJobSession())
 
     assert exc_info.value.code == "INPUT_ASSET_NOT_FOUND"
     assert exc_info.value.detail == "input media is no longer available"
@@ -2637,7 +2709,7 @@ def test_audio_to_video_converts_cancelled_to_cancelled_error(
     )
 
     with pytest.raises(GenerationCancelledError):
-        executor.execute(generation, (output,))
+        executor.execute(generation, (output,), FakeJobSession())
 
 
 def test_audio_to_video_uses_local_a2v_pipeline_not_ltx_api(
@@ -2665,7 +2737,7 @@ def test_audio_to_video_uses_local_a2v_pipeline_not_ltx_api(
 
     shutdown = threading.Event()
     with test_state.generation.wait_for_generation_slot(shutdown):
-        executor.execute(generation, outputs)
+        executor.execute(generation, outputs, FakeJobSession())
 
     assert len(recorder.calls) == 1
     captured = recorder.calls[0]
@@ -2718,7 +2790,7 @@ def test_audio_to_video_rejects_retried_job_with_stale_persisted_frames(
     retried = db.retry_generation(generation.id)
 
     with pytest.raises(CapabilityFailedError) as exc_info:
-        executor.execute(retried, (output,))
+        executor.execute(retried, (output,), FakeJobSession())
 
     assert exc_info.value.code == "INVALID_VIDEO_GENERATION_SPEC"
     assert exc_info.value.detail == (
@@ -2750,11 +2822,11 @@ def test_text_to_video_requires_single_output_allocation(
     )
     match = "text-to-video requires a single 'output' allocation"
     with pytest.raises(ValueError, match=match):
-        executor.execute(generation, ())
+        executor.execute(generation, (), FakeJobSession())
     with pytest.raises(ValueError, match=match):
-        executor.execute(generation, (output, output))
+        executor.execute(generation, (output, output), FakeJobSession())
     with pytest.raises(ValueError, match=match):
-        executor.execute(generation, (preview,))
+        executor.execute(generation, (preview,), FakeJobSession())
 
 
 def test_text_to_video_converts_cancelled_response_to_cancelled_error(
@@ -2773,7 +2845,7 @@ def test_text_to_video_converts_cancelled_response_to_cancelled_error(
     shutdown = threading.Event()
     with test_state.generation.wait_for_generation_slot(shutdown):
         with pytest.raises(GenerationCancelledError):
-            executor.execute(generation, outputs)
+            executor.execute(generation, outputs, FakeJobSession())
 
 
 def test_fake_generation_executor_writes_valid_video(tmp_path: Path) -> None:
@@ -2787,6 +2859,7 @@ def test_fake_generation_executor_writes_valid_video(tmp_path: Path) -> None:
     FakeGenerationExecutor().execute(
         _generation(),
         (OutputAllocation(plan=plan, asset_id="asset-1", dest_path=str(dest)),),
+        FakeJobSession(),
     )
     kind, mime_type, metadata = probe_file(dest)
     assert kind == "video"
@@ -2800,7 +2873,7 @@ def test_fake_generation_executor_records_prompts_and_configured_error() -> None
         seen_prompts=seen, error=RuntimeError("bad input")
     )
     with pytest.raises(RuntimeError, match="bad input"):
-        executor.execute(_generation(params={"prompt": "first"}), ())
+        executor.execute(_generation(params={"prompt": "first"}), (), FakeJobSession())
     assert seen == ["first"]
 
 
@@ -2812,7 +2885,7 @@ def test_fake_generation_executor_block_raises_after_interrupt() -> None:
     def target() -> None:
         started.set()
         try:
-            executor.execute(_generation(), ())
+            executor.execute(_generation(), (), FakeJobSession())
         except BaseException as exc:
             result["error"] = exc
 
@@ -2836,6 +2909,7 @@ class _OomExecutor(_SkipParamValidation):
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
         del outputs
         message = "CUDA out of memory. Tried to allocate 516.00 MiB."

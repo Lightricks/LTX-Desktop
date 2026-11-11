@@ -11,14 +11,14 @@ import {
 
 describe("chunkedRunNotice", () => {
   it("names the window count", () => {
-    assert.match(chunkedRunNotice(3), /3 overlapping time windows/);
+    assert.match(chunkedRunNotice(3), /3 sections/);
   });
 
   it("says the time goes up and the result may be less consistent than a single pass", () => {
     const notice = chunkedRunNotice(2);
-    assert.match(notice, /takes longer than a single pass/);
+    assert.match(notice, /takes longer than generating all at once/);
     assert.match(notice, /may be less consistent/);
-    assert.match(notice, /drift between windows/);
+    assert.match(notice, /drift between sections/);
   });
 });
 

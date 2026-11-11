@@ -4,17 +4,25 @@ import {
   LORA_RECIPE_HOME_FEATURES,
   type LoraRecipeId,
 } from "./lora-recipes.ts";
+import { createElement } from "react";
+import type { RouteObject } from "react-router";
 import {
   createHomeFeatureRoutes,
   selectDesktopHomeFeatureRouteComponents,
   selectRemoteHomeFeatureScreens,
   type HomeFeatureHostEntry,
+  type HomeFeatureRouteHandle,
   type RemoteHomeFeatureIdOf,
 } from "./home-feature-routes.ts";
+import { CUSTOM_LORA_HOME_FEATURE } from "./custom-lora.ts";
+import { paths } from "../paths.ts";
 import { AudioToVideoFeatureScreen } from "@/ltx-io/screens/Feature/AudioToVideoFeatureScreen";
 import { ExtendFeatureScreen } from "@/ltx-io/screens/Feature/ExtendFeatureScreen";
 import { ImageToVideoFeatureScreen } from "@/ltx-io/screens/Feature/ImageToVideoFeatureScreen";
+import { KeyframesFeatureScreen } from "@/ltx-io/screens/Feature/KeyframesFeatureScreen";
 import { makeIcLoraRecipeScreen } from "../views/home/IcLoraRecipePage.tsx";
+import { CustomLoraFeatureScreen } from "@/ltx-io/screens/Feature/CustomLoraFeatureScreen";
+import { CustomLoraRunScreen } from "@/ltx-io/screens/Feature/CustomLoraRunScreen";
 import { RetakeFeatureScreen } from "@/ltx-io/screens/Feature/RetakeFeatureScreen";
 import { TextToVideoFeatureScreen } from "@/ltx-io/screens/Feature/TextToVideoFeatureScreen";
 import { FeatureChromeLayout } from "@/ltx-io/screens/Feature/chrome/FeatureChromeLayout";
@@ -53,6 +61,10 @@ export const HOME_FEATURE_REGISTRY = {
     screen: ImageToVideoFeatureScreen,
     remote: true,
   },
+  keyframes: {
+    screen: KeyframesFeatureScreen,
+    remote: true,
+  },
   "audio-to-video": {
     screen: AudioToVideoFeatureScreen,
     remote: true,
@@ -67,6 +79,10 @@ export const HOME_FEATURE_REGISTRY = {
   },
   ...IC_LORA_RECIPE_REGISTRY,
   ...LORA_RECIPE_REGISTRY,
+  "custom-lora": {
+    screen: CustomLoraFeatureScreen,
+    remote: true,
+  },
 } as const satisfies Record<HomeFeatureId, HomeFeatureHostEntry>;
 
 export type HomeFeatureRegistry = typeof HOME_FEATURE_REGISTRY;
@@ -78,7 +94,20 @@ export const DESKTOP_HOME_FEATURE_ROUTE_COMPONENTS =
 export const REMOTE_HOME_FEATURE_SCREENS =
   selectRemoteHomeFeatureScreens(HOME_FEATURE_REGISTRY);
 
+/**
+ * The page of one saved custom LoRA. It is a page of the Custom LoRA feature, so it takes that
+ * feature's handle and the same chrome (breadcrumbs, details). Desktop and Remote both mount it.
+ */
+export const CUSTOM_LORA_RUN_ROUTE: RouteObject = {
+  path: paths.customLoraRun,
+  element: createElement(CustomLoraRunScreen),
+  handle: {
+    homeFeatureId: CUSTOM_LORA_HOME_FEATURE.id,
+  } satisfies HomeFeatureRouteHandle,
+};
+
 export const DESKTOP_HOME_FEATURE_ROUTES = createHomeFeatureRoutes(
   DESKTOP_HOME_FEATURE_ROUTE_COMPONENTS,
   FeatureChromeLayout,
+  [CUSTOM_LORA_RUN_ROUTE],
 );

@@ -8,7 +8,6 @@ import type { ExploreAsset } from "@/lib/explore-contract";
 import { isVideoAsset } from "../../../hooks/assetQueryKeys";
 import { unwrapApiResult } from "../../../lib/unwrapApiResult";
 import { useExploreRuntime } from "../../../runtime/ExploreRuntime";
-import { useOpenAssetPicker } from "../../Assets/AssetPicker";
 import formStyles from "../FeatureFormView.module.scss";
 import { VIDEO_DURATION_CAP_TOLERANCE_SECONDS } from "../trim/trimConstants";
 import { useTrimVideoModal } from "../trim/useTrimModal";
@@ -66,6 +65,7 @@ export function VideoAssetField({
     value,
     issue,
     onChange,
+    mediaKind: "video",
     accept: VIDEO_ACCEPT,
     extensions: VIDEO_EXTENSIONS,
     chooserTitle: field.label,
@@ -75,14 +75,6 @@ export function VideoAssetField({
     ingestErrorMessage: videoIngestErrorMessage,
     lookupErrorMessage: videoLookupErrorMessage,
     prepareImport,
-  });
-  const openLibrary = useOpenAssetPicker({
-    mediaKind: "video",
-    isEligibleFile: isSupportedDroppedVideo,
-    onSelect: media.acceptAsset,
-    onUpload: media.pickFile,
-    onDropFile: media.ingestFile,
-    onDropAssetId: media.acceptAssetId,
   });
   const durationSeconds = media.asset ? assetDurationSeconds(media.asset) : null;
   const openSourceTrim = () => {
@@ -122,7 +114,7 @@ export function VideoAssetField({
           isDragOver={media.isDragOver}
           durationSeconds={durationSeconds}
           range={range}
-          onReplace={openLibrary}
+          onReplace={media.openLibrary}
           onTrim={
             durationSeconds != null && durationSeconds > 0 ? openSourceTrim : undefined
           }
@@ -133,7 +125,7 @@ export function VideoAssetField({
         <button
           type="button"
           className={clsx(styles.dropzone, media.isDragOver && styles.dragOver)}
-          onClick={openLibrary}
+          onClick={media.openLibrary}
           onDragEnter={media.dragHandlers.handleDragEnter}
           onDragOver={media.dragHandlers.handleDragOver}
           onDragLeave={media.dragHandlers.handleDragLeave}

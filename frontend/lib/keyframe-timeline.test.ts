@@ -2,15 +2,18 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   findNearestFreeFrameIndex,
+  formatKeyframeSeconds,
   formatKeyframeTimecode,
   frameFromPointer,
   keyframeAtOrBefore,
   lastFrameFromDuration,
+  parseKeyframeSeconds,
   parseKeyframeTimecode,
   pickFreeFrameIndex,
   previewKeyframeForPlayhead,
   retimeKeyframes,
   retimeKeyframesForSettings,
+  rulerTicks,
   sameDraggedFrame,
   withDraggedFrame,
 } from './keyframe-timeline.ts'
@@ -99,6 +102,89 @@ describe('parseKeyframeTimecode', () => {
       }
     })
   }
+})
+
+describe('formatKeyframeSeconds', () => {
+  it('shows seconds with two decimals and never minutes', () => {
+    assert.equal(formatKeyframeSeconds(0, 24), '0.00s')
+    assert.equal(formatKeyframeSeconds(36, 24), '1.50s')
+    assert.equal(formatKeyframeSeconds(144, 24), '6.00s')
+    assert.equal(formatKeyframeSeconds(1, 48), '0.02s')
+    assert.equal(formatKeyframeSeconds(3005, 50), '60.10s')
+  })
+})
+
+describe('parseKeyframeSeconds', () => {
+  it('takes the nearest frame for seconds with or without the unit', () => {
+    assert.equal(parseKeyframeSeconds('1.5', 24), 36)
+    assert.equal(parseKeyframeSeconds('1.5s', 24), 36)
+    assert.equal(parseKeyframeSeconds(' 2 s ', 24), 48)
+    assert.equal(parseKeyframeSeconds('.5', 24), 12)
+    assert.equal(parseKeyframeSeconds('1.', 24), 24)
+    assert.equal(parseKeyframeSeconds('0.02', 48), 1)
+  })
+
+  for (const value of ['', 's', '-1', '1:30', '1,5', 'a', '1.5.2', '1 2']) {
+    it(`rejects ${JSON.stringify(value)}`, () => {
+      assert.equal(parseKeyframeSeconds(value, 24), null)
+    })
+  }
+
+  for (const fps of [24, 25, 48, 50]) {
+    it(`round-trips every frame of a 20 second clip at ${fps} fps, so a typed time can reach every frame`, () => {
+      for (let frameIndex = 0; frameIndex <= fps * 20; frameIndex++) {
+        assert.equal(
+          parseKeyframeSeconds(formatKeyframeSeconds(frameIndex, fps), fps),
+          frameIndex,
+        )
+      }
+    })
+  }
+})
+
+describe('rulerTicks', () => {
+  it('gives no ticks, and ends, for a frame rate or a last frame that is not a number', () => {
+    assert.deepEqual(rulerTicks(144, Number.NaN), [])
+    assert.deepEqual(rulerTicks(Number.NaN, 24), [])
+    assert.deepEqual(rulerTicks(144, Number.POSITIVE_INFINITY), [])
+  })
+
+  it('puts a labelled tick on each second and a small tick halfway, for a 6 s clip at 24 fps', () => {
+    const ticks = rulerTicks(144, 24)
+
+    assert.deepEqual(
+      ticks.slice(0, 4),
+      [
+        { frame: 0, label: '0s' },
+        { frame: 12, label: null },
+        { frame: 24, label: '1s' },
+        { frame: 36, label: null },
+      ],
+    )
+    assert.deepEqual(ticks.at(-1), { frame: 144, label: '6s' })
+    assert.equal(ticks.filter((tick) => tick.label !== null).length, 7)
+  })
+
+  it('labels every second second on a 20 s clip, so the labels stay apart', () => {
+    const labels = rulerTicks(480, 24)
+      .map((tick) => tick.label)
+      .filter((label) => label !== null)
+
+    assert.deepEqual(labels, ['0s', '2s', '4s', '6s', '8s', '10s', '12s', '14s', '16s', '18s', '20s'])
+  })
+
+  it('keeps every tick inside the clip', () => {
+    for (const [lastFrame, fps] of [[120, 24], [120, 25], [96, 48], [200, 50]] as const) {
+      for (const tick of rulerTicks(lastFrame, fps)) {
+        assert.ok(tick.frame >= 0 && tick.frame <= lastFrame)
+      }
+    }
+  })
+
+  it('has no ticks without a clip', () => {
+    assert.deepEqual(rulerTicks(0, 24), [])
+    assert.deepEqual(rulerTicks(144, 0), [])
+  })
 })
 
 describe('pickFreeFrameIndex', () => {

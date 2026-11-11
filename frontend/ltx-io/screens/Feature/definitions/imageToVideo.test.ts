@@ -13,6 +13,7 @@ import {
 import { specFixture, specFixtureBothOfferings } from "./specFixture.ts";
 import {
   IMAGE_TO_VIDEO_DEFAULTS,
+  IMAGE_TO_VIDEO_EXAMPLE_NEGATIVE_PROMPT,
   IMAGE_TO_VIDEO_EXAMPLE_PROMPT,
   fromGeneration,
   imageToVideoDefinition,
@@ -44,11 +45,13 @@ describe("imageToVideo definition", () => {
     assert.equal(imageToVideoDefinition.title, "Image to Video");
     assert.deepEqual(imageToVideoDefinition.defaults, {
       prompt: IMAGE_TO_VIDEO_EXAMPLE_PROMPT,
+      negativePrompt: IMAGE_TO_VIDEO_EXAMPLE_NEGATIVE_PROMPT,
       model: "ltx-2.5-fast",
       aspectRatio: "auto",
       resolution: "540p",
       duration: 8,
       fps: 24,
+      passShape: null,
       startFrame: null,
       endFrame: null,
     });
@@ -59,7 +62,7 @@ describe("imageToVideo definition", () => {
     assert.equal(IMAGE_TO_VIDEO_EXAMPLE_PROMPT, "A young man plays the drums.");
   });
 
-  it("renders Start Frame, End Frame, prompt, then video settings", () => {
+  it("renders Start Frame, End Frame, prompt, negativePrompt, then video settings", () => {
     const fields = imageToVideoDefinition.form(values(), context()).fields;
     assert.deepEqual(
       fields.map((field) => ({ kind: field.kind, id: field.id, dataKey: field.dataKey })),
@@ -67,6 +70,7 @@ describe("imageToVideo definition", () => {
         { kind: "image-asset", id: "startFrame", dataKey: "startFrame" },
         { kind: "image-asset", id: "endFrame", dataKey: "endFrame" },
         { kind: "textarea", id: "prompt", dataKey: "prompt" },
+        { kind: "textarea", id: "negativePrompt", dataKey: "negativePrompt" },
         { kind: "options", id: "model", dataKey: "model" },
         { kind: "options", id: "aspectRatio", dataKey: "aspectRatio" },
         { kind: "options", id: "resolution", dataKey: "resolution" },
@@ -78,7 +82,7 @@ describe("imageToVideo definition", () => {
     assert.equal(fields[1]?.kind === "image-asset" ? fields[1].label : undefined, "End Frame");
   });
 
-  it("keeps image slots and the prompt, then clusters settings", () => {
+  it("keeps image slots and the prompts, then clusters settings", () => {
     const form = imageToVideoDefinition.form(values(), context());
     const displayFields = applyOptionFieldOrder(
       form.fields,
@@ -95,6 +99,7 @@ describe("imageToVideo definition", () => {
         { kind: "image-asset", dataKey: "startFrame" },
         { kind: "image-asset", dataKey: "endFrame" },
         { kind: "textarea", dataKey: "prompt" },
+        { kind: "textarea", dataKey: "negativePrompt" },
         { kind: "options", dataKey: "model" },
         { kind: "options", dataKey: "aspectRatio" },
         { kind: "options", dataKey: "resolution" },
@@ -115,6 +120,7 @@ describe("imageToVideo definition", () => {
         { kind: "image-asset", dataKey: "startFrame" },
         { kind: "image-asset", dataKey: "endFrame" },
         { kind: "textarea", dataKey: "prompt" },
+        { kind: "textarea", dataKey: "negativePrompt" },
         {
           kind: "options",
           dataKeys: ["model", "aspectRatio", "resolution", "duration", "fps"],
@@ -211,6 +217,7 @@ describe("imageToVideo definition", () => {
         aspectRatio: "auto",
         endFrame: endAsset,
       }),
+      context(),
     );
     assert.deepEqual(body, {
       contract_version: 1,
@@ -226,8 +233,9 @@ describe("imageToVideo definition", () => {
         duration: 8,
         fps: 24,
         cameraMotion: "none",
-        negativePrompt: "",
+        negativePrompt: IMAGE_TO_VIDEO_EXAMPLE_NEGATIVE_PROMPT,
         promptProvenance: "typed",
+        passShape: "auto",
       },
     });
     assert.equal("path" in body.inputs.startFrame, false);
@@ -236,13 +244,96 @@ describe("imageToVideo definition", () => {
   });
 
   it("sends explicit 16:9 and 9:16 overrides without converting Auto", () => {
-    assert.equal(toCreateBody(values({ aspectRatio: "16:9" })).params.aspectRatio, "16:9");
-    assert.equal(toCreateBody(values({ aspectRatio: "9:16" })).params.aspectRatio, "9:16");
-    assert.equal(toCreateBody(values({ aspectRatio: "auto" })).params.aspectRatio, "auto");
+    assert.equal(toCreateBody(values({ aspectRatio: "16:9" }), context()).params.aspectRatio, "16:9");
+    assert.equal(toCreateBody(values({ aspectRatio: "9:16" }), context()).params.aspectRatio, "9:16");
+    assert.equal(toCreateBody(values({ aspectRatio: "auto" }), context()).params.aspectRatio, "auto");
   });
 
   it("omits End Frame as null when the optional slot is empty", () => {
-    assert.equal(toCreateBody(values({ endFrame: null })).inputs.endFrame, null);
+    assert.equal(toCreateBody(values({ endFrame: null }), context()).inputs.endFrame, null);
+  });
+});
+
+describe("imageToVideo pass shape", () => {
+  // 1080p 10 s runs in parts at 9:16 with a one-pass alternative. At 16:9 it runs in one pass,
+  // with nothing to choose unless `landscapeChoice` gives it a parts alternative too.
+  function shapedSpecs({ landscapeChoice }: { landscapeChoice: boolean }) {
+    const specs = structuredClone(specFixture());
+    const ask = {
+      resolution: "1080p",
+      fps: 24,
+      duration: 10,
+      audio: false,
+      confidence: "solid",
+      tight: false,
+    } as const;
+    const partsAlternative = { ask_gib: 13, confidence: "solid", windows: 2, tight: false } as const;
+    for (const item of [...specs.local_models, ...specs.downloaded_local_models]) {
+      item.spec.cell_asks = [
+        {
+          ...ask,
+          ask_gib: 14,
+          windows: 1,
+          ...(landscapeChoice ? { alternative: partsAlternative } : {}),
+        },
+      ];
+      item.spec.aspect_specs = {
+        "9:16": {
+          supported_resolutions_durations: item.spec.supported_resolutions_durations,
+          cell_asks: [
+            {
+              ...ask,
+              ask_gib: 16,
+              windows: 3,
+              alternative: { ask_gib: 22.7, confidence: "solid", windows: 1, tight: false },
+            },
+          ],
+        },
+      };
+    }
+    return { ...specs, memory: { device: "gpu" as const, capacity_gib: 16 } };
+  }
+
+  const forcedOnePass = values({
+    aspectRatio: "auto",
+    resolution: "1080p",
+    duration: 10,
+    passShape: "one_pass",
+  });
+
+  function hasPassShapeField(formContext: ImageToVideoContext) {
+    return imageToVideoDefinition
+      .form(forcedOnePass, formContext)
+      .fields.some((field) => field.dataKey === "passShape");
+  }
+
+  it("the toggle and the shape sent follow the start image's ratio when the aspect is Auto", () => {
+    const portrait = context({
+      specs: shapedSpecs({ landscapeChoice: false }),
+      startFrameSize: { width: 1080, height: 1920 },
+    });
+    assert.equal(hasPassShapeField(portrait), true);
+    const kept = imageToVideoDefinition.normalize(forcedOnePass, portrait);
+    assert.equal(kept.passShape, "one_pass");
+    assert.equal(toCreateBody(kept, portrait).params.passShape, "one_pass");
+
+    const landscape = context({
+      specs: shapedSpecs({ landscapeChoice: false }),
+      startFrameSize: { width: 1920, height: 1080 },
+    });
+    assert.equal(hasPassShapeField(landscape), false);
+    assert.equal(imageToVideoDefinition.normalize(forcedOnePass, landscape).passShape, null);
+    assert.equal(toCreateBody(forcedOnePass, landscape).params.passShape, "auto");
+  });
+
+  it("a forced shape is kept and auto is sent while the start image's size loads", () => {
+    const loading = context({
+      specs: shapedSpecs({ landscapeChoice: true }),
+      startFrameSize: null,
+    });
+    assert.equal(hasPassShapeField(loading), false);
+    assert.equal(imageToVideoDefinition.normalize(forcedOnePass, loading).passShape, "one_pass");
+    assert.equal(toCreateBody(forcedOnePass, loading).params.passShape, "auto");
   });
 });
 
@@ -251,6 +342,7 @@ describe("imageToVideo fromGeneration", () => {
     const parsed = fromGeneration({
       params: {
         prompt: "a drummer",
+        negativePrompt: "watermark",
         model: "ltx-2.5-fast",
         aspectRatio: "auto",
         resolution: "720p",
@@ -264,11 +356,13 @@ describe("imageToVideo fromGeneration", () => {
     });
     assert.deepEqual(parsed, {
       prompt: "a drummer",
+      negativePrompt: "watermark",
       model: "ltx-2.5-fast",
       aspectRatio: "auto",
       resolution: "720p",
       duration: 8,
       fps: 24,
+      passShape: null,
       startFrame: { assetId: "from-start" },
       endFrame: { assetId: "from-end" },
     });

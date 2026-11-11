@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { preflightCellStatus } from "../../lib/budget-risk.ts";
+
 import {
   type EditPreflightState,
+  preflightFallbackMessage,
   selectFreshPreflight,
   selectTrimMaxSeconds,
 } from "./editPreflight.ts";
@@ -21,6 +24,13 @@ function preflight(overrides: Partial<EditPreflightState> = {}): EditPreflightSt
     ...overrides,
   };
 }
+
+describe("preflightFallbackMessage", () => {
+  it("uses the unmeasured fallback for a warned unmeasured cell with no message", () => {
+    const status = preflightCellStatus({ ok: true, tier: "unmeasured", message: null });
+    assert.equal(preflightFallbackMessage(status), "Unmeasured on your hardware.");
+  });
+});
 
 describe("selectFreshPreflight", () => {
   it("drops verdicts requested for another video", () => {

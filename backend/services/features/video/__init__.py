@@ -15,6 +15,14 @@ from services.features.video.image_to_video import (
     ImageToVideoExecutor,
     RebindableAssetResolver,
 )
+from services.features.video.keyframes import (
+    FEATURE as KEYFRAMES_FEATURE,
+    KeyframesExecutor,
+)
+from services.features.video.custom_lora import (
+    CUSTOM_LORA_FEATURE,
+    CustomLoraExecutor,
+)
 from services.features.video.extend import (
     FEATURE as EXTEND_FEATURE,
     ExtendExecutor,
@@ -39,6 +47,8 @@ SYNTHESIZED_IC_LORA_EXECUTORS: dict[
 
 __all__ = [
     "AUDIO_TO_VIDEO_FEATURE",
+    "CUSTOM_LORA_FEATURE",
+    "CustomLoraExecutor",
     "IcLoraRecipeExecutor",
     "IcLoraSheetRecipeExecutor",
     "IcLoraTrackRecipeExecutor",
@@ -51,6 +61,8 @@ __all__ = [
     "FEATURE",
     "IMAGE_TO_VIDEO_FEATURE",
     "ImageToVideoExecutor",
+    "KEYFRAMES_FEATURE",
+    "KeyframesExecutor",
     "RETAKE_FEATURE",
     "RebindableAssetResolver",
     "ReservedVideoGenerator",

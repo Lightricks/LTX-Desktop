@@ -11,13 +11,13 @@ import {
   AUDIO_OR_VIDEO_EXTENSIONS,
 } from "../screens/Feature/fields/audioAssetInput.ts";
 import {
-  VIDEO_ACCEPT,
-  VIDEO_EXTENSIONS,
-} from "../screens/Feature/fields/videoAssetInput.ts";
-import {
   IMAGE_ACCEPT,
   IMAGE_EXTENSIONS,
 } from "../screens/Feature/fields/imageAssetInput.ts";
+import {
+  VIDEO_ACCEPT,
+  VIDEO_EXTENSIONS,
+} from "../screens/Feature/fields/videoAssetInput.ts";
 
 import {
   type DesktopExploreHost,
@@ -58,9 +58,9 @@ function hostStub(overrides: Partial<DesktopExploreHost> = {}): DesktopExploreHo
   return {
     showOpenFileDialog: async () => ["/Users/me/still.png"],
     getPathForFile: () => "/Users/me/dropped.png",
+    getLocalFileSize: async () => 1,
     showItemInFolder: () => {},
-    getExploreLoraRecipeSeedPath: async ({ seedId }) =>
-      `/app/${seedId}.jpg`,
+    getExploreLoraRecipeSeedPath: async ({ seedId }) => `/app/${seedId}.jpg`,
     getExploreAudioToVideoSeedPaths: async () => ({
       audio: "/app/seed.mp3",
       startFrame: "/app/a2v-seed.jpg",
@@ -508,6 +508,24 @@ describe("Desktop Explore media input", () => {
     assert.ok(catalogInstall);
     assert.equal(typeof catalogInstall.openHuggingFaceAuth, "function");
     assert.equal(await runtime.wsUrl("/ws"), "ws://desktop/ws");
+  });
+
+  it("reads custom LoRA file size through the host boundary", async () => {
+    const sizedPaths: string[] = [];
+    const runtime = createDesktopExploreRuntime(1, {
+      api: recordingIngestClient([]),
+      host: hostStub({
+        getLocalFileSize: async ({ filePath }) => {
+          sizedPaths.push(filePath);
+          return 4096;
+        },
+      }),
+      wsUrl: async (path) => `ws://desktop${path}`,
+    });
+
+    assert.ok(runtime.customLoraImport);
+    assert.equal(await runtime.customLoraImport.fileSize("/tmp/lora.safetensors"), 4096);
+    assert.deepEqual(sizedPaths, ["/tmp/lora.safetensors"]);
   });
 
   it("lists Desktop assets with host path fields through the shared API", async () => {

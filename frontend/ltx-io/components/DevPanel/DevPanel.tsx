@@ -1,7 +1,7 @@
 import { Button } from "@ds/Button/Button";
 import { clsx } from "clsx";
 import { Check, Copy, X } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { ALL_DEV_FLAGS, DEV_FLAG_SECTIONS, UNLOADED_FLAGS, type DevFlagKey } from "@/lib/dev-flags";
 
@@ -17,10 +17,13 @@ type DevPanelProps = {
   api: FeatureFlagsApi;
   open: boolean;
   onClose: () => void;
+  budgetControls?: ReactNode;
 };
 
+type SelectedItem = { kind: "flag"; key: DevFlagKey } | { kind: "budget" };
+
 /**
- * Master-detail feature-flag panel shared by Desktop (Ctrl/Cmd+Shift+D) and the
+ * Master-detail feature-flag panel shared by Desktop (Ctrl/Cmd/Shift+D) and the
  * phone remote (`?devpanel=1`). Flags live on the backend, so both hosts edit
  * the same values. The body mounts only while open, so each open refetches.
  */
@@ -28,7 +31,7 @@ export function DevPanel({ open, ...rest }: DevPanelProps) {
   return open ? <DevPanelBody {...rest} /> : null;
 }
 
-function DevPanelBody({ api, onClose }: Omit<DevPanelProps, "open">) {
+function DevPanelBody({ api, onClose, budgetControls }: Omit<DevPanelProps, "open">) {
   const { data, isError: loadFailed, isFetching, refetch } = useFeatureFlags(api);
   const titleId = useId();
   const update = useUpdateFeatureFlags(api);
@@ -39,7 +42,9 @@ function DevPanelBody({ api, onClose }: Omit<DevPanelProps, "open">) {
     : update.isError
       ? "Couldn't save the change."
       : null;
-  const [selectedKey, setSelectedKey] = useState<DevFlagKey | undefined>(ALL_DEV_FLAGS[0]?.key);
+  const [selectedItem, setSelectedItem] = useState<SelectedItem | undefined>(
+    ALL_DEV_FLAGS[0] ? { kind: "flag", key: ALL_DEV_FLAGS[0].key } : undefined,
+  );
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -50,6 +55,7 @@ function DevPanelBody({ api, onClose }: Omit<DevPanelProps, "open">) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const selectedKey = selectedItem?.kind === "flag" ? selectedItem.key : undefined;
   const selected = ALL_DEV_FLAGS.find((flag) => flag.key === selectedKey);
   const isOn = selected ? flags[selected.key] : false;
   // Never show placeholder defaults as if the backend had confirmed them.
@@ -121,17 +127,34 @@ function DevPanelBody({ api, onClose }: Omit<DevPanelProps, "open">) {
                       flags[spec.key] && styles.on,
                       spec.key === selectedKey && styles.selected,
                     )}
-                    onClick={() => setSelectedKey(spec.key)}
+                    onClick={() => setSelectedItem({ kind: "flag", key: spec.key })}
                   >
                     {spec.label}
                   </button>
                 ))}
               </div>
             ))}
+            {budgetControls ? (
+              <div>
+                <div className={styles.sectionTitle}>Hardware capabilities</div>
+                <button
+                  type="button"
+                  className={clsx(
+                    styles.flag,
+                    selectedItem?.kind === "budget" && styles.selected,
+                  )}
+                  onClick={() => setSelectedItem({ kind: "budget" })}
+                >
+                  Memory limit
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <div className={styles.detail}>
-            {selected ? (
+            {selectedItem?.kind === "budget" && budgetControls ? (
+              budgetControls
+            ) : selected ? (
               <>
                 <div className={styles.detailHeader}>
                   <h3 className={styles.detailTitle}>{selected.label}</h3>

@@ -239,9 +239,14 @@ def _resolve_checkpoint(
     *,
     models_dir: Path,
     hf_authenticated: bool,
+    require_prompt: bool = True,
 ) -> tuple[IcLoraAudioMode, list[LoraEntry]]:
-    """The checks both bodies share. Returns the audio mode and the one LoRA this run uses."""
-    if params.prompt.strip() == "" and not item.allows_empty_prompt:
+    """The checks both bodies share. Returns the audio mode and the one LoRA this run uses.
+
+    ``require_prompt`` is false only for the tile preflight. That route judges the budget,
+    and the budget does not read the prompt. Create keeps the check.
+    """
+    if require_prompt and params.prompt.strip() == "" and not item.allows_empty_prompt:
         raise RecipeCreateError("Prompt is required.", code="INVALID_GENERATION_SPEC")
     require_catalog_runnable(
         item,
@@ -319,6 +324,7 @@ def resolve_ic_lora_recipe_create(
     models_dir: Path,
     hf_authenticated: bool,
     source_fps: float,
+    require_prompt: bool = True,
 ) -> tuple[IcLoraRecipe, IcLoraCatalogItem, IcLoraVideoRecipeStoredParams]:
     """Validate a recipe create and return the stored params, including ``loras``."""
     recipe, item = _recipe_item(recipe_id, catalog, kind="video")
@@ -332,7 +338,11 @@ def resolve_ic_lora_recipe_create(
         )
     control_type = _resolve_control_type(item, req)
     audio_mode, loras = _resolve_checkpoint(
-        item, req.params, models_dir=models_dir, hf_authenticated=hf_authenticated
+        item,
+        req.params,
+        models_dir=models_dir,
+        hf_authenticated=hf_authenticated,
+        require_prompt=require_prompt,
     )
     stored = IcLoraVideoRecipeStoredParams.model_validate(
         {

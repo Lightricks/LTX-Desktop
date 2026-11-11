@@ -32,7 +32,10 @@ describe("assets copy", () => {
       "It’s used as an input to another generation.",
     );
     assert.equal(ASSETS_IN_USE_BUTTON, "Got it");
-    assert.equal(ASSETS_DELETE_CONFIRM_TITLE, "Delete this file?");
+    assert.equal(
+      ASSETS_DELETE_CONFIRM_TITLE,
+      "Are you sure you want to delete this file?",
+    );
     assert.equal(
       ASSETS_DELETE_CONFIRM_DESCRIPTION,
       "This removes the file from disk and the matching item from Results.",

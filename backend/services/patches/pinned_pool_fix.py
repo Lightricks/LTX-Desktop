@@ -1,28 +1,36 @@
-"""Monkey-patch: do not report pinned-host allocation failure as CUDA VRAM OOM.
+"""Monkey-patch: page-locked host buffers must degrade to pageable memory, never crash.
 
-``OffloadMode.CPU`` streaming pre-allocates one pinned host buffer per
-transformer block via ``ltx_core.block_streaming.utils.alloc_buffer``. For the
-22B distilled checkpoint that is ~23 GiB of page-locked RAM (more if PyTorch's
-CachingHostAllocator rounds each block up to the next power of two).
+``OffloadMode.CPU`` and ``OffloadMode.DISK`` streaming on CUDA ask ``ltx_core.loader.buffers.host_bytes``
+for page-locked host buffers (``pin=True``). For the 22B distilled checkpoint that is ~23 GiB of
+RAM-resident blocks, or the staging pool of disk streaming.
 
-``alloc_buffer`` first tries ``cudaHostRegister`` on a regular CPU tensor. On
-Windows that call typically fails (pointer/size are not page-aligned for WDDM).
-The failure is left as CUDA's sticky last error. The fallback
-``torch.empty(..., pin_memory=True)`` then raises ``CUDA error: out of memory``
-even with ~14 GiB VRAM free, and every later CUDA call (including
-``cudaMemGetInfo``) fails until the process is restarted.
+``host_bytes`` builds a pinned buffer of 2 MiB or more from an anonymous ``mmap`` created with
+``mmap.MAP_PRIVATE | mmap.MAP_ANONYMOUS`` and registers it with ``cudaHostRegister``. Those mmap
+flags do not exist on Windows, so every pinned request raises ``AttributeError`` there. Where the
+flags exist, a failed registration raises ``RuntimeError`` and leaves CUDA's sticky last error set;
+a later fallback that pins through torch's caching host allocator can then surface as
+``CUDA error: out of memory`` with VRAM free, and every later CUDA call fails until restart
+(https://github.com/Lightricks/LTX-Desktop/issues/141).
 
-See https://github.com/Lightricks/LTX-Desktop/issues/141
+This patch wraps ``host_bytes``:
+- On Windows, requests of ``_EXACT_PIN_BYTES`` or more skip pinning and return pageable host
+  memory. H2D copies stay correct; they just do not overlap compute. Smaller requests take
+  upstream's ``torch.empty(pin_memory=True)`` path, which works on Windows.
+- Elsewhere it uses upstream, and when pinning fails it clears the sticky CUDA error and returns
+  pageable memory. An ``OSError`` from the anonymous mapping (``vm.overcommit_memory=2``) counts
+  as a failed pin too.
 
-This patch:
-- On Windows, skips both ``cudaHostRegister`` and the CachingHostAllocator
-  fallback and allocates pageable host memory. H2D copies stay correct; they
-  just will not overlap compute.
-- On other platforms, clears the sticky CUDA error after a failed register and
-  falls back to pageable memory if ``pin_memory=True`` itself OOMs.
+``registry`` and ``state_loader`` record placement from the result (``buffer.is_pinned()``), so
+they stay correct with a pageable buffer. ``streaming_builder`` records the placement it
+requested instead; on Windows that says pinned for a pageable buffer. Nothing in ltx-core
+asserts on it.
 
-Remove once ltx-core ``alloc_buffer`` does not poison the CUDA context or
-mis-report pinned-host failure as VRAM OOM.
+Not covered: ``DeviceStager`` (``ltx_core/loader/raw.py``) pins two 64 MiB staging buckets per
+device with ``torch.empty(pin_memory=True)``, which goes through torch's host allocator and
+not ``host_bytes``. It normally works on Windows, but if it fails the error can surface as the
+misleading "CUDA out of memory" of LTX-Desktop#141 and leave the sticky error set.
+
+Remove once ltx-core ``host_bytes`` works on Windows and does not leave a sticky CUDA error.
 
 Usage:
     import services.patches.pinned_pool_fix  # noqa: F401
@@ -34,23 +42,16 @@ import logging
 import sys
 
 import torch
-from ltx_core.block_streaming import utils as bs_utils
+from ltx_core.loader import buffers as _buffers
+from ltx_core.loader import registry as _registry
+from ltx_core.loader import state_loader as _state_loader
+from ltx_core.loader import streaming_builder as _streaming_builder
 
 logger = logging.getLogger(__name__)
 
+_REBOUND_MODULES = (_registry, _state_loader, _streaming_builder)
 
-def _require_attr(name: str) -> None:
-    # Explicit raise so this still fires under `python -O` (asserts are stripped).
-    if not hasattr(bs_utils, name):
-        raise RuntimeError(
-            f"ltx_core.block_streaming.utils.{name} not found — patch needs updating."
-        )
-
-
-_require_attr("alloc_buffer")
-_require_attr("_alloc_pinned_exact")
-
-_orig_alloc_pinned_exact = bs_utils._alloc_pinned_exact
+_orig_host_bytes = _buffers.host_bytes
 _windows_pageable_logged = False
 
 
@@ -76,48 +77,51 @@ def is_cuda_oom_error(exc: BaseException) -> bool:
     return "out of memory" in msg or "cudaerrormemoryallocation" in msg
 
 
-def _alloc_pinned_exact_cleared(nbytes: int) -> torch.Tensor | None:
-    buf = _orig_alloc_pinned_exact(nbytes)
-    if buf is None:
-        # cudaHostRegister returns the error to Python but also sets the thread's
-        # sticky last error. Clear it before any later CUDA call.
-        _clear_cuda_sticky_error()
-    return buf
+def _is_pin_failure(exc: BaseException) -> bool:
+    if isinstance(exc, OSError):
+        return True
+    return isinstance(exc, RuntimeError) and ("page-lock" in str(exc) or is_cuda_oom_error(exc))
 
 
-def _patched_alloc_buffer(nbytes: int, device: torch.device | None, pin_memory: bool) -> torch.Tensor:
-    """Like upstream ``alloc_buffer``, but never raises a misleading CUDA VRAM OOM."""
-    if pin_memory and not torch.cuda.is_available():
-        pin_memory = False
-    cpu_pin = pin_memory and (device is None or torch.device(device).type == "cpu")
-    if cpu_pin and sys.platform == "win32":
+def _patched_host_bytes(nbytes: int, *, pin: bool = False) -> torch.Tensor:
+    """Like upstream ``host_bytes``, but a pin request made through it never fails the load."""
+    if not pin:
+        return _orig_host_bytes(nbytes, pin=False)
+    if sys.platform == "win32" and nbytes >= _buffers._EXACT_PIN_BYTES:  # pyright: ignore[reportPrivateUsage]
         global _windows_pageable_logged
         if not _windows_pageable_logged:
             logger.warning(
                 "Using pageable host memory for streaming weight buffers on Windows. "
-                "ltx-core would pin via cudaHostRegister / CachingHostAllocator, which "
-                "fails as a misleading CUDA OOM while VRAM is free (LTX-Desktop#141)."
+                "ltx-core would pin through an anonymous mmap that Windows does not support "
+                "(LTX-Desktop#141)."
             )
             _windows_pageable_logged = True
-        return torch.empty(nbytes, dtype=torch.uint8, device=device, pin_memory=False)
-    if cpu_pin:
-        buf = _alloc_pinned_exact_cleared(nbytes)
-        if buf is not None:
-            return buf
-        try:
-            return torch.empty(nbytes, dtype=torch.uint8, device=device, pin_memory=True)
-        except Exception as exc:
-            if not is_cuda_oom_error(exc):
-                raise
-            _clear_cuda_sticky_error()
-            logger.warning(
-                "Pinned host-memory allocation of %s bytes failed (%s). "
-                "Falling back to pageable CPU memory. This is not a GPU VRAM shortage.",
-                nbytes,
-                exc,
-            )
-            pin_memory = False
-    return torch.empty(nbytes, dtype=torch.uint8, device=device, pin_memory=pin_memory)
+        return torch.empty(nbytes, dtype=torch.uint8)
+    try:
+        return _orig_host_bytes(nbytes, pin=True)
+    except (RuntimeError, OSError) as exc:
+        if not _is_pin_failure(exc):
+            raise
+        _clear_cuda_sticky_error()
+        logger.warning(
+            "Pinned host-memory allocation of %s bytes failed (%s). "
+            "Falling back to pageable CPU memory. This is not a GPU VRAM shortage.",
+            nbytes,
+            exc,
+        )
+        return torch.empty(nbytes, dtype=torch.uint8)
 
 
-bs_utils.alloc_buffer = _patched_alloc_buffer
+for _module in _REBOUND_MODULES:
+    if getattr(_module, "host_bytes", None) is not _orig_host_bytes:
+        raise RuntimeError(f"{_module.__name__}.host_bytes is not ltx_core.loader.buffers.host_bytes — patch needs updating.")
+    _module.host_bytes = _patched_host_bytes  # type: ignore[attr-defined]
+_buffers.host_bytes = _patched_host_bytes
+
+_stale = sorted(
+    name
+    for name, module in list(sys.modules.items())
+    if name.startswith("ltx_core.") and getattr(module, "host_bytes", None) is _orig_host_bytes
+)
+if _stale:
+    raise RuntimeError(f"{', '.join(_stale)} still hold the unpatched host_bytes — patch needs updating.")

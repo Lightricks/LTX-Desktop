@@ -8,6 +8,9 @@
   max-width: 100%;
   min-width: 0;
   min-height: 0;
+  /* The feed is as tall as its results. If it shrinks to the viewport, the sticky
+     scroll-up button leaves the screen after the first viewport of scrolling. */
+  flex-shrink: 0;
 }
 
 .outputStackCentered {
@@ -70,6 +73,22 @@
   100% {
     transform: scale(1);
   }
+}
+
+.virtualList {
+  position: relative;
+  /* The rows are absolutely positioned, so the list has no content height. Its inline
+     height is the whole scroll length. Without this, the feed (a flex column) shrinks
+     the list to the viewport and the scroll length follows the mounted rows only. */
+  flex: 0 0 auto;
+  width: 100%;
+}
+
+.virtualRow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
 }
 
 .resultGroup {

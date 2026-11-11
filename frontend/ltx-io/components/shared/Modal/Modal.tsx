@@ -1,7 +1,7 @@
+import * as Dialog from "@radix-ui/react-dialog";
 import { clsx } from "clsx";
 import { motion } from "framer-motion";
 import React, { useEffect, useRef } from "react";
-import ReactDOM from "react-dom";
 
 import { useModalContext } from "@/ltx-io/components/shared/Modal/ModalContext.tsx";
 import { CloseReason } from "@/ltx-io/components/shared/Modal/modalTypes";
@@ -9,7 +9,6 @@ import {
   backdropAnimationProps,
   modalAnimationProps,
 } from "@ds/lib/popoverAnimationOptions";
-import { useKeyboardShortcut } from "@ds/lib/useKeyboardShortcut";
 
 import styles from "./Modal.module.scss";
 import { ModalVariant } from "./modalTypes";
@@ -21,7 +20,6 @@ export type ModalProps = {
   backdropClassName?: string;
   disablePointerClickOutside?: boolean;
   shouldPreventDismiss?: () => boolean;
-  shouldBeTopmost?: boolean;
   variant?: ModalVariant;
   noPadding?: boolean;
   /** If set, the close button will be hidden for the specified duration in milliseconds */
@@ -45,12 +43,12 @@ export function Modal({
   backdropClassName,
   disablePointerClickOutside,
   shouldPreventDismiss,
-  shouldBeTopmost = false,
   variant = "secondary",
   noPadding = false,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusedElementRef = useRef<HTMLElement | null>(null);
+  const modalContext = useModalContext();
 
   const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
     event.stopPropagation();
@@ -63,32 +61,6 @@ export function Modal({
     }
   };
 
-  const modalContext = useModalContext();
-
-  useKeyboardShortcut({
-    shouldHandle: (e) => {
-      if (e.key !== "Escape") return false;
-
-      if (shouldPreventDismiss?.()) return false;
-
-      // If there's an active confirmation and this modal's onClose is NOT the hideConfirmation function,
-      // then this is a regular modal and should defer to the confirmation
-      if (
-        modalContext.currentConfirmationName &&
-        onClose !== modalContext.hideConfirmation
-      ) {
-        return false;
-      }
-
-      return true;
-    },
-    onDown: (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      onClose("escape_key");
-    },
-  });
-
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) {
@@ -99,7 +71,10 @@ export function Modal({
 
     const focusFirstInsideDialog = () => {
       const focusableElements = getFocusableElements(dialog);
-      const target = focusableElements[0] ?? dialog;
+      const target =
+        focusableElements.find((element) => element.hasAttribute("data-autofocus")) ??
+        focusableElements[0] ??
+        dialog;
       target.focus();
     };
 
@@ -128,7 +103,7 @@ export function Modal({
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Tab") {
+      if (event.key !== "Tab" || event.defaultPrevented) {
         return;
       }
 
@@ -164,47 +139,60 @@ export function Modal({
     };
   }, []);
 
-  const modalElement = (
-    <motion.div
-      className={clsx(
-        styles.modal_backdrop,
-        backdropClassName,
-        shouldBeTopmost && styles.modal_backdrop_topmost,
-      )}
-      onMouseDown={handleBackdropClick}
-      {...backdropAnimationProps}
-    >
+  return (
+    <Dialog.Root open modal={false}>
       <motion.div
-        ref={dialogRef}
-        className={styles.modal_content_wrapper}
-        onClick={(e: React.MouseEvent<HTMLDivElement, MouseEvent>) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        tabIndex={-1}
-        {...modalAnimationProps}
+        data-modal-backdrop
+        className={clsx(styles.modal_backdrop, backdropClassName)}
+        onMouseDown={handleBackdropClick}
+        {...backdropAnimationProps}
       >
-        <div className={styles.modal_scrollable_container}>
-          <div
-            className={clsx(
-              styles.modal_children_container,
-              styles[`modal_children_container_${variant}`],
-              noPadding && styles.no_padding,
-              className,
-            )}
+        <Dialog.Content
+          asChild
+          aria-describedby={undefined}
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          onCloseAutoFocus={(event) => event.preventDefault()}
+          onPointerDownOutside={(event) => event.preventDefault()}
+          onFocusOutside={(event) => event.preventDefault()}
+          onInteractOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (
+              modalContext.currentConfirmationName &&
+              onClose !== modalContext.hideConfirmation
+            ) {
+              return;
+            }
+            if (!shouldPreventDismiss?.()) {
+              onClose("escape_key");
+            }
+          }}
+        >
+          <motion.div
+            ref={dialogRef}
+            className={styles.modal_content_wrapper}
+            onClick={(e: React.MouseEvent<HTMLDivElement, MouseEvent>) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
+            {...modalAnimationProps}
           >
-            {children}
-          </div>
-        </div>
+            <div className={styles.modal_scrollable_container}>
+              <div
+                className={clsx(
+                  styles.modal_children_container,
+                  styles[`modal_children_container_${variant}`],
+                  noPadding && styles.no_padding,
+                  className,
+                )}
+              >
+                {children}
+              </div>
+            </div>
+          </motion.div>
+        </Dialog.Content>
       </motion.div>
-    </motion.div>
+    </Dialog.Root>
   );
-
-  if (shouldBeTopmost) {
-    return ReactDOM.createPortal(
-      modalElement,
-      document.getElementById("topmost-modal-root") as HTMLElement,
-    );
-  } else {
-    return modalElement;
-  }
 }

@@ -32,6 +32,7 @@ export type CatalogGenerateControls = {
   onCancelGenerate: () => void;
   defaultLoraStrength: number | undefined;
   defaultAudioMode: "source" | "generated" | "off" | undefined;
+  defaultNegativePrompt: string | undefined;
   /** Read after a download, so the form sends the variant that is now on disk. */
   variants: CatalogVariantChoice[];
 };
@@ -365,6 +366,7 @@ export function CatalogInstallPreflight({
     onCancelGenerate: handleCancelDownload,
     defaultLoraStrength: item?.defaultLoraStrength,
     defaultAudioMode: item?.defaultAudioMode,
+    defaultNegativePrompt: item?.defaultNegativePrompt,
     variants: item?.variants ?? [],
   });
 

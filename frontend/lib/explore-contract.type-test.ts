@@ -77,6 +77,7 @@ const pathFreeRemoteGeneration: ExploreGeneration = {
   created_at: 1,
   feature: 'text-to-video',
   id: 'gen-1',
+  lane: 'local',
   outputs: [pathFreeRemoteAsset],
   queued_at: 1,
   spec: {

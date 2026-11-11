@@ -1,13 +1,15 @@
 import { useNavigate } from "react-router";
-import { useAppChromeControls } from "../AppShell";
+
+// eslint-disable-next-line no-restricted-imports
+import { useAddCustomLoraModal } from "@/ltx-io/screens/Feature/CustomLoraFeatureScreen";
+
 import { useAppSettings } from "../../contexts/AppSettingsContext";
 import { useProjects } from "../../contexts/ProjectContext";
 import { openProject } from "../../lib/project-navigation";
+import { useAppChromeControls } from "../AppShell";
+
 import { HomeSidebar } from "./HomeSidebar";
-import {
-  planHomeSidebarItems,
-  type HomeSidebarActions,
-} from "./home-sidebar-items";
+import { type HomeSidebarActions, planHomeSidebarItems } from "./home-sidebar-items";
 
 export function DesktopHomeSidebar({
   portalContainer,
@@ -17,6 +19,7 @@ export function DesktopHomeSidebar({
   openQuickSearch?: () => void;
 }) {
   const navigate = useNavigate();
+  const openAddCustomLora = useAddCustomLoraModal();
   const { openSettings, isSettingsModalOpen } = useAppChromeControls();
   const { activateProject, clearActiveProject, setCurrentTab } = useProjects();
   const { localViable } = useAppSettings();
@@ -24,6 +27,7 @@ export function DesktopHomeSidebar({
   const actions: HomeSidebarActions = {
     host: "desktop",
     openQuickSearch,
+    openAddCustomLora,
     goTo: (path, { clearActiveProject: shouldClear }) => {
       if (shouldClear) clearActiveProject();
       navigate(path);
@@ -34,11 +38,5 @@ export function DesktopHomeSidebar({
       openProject(projectId, { activateProject, setCurrentTab, navigate });
     },
   };
-  return (
-    <HomeSidebar
-      plan={plan}
-      actions={actions}
-      portalContainer={portalContainer}
-    />
-  );
+  return <HomeSidebar plan={plan} actions={actions} portalContainer={portalContainer} />;
 }

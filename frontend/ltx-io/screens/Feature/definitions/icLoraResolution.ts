@@ -207,7 +207,10 @@ export function icLoraResolutionOptions(
   });
 }
 
-/** The high cells every recipe offers. No tiled cell has a measured budget, so both need `highResVideoToVideo`. */
-export function recipeHighResCells(highResVideoToVideo: boolean): readonly HighResCell[] {
-  return highResVideoToVideo ? HIGH_RES_CELLS : [];
+/** The high cells a recipe offers. They need `highResVideoToVideo`, unless the recipe is `highResWithoutFlag`. */
+export function recipeHighResCells(
+  recipe: { readonly highResWithoutFlag?: boolean },
+  highResVideoToVideo: boolean,
+): readonly HighResCell[] {
+  return highResVideoToVideo || recipe.highResWithoutFlag === true ? HIGH_RES_CELLS : [];
 }

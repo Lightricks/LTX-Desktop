@@ -24,6 +24,7 @@ type LoraRecipeDefinitionShape = {
   readonly title: string;
   readonly description: string;
   readonly seedPrompt: string;
+  readonly seedNegativePrompt: string;
   readonly placeholder: string;
   readonly defaultStrength: number;
   readonly listed: boolean;
@@ -58,6 +59,8 @@ export const LORA_RECIPES = [
       "Turn a prompt into a handcrafted felt-cutout diorama with matching audio.",
     seedPrompt:
       "A big felt T-rex plays golf on a sunny felt golf course, comically gripping a tiny felt golf club in its little short arms with intense concentration. The T-rex is built from soft green layered felt with a big rounded body, a huge toothy stitched grin, powerful plush legs, a long thick plush tail, and comically tiny little arms, wearing a jaunty felt golf cap and a little argyle felt sweater vest. It lines up a tiny white felt golf ball on a felt tee, waggles the club with its stubby arms, then takes a big swing — twisting its whole body and swinging its long tail around for momentum since its arms can barely reach — and taps the felt ball, which rolls across the green as the T-rex watches hopefully with a big grin, shielding its eyes with a tiny arm. Around it, a cozy felt golf course with rolling stitched green fairways, a little red felt flag on the putting green, felt sand bunkers, leafy felt trees, and fluffy felt clouds in a bright blue felt sky. The camera holds in a gentle push-in on the golfing T-rex. Cheerful, funny, charming storybook mood, with a soft felt club tap, cheerful birdsong, and a gentle breeze.",
+    seedNegativePrompt:
+      "photorealistic reptile scales, smooth plastic skin, long human arms, extra limbs, detached golf club, blurry stitching, watermark",
     placeholder:
       "Describe a scene to render as a handmade felt scene. Use words like embroidered felt details, felt cutout style, handcrafted felt diorama.",
     defaultStrength: 1,
@@ -85,6 +88,8 @@ export const LORA_RECIPES = [
     description: "Generate scenes with a tactile clay animation look.",
     seedPrompt:
       "claymation style, stop motion clay, a handcrafted clay diorama of two cute clay polar bears relaxing on a sunny tropical beach, sipping cocktails. The polar bears have soft white sculpted clay fur with visible fingerprints and hand-shaped textures, round friendly faces, and little black noses, lounging back in tiny clay beach chairs wearing cool clay sunglasses. Each holds a colorful clay cocktail in a little clay coconut cup with a tiny umbrella and a slice of clay fruit, sipping happily and giving content smiles. They sit on golden clay sand with a clay beach umbrella shading them, gentle clay ocean waves rolling in behind, a clay palm tree swaying, and soft clay clouds in a bright blue sky. All sculpted from clay with rounded stylized shapes and tactile handmade textures. Warm sunny cinematic lighting, shallow depth of field, cozy playful storybook mood, with gentle rolling waves, a soft breeze, and cheerful beach ambience.",
+    seedNegativePrompt:
+      "photorealistic fur, real water, glossy 3D CGI render, melting clay faces, extra paws, floating cups, blurry, watermark",
     placeholder:
       "Describe a scene to bring to life in tactile stop-motion clay — try a charming character in a cozy, miniature world.",
     defaultStrength: 1,
@@ -113,6 +118,8 @@ export const LORA_RECIPES = [
       "Render a fantasy scene with hand-painted brushwork and luminous lighting.",
     seedPrompt:
       "the opening frame is an extreme cinematic close-up of an elderly forest keeper, with only half of their face visible while the rest fades into soft negative space. Deep expressive wrinkles, kind eyes, silver hair, and a moss-green hooded cloak are bathed in warm golden light, creating an intimate portrait. After a quiet pause, they slowly pull the hood over their head, turn away from the camera, and begin walking deeper into the enchanted forest. As they disappear into the distance, tiny glowing forest spirits drift between the ancient trees, carried by a gentle breeze. The camera begins with an intimate close-up, then slowly pulls back and follows behind them with a graceful cinematic tracking shot, revealing more of the magical forest while maintaining soft parallax and shallow depth of field. Rich fantasy brushstrokes, visible canvas texture, luminous painterly lighting, atmospheric mist, and timeless storybook fantasy. Audio: natural enchanted forest ambience only.",
+    seedNegativePrompt:
+      "photorealistic camera footage, flat vector art, smooth airbrushed skin, modern clothing, distorted face, extra eyes, subtitles, watermark",
     placeholder:
       "Describe a fantasy scene to render with hand-painted brushwork. Use words like fantasy painterly style, cinematic fantasy, and oil painting.",
     defaultStrength: 1,
@@ -140,6 +147,8 @@ export const LORA_RECIPES = [
     description: "Turn a prompt into a layered paper-cutout cinematic diorama.",
     seedPrompt:
       "A beautifully composed wide cinematic establishing shot of a peaceful desert at golden hour, with towering saguaro cacti, blooming barrel cacti, scattered rocks, warm textured sand, layered mesas, and a glowing sky fading from amber to turquoise. After a brief moment, a curious desert tortoise enters from the left, slowly walks between the cacti, pauses to lift its head and look directly at the viewer, then continues walking and exits the frame on the right. The camera starts as a still wide shot before smoothly transitioning into a slow eye-level tracking shot with gentle parallax. Warm golden-hour lighting creates a peaceful, nostalgic cinematic atmosphere. Audio: Only authentic desert ambience with soft wind, dry grass rustling, gentle tortoise footsteps, occasional pebbles shifting, and natural silence.",
+    seedNegativePrompt:
+      "photorealistic reptile skin, glossy 3D CGI, real sand grains, deformed tortoise shell, extra legs, blurry paper edges, watermark",
     placeholder:
       "Describe a scene to render as a handmade paper cut-out diorama. Use words like paper cutout style, handcrafted paper and layered paper scene.",
     defaultStrength: 1,
@@ -168,6 +177,8 @@ export const LORA_RECIPES = [
       "Freeze a still except for one looping detail — a locked-off living photograph.",
     seedPrompt:
       "Mountains, and foreground remain completely frozen, only the night sky moves, the Milky Way and stars rotate across the sky like Earth-rotation time-lapse, everything below the horizon stays still, colors stay the same",
+    seedNegativePrompt:
+      "camera movement, pan, tilt, zoom, parallax, whole image moving, mountains shifting, foreground moving, flicker on entire image, noisy texture, distorted, blurry",
     placeholder:
       "Describe a static scene and the single element that should move. Emphasize what stays frozen and what animates in a seamless loop.",
     defaultStrength: 2,
@@ -196,6 +207,8 @@ export const LORA_RECIPES = [
       "Turn any scene into an epic reveal with a classic crane sweep upward.",
     seedPrompt:
       "The camera slowly rises, revealing the view. As it moves, the character gently lifts their gaze. Soft, peaceful sounds of nature.",
+    seedNegativePrompt:
+      "camera moving down, static locked camera, zoom in, pan sideways, shaky handheld, warped horizon, distorted face, blurry",
     placeholder:
       "Describe the scene and the destination of the camera movement. Try to explain what the camera will focus on as it moves upward.",
     defaultStrength: 1,
@@ -224,6 +237,8 @@ export const LORA_RECIPES = [
       "Turn any scene into an epic reveal with a classic crane sweep downward.",
     seedPrompt:
       "The camera slowly moves down, revealing the character's long hiking pants and hiking shoes. The character stays still. Soft sounds of nature in the background.",
+    seedNegativePrompt:
+      "camera rising upward, static locked camera, character walking away, deformed legs, extra feet, warped boots, shaky camera, blurry",
     placeholder:
       "Describe the scene and the destination of the camera movement. Try to explain what the camera will focus on as it moves downward.",
     defaultStrength: 1,
@@ -252,6 +267,8 @@ export const LORA_RECIPES = [
       "Smooth cinematic push toward your subject. No rig, instant tension.",
     seedPrompt:
       "The camera slowly zooms in on the character's face. As the camera zooms in, she looks directly into the camera. A soft wind moves through her hair, with gentle wind sounds in the background.",
+    seedNegativePrompt:
+      "camera pulling back, dolly out, static frame, warped facial features, crossed eyes, blurry skin texture, camera shake, watermark",
     placeholder:
       "Describe a scene and the destination of the dolly-in — what the camera arrives at as it pushes forward.",
     defaultStrength: 1,
@@ -279,6 +296,8 @@ export const LORA_RECIPES = [
     description: "Smooth cinematic push out from your subject.",
     seedPrompt:
       "The camera slowly moves out, revealing the character in the black suit stands still with her hands loosely clasped in front of her waist. Soft wind moves through her hair, with gentle wind sounds in the background.",
+    seedNegativePrompt:
+      "camera pushing in, dolly in, static close-up, extra fingers, deformed hands, warped suit proportions, camera shake, blurry",
     placeholder:
       "Describe the scene and the destination of the camera movement. Try to explain what the camera will focus on as it moves backward.",
     defaultStrength: 1,
@@ -307,6 +326,8 @@ export const LORA_RECIPES = [
       "Add smooth, low-speed drone-style camera motion to generated video.",
     seedPrompt:
       "A cinematic FPV drone shot flying smoothly through a cozy wooden cabin in the woods and out into a stunning natural landscape, ending with a dramatic upward reveal. The drone glides gently and steadily forward toward the cabin nestled among tall pine trees, drifting smoothly through an open doorway into the warm rustic interior — passing a stone fireplace, wooden furniture, and soft light through the windows. It floats steadily across the room and out through a large open window on the far side, emerging into the open air to reveal a majestic waterfall cascading down a moss-covered cliff into a calm crystal-clear lake below, surrounded by lush green forest. The drone glides smoothly out over the glistening lake, gentle mist rising from the waterfall in the golden sunlight. Then the camera rapidly ascends, shooting quickly upward in a fast rising motion while remaining angled down and focused on the scene beneath — the lake, waterfall, and forest shrinking below as the camera climbs, revealing the full sweeping landscape and the surrounding mountains and treetops from a soaring high vantage point. The early flythrough moves with smooth, unhurried motion, building to the fast dramatic upward climb at the end. Warm natural lighting, soft shafts through the trees, light atmospheric haze, rich green and gold tones. Immersive first-person FPV drone perspective, wide-angle lens, cinematic, photorealistic, 4K. Gentle wind, a soft drone hum rising as it climbs, the roar of the waterfall, flowing water, and birdsong.",
+    seedNegativePrompt:
+      "static tripod camera, jerky stuttering flight, crashing into walls, warped window frames, visible drone propellers, motion blur smear, watermark",
     placeholder:
       "Describe a scene and a flight path - the camera glides through it in smooth, low-speed drone motion, e.g. 'through a canyon and out over the sea.'",
     defaultStrength: 1,
@@ -334,6 +355,8 @@ export const LORA_RECIPES = [
       "Generate open-wheel motorsport video from an in-car T-cam cockpit perspective.",
     seedPrompt:
       "T-cam onboard view looking over the silver and cyan central halo structure of a red 16LV6HybridF1 car racing in a tight pack on a wet track in heavy rain. The red car features cyan and white sponsor decals. Speeding down a long straight through clouds of spray, it trails closely behind a yellow 16LV6HybridF1 car just ahead, while a blue 16LV6HybridF1 car runs alongside on the left and a green car looms in the mirrors behind. The camera car pulls out of the spray to draw alongside the yellow car, the two racing wheel to wheel down the straight, before both brake hard for an approaching corner. The yellow car defends the inside line while the camera car sweeps around the outside through the turn, spray flying, then both accelerate hard out of the corner side by side, fighting for position. A gold and black driver's helmet is visible at the bottom of the frame.",
+    seedNegativePrompt:
+      "external broadcast camera, trackside view, missing halo bar, closed-roof sedan, dry sunny track, detached wheels, video game HUD overlay, watermark",
     placeholder:
       "Describe an open-wheel race from the cockpit. Focus on the car, track conditions, and racing action.",
     defaultStrength: 1,
@@ -363,6 +386,8 @@ export const LORA_RECIPES = [
       "Morph between two frames with a seamless, continuous camera move.",
     seedPrompt:
       "A high aerial shot glides low over a churning turquoise ocean as a massive wave rises and curls, its crest breaking into white foaming spray against a hazy, overcast sky. As the wave crashes forward, its curling white foam morphs seamlessly into a snow-capped mountain peak, the churning water resolving into jagged rock and packed snow, and the sea mist thinning into drifting alpine cloud below the summit. The color grade shifts gradually from cool teal-blue ocean light to the warm golden-hour glow of sunrise catching the mountain's ridges. The camera holds a steady high-angle drift throughout, tracking the continuous motion from crashing water to towering peak.",
+    seedNegativePrompt:
+      "abrupt hard cut, flash frame, crossfade ghosting, static frozen wave, split screen, jerky camera jump, blurry morph, watermark",
     placeholder:
       "Describe how the start frame transforms into the end frame — shot type, the change over time, then lighting and atmosphere.",
     defaultStrength: 1,
@@ -391,6 +416,8 @@ export const LORA_RECIPES = [
       "Improve multi-object motion, physical interactions, and prompt accuracy in generated video.",
     seedPrompt:
       "The soccer player sprints across the field with powerful strides. The camera tracks smoothly, keeping him centered in the frame. Fast footsteps, heavy breathing, and distant crowd cheers fill the scene.",
+    seedNegativePrompt:
+      "extra legs, tangled feet, moonwalking slide, floating above turf, warped limbs, jerky camera shake, blurry jersey, watermark",
     placeholder:
       "Describe what happens over time — object motion, collisions, and how the camera stays framed.",
     defaultStrength: 1,

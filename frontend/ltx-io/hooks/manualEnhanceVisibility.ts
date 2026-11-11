@@ -1,3 +1,4 @@
+import { CUSTOM_LORA_HOME_FEATURE } from "../../lib/custom-lora.ts";
 import { isIcLoraTrackRecipeId } from "../../lib/ic-lora-recipes.ts";
 import { roundDurationSeconds } from "../lib/roundDuration.ts";
 
@@ -10,23 +11,90 @@ export function resolveShowManualEnhance(
   return statusShowManualEnhance ?? false;
 }
 
+/** Desktop live setting wins; Remote uses the setting the status carries. Unknown is off. */
+export function resolveShowNagStrengthControls(
+  liveSetting: boolean | undefined,
+  statusSetting: boolean | undefined,
+): boolean {
+  return liveSetting ?? statusSetting ?? false;
+}
+
+/** A still of a Keyframes form, as Enhance reads it. */
+export type EnhanceKeyframe = { asset: { assetId: string }; frameIndex: number; strength: number };
+
 /**
  * Enhance can run from a typed prompt or from media alone: a start frame is captioned, a
- * source video (IC-LoRA, Extend, Retake) is sampled into stills, and the images of an
- * image-list recipe (Ingredients) are read as panels. Audio alone is not enough.
+ * source video (IC-LoRA, Extend, Retake) is sampled into stills, the images of an
+ * image-list recipe (Ingredients) are read as panels, and the stills of a Keyframes clip are
+ * read at their times. Audio alone is not enough.
  */
 export function hasManualEnhanceInput(input: {
   prompt: string;
   startFrame?: { assetId: string } | null;
   video?: { assetId: string } | null;
   images?: readonly { assetId: string }[] | null;
+  keyframes?: readonly EnhanceKeyframe[] | null;
 }): boolean {
   return (
     input.prompt.trim().length > 0 ||
     Boolean(input.startFrame?.assetId) ||
     Boolean(input.video?.assetId) ||
-    (input.images?.length ?? 0) > 0
+    (input.images?.length ?? 0) > 0 ||
+    (input.keyframes?.length ?? 0) > 0
   );
+}
+
+/**
+ * The stills of a Keyframes form as one text to compare: asset, frame and strength in time
+ * order, then the clip length and frame rate. The rewrite reads all of them: it weights a still
+ * by its strength and names its clock time, which comes from the frame and the frame rate.
+ * Empty for no stills.
+ */
+export function keyframesSignature(
+  keyframes?: readonly EnhanceKeyframe[] | null,
+  timing?: { duration?: unknown; fps?: unknown },
+): string {
+  if (!keyframes || keyframes.length === 0) return "";
+  const stills = [...keyframes]
+    .sort((a, b) => a.frameIndex - b.frameIndex)
+    .map((keyframe) => `${keyframe.asset.assetId}@${keyframe.frameIndex}x${keyframe.strength}`)
+    .join(",");
+  return `${stills}|${String(timing?.duration)}|${String(timing?.fps)}`;
+}
+
+/**
+ * The stills an Enhance request sends for a Keyframes clip, in time order, with the clip timing
+ * the rewrite needs for their clock times. Any other feature has no stills and sends none.
+ */
+export function enhanceKeyframeFields(input: {
+  keyframes?: readonly EnhanceKeyframe[] | null;
+  duration?: unknown;
+  fps?: unknown;
+}):
+  | {
+      keyframeAssets: { assetId: string; frameIndex: number; strength: number }[];
+      duration?: number;
+      fps?: number;
+    }
+  | undefined {
+  if (!input.keyframes || input.keyframes.length === 0) return undefined;
+  const timing =
+    Number.isInteger(input.duration) &&
+    (input.duration as number) > 0 &&
+    Number.isInteger(input.fps) &&
+    (input.fps as number) > 0
+      ? { duration: input.duration as number, fps: input.fps as number }
+      : {};
+  return {
+    keyframeAssets: [...input.keyframes]
+      .sort((a, b) => a.frameIndex - b.frameIndex)
+      .map((keyframe) => ({
+        assetId: keyframe.asset.assetId,
+        frameIndex: keyframe.frameIndex,
+        strength: keyframe.strength,
+      })),
+    ...timing,
+  };
 }
 
 /**
@@ -90,7 +158,7 @@ export function lookImageAssetId(input: {
 
 /**
  * The single image an Enhance request captions: the start frame of Image-to-Video, Audio-to-Video,
- * or a Motion Track recipe, or the look image beside the source video of a video IC-LoRA.
+ * Custom LoRA, or a Motion Track recipe, or the look image beside the source video of a video IC-LoRA.
  */
 export function enhanceImageAssetId(input: {
   featureId: string;
@@ -102,6 +170,8 @@ export function enhanceImageAssetId(input: {
   if (
     input.featureId === "image-to-video" ||
     input.featureId === "audio-to-video" ||
+    // Only an image-to-video custom LoRA holds a start frame. A text-to-video one clears it.
+    input.featureId === CUSTOM_LORA_HOME_FEATURE.id ||
     isIcLoraTrackRecipeId(input.featureId)
   ) {
     return input.startFrame?.assetId;
@@ -115,6 +185,7 @@ export type EnhanceSourceMedia = {
   startFrameAssetId: string | null;
   referenceImageAssetId: string | null;
   panelAssetIds: readonly string[];
+  keyframes: string;
   replacedWindow: { start: number; end: number } | undefined;
 };
 
@@ -124,6 +195,7 @@ export type LiveEnhanceSourceMedia = {
   startFrameAssetId: string | null | undefined;
   referenceImageAssetId: string | null | undefined;
   panelAssetIds: readonly string[] | undefined;
+  keyframes: string | undefined;
   replacedWindow: { start: number; end: number } | undefined;
 };
 
@@ -140,6 +212,7 @@ export function isEnhanceSourceCurrent(
     isSourceVideoCurrent(live.startFrameAssetId, source.startFrameAssetId) &&
     isSourceVideoCurrent(live.referenceImageAssetId, source.referenceImageAssetId) &&
     isPanelListCurrent(live.panelAssetIds, source.panelAssetIds) &&
+    (live.keyframes === undefined || live.keyframes === source.keyframes) &&
     (live.videoAssetId === undefined ||
       isSameReplacedWindow(live.replacedWindow, source.replacedWindow))
   );

@@ -6,12 +6,17 @@ import CloseIcon from "@ds/assets/Icons/Close/Normal.svg?react";
 
 import { EnhanceSplitButton } from "@/components/EnhanceSplitButton";
 import type { EnhanceProvider } from "@/hooks/use-prompt-enhancer-provider";
+import type { ExploreAsset } from "@/lib/explore-contract";
+
+import { MemoryFits } from "../../components/MemoryMeter/MemoryMeter";
 
 import { SettingField } from "./fields/SettingField";
 import { AudioAssetField } from "./fields/AudioAssetField";
 import { ImageAssetField } from "./fields/ImageAssetField";
 import { ImageAssetsField } from "./fields/ImageAssetsField";
+import { KeyframesField } from "./fields/keyframes/KeyframesField";
 import { MotionPathField } from "./fields/MotionPathField";
+import { AdvancedFields } from "./fields/AdvancedFields";
 import { FormSeedField } from "./fields/FormSeedField";
 import { SliderField } from "./fields/SliderField";
 import { VideoAssetField } from "./fields/VideoAssetField";
@@ -23,6 +28,7 @@ import {
 } from "./featureFormDisplay";
 import { ResultsFeed } from "./results/ResultsFeed";
 import { MIN_TRIM_DURATION_SECONDS } from "./trim/trimConstants.ts";
+import { Info } from "../../components/shared/Info/Info";
 import type { EmptyStateAdapter } from "./results/ResultsFeed";
 import type { ResultFrameProps } from "./results/ResultFrame";
 import {
@@ -30,6 +36,7 @@ import {
   readAudioAssetFieldValue,
   readImageAssetFieldValue,
   readImageAssetsFieldValue,
+  readKeyframesFieldValue,
   readMotionPathFieldValue,
   readOptionsFieldValue,
   readSliderFieldValue,
@@ -61,6 +68,13 @@ export type FeatureFormPresentationAdapter<
   ) => ReactNode;
   /** Show image previews at their own aspect ratio, not in a fixed-height box. */
   naturalImagePreview?: boolean;
+  /** An action beside an `image-asset` field's label, such as making the image with AI. */
+  imageAssetAction?: (input: {
+    fieldId: string;
+    label: string;
+    values: FeatureValues<TSchema>;
+    setAsset: (asset: ExploreAsset) => void;
+  }) => ReactNode;
 };
 
 export type VideoAssetRangeBinding<TSchema extends FeatureFieldSchema> = {
@@ -111,7 +125,7 @@ export function FeatureFormView<TSchema extends FeatureFieldSchema>({
   revealedIssues,
   onReset,
   onGenerate,
-  generateLabel = "Generate",
+  generateLabel,
   generateHint,
   isDownloadBusy = false,
   onCancelDownload,
@@ -128,6 +142,7 @@ export function FeatureFormView<TSchema extends FeatureFieldSchema>({
   isUnavailable,
   isCreating,
   actionError,
+  pageId,
   generations,
   isGenerationsLoading,
   isGenerationsFetching,
@@ -142,6 +157,7 @@ export function FeatureFormView<TSchema extends FeatureFieldSchema>({
   audioTrimMinSeconds = MIN_TRIM_DURATION_SECONDS,
   videoRange,
   onPatchValues,
+  negativePromptAccessory,
 }: {
   form: FeatureFormModel<TSchema>;
   values: FeatureValues<TSchema>;
@@ -166,6 +182,8 @@ export function FeatureFormView<TSchema extends FeatureFieldSchema>({
   isUnavailable: boolean;
   isCreating: boolean;
   actionError: ReactNode;
+  /** Names this page for the remembered results scroll position. */
+  pageId: string;
   generations: Generation[];
   isGenerationsLoading: boolean;
   isGenerationsFetching: boolean;
@@ -188,9 +206,22 @@ export function FeatureFormView<TSchema extends FeatureFieldSchema>({
   audioTrimMinSeconds?: number;
   videoRange?: VideoAssetRangeBinding<TSchema>;
   onPatchValues?: (patch: Partial<FeatureValues<TSchema>>) => void;
+  /** Shown under the negative prompt field, e.g. the NAG strength row. */
+  negativePromptAccessory?: ReactNode;
 }) {
   const fieldIssue = (fieldId: string) =>
-    revealedIssues.find((candidate) => candidate.fieldId === fieldId);
+    revealedIssues.find(
+      (candidate) => candidate.fieldId === fieldId && candidate.tone !== "risk",
+    );
+  const memory = isUnavailable ? null : (form.memory ?? null);
+  const memoryFits = isUnavailable || memory != null ? null : (form.memoryFits ?? null);
+  const resolvedGenerateLabel =
+    generateLabel ?? (memory?.over ? "Generate anyway" : "Generate");
+  const resolvedGenerateHint =
+    generateHint ??
+    (memory?.over
+      ? undefined
+      : (memory?.estimatedTimeText ?? form.estimatedTimeText ?? undefined));
   const displayGroups = useMemo(() => {
     const displayFields = presentation?.orderOptionFields
       ? applyOptionFieldOrder(form.fields, presentation.orderOptionFields)
@@ -228,11 +259,25 @@ export function FeatureFormView<TSchema extends FeatureFieldSchema>({
                                 className={styles.fieldLabel}
                               >
                                 {field.label}
+                                {field.helpText ? (
+                                  <Info
+                                    content={field.helpText}
+                                    side="top"
+                                    align="start"
+                                    maxWidth={280}
+                                    size="sm"
+                                  />
+                                ) : null}
                               </Text>
                               <textarea
-                                className={styles.textarea}
+                                className={
+                                  field.compact
+                                    ? `${styles.textarea} ${styles.negativePromptTextarea}`
+                                    : styles.textarea
+                                }
                                 value={String(values[field.dataKey] ?? "")}
                                 placeholder={field.placeholder}
+                                disabled={field.disabledReason != null}
                                 onChange={(event) =>
                                   onFieldChange(
                                     createFeatureFieldChange<
@@ -251,7 +296,12 @@ export function FeatureFormView<TSchema extends FeatureFieldSchema>({
                                 <span className={styles.fieldError}>
                                   {issue.message}
                                 </span>
+                              ) : field.disabledReason ? (
+                                <span className={styles.fieldNotice} role="status">
+                                  {field.disabledReason}
+                                </span>
                               ) : null}
+                              {field.id === "negativePrompt" ? negativePromptAccessory : null}
                               {field.id === "prompt" && showManualEnhance ? (
                                 <div className={styles.promptEnhanceRow}>
                                   <EnhanceSplitButton
@@ -341,6 +391,17 @@ export function FeatureFormView<TSchema extends FeatureFieldSchema>({
                                 ) ?? null
                               }
                               issue={issue}
+                              action={
+                                presentation?.imageAssetAction
+                                  ? ({ setAsset }) =>
+                                      presentation.imageAssetAction?.({
+                                        fieldId: field.id,
+                                        label: field.label,
+                                        values,
+                                        setAsset,
+                                      })
+                                  : undefined
+                              }
                               onChange={(nextValue) =>
                                 onFieldChange(
                                   createFeatureFieldChange<
@@ -379,6 +440,37 @@ export function FeatureFormView<TSchema extends FeatureFieldSchema>({
                                     typeof field.dataKey
                                   >({
                                     kind: "image-assets",
+                                    fieldId: field.id,
+                                    dataKey: field.dataKey,
+                                    value: nextValue,
+                                  }),
+                                )
+                              }
+                            />
+                          </section>
+                        );
+                      }
+                      case "keyframes": {
+                        const field = group.field;
+                        return (
+                          <section
+                            key={field.id}
+                            className={styles.stepSection}
+                          >
+                            <KeyframesField
+                              field={field}
+                              maxCount={field.maxCount}
+                              value={readKeyframesFieldValue(values, field.dataKey)}
+                              duration={Number(readOptionsFieldValue(values, field.durationKey))}
+                              fps={Number(readOptionsFieldValue(values, field.fpsKey))}
+                              issue={fieldIssue(field.id)}
+                              onChange={(nextValue) =>
+                                onFieldChange(
+                                  createFeatureFieldChange<
+                                    TSchema,
+                                    typeof field.dataKey
+                                  >({
+                                    kind: "keyframes",
                                     fieldId: field.id,
                                     dataKey: field.dataKey,
                                     value: nextValue,
@@ -514,6 +606,17 @@ export function FeatureFormView<TSchema extends FeatureFieldSchema>({
                               paths={readMotionPathFieldValue(values, field.dataKey)}
                               duration={Number(readOptionsFieldValue(values, field.durationKey))}
                               issue={fieldIssue(field.id)}
+                              action={
+                                presentation?.imageAssetAction
+                                  ? ({ setAsset }) =>
+                                      presentation.imageAssetAction?.({
+                                        fieldId: field.imageKey,
+                                        label: field.label,
+                                        values,
+                                        setAsset,
+                                      })
+                                  : undefined
+                              }
                               onChange={(edit) =>
                                 onFieldChange(
                                   ...("image" in edit
@@ -559,10 +662,21 @@ export function FeatureFormView<TSchema extends FeatureFieldSchema>({
                     }
                   })}
 
+                  {isUnavailable ? null : (
+                    <AdvancedFields
+                      fields={form.advancedFields ?? []}
+                      values={values}
+                      revealedIssues={revealedIssues}
+                      onFieldChange={onFieldChange}
+                    />
+                  )}
                   <FormSeedField />
                   </div>
 
                   <div className={styles.stepActions}>
+                    {memoryFits ? (
+                      <MemoryFits model={memoryFits} />
+                    ) : null}
                     <div className={styles.stepActionsRow}>
                       <Button
                         appearance="neutral"
@@ -577,7 +691,7 @@ export function FeatureFormView<TSchema extends FeatureFieldSchema>({
                           appearance="brand"
                           hierarchy="primary"
                           size="lg"
-                          label={generateLabel}
+                          label={resolvedGenerateLabel}
                           isLoading={isCreating && !isDownloadBusy}
                           leftIcon={
                             isDownloadBusy ? (
@@ -597,14 +711,14 @@ export function FeatureFormView<TSchema extends FeatureFieldSchema>({
                           }
                           className={styles.generateButton}
                         />
-                        {generateHint ? (
+                        {resolvedGenerateHint ? (
                           <Text
                             as="span"
                             variant="body"
                             size="sm"
                             className={styles.generateHint}
                           >
-                            {generateHint}
+                            {resolvedGenerateHint}
                           </Text>
                         ) : null}
                       </div>
@@ -624,6 +738,10 @@ export function FeatureFormView<TSchema extends FeatureFieldSchema>({
 
                 <div className={styles.stepOutput}>
                   <ResultsFeed
+                    // One feed for each page. Saved custom LoRAs share one route, so this feed
+                    // stays mounted between them. The key restarts its scroll and result state.
+                    key={pageId}
+                    pageId={pageId}
                     generations={generations}
                     isLoading={isGenerationsLoading}
                     isFetching={isGenerationsFetching}

@@ -1,5 +1,4 @@
 import { Button } from "@ds/Button/Button";
-import RemoveIcon from "@ds/assets/Icons/Remove.svg?react";
 import { useTheme } from "@ds/styles/themes/useTheme";
 import * as Dialog from "@radix-ui/react-dialog";
 import { ChevronLeft, ChevronRight, FolderOpen, X } from "lucide-react";
@@ -13,27 +12,21 @@ import {
 
 import type { ExploreListedAsset } from "@/lib/explore-contract";
 import { revealInFolderLabel } from "@/lib/revealInFolderLabel";
-import { useModalContext } from "@/ltx-io/components/shared/Modal/ModalContext";
 import { useAssetDownload } from "@/ltx-io/hooks/useAssetDownload";
 import { useExploreRuntime } from "@/ltx-io/runtime/ExploreRuntime";
 import { isAlphaWebmMime } from "@/ltx-io/screens/Feature/results/cutout/cutoutOutput";
 
-import { AssetDeleteConfirmation, OverlayButton } from "./AssetTileActions";
+import { AssetDeleteButton, OverlayButton } from "./AssetTileActions";
 import styles from "./AssetsLightbox.module.scss";
 import { AssetsLightboxAudio } from "./AssetsLightboxAudio";
 import { AssetsLightboxVideo } from "./AssetsLightboxVideo";
 import { resolveAssetLibraryFileAction } from "./assetLibraryFileAction";
 import {
-  ASSETS_DELETE_CONFIRM_DESCRIPTION,
-  ASSETS_DELETE_CONFIRM_TITLE,
-  ASSETS_IN_USE_DESCRIPTION,
-  ASSETS_IN_USE_TITLE,
-} from "./assetsCopy";
-import {
   type LightboxArrowKeyTarget,
   findLightboxAssetIndex,
   lightboxMediaKey,
   nextLightboxIndex,
+  resolveLightboxIndex,
   shouldHandleLightboxArrowKey,
 } from "./lightboxCollection";
 import {
@@ -41,7 +34,6 @@ import {
   isLightboxSwipeIgnoredTarget,
   swipeGalleryDirection,
 } from "./lightboxSwipe";
-import { isAssetDeleteInUseError } from "./useDeleteAsset";
 
 const BLOCKED_ARROW_TARGET_SELECTOR = [
   "audio",
@@ -98,90 +90,38 @@ function LightboxMedia({
   }
 }
 
-function LightboxDeleteButton({
-  asset,
-  onDelete,
-  isDeletePending,
-}: {
-  asset: ExploreListedAsset;
-  onDelete: (assetId: string) => Promise<void>;
-  isDeletePending: boolean;
-}) {
-  const { hideConfirmation, showConfirmation } = useModalContext();
-  const isDeleteSubmittingRef = useRef(false);
-
-  const showInUseConfirmation = () => {
-    showConfirmation({
-      confirmationName: "asset-delete-in-use",
-      content: (
-        <AssetDeleteConfirmation
-          title={ASSETS_IN_USE_TITLE}
-          description={ASSETS_IN_USE_DESCRIPTION}
-          onDismiss={() => hideConfirmation("done")}
-        />
-      ),
-    });
-  };
-
-  const showDeleteConfirmation = () => {
-    if (isDeletePending) return;
-    showConfirmation({
-      confirmationName: "asset-delete-confirm",
-      content: (
-        <AssetDeleteConfirmation
-          title={ASSETS_DELETE_CONFIRM_TITLE}
-          description={ASSETS_DELETE_CONFIRM_DESCRIPTION}
-          onDismiss={() => hideConfirmation("cancel")}
-          onConfirm={() => {
-            if (isDeleteSubmittingRef.current) {
-              hideConfirmation("confirm");
-              return;
-            }
-            isDeleteSubmittingRef.current = true;
-            hideConfirmation("confirm");
-            void onDelete(asset.id)
-              .catch((error: unknown) => {
-                if (isAssetDeleteInUseError(error)) showInUseConfirmation();
-              })
-              .finally(() => {
-                isDeleteSubmittingRef.current = false;
-              });
-          }}
-        />
-      ),
-    });
-  };
-
-  return (
-    <OverlayButton
-      label={asset.in_use ? "Used as an input" : "Delete file"}
-      icon={<RemoveIcon />}
-      disabled={asset.in_use || isDeletePending}
-      onClick={showDeleteConfirmation}
-    />
-  );
-}
-
 export function AssetsLightbox({
   items,
   activeAssetId,
+  activeIndex,
   hasNextPage = false,
   isFetchingNextPage = false,
   onFetchNextPage = async () => undefined,
   onActiveAssetIdChange = () => undefined,
+  onActiveIndexChange,
   onClose,
   onDeleteAsset,
   pendingDeleteAssetIds,
+  allowReveal = true,
 }: {
   items: ExploreListedAsset[];
   activeAssetId: string;
+  /**
+   * The position of the active item. Pass it when `items` can hold one asset more than once, because
+   * an id then matches the first copy only. Without it, the id picks the item.
+   */
+  activeIndex?: number;
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
   onFetchNextPage?: () => Promise<unknown>;
   onActiveAssetIdChange?: (assetId: string) => void;
+  /** Called with the new position when the user steps. Use it with `activeIndex`. */
+  onActiveIndexChange?: (index: number) => void;
   onClose: () => void;
   onDeleteAsset?: (assetId: string) => Promise<void>;
   pendingDeleteAssetIds?: ReadonlySet<string>;
+  /** Set to false for a preview of an input, where the button to open the file in the file manager has no use. */
+  allowReveal?: boolean;
 }) {
   const runtime = useExploreRuntime();
   const download = useAssetDownload();
@@ -191,7 +131,7 @@ export function AssetsLightbox({
   const [pendingNextFromAssetId, setPendingNextFromAssetId] = useState<string | null>(
     null,
   );
-  const index = findLightboxAssetIndex(items, activeAssetId);
+  const index = resolveLightboxIndex(items, activeAssetId, activeIndex);
   const asset = index >= 0 ? items[index] : undefined;
   const gallerySize = items.length;
   const mediaUrl = asset ? runtime.mediaUrlForAsset(asset) : null;
@@ -245,13 +185,17 @@ export function AssetsLightbox({
     if (!previousItem) return;
     setPendingNextFromAssetId(null);
     onActiveAssetIdChange(previousItem.id);
-  }, [index, items, onActiveAssetIdChange]);
+    onActiveIndexChange?.(index - 1);
+  }, [index, items, onActiveAssetIdChange, onActiveIndexChange]);
 
   const goNext = useCallback(() => {
     switch (nextAction) {
       case "next": {
         const nextItem = items[index + 1];
-        if (nextItem) onActiveAssetIdChange(nextItem.id);
+        if (nextItem) {
+          onActiveAssetIdChange(nextItem.id);
+          onActiveIndexChange?.(index + 1);
+        }
         return;
       }
       case "fetch":
@@ -265,7 +209,15 @@ export function AssetsLightbox({
         return _exhaustive;
       }
     }
-  }, [activeAssetId, index, items, nextAction, onActiveAssetIdChange, onFetchNextPage]);
+  }, [
+    activeAssetId,
+    index,
+    items,
+    nextAction,
+    onActiveAssetIdChange,
+    onActiveIndexChange,
+    onFetchNextPage,
+  ]);
 
   const handleSwipePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -365,13 +317,13 @@ export function AssetsLightbox({
             </Dialog.Description>
             <div className={styles.header} data-lightbox-chrome>
               {runtime.deleteAsset !== null && onDeleteAsset ? (
-                <LightboxDeleteButton
+                <AssetDeleteButton
                   asset={asset}
                   onDelete={onDeleteAsset}
                   isDeletePending={pendingDeleteAssetIds?.has(asset.id) ?? false}
                 />
               ) : null}
-              {fileAction.kind === "reveal" ? (
+              {allowReveal && fileAction.kind === "reveal" ? (
                 <OverlayButton
                   label={revealInFolderLabel()}
                   icon={<FolderOpen />}

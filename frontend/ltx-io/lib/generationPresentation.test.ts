@@ -20,6 +20,25 @@ function videoOutput(width: number, height: number): ExploreAsset {
   };
 }
 
+describe("generationPresentation label of a custom LoRA run", () => {
+  const run = (params: Record<string, unknown>, feature = "custom-lora") =>
+    generationPresentation({ id: "g", feature, status: "queued", spec: { params } }).label;
+
+  it("is the name the user gave the LoRA, for a desktop run and a remote run", () => {
+    assert.equal(run({ loras: [{ ref: "r", scale: 1, customLoraId: "a", displayName: "01" }] }), "01");
+    assert.equal(run({ customLoraId: "a", customLoraName: "02", scale: 1 }), "02");
+  });
+
+  it("falls back to the feature title when the run has no name", () => {
+    assert.equal(run({ loras: [{ ref: "r", scale: 1, customLoraId: "a" }] }), "Custom LoRA");
+    assert.equal(run({ customLoraName: "  " }), "Custom LoRA");
+  });
+
+  it("does not rename another feature that carries a LoRA name", () => {
+    assert.equal(run({ loras: [{ displayName: "Cozy" }] }, "cozy-felt"), "Cozy Felt");
+  });
+});
+
 describe("generationPresentation", () => {
   it("derives prompt, badges, and image input asset IDs from a generation", () => {
     const presentation = generationPresentation({
@@ -233,5 +252,53 @@ describe("generationPresentation", () => {
     });
     assert.deepEqual(withString.badges, ["720p", "4s"]);
     assert.deepEqual(withoutString.badges, ["4s"]);
+  });
+
+  it("keeps the snapshotted bet line on the queue tooltip and off the badge text", () => {
+    const presentation = generationPresentation({
+      feature: "text-to-video",
+      status: "queued",
+      spec: { params: { prompt: "p", resolution: "1080p", duration: 10 } },
+      risk: {
+        tier: "over",
+        message: "Over budget: this needs 14.1 GB but this machine's graphics card has 12.0 GB.",
+        readout: { kind: "gpu", need_gb: 14.1, have_gb: 12 },
+      },
+    });
+    assert.equal(presentation.badges.includes("Over budget"), false);
+    assert.equal(
+      presentation.riskTooltip,
+      "Queued despite a warning. Needs 14.1 GB. This GPU has 12 GB.",
+    );
+    assert.equal(
+      generationPresentation({
+        feature: "text-to-video",
+        status: "queued",
+        spec: { params: { prompt: "p" } },
+      }).riskTooltip,
+      null,
+    );
+  });
+});
+
+describe("generationPresentation input images of a Keyframes run", () => {
+  it("lists the stills in time order, not in the order they were added", () => {
+    const presentation = generationPresentation({
+      id: "g",
+      feature: "keyframes",
+      status: "queued",
+      spec: {
+        params: { prompt: "p" },
+        inputs: {
+          keyframes: [
+            { assetId: "late", frameIndex: 96, strength: 1 },
+            { assetId: "early", frameIndex: 0, strength: 1 },
+          ],
+        },
+      },
+    });
+
+    assert.deepEqual(presentation.inputAssetIds, ["early", "late"]);
+    assert.deepEqual(presentation.imageInputAssetIds, ["early", "late"]);
   });
 });

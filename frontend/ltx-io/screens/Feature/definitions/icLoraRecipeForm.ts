@@ -14,14 +14,35 @@ import {
   IC_LORA_CONTROL_TYPES,
   type IcLoraControlType,
 } from "../../../lib/icLoraControlType.ts";
-import type { FeatureFormField, FeatureFormModel, FieldOption } from "../types.ts";
+import type {
+  AdvancedFormField,
+  FeatureFormField,
+  FeatureFormModel,
+  FieldOption,
+} from "../types.ts";
 import { icLoraFpsOptions, icLoraMaxInputSeconds, icLoraOutputFps } from "./icLoraFps.ts";
+import { icLoraFitsModel, icLoraMeterModel } from "./icLoraMemory.ts";
 import { icLoraResolutionOptions } from "./icLoraResolution.ts";
+import {
+  AUTO_NUMBER,
+  AUTO_TILE,
+  CHUNK_CARRY_TOOLTIP,
+  CHUNK_LENGTH_TOOLTIP,
+  TILE_SIZE_TOOLTIP,
+  TILING_OVERLAP_TOOLTIP,
+} from "./icLoraTilingControls.ts";
+import {
+  carryOptions,
+  overlapOptions,
+  tileSizeOptions,
+  windowFrameOptions,
+} from "./icLoraTileOptions.ts";
 import type {
   IcLoraRecipeContext,
   IcLoraRecipeSchema,
   IcLoraRecipeValues,
 } from "./icLoraRecipe.ts";
+import { negativePromptField } from "./negativePrompt.ts";
 import { capabilityModelOptions } from "./videoFeature.ts";
 
 export const IC_LORA_AUDIO_MODES = ["source", "generated", "off"] as const;
@@ -92,12 +113,79 @@ function shownUnless<TField>(hidden: boolean, field: TField): TField[] {
   return hidden ? [] : [field];
 }
 
+/** The recipe text when it sets one, otherwise the generic Advanced tooltip. */
+function tilingTooltip(
+  recipe: IcLoraRecipe,
+  key: keyof NonNullable<IcLoraRecipe["tilingTooltips"]>,
+  generic: string,
+): string {
+  return recipe.tilingTooltips?.[key] ?? generic;
+}
+
+/**
+ * The Advanced section of a recipe with `tilingControls`. Empty until the catalog says the window
+ * is adaptive. Every control starts on Auto, which the form stores as null (the tile size stores
+ * "auto"), so the control shows its `defaultValue`.
+ */
+function tilingFields(
+  recipe: IcLoraRecipe,
+  context: IcLoraRecipeContext,
+): AdvancedFormField<IcLoraRecipeSchema>[] {
+  if (recipe.tilingControls !== true || context.tilingAdaptive !== true) return [];
+  return [
+    {
+      kind: "options",
+      id: "tilingOverlap",
+      label: "Tile overlap",
+      dataKey: "tilingOverlap",
+      tooltip: tilingTooltip(recipe, "overlap", TILING_OVERLAP_TOOLTIP),
+      defaultValue: AUTO_NUMBER,
+      forcePicker: true,
+      options: overlapOptions(context),
+    },
+    {
+      kind: "options",
+      id: "carryFrames",
+      label: "Chunk carry",
+      dataKey: "carryFrames",
+      tooltip: tilingTooltip(recipe, "carry", CHUNK_CARRY_TOOLTIP),
+      defaultValue: AUTO_NUMBER,
+      forcePicker: true,
+      options: carryOptions(context),
+    },
+    {
+      kind: "options",
+      id: "maxWindowFrames",
+      label: "Maximum chunk length",
+      dataKey: "maxWindowFrames",
+      tooltip: tilingTooltip(recipe, "chunkLength", CHUNK_LENGTH_TOOLTIP),
+      defaultValue: AUTO_NUMBER,
+      forcePicker: true,
+      options: windowFrameOptions(context),
+    },
+    {
+      kind: "options",
+      id: "tilingSize",
+      label: "Tile size",
+      dataKey: "tilingSize",
+      tooltip: tilingTooltip(recipe, "tileSize", TILE_SIZE_TOOLTIP),
+      defaultValue: AUTO_TILE,
+      forcePicker: true,
+      options: tileSizeOptions(context),
+    },
+  ];
+}
+
 export function icLoraRecipeForm(
   recipe: IcLoraRecipe,
   values: IcLoraRecipeValues,
   context: IcLoraRecipeContext,
 ): FeatureFormModel<IcLoraRecipeSchema> {
   const fpsOptions = context.videoFps == null ? [] : icLoraFpsOptions(context.videoFps);
+  const advice = context.recipeMemory ?? null;
+  // No clip yet: the job's size and length are unknown, so the form says which cells fit.
+  const hasClip =
+    values.video != null && context.videoWidth != null && context.videoHeight != null;
   const videoField = {
     kind: "video-asset" as const,
     id: "video" as const,
@@ -120,6 +208,7 @@ export function icLoraRecipeForm(
           },
         ];
   return {
+    advancedFields: tilingFields(recipe, context),
     fields: [
       // The start frame comes first on ltx.io's control-mode form, then the guide clip.
       ...(recipe.controlMode ? [...imageFields, videoField] : [videoField, ...imageFields]),
@@ -130,6 +219,10 @@ export function icLoraRecipeForm(
         dataKey: "prompt" as const,
         placeholder: recipe.placeholder,
       }),
+      ...shownUnless(
+        isIcLoraFieldHidden(recipe, "prompt"),
+        negativePromptField<IcLoraRecipeSchema>(),
+      ),
       {
         kind: "options",
         id: "resolution",
@@ -180,5 +273,10 @@ export function icLoraRecipeForm(
         })),
       }),
     ],
+    memory: advice != null && hasClip ? icLoraMeterModel(advice) : null,
+    memoryFits:
+      advice != null && !hasClip
+        ? icLoraFitsModel(advice, values.resolution, icLoraOutputFps(values.fps, context.videoFps))
+        : null,
   };
 }

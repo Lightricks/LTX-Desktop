@@ -2,8 +2,8 @@ import { type ReactNode, createContext, useContext } from "react";
 
 import type { EnhanceProvider } from "@/hooks/use-prompt-enhancer-provider";
 import type { ApiSuccessOf, BoundApiClient } from "@/lib/api-client";
+import type { BudgetMode } from "@/lib/budget-risk";
 import type { ExploreAsset, ExploreListedAsset } from "@/lib/explore-contract";
-
 import type { MicrophoneAccess } from "@/ltx-io/media/microphone/types";
 
 import type { PackagedExploreSeedId } from "../assets/packaged-explore-assets";
@@ -24,6 +24,7 @@ export type ExploreApi = Pick<
   BoundApiClient,
   | "getGenerateVideoModelSpecs"
   | "getFeatureFlags"
+  | "getUiPreferences"
   | "updateFeatureFlags"
   | "listGenerations"
   | "listRecentFeatures"
@@ -39,13 +40,28 @@ export type ExploreApi = Pick<
   | "markGenerationQueueDoneSeen"
   | "dismissGenerationQueueDone"
   | "createTextToVideo"
+  | "createTextToImage"
+  | "getImageGenerationStatus"
   | "createImageToVideo"
+  | "createKeyframes"
   | "createLoraRecipe"
+  | "createCustomLora"
+  // Custom LoRA. List works on both hosts. Import, delete, and putting weights back exist on Desktop only.
+  | "listCustomLoras"
+  | "importCustomLora"
+  | "getCustomLoraLinkInfo"
+  | "getCustomLoraImportProgress"
+  | "getCustomLoraImportActive"
+  | "deleteCustomLora"
+  | "deleteCustomLoraWeights"
+  | "restoreCustomLoraWeights"
   | "createAudioToVideo"
   | "createRetake"
   | "createExtend"
   | "preflightEdit"
+  | "icLoraRecipeMemory"
   | "createIcLoraRecipe"
+  | "preflightIcLoraRecipe"
   | "listIcLoras"
   | "startIcLoraDownload"
   | "getIcLoraDownloadProgress"
@@ -88,7 +104,8 @@ export type ExploreApi = Pick<
 >;
 
 export type ExploreAssistantProvider = "gemini" | "local";
-export type ExploreAssistantLocalModel = ApiSuccessOf<"getAssistantSelection">["local_model"];
+export type ExploreAssistantLocalModel =
+  ApiSuccessOf<"getAssistantSelection">["local_model"];
 
 /**
  * Desktop's live assistant settings. Remote omits this and reads and sets the
@@ -99,7 +116,10 @@ export type ExploreAssistantSettings = {
   localModel: ExploreAssistantLocalModel;
   geminiModel: string;
   hasGeminiApiKey: boolean;
-  select: (provider: ExploreAssistantProvider, localModel?: ExploreAssistantLocalModel) => Promise<void>;
+  select: (
+    provider: ExploreAssistantProvider,
+    localModel?: ExploreAssistantLocalModel,
+  ) => Promise<void>;
   /** A select is saving, from Settings or the composer. */
   switching: boolean;
   /** With a fix, opens where that fix is made; otherwise the Assistant section. */
@@ -157,6 +177,22 @@ export type ExploreCatalogInstall = {
   openHuggingFaceAuth: (params: HuggingFaceAuthParams) => Promise<boolean>;
 };
 
+/**
+ * Add and delete custom LoRAs. Desktop only: the weights are copied or downloaded into the
+ * models folder on this computer. Remote leaves it unset, so the phone can run a saved LoRA
+ * and cannot add or delete one.
+ */
+export type ExploreCustomLoraImport = {
+  /** Show the file dialog. Returns the picked path, or `null` when the user cancels. */
+  pickWeightsFile: () => Promise<string | null>;
+  /** Show the image dialog. Returns the picked path, or `null` when the user cancels. */
+  pickCoverFile: () => Promise<string | null>;
+  /** The path of a file the user dropped, or `null` when this computer cannot read it. */
+  pathForDroppedFile: (file: File) => string | null;
+  /** The size of a file the user just picked, or `null` when it cannot be read. */
+  fileSize: (filePath: string) => Promise<number | null>;
+};
+
 export type ExploreRuntime = {
   askAssistant?: (assetId: string) => void;
   assistantSettings?: ExploreAssistantSettings;
@@ -165,9 +201,22 @@ export type ExploreRuntime = {
    * Desktop settings value, so a mode toggle refetches specs. Remote omits it
    * and renders whatever the specs payload echoes.
    */
-  budgetMode?: "standard" | "reckless";
-  /** True while Desktop is saving Reckless mode. Generate stays off until it lands. */
+  budgetMode?: BudgetMode;
+  /** True while Desktop is saving the budget mode. Generate stays off until it lands. */
   budgetModeSaving?: boolean;
+  /** Desktop setting: show the Advanced section of Refine Details. Remote omits it and reads it from the host. */
+  advancedControls?: boolean;
+  /** Desktop's "Never split into parts", like `budgetMode`: specs are priced with it. */
+  neverSplitIntoParts?: boolean;
+  neverSplitSaving?: boolean;
+  /**
+   * Desktop's persisted "don't ask again" for risky generates. Remote omits
+   * it, so the phone always confirms and offers no opt-out.
+   */
+  budgetRiskConfirm?: {
+    skip: boolean;
+    setSkip: (skip: boolean) => void;
+  };
   api: ExploreApi;
   wsUrl: (path: string) => Promise<string>;
   mediaInput: ExploreMediaInput;
@@ -193,10 +242,14 @@ export type ExploreRuntime = {
    * recipe preflight lists catalog status but must not offer Sign in / Download.
    */
   catalogInstall: ExploreCatalogInstall | null;
+  /** Desktop only. `undefined` on Remote. */
+  customLoraImport?: ExploreCustomLoraImport;
   audioSourceUrl: (asset: ExploreAsset) => Promise<ExploreAudioSource>;
   mediaUrlForAsset: (asset: ExploreMediaAsset) => string | null;
   thumbUrlForAsset: (asset: ExploreAsset) => string | null;
   waveformUrlForAsset: (asset: ExploreMediaAsset) => Promise<string | null>;
+  /** Which app runs this screen. Copy that names a place to fix a problem follows it. */
+  host: "desktop" | "remote";
   revealInFolder: ((filePath: string) => void) | null;
   hoverPreview: boolean;
   deleteAsset: ((assetId: string) => Promise<void>) | null;
@@ -211,6 +264,16 @@ export type ExploreRuntime = {
    * Remote omits this — the phone cannot read Settings.
    */
   usesLtxApiTextEncoding?: boolean;
+  /**
+   * Desktop: non-null when NAG negative prompt guidance will be skipped
+   * (API text encoding active, Torch Compile enabled, or NAG scale set to 0).
+   */
+  nagUnavailableReason?: string | null;
+  /**
+   * Desktop: the live "show negative prompt strength" setting. Remote omits it and reads
+   * the same setting from the prompt enhancer status.
+   */
+  showNagStrengthControls?: boolean;
   /**
    * Desktop only. Opens Settings on the API Keys tab and focuses the LTX key.
    * Remote has no Settings modal, so this stays unset.

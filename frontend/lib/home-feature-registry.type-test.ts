@@ -69,11 +69,13 @@ const icLoraDesktopOnly = Object.fromEntries(
 const optOutRegistry = {
   "text-to-video": { screen: HostStub, remote: true },
   "image-to-video": { screen: HostStub, remote: false },
+  keyframes: { screen: HostStub, remote: false },
   "audio-to-video": { screen: HostStub, remote: false },
   retake: { screen: HostStub, remote: false },
   extend: { screen: HostStub, remote: false },
   ...icLoraDesktopOnly,
   ...loraDesktopOnly,
+  "custom-lora": { screen: HostStub, remote: false },
 } as const satisfies Record<HomeFeatureId, HomeFeatureHostEntry>;
 
 const optOutOmitsDesktopOnly: Expect<

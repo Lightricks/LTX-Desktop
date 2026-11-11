@@ -18,6 +18,11 @@
   box-sizing: border-box;
 }
 
+// Sub-item of the row above it (for example "Faster Fast decode" under "Fast decode").
+.preferenceRowNested {
+  padding-left: var(--spacing-xl);
+}
+
 .preferenceRowCopy {
   display: flex;
   flex-direction: column;

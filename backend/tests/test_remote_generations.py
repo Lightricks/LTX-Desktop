@@ -22,6 +22,10 @@ AUTH = {"Authorization": "Bearer pair-token"}
 _APPROVED_PARAM_KEYS = frozenset(
     {
         "prompt",
+        "negativePrompt",
+        "nagScale",
+        "nagAlpha",
+        "nagTau",
         "model",
         "resolution",
         "duration",
@@ -33,6 +37,10 @@ _APPROVED_PARAM_KEYS = frozenset(
         "mode",
         "startTime",
         "seed",
+        "passShape",
+        "width",
+        "height",
+        "provider",
     }
 )
 _SECRET_PATHS = (
@@ -190,10 +198,12 @@ def test_recent_features_match_on_desktop_and_remote(test_state) -> None:
     older = store.insert_generation("text-to-video", _spec("older"))
     newer = store.insert_generation("extend", _spec("newer"))
     hidden = store.insert_generation("desktop-only-feature", _spec("hidden"))
+    # Bug caught: a newer image job takes a Recently used slot, but has no Home screen to reopen.
+    image = store.insert_generation("text-to-image", _spec("image"))
     conn = sqlite3.connect(test_state.config.app_data_dir / "store.sqlite3")
     conn.executemany(
         "UPDATE generations SET created_at = ? WHERE id = ?",
-        [(1, older.id), (2, newer.id), (3, hidden.id)],
+        [(1, older.id), (2, newer.id), (3, hidden.id), (4, image.id)],
     )
     conn.commit()
     conn.close()
@@ -212,6 +222,40 @@ def test_recent_features_match_on_desktop_and_remote(test_state) -> None:
     assert remote_open.status_code == 401
     assert desktop_recent.json() == ["extend", "text-to-video"]
     assert remote_recent.json() == desktop_recent.json()
+
+
+def test_remote_creates_text_to_image_and_projects_only_form_fields(test_state) -> None:
+    test_state.state.app_settings.fal_api_key = "fal-key"
+    app = create_remote_app(handler=test_state, remote_token="pair-token")
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/generations/text-to-image",
+            headers=AUTH,
+            json={
+                "params": {
+                    "prompt": "a fox",
+                    "width": 1000,
+                    "height": 768,
+                    "provider": "fal",
+                }
+            },
+        )
+        fetched = client.get(f"/api/generations/{created.json()['id']}", headers=AUTH)
+
+    assert created.status_code == 200, created.text
+    body = created.json()
+    assert body["feature"] == "text-to-image"
+    assert body["spec"]["params"] == {
+        "prompt": "a fox",
+        "promptProvenance": "typed",
+        "width": 992,
+        "height": 768,
+        "provider": "fal",
+    }
+    assert "inputs" not in body["spec"]
+    _assert_no_path_keys(body)
+    assert fetched.status_code == 200
+    assert fetched.json()["feature"] == "text-to-image"
 
 
 def test_remote_creates_lora_recipe_and_strips_ref(
@@ -428,10 +472,15 @@ def test_remote_generation_openapi_is_queued_only(test_state) -> None:
         "/api/generation-seed": ["get", "post"],
         "/api/generations": ["get"],
         "/api/generations/audio-to-video": ["post"],
+        "/api/generations/custom-lora": ["post"],
+        "/api/generations/text-to-image": ["post"],
         "/api/generations/edit/preflight": ["post"],
         "/api/generations/extend": ["post"],
         "/api/generations/ic-lora-recipes/{recipe_id}": ["post"],
+        "/api/generations/ic-lora-recipes/{recipe_id}/memory": ["post"],
+        "/api/generations/ic-lora-recipes/{recipe_id}/preflight": ["post"],
         "/api/generations/image-to-video": ["post"],
+        "/api/generations/keyframes": ["post"],
         "/api/generations/recipes/{recipe_id}": ["post"],
         "/api/generations/recent-features": ["get"],
         "/api/generations/retake": ["post"],
@@ -490,7 +539,7 @@ def test_remote_queue_snapshot_excludes_desktop_file_paths(
 
     assert snapshot.status_code == 200, snapshot.text
     body = snapshot.json()
-    assert body["active"] is None
+    assert body["active"] == []
     assert body["done"] == []
     assert body["failed"] == []
     assert body["unseen_ids"] == []
@@ -500,6 +549,24 @@ def test_remote_queue_snapshot_excludes_desktop_file_paths(
     _assert_remote_asset_payload(body["queued"][0]["input_assets"][0])
     _assert_no_path_keys(body)
     _assert_no_secret_paths(body)
+
+
+def test_remote_snapshot_hides_a_running_job_of_a_feature_the_remote_may_not_see(
+    test_state,
+) -> None:
+    # Bug caught: the new "active" list skips the feature filter and leaks a desktop-only job.
+    store = _store(test_state)
+    hidden = store.insert_generation("desktop-only-feature", _spec("hidden"))
+    claimed = store.claim_next_queued("local")
+    assert claimed is not None and claimed.id == hidden.id
+    app = create_remote_app(handler=test_state, remote_token="pair-token")
+
+    with TestClient(app) as client:
+        snapshot = client.get("/api/generation-queue", headers=AUTH)
+
+    assert snapshot.status_code == 200, snapshot.text
+    assert snapshot.json()["active"] == []
+    assert hidden.id not in snapshot.text
 
 
 def test_remote_reorder_returns_path_free_queue_snapshot(
@@ -528,7 +595,7 @@ def test_remote_reorder_returns_path_free_queue_snapshot(
     assert reordered.status_code == 200, reordered.text
     body = reordered.json()
     assert "id" not in body
-    assert body["active"] is None
+    assert body["active"] == []
     assert [entry["generation"]["id"] for entry in body["queued"]] == [
         second.id,
         first.id,
@@ -602,7 +669,10 @@ def _assert_remote_asset_payload(payload: object) -> dict[str, object]:
     return payload
 
 
-def test_remote_create_t2v_keeps_form_fields_and_drops_lora_refs(test_state) -> None:
+def test_remote_create_t2v_keeps_form_fields_and_drops_lora_refs(
+    test_state, create_fake_model_files
+) -> None:
+    create_fake_model_files()
     app = create_remote_app(handler=test_state, remote_token="pair-token")
     with TestClient(app) as client:
         created = client.post(
@@ -641,6 +711,10 @@ def test_remote_create_t2v_keeps_form_fields_and_drops_lora_refs(test_state) -> 
     params = body["spec"]["params"]
     assert params == {
         "prompt": "a fox on a beach",
+        "negativePrompt": "blurry",
+        "nagScale": 11.0,
+        "nagAlpha": 0.25,
+        "nagTau": 2.5,
         "model": "ltx-2.5-fast",
         "aspectRatio": "16:9",
         "resolution": "720p",
@@ -648,6 +722,7 @@ def test_remote_create_t2v_keeps_form_fields_and_drops_lora_refs(test_state) -> 
         "fps": 24,
         "scale": 0.5,
         "promptProvenance": "typed",
+        "passShape": "auto",
     }
     assert set(params) <= _APPROVED_PARAM_KEYS
     assert "inputs" not in body["spec"]
@@ -757,6 +832,7 @@ def test_remote_create_i2v_keeps_asset_ids_for_form_restore(
         "duration": 8,
         "fps": 50,
         "promptProvenance": "typed",
+        "passShape": "auto",
     }
     assert body["spec"]["inputs"] == {
         "startFrame": {"assetId": start["id"]},
@@ -1037,6 +1113,42 @@ def test_remote_projects_an_integer_seed_and_drops_other_values(test_state) -> N
     assert seeded_body["spec"]["params"]["seed"] == 1234
     assert "seed" not in junk_body["spec"]["params"]
     _assert_no_secret_paths(junk_body)
+
+
+def test_remote_keeps_the_advanced_tiling_choices_so_reuse_restores_the_run(test_state) -> None:
+    tiling: dict[str, JsonValue] = {
+        "tilingOverlap": 0.25,
+        "carryFrames": 41,
+        "tilingSize": "large",
+        "maxWindowFrames": 97,
+    }
+    store = _store(test_state)
+    saved = store.insert_generation(
+        "refine-details", {"params": {"prompt": "fox", **tiling}, "inputs": {}}
+    )
+    damaged = store.insert_generation(
+        "refine-details",
+        {
+            "params": {
+                "prompt": "fox",
+                "tilingOverlap": 9,
+                "carryFrames": 3,
+                "tilingSize": "/Users/me/secret",
+                "maxWindowFrames": 5,
+            },
+            "inputs": {},
+        },
+    )
+    app = create_remote_app(handler=test_state, remote_token="pair-token")
+    with TestClient(app) as client:
+        saved_body = client.get(f"/api/generations/{saved.id}", headers=AUTH).json()
+        damaged_body = client.get(f"/api/generations/{damaged.id}", headers=AUTH)
+
+    assert {key: saved_body["spec"]["params"][key] for key in tiling} == tiling
+    # A stored value out of range is dropped, never a 500 that hides the whole generation.
+    assert damaged_body.status_code == 200
+    assert not tiling.keys() & damaged_body.json()["spec"]["params"].keys()
+    _assert_no_secret_paths(damaged_body.json())
 
 
 def test_remote_get_strips_nested_path_like_spec_values(

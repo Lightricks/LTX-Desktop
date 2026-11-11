@@ -19,12 +19,16 @@ from api_types import (
     GenerateImageCompleteResponse,
     GenerateImageRequest,
     GenerateImageResponse,
+    ImageGenerationStatusResponse,
 )
 from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
+from runtime_config.model_download_specs import IMG_GEN_MODEL_CP_ID, is_cp_downloaded
+from services.features.image.grid import floor_to_image_grid
+from services.features.image.text_to_image import image_generation_status
 from services.generation_interrupt import is_cancel_exception
-from services.interfaces import ZitAPIClient
+from services.interfaces import ImageGenerationPipeline, ZitAPIClient
 from server_utils.heartbeat import log_heartbeat
 from server_utils.media_validation import validate_image_file
 from server_utils.oriented_image import open_oriented_rgb
@@ -36,6 +40,26 @@ if TYPE_CHECKING:
     from runtime_config.runtime_config import RuntimeConfig
 
 logger = logging.getLogger(__name__)
+
+
+def text_to_image_on_pipeline(
+    pipeline: ImageGenerationPipeline,
+    *,
+    prompt: str,
+    width: int,
+    height: int,
+    num_inference_steps: int,
+    seed: int,
+) -> PILImage.Image:
+    result = pipeline.generate(
+        prompt=prompt,
+        height=height,
+        width=width,
+        guidance_scale=0.0,
+        num_inference_steps=num_inference_steps,
+        seed=seed,
+    )
+    return result.images[0]
 
 
 class ImageGenerationHandler(StateHandlerBase):
@@ -53,11 +77,23 @@ class ImageGenerationHandler(StateHandlerBase):
         self._pipelines = pipelines_handler
         self._zit_api_client = zit_api_client
 
+    def get_status(self) -> ImageGenerationStatusResponse:
+        """What image generation can do now: the provider choice and what blocks each one."""
+        settings = self.state.app_settings
+        return image_generation_status(
+            force_api=self.config.force_api_generations,
+            default_to_fal=should_image_generate_with_fal_api(
+                force_api_generations=self.config.force_api_generations, settings=settings
+            ),
+            has_fal_key=bool(settings.fal_api_key.strip()),
+            local_model_downloaded=lambda: is_cp_downloaded(self.models_dir, IMG_GEN_MODEL_CP_ID),
+        )
+
     def generate(self, req: GenerateImageRequest) -> GenerateImageResponse:
         with self._generation.reserved_generation_start():
 
-            width = (req.width // 16) * 16
-            height = (req.height // 16) * 16
+            width = floor_to_image_grid(req.width)
+            height = floor_to_image_grid(req.height)
             num_images = max(1, min(12, req.numImages))
 
             seed = self._resolve_seed()
@@ -203,15 +239,14 @@ class ImageGenerationHandler(StateHandlerBase):
         self._generation.update_progress("inference", 15, 0, num_inference_steps)
 
         def generate_one(seed_i: int) -> PILImage.Image:
-            result = image_generation_pipeline.generate(
+            return text_to_image_on_pipeline(
+                image_generation_pipeline,
                 prompt=prompt,
-                height=height,
                 width=width,
-                guidance_scale=0.0,
+                height=height,
                 num_inference_steps=num_inference_steps,
                 seed=seed_i,
             )
-            return result.images[0]
 
         with log_heartbeat(f"zit image {width}x{height}"):
             return self._run_local_batch(num_images, seed, "zit_image", generate_one)

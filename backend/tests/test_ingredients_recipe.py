@@ -28,6 +28,7 @@ from services.features.video.job_common import resolve_job_local_model_id
 from services.features.video.reference_sheet import build_reference_sheet, layout_panels
 from services.generation_interrupt import GenerationCancelledError
 from services.generation_queue.types import OutputAllocation, OutputPlan
+from tests.fakes.generation import FakeJobSession
 from services.records import AssetRecord, GenerationRecord
 from tests.fakes import FakeResponse
 from tests.lora_catalog_helpers import add_ic_lora, download_spec
@@ -332,7 +333,7 @@ def test_run_builds_the_sheet_at_the_denoise_size_and_deletes_it(
         recorder, assets, lambda: test_state.config.default_models_dir, recipe=IC_LORA_RECIPES["ingredients"]
     )
     with pytest.raises(GenerationCancelledError):
-        executor.execute(generation, outputs)
+        executor.execute(generation, outputs, FakeJobSession())
     assert recorder.sheet_size == budget_pixels(local_caps(resolve_job_local_model_id(test_state.config.default_models_dir, "ltx-2.5-fast")), "540p", "9:16", mode="video")
     assert recorder.sheet_path is not None and not recorder.sheet_path.exists()
 
@@ -347,7 +348,7 @@ def test_run_makes_the_chosen_duration_at_the_chosen_rate_not_the_catalog_defaul
     executor = IcLoraSheetRecipeExecutor(
         test_state.ic_lora, assets, lambda: test_state.config.default_models_dir, recipe=IC_LORA_RECIPES["ingredients"]
     )
-    executor.execute(generation, outputs)
+    executor.execute(generation, outputs, FakeJobSession())
     assert fake_services.ic_lora_pipeline.generate_calls[-1]["num_frames"] == compute_num_frames(12, 25)
 
 
@@ -485,7 +486,7 @@ def test_enhance_rejects_a_list_of_images_for_an_entry_that_takes_a_video(
 def _run_sheet_job(test_state, assets: _Assets, generation, outputs) -> None:
     IcLoraSheetRecipeExecutor(
         test_state.ic_lora, assets, lambda: test_state.config.default_models_dir, recipe=IC_LORA_RECIPES["ingredients"]
-    ).execute(generation, outputs)
+    ).execute(generation, outputs, FakeJobSession())
 
 
 def test_generate_shows_the_reference_sheet_to_the_automatic_rewrite(
@@ -556,7 +557,7 @@ def test_generate_reuses_the_sheet_from_manual_enhance_and_unlinks_it(
         recorder, assets, lambda: test_state.config.default_models_dir, recipe=IC_LORA_RECIPES["ingredients"]
     )
     with pytest.raises(GenerationCancelledError):
-        executor.execute(generation, outputs)
+        executor.execute(generation, outputs, FakeJobSession())
 
     assert recorder.sheet_path == sheet
     assert seen_pixel == (12, 34, 56)

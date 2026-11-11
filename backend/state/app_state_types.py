@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, NewType, Protocol, Union
+import time
+from typing import TYPE_CHECKING, NewType, Union
 
 from api_types import AssistantModelDownloadProgress, LTXLocalModelId, ModelCheckpointID
+from runtime_config.device_calibration import (
+    EMPTY_CALIBRATION,
+    DeviceCalibration,
+    RunMemoryBaseline,
+)
 from runtime_config.eta import WallTimeEstimate
 from runtime_config.ic_lora_tiling import IcLoraTiling
 from runtime_config.runtime_policy import LocalGenerationMode
@@ -78,6 +84,8 @@ class CatalogDownloadSession:
     downloaded_bytes: int
     expected_bytes: int
     speed_bytes_per_sec: float = 0.0
+    last_sample_time: float = field(default_factory=time.monotonic)
+    last_sample_bytes: int = 0
 
 
 def _default_completed_ic_lora_download_sessions() -> dict[DownloadSessionId, DownloadSessionResult]:
@@ -85,6 +93,10 @@ def _default_completed_ic_lora_download_sessions() -> dict[DownloadSessionId, Do
 
 
 def _default_completed_lora_download_sessions() -> dict[DownloadSessionId, DownloadSessionResult]:
+    return {}
+
+
+def _default_completed_custom_lora_import_sessions() -> dict[DownloadSessionId, DownloadSessionResult]:
     return {}
 
 
@@ -99,11 +111,6 @@ class TextEncodingResult:
     audio_context: torch.Tensor | None
 
 
-class CachedTextEncoder(Protocol):
-    def to(self, device: torch.device) -> "CachedTextEncoder":
-        ...
-
-
 def _new_prompt_cache() -> dict[tuple[str, bool, str], TextEncodingResult]:
     return {}
 
@@ -113,7 +120,6 @@ class TextEncoderState:
     service: TextEncoder
     prompt_cache: dict[tuple[str, bool, str], TextEncodingResult] = field(default_factory=_new_prompt_cache)
     api_embeddings: TextEncodingResult | None = None
-    cached_encoder: CachedTextEncoder | None = None
 
 
 # ============================================================
@@ -211,6 +217,12 @@ class GenerationRunning:
     # Whole-run wall-time estimate fixed at start (ETA v1: local Fast video on
     # measured hardware only). None means unknown, not zero.
     estimated: WallTimeEstimate | None = None
+    # Memory sampled at start for device calibration; None when the device is unknown.
+    memory_baseline: RunMemoryBaseline | None = None
+    started_monotonic: float | None = None
+    decode_started_monotonic: float | None = None
+    # Fast decode setting this run decodes with; calibration inverts its wall time with it.
+    conv_vae: bool = False
 
 
 @dataclass
@@ -317,6 +329,12 @@ class AppState:
         default_factory=_default_completed_ic_lora_download_sessions
     )
     lora_download_session: CatalogDownloadSession | None = None
+    # A custom LoRA import (file copy or URL download). One at a time, with its own slot so it
+    # never blocks a catalog download. ``item_id`` is the custom LoRA id.
+    custom_lora_import_session: CatalogDownloadSession | None = None
+    completed_custom_lora_import_sessions: dict[DownloadSessionId, DownloadSessionResult] = field(
+        default_factory=_default_completed_custom_lora_import_sessions
+    )
     assistant_model_download: AssistantModelDownloadProgress | None = None
     completed_lora_download_sessions: dict[DownloadSessionId, DownloadSessionResult] = field(
         default_factory=_default_completed_lora_download_sessions
@@ -338,3 +356,6 @@ class AppState:
     # pipeline.generate() is still on the GPU; the next Start double-loads weights
     # (meta vs cuda:0).
     generation_in_flight: bool = False
+    # Replaced wholesale (never mutated) from the store's post-commit frontier,
+    # so budget gates read it without the lock.
+    device_calibration: DeviceCalibration = EMPTY_CALIBRATION

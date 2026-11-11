@@ -6,21 +6,28 @@ import shutil
 import sqlite3
 import time
 import uuid
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import cast, get_args
+from typing import TYPE_CHECKING, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter
 
+from services.displaced_provider_jobs import (
+    DISPLACED_PROVIDER_JOBS_FILENAME,
+    DisplacedProviderJobs,
+)
 from services.dashboard_stats import DashboardSnapshot, DashboardWindow, compute_dashboard
-from services.migrations import MIGRATIONS_DIR, apply_migrations
+from services.device_calibration_store import DeviceCalibrationStore
+from services.migrations import MIGRATIONS_DIR, apply_migrations, repair_generation_lane
 from services.media_probe import (
     extension_for_mime,
     probe_file,
     validate_ingest_source,
 )
+from runtime_config.assets_layout import assets_folder, in_flight_folder
 from services.records import (
+    LOCAL_LANE,
     AssetInUseError,
     AssetListPage,
     AssetMetadata,
@@ -36,17 +43,32 @@ from services.records import (
     MediaKind,
     OutputSpec,
     PairedDeviceRecord,
+    ProviderOrphan,
     QueueGenerationRecord,
     StatusError,
     UnavailableError,
 )
-from services.thumbnails import PillowAvThumbnailWriter, ThumbnailWriter
+from services.thumbnails import (
+    PillowAvThumbnailWriter,
+    ThumbnailWriter,
+    resolve_stored_thumbnail,
+)
+
+if TYPE_CHECKING:
+    from runtime_config.device_calibration import (
+        CalibrationBucket,
+        DeviceIdentity,
+        FrontierPoint,
+    )
 
 _RUNNING_STATUSES: set[str] = {"running"}
 _CANCELLING_STATUSES: set[str] = {"cancelling"}
 _IN_FLIGHT_STATUSES: set[str] = _RUNNING_STATUSES | _CANCELLING_STATUSES
 _RETRYABLE_STATUSES: set[str] = {"failed"}
-_IN_FLIGHT_DIRNAME = ".in-flight"
+# Electron writes this file in a custom assets folder after the copy is verified. Its absence
+# means the folder is not the library (unplugged drive, empty mount point). The name is pinned
+# to shared/assets-marker.json by tests on both sides.
+ASSETS_MARKER_FILENAME = ".ltx-assets"
 _UNLINK_RETRY_ATTEMPTS = 5
 _UNLINK_RETRY_BASE_SECONDS = 0.05
 _QUEUE_RANK_SPACING = 1_000_000
@@ -88,6 +110,14 @@ def _optional_str(value: object) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _provider_orphan(row: sqlite3.Row) -> ProviderOrphan:
+    return ProviderOrphan(
+        generation_id=str(row["generation_id"]),
+        lane=str(row["lane"]),
+        provider_job_id=str(row["provider_job_id"]),
+    )
 
 
 def _optional_int(value: object) -> int | None:
@@ -194,14 +224,27 @@ class SqliteStore:
         self,
         app_data_dir: Path,
         thumbnail_writer: ThumbnailWriter | None = None,
+        assets_dir: Path | None = None,
     ) -> None:
         try:
-            self._assets_dir = app_data_dir / "assets"
-            self._in_flight_dir = self._assets_dir / _IN_FLIGHT_DIRNAME
+            self._custom_assets_dir = assets_dir is not None
+            self._assets_dir = assets_folder(app_data_dir, assets_dir)
+            self._in_flight_dir = in_flight_folder(app_data_dir, assets_dir)
+            app_data_dir.mkdir(parents=True, exist_ok=True)
             self._db_path = app_data_dir / "store.sqlite3"
-            self._assets_dir.mkdir(parents=True, exist_ok=True)
+            self._displaced_jobs = DisplacedProviderJobs(
+                app_data_dir / DISPLACED_PROVIDER_JOBS_FILENAME
+            )
+            if self._custom_assets_dir:
+                # Never create a custom folder: on an unmounted drive that would make an
+                # empty folder on the system disk.
+                if not self._assets_dir_ready():
+                    raise FileNotFoundError(self._assets_dir)
+            else:
+                self._assets_dir.mkdir(parents=True, exist_ok=True)
             conn = self._connect()
             apply_migrations(conn, MIGRATIONS_DIR)
+            repair_generation_lane(conn)
             conn.commit()
             conn.close()
             self._thumbnail_writer: ThumbnailWriter = (
@@ -209,8 +252,28 @@ class SqliteStore:
                 if thumbnail_writer is not None
                 else PillowAvThumbnailWriter()
             )
+            self._calibration = DeviceCalibrationStore(self._connect, self._now_ms)
         except (sqlite3.Error, OSError) as exc:
             raise UnavailableError() from exc
+
+    def _assets_dir_ready(self) -> bool:
+        """False when the assets folder is gone. A custom folder also needs its marker."""
+        try:
+            if not self._assets_dir.is_dir():
+                return False
+            return not self._custom_assets_dir or (
+                self._assets_dir / ASSETS_MARKER_FILENAME
+            ).is_file()
+        except OSError:
+            return False
+
+    def _require_assets_dir(self) -> None:
+        """A gone custom folder is an unavailable store. The default folder is made again."""
+        if self._custom_assets_dir:
+            if not self._assets_dir_ready():
+                raise UnavailableError()
+        else:
+            self._assets_dir.mkdir(parents=True, exist_ok=True)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path, timeout=5.0)
@@ -578,7 +641,10 @@ class SqliteStore:
         mime_type = str(row["mime_type"])
         asset_id = str(row["id"])
         raw_thumb = row["thumbnail_path"]
-        thumbnail_path = None if raw_thumb is None else str(raw_thumb)
+        thumbnail = resolve_stored_thumbnail(
+            self._assets_dir, None if raw_thumb is None else str(raw_thumb)
+        )
+        thumbnail_path = None if thumbnail is None else str(thumbnail)
         return AssetRecord.model_validate(
             {
                 "id": asset_id,
@@ -602,6 +668,7 @@ class SqliteStore:
         if not is_file:
             raise FileNotFoundError(source)
         validate_ingest_source(source)
+        self._require_assets_dir()
         asset_id = self._new_id()
         dest = self._assets_dir / f"{asset_id}{source.suffix}"
         created_at = self._now_ms()
@@ -674,7 +741,8 @@ class SqliteStore:
             try:
                 cursor = conn.execute(
                     "UPDATE assets SET thumbnail_path = ? WHERE id = ? AND deleted_at IS NULL",
-                    (written, record.id),
+                    # The column holds the file name only, so a moved assets folder stays valid.
+                    (Path(written).name, record.id),
                 )
                 conn.commit()
                 persisted = cursor.rowcount == 1
@@ -733,6 +801,8 @@ class SqliteStore:
     ) -> AssetListPage:
         if sort not in ("created_at-desc", "created_at-asc"):
             raise ValueError(f"invalid sort: {sort}")
+        # A gone custom folder is an unavailable library, not an empty one.
+        self._require_assets_dir()
         descending = sort == "created_at-desc"
         after: tuple[int, str] | None = (
             _decode_cursor(cursor) if cursor is not None else None
@@ -773,6 +843,9 @@ class SqliteStore:
         """Stamp deleted_at only. Skip live inputs. Do not unlink or hide the producer."""
         if not asset_ids:
             return
+        if not self._assets_dir_ready():
+            # A missing folder is not a deleted library. Keep every row.
+            return
         conn = self._connect()
         try:
             conn.execute("BEGIN IMMEDIATE")
@@ -808,7 +881,8 @@ class SqliteStore:
         if media_kind not in get_args(MediaKind):
             raise ValueError(f"invalid media_kind: {media_kind}")
         asset_id = self._new_id()
-        self._in_flight_dir.mkdir(parents=True, exist_ok=True)
+        self._require_assets_dir()
+        self._in_flight_dir.mkdir(exist_ok=True)
         dest = _derived_path(self._in_flight_dir, asset_id, mime_type)
         return (asset_id, str(dest))
 
@@ -819,6 +893,7 @@ class SqliteStore:
         *,
         contract_version: int = 1,
         generation_id: str | None = None,
+        lane: str = LOCAL_LANE,
     ) -> GenerationRecord:
         if contract_version < 1:
             raise ValueError("contract_version must be >= 1")
@@ -857,8 +932,8 @@ class SqliteStore:
                 INSERT INTO generations (
                     id, feature, contract_version, status, spec, error_code,
                     created_at, queued_at, queue_rank, attempt_count, started_at, finished_at,
-                    deleted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    deleted_at, lane
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     generation_id,
@@ -874,6 +949,7 @@ class SqliteStore:
                     None,
                     None,
                     None,
+                    lane,
                 ),
             )
             conn.commit()
@@ -884,11 +960,16 @@ class SqliteStore:
             raise RuntimeError(f"generation {generation_id} missing after insert")
         return record
 
-    def has_queued(self) -> bool:
+    def has_queued(self, lane: str = LOCAL_LANE) -> bool:
         conn = self._connect()
         try:
             row = conn.execute(
-                "SELECT 1 FROM generations WHERE status = 'queued' AND deleted_at IS NULL LIMIT 1"
+                """
+                SELECT 1 FROM generations
+                WHERE status = 'queued' AND lane = ? AND deleted_at IS NULL
+                LIMIT 1
+                """,
+                (lane,),
             ).fetchone()
             return row is not None
         finally:
@@ -1019,12 +1100,24 @@ class SqliteStore:
         finally:
             conn.close()
 
-    def request_generation_cancellation(self, generation_id: str) -> GenerationRecord:
+    def request_generation_cancellation(
+        self, generation_id: str, *, uncancellable_lanes: Collection[str] = ()
+    ) -> GenerationRecord:
+        """Cancel a queued job, or ask a running one to stop.
+
+        A running job on one of uncancellable_lanes keeps running: StatusError.
+        """
         conn = self._connect()
         try:
             conn.execute("BEGIN IMMEDIATE")
             status = self._require_status(conn, generation_id, {"queued", "running"})
             now = self._now_ms()
+            if status == "running" and uncancellable_lanes:
+                lane = conn.execute(
+                    "SELECT lane FROM generations WHERE id = ?", (generation_id,)
+                ).fetchone()["lane"]
+                if lane in uncancellable_lanes:
+                    raise StatusError(generation_id, status)
             if status == "queued":
                 conn.execute(
                     """
@@ -1050,9 +1143,12 @@ class SqliteStore:
         finally:
             conn.close()
 
-    def claim_next_queued(self) -> GenerationRecord | None:
+    def claim_next_queued(self, lane: str = LOCAL_LANE) -> GenerationRecord | None:
         while True:
-            claimed = self._claim_one_queued()
+            if not self._assets_dir_ready():
+                # A missing folder must not fail the queued jobs that need their inputs.
+                return None
+            claimed = self._claim_one_queued(lane)
             if claimed is None:
                 return None
             if self._has_missing_input(claimed):
@@ -1104,7 +1200,7 @@ class SqliteStore:
         finally:
             conn.close()
 
-    def _claim_one_queued(self) -> GenerationRecord | None:
+    def _claim_one_queued(self, lane: str) -> GenerationRecord | None:
         conn = self._connect()
         try:
             conn.execute("BEGIN IMMEDIATE")
@@ -1112,10 +1208,11 @@ class SqliteStore:
                 """
                 SELECT id
                 FROM generations
-                WHERE status = 'queued' AND deleted_at IS NULL
+                WHERE status = 'queued' AND lane = ? AND deleted_at IS NULL
                 ORDER BY queue_rank ASC, id ASC
                 LIMIT 1
-                """
+                """,
+                (lane,),
             ).fetchone()
             if row is None:
                 conn.commit()
@@ -1150,7 +1247,10 @@ class SqliteStore:
         finally:
             conn.close()
 
-    def retry_generation(self, generation_id: str) -> GenerationRecord:
+    def retry_generation(
+        self, generation_id: str, lane: str | None = None
+    ) -> GenerationRecord:
+        """Queue a failed job again. ``lane`` moves it to the lane that is valid now."""
         conn = self._connect()
         try:
             conn.execute("BEGIN IMMEDIATE")
@@ -1159,6 +1259,11 @@ class SqliteStore:
             now = self._now_ms()
             queued_at = self._next_queued_at(conn, now)
             queue_rank = self._next_queue_rank(conn)
+            # The row keeps the id of the newest attempt only. The id of the failed attempt
+            # goes to the displaced file until a provider cancel of it succeeds. The file is
+            # written before the commit: a crash in between leaves the id in both places, and
+            # a duplicate is harmless, but a lost id is not.
+            self._keep_displaced_job(conn, generation_id)
             conn.execute(
                 """
                 UPDATE generations
@@ -1168,16 +1273,40 @@ class SqliteStore:
                     error_code = NULL,
                     started_at = NULL,
                     finished_at = NULL,
-                    attempt_count = attempt_count + 1
+                    attempt_count = attempt_count + 1,
+                    lane = COALESCE(?, lane),
+                    provider_job_id = NULL
                 WHERE id = ? AND status = 'failed'
                 """,
-                (queued_at, queue_rank, generation_id),
+                (queued_at, queue_rank, lane, generation_id),
             )
             record = self._commit_loaded(conn, generation_id)
             self._unlink_under_assets(generated_paths)
             return record
         finally:
             conn.close()
+
+    def _keep_displaced_job(self, conn: sqlite3.Connection, generation_id: str) -> None:
+        row = conn.execute(
+            """
+            SELECT lane, provider_job_id FROM generations
+            WHERE id = ? AND status = 'failed'
+                AND provider_job_id IS NOT NULL AND provider_job_id != ''
+            """,
+            (generation_id,),
+        ).fetchone()
+        if row is None:
+            return
+        try:
+            self._displaced_jobs.add(
+                ProviderOrphan(
+                    generation_id=generation_id,
+                    lane=str(row["lane"]),
+                    provider_job_id=str(row["provider_job_id"]),
+                )
+            )
+        except OSError as exc:
+            raise UnavailableError() from exc
 
     def _require_status(
         self, conn: sqlite3.Connection, generation_id: str, allowed: set[str]
@@ -1695,6 +1824,8 @@ class SqliteStore:
                 "attempt_count": _require_int(row["attempt_count"]),
                 "started_at": _optional_int(row["started_at"]),
                 "finished_at": _optional_int(row["finished_at"]),
+                "lane": str(row["lane"]),
+                "provider_job_id": _optional_str(row["provider_job_id"]),
                 "outputs": tuple(outputs),
             }
         )
@@ -1733,6 +1864,8 @@ class SqliteStore:
         """True if deleted or already deleted. False if the id never existed.
         Raises AssetInUseError, StatusError (producer running or cancelling).
         Canonical and thumbnail unlinks are best-effort after commit."""
+        # With the folder gone, the unlink would skip the files and leave orphans.
+        self._require_assets_dir()
         unlink_paths: list[Path] = []
         conn = self._connect()
         try:
@@ -1796,9 +1929,11 @@ class SqliteStore:
             unlink_paths.append(
                 _derived_path(self._assets_dir, asset_id, str(row["mime_type"]))
             )
-            thumbnail_path = _optional_str(row["thumbnail_path"])
-            if thumbnail_path is not None:
-                unlink_paths.append(Path(thumbnail_path))
+            thumbnail = resolve_stored_thumbnail(
+                self._assets_dir, _optional_str(row["thumbnail_path"])
+            )
+            if thumbnail is not None:
+                unlink_paths.append(thumbnail)
             conn.commit()
         finally:
             conn.close()
@@ -1812,6 +1947,125 @@ class SqliteStore:
                 exc_info=True,
             )
         return True
+
+    def reassign_unknown_lanes(self, known: Collection[str]) -> int:
+        """Move every queued job whose lane is not registered onto the local lane.
+
+        Runs at boot, before a runner claims. A lane that is no longer registered
+        (parallel lanes turned off, a removed provider) would otherwise hold its
+        queued rows forever. Finished rows keep their lane. A retry picks a valid lane.
+        """
+        placeholders = ",".join("?" * len(known))
+        try:
+            conn = self._connect()
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                cursor = conn.execute(
+                    f"""
+                    UPDATE generations SET lane = ?
+                    WHERE lane NOT IN ({placeholders}) AND status = 'queued'
+                        AND deleted_at IS NULL
+                    """,
+                    (LOCAL_LANE, *known),
+                )
+                conn.commit()
+                return cursor.rowcount
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+        except (sqlite3.Error, OSError) as exc:
+            raise UnavailableError() from exc
+
+    def set_provider_job_id(
+        self, generation_id: str, attempt_count: int, provider_job_id: str
+    ) -> bool:
+        """Record the id of a running attempt at its provider. A job that is not running keeps none.
+
+        The attempt guard keeps a late write of an old attempt off the row of a retry.
+        Raises ValueError for an empty id: it would make the boot orphan list unreadable.
+        """
+        if not provider_job_id:
+            raise ValueError("provider_job_id must not be empty")
+        conn = self._connect()
+        try:
+            cursor = conn.execute(
+                """
+                UPDATE generations SET provider_job_id = ?
+                WHERE id = ? AND attempt_count = ? AND status IN ('running', 'cancelling')
+                    AND deleted_at IS NULL
+                """,
+                (provider_job_id, generation_id, attempt_count),
+            )
+            conn.commit()
+            return cursor.rowcount == 1
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def clear_provider_job_id(self, generation_id: str, provider_job_id: str) -> bool:
+        """Forget a provider job once the provider dropped it.
+
+        The id is on the row or, after a retry, in the displaced file. False if neither holds it.
+        """
+        conn = self._connect()
+        try:
+            on_row = conn.execute(
+                "UPDATE generations SET provider_job_id = NULL WHERE id = ? AND provider_job_id = ?",
+                (generation_id, provider_job_id),
+            ).rowcount
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+        displaced = self._displaced_jobs.remove(generation_id, provider_job_id)
+        return on_row > 0 or displaced
+
+    def list_provider_orphans(self) -> list[ProviderOrphan]:
+        """Jobs that may still run at a provider: an id is stored and not yet cancelled.
+
+        A job that ended as failed or cancelled keeps its id until a provider cancel
+        succeeds, so a failed cancel is tried again at the next boot. A succeeded job
+        is done at the provider and is never listed. A deleted row and an older attempt
+        that a retry replaced are listed too: the provider can still run them.
+        """
+        try:
+            conn = self._connect()
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT id AS generation_id, lane, provider_job_id
+                    FROM generations
+                    WHERE status IN ('running', 'cancelling', 'failed', 'cancelled')
+                        AND provider_job_id IS NOT NULL AND provider_job_id != ''
+                    ORDER BY queued_at ASC, id ASC
+                    """
+                ).fetchall()
+            finally:
+                conn.close()
+            displaced = self._displaced_jobs.list()
+        except (sqlite3.Error, OSError) as exc:
+            raise UnavailableError() from exc
+        orphans = [_provider_orphan(row) for row in rows]
+        # A crash between the file write and the commit of a retry leaves one id in both places.
+        listed = {(orphan.generation_id, orphan.provider_job_id) for orphan in orphans}
+        orphans.extend(
+            job for job in displaced if (job.generation_id, job.provider_job_id) not in listed
+        )
+        return orphans
+
+    def list_displaced_provider_jobs(self, generation_id: str) -> list[ProviderOrphan]:
+        """The ids of the older attempts of one job that a retry replaced and nobody cancelled."""
+        try:
+            jobs = self._displaced_jobs.list(generation_id)
+        except OSError as exc:
+            raise UnavailableError() from exc
+        return sorted(jobs, key=lambda job: job.provider_job_id)
 
     def fail_running_on_boot(self) -> int:
         now = self._now_ms()
@@ -1977,6 +2231,37 @@ class SqliteStore:
             raise UnavailableError() from exc
         finally:
             conn.close()
+
+    def load_device_frontier(
+        self, identity: DeviceIdentity, epoch: int
+    ) -> Mapping[CalibrationBucket, tuple[FrontierPoint, ...]]:
+        return self._calibration.load_device_frontier(identity, epoch)
+
+    def load_device_machine_factor(
+        self, identity: DeviceIdentity, epoch: int
+    ) -> float | None:
+        return self._calibration.load_device_machine_factor(identity, epoch)
+
+    def widen_device_frontier(
+        self,
+        identity: DeviceIdentity,
+        epoch: int,
+        bucket: CalibrationBucket,
+        point: FrontierPoint,
+        *,
+        priced_gib: float,
+        generation_id: str | None,
+        conv_vae: bool = False,
+    ) -> tuple[FrontierPoint, ...] | None:
+        return self._calibration.widen_device_frontier(
+            identity,
+            epoch,
+            bucket,
+            point,
+            priced_gib=priced_gib,
+            generation_id=generation_id,
+            conv_vae=conv_vae,
+        )
 
     def _paired_device_from_row(self, row: sqlite3.Row) -> PairedDeviceRecord:
         return PairedDeviceRecord(

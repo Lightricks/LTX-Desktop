@@ -6,7 +6,7 @@ import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import assert_never, cast, get_args
+from typing import Final, assert_never, cast, get_args
 
 from api_types import (
     LTXLocalModelId,
@@ -101,6 +101,9 @@ class LTXLocalModelSpec:
     relevance: LTXLocalModelRelevance
     supported_pipelines: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpec], ...]
     version_label: str
+    # Bytes of the largest transformer block in ``model_cp``. ltx-core disk streaming
+    # sizes every host read buffer to it, so the Mac pool gate charges it per buffer.
+    disk_stream_unit_bytes: int
     supports_api_text_encoding: bool = True
     # `/v1/prompt-embedding` `model` selector for published checkpoints that omit
     # `encrypted_wandb_properties` (LTX 2.5 OS split). XOR with checkpoint `model_id`.
@@ -463,6 +466,12 @@ _DISTILLED_2_5_WHATS_NEW = (
 )
 
 
+# One transformer block (bf16 weights, f32 tables); all 48 blocks of each checkpoint are
+# the same size. The 2.3 and 2.3-1.1 checkpoints share one size; 2.5 is 40,960 bytes smaller.
+_LTX_2_3_22B_BLOCK_BYTES: Final = 773_587_328
+_LTX_2_5_22B_BLOCK_BYTES: Final = 773_546_368
+
+
 def get_ltx_model_spec(model_id: LTXLocalModelId) -> LTXLocalModelSpec:
     match model_id:
         case "ltx-2.5-22b-distilled":
@@ -483,6 +492,7 @@ def get_ltx_model_spec(model_id: LTXLocalModelId) -> LTXLocalModelSpec:
                 ),
                 supported_pipelines=_DISTILLED_PIPELINES_2_5,
                 version_label="LTX 2.5",
+                disk_stream_unit_bytes=_LTX_2_5_22B_BLOCK_BYTES,
                 api_prompt_embedding_model=LTX_2_5_API_PROMPT_EMBEDDING_MODEL,
                 wants_audio_visual_captions=True,
                 prompt_enhancer_cp="gemma-4-e2b-it",
@@ -503,6 +513,7 @@ def get_ltx_model_spec(model_id: LTXLocalModelId) -> LTXLocalModelSpec:
                 ),
                 supported_pipelines=_DISTILLED_PIPELINES_2_3,
                 version_label="LTX 2.3",
+                disk_stream_unit_bytes=_LTX_2_3_22B_BLOCK_BYTES,
             )
         case "ltx-2.3-22b-distilled":
             return LTXLocalModelSpec(
@@ -517,6 +528,7 @@ def get_ltx_model_spec(model_id: LTXLocalModelId) -> LTXLocalModelSpec:
                 relevance=LTXLocalModelRelevant(upgrade_messages={}),
                 supported_pipelines=_DISTILLED_PIPELINES_2_3,
                 version_label="LTX 2.3 (1.0)",
+                disk_stream_unit_bytes=_LTX_2_3_22B_BLOCK_BYTES,
             )
         case _:
             assert_never(model_id)

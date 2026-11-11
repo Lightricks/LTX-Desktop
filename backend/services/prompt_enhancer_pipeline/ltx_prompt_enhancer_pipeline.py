@@ -26,6 +26,7 @@ padding step.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import torch
@@ -99,7 +100,7 @@ class LtxPromptEnhancerPipeline:
         # Mirrors ltx_pipelines.utils.blocks.PromptEncoder's non-streaming text-encoder build,
         # minus the embeddings-processor half — enhancement never needs video/audio embeddings.
         from ltx_core.loader.registry import DummyRegistry
-        from ltx_core.loader.single_gpu_model_builder import SingleGPUModelBuilder
+        from ltx_core.loader.simple_builder import SimpleBuilder
         from ltx_core.text_encoders.gemma import (
             GemmaTextEncoderConfigurator,
             get_gemma_ops,
@@ -108,23 +109,37 @@ class LtxPromptEnhancerPipeline:
 
         sd_ops, module_ops = get_gemma_ops(self._gemma_root)
         weight_paths = resolve_gemma_weight_paths(self._gemma_root)
-        builder = SingleGPUModelBuilder(
-            model_path=weight_paths,
-            model_class_configurator=GemmaTextEncoderConfigurator.with_gemma_model_path(self._gemma_root),
-            model_sd_ops=sd_ops,
-            module_ops=module_ops,
+        builder = SimpleBuilder(
+            GemmaTextEncoderConfigurator.with_gemma_model_path(self._gemma_root),
+            tuple(Path(path) for path in weight_paths),
+            (sd_ops,),
+            module_ops,
             registry=DummyRegistry(),
         )
         return builder.build(device=torch.device(self._device), dtype=torch.bfloat16).eval()
 
-    def enhance_t2v(self, prompt: str, system_prompt: str | None, seed: int) -> str:
+    def enhance_t2v(
+        self,
+        prompt: str,
+        system_prompt: str | None,
+        seed: int,
+        negative_prompt: str = "",
+    ) -> str:
         from ltx_pipelines.utils.gpu_model import gpu_model
 
+        from services.prompt_enhancement import (
+            with_negative_prompt_rules,
+            with_user_negative_prompt,
+        )
+
         with gpu_model(self._build_text_encoder()) as text_encoder:
-            resolved_system_prompt = system_prompt or _default_system_prompt(text_encoder, t2v=True)
+            resolved_system_prompt = with_negative_prompt_rules(
+                system_prompt or _default_system_prompt(text_encoder, t2v=True),
+                negative_prompt,
+            )
             messages: list[dict[str, object]] = [
                 {"role": "system", "content": resolved_system_prompt},
-                {"role": "user", "content": f"user prompt: {prompt}"},
+                {"role": "user", "content": with_user_negative_prompt(f"user prompt: {prompt}", negative_prompt)},
             ]
             return _generate(text_encoder, messages, image=None, seed=seed)
 
@@ -138,6 +153,7 @@ class LtxPromptEnhancerPipeline:
         keyframes: list[KeyframeStill] | None = None,
         duration: int | None = None,
         fps: int | None = None,
+        negative_prompt: str = "",
     ) -> str:
         from services.prompt_enhancement import build_i2v_user_prompt_text, resolve_i2v_frames
 
@@ -149,7 +165,7 @@ class LtxPromptEnhancerPipeline:
             duration=duration,
             fps=fps,
         )
-        return self._generate_with_images(frames, user_text, system_prompt, seed)
+        return self._generate_with_images(frames, user_text, system_prompt, seed, negative_prompt=negative_prompt)
 
     def enhance_with_video_frames(
         self,
@@ -158,6 +174,7 @@ class LtxPromptEnhancerPipeline:
         system_prompt: str | None,
         seed: int,
         role: VideoRole,
+        negative_prompt: str = "",
     ) -> str:
         from services.prompt_enhancement import build_video_user_prompt_text, resolve_video_frames
 
@@ -169,6 +186,7 @@ class LtxPromptEnhancerPipeline:
             system_prompt,
             seed,
             role=role,
+            negative_prompt=negative_prompt,
         )
 
     def _generate_with_images(
@@ -178,10 +196,16 @@ class LtxPromptEnhancerPipeline:
         system_prompt: str | None,
         seed: int,
         role: VideoRole | None = None,
+        negative_prompt: str = "",
     ) -> str:
         from ltx_pipelines.utils.gpu_model import gpu_model
 
-        from services.prompt_enhancement import video_role_max_output_tokens, with_video_role_rules
+        from services.prompt_enhancement import (
+            video_role_max_output_tokens,
+            with_negative_prompt_rules,
+            with_user_negative_prompt,
+            with_video_role_rules,
+        )
 
         user_content: list[dict[str, object]] = []
         tensors: list[torch.Tensor] = []
@@ -190,12 +214,13 @@ class LtxPromptEnhancerPipeline:
                 user_content.append({"type": "text", "text": label})
             user_content.append({"type": "image"})
             tensors.append(_image_tensor(path))
-        user_content.append({"type": "text", "text": user_text})
+        user_content.append({"type": "text", "text": with_user_negative_prompt(user_text, negative_prompt)})
 
         with gpu_model(self._build_text_encoder()) as text_encoder:
             resolved_system_prompt = system_prompt or _default_system_prompt(text_encoder, t2v=False)
             if role is not None:
                 resolved_system_prompt = with_video_role_rules(resolved_system_prompt, role)
+            resolved_system_prompt = with_negative_prompt_rules(resolved_system_prompt, negative_prompt)
             messages: list[dict[str, object]] = [
                 {"role": "system", "content": resolved_system_prompt},
                 {"role": "user", "content": user_content},

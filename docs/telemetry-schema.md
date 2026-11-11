@@ -69,7 +69,11 @@ Carries only what is known at finish; never repeats the start payload
 | `error_code`               | string?                                              | Fixed label, never a message/path. `CUDA_OOM` is a policy-miss signal (admitted but didn't fit), distinct from other failures                                        |
 | `load_mode`                | `full_models_loading` \| `streaming_models_loading`? | Whole model resident vs streamed                                                                                                                                     |
 | `offload_mode`             | `NONE` \| `CPU` \| `DISK`?                           | Resident vs pinned-host vs mapped-from-checkpoint streaming                                                                                                          |
+| `prompt_rewrite`           | `local` \| `gemini` \| `fal_expansion`?              | Who rewrote the prompt of a fal image run: local Gemma, Gemini, or fal's own expansion. Absent when no rewrite ran                                                  |
 
+
+Jobs on a lane that does not use the GPU (fal) carry no hardware keys, because the
+local GPU does not run them.
 
 Modes ride success rows only: cancelled/failed ends carry null (the summary
 never escapes the raise), as do edit rows (the retake pipeline does not

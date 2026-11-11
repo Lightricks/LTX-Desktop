@@ -154,6 +154,7 @@ export function createRemoteExploreRuntime(options: {
       const blob = await response.blob();
       return URL.createObjectURL(blob);
     },
+    host: "remote",
     revealInFolder: null,
     // Tiles still require a fine pointer, so phones do not hover-play.
     hoverPreview: true,

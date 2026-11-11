@@ -2,7 +2,7 @@ import { Button } from "@ds/Button/Button";
 import { Text } from "@ds/Text/Text";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { clsx } from "clsx";
-import { type DragEvent, type ReactNode, useCallback, useState } from "react";
+import { type DragEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 
 import type { ExploreAsset } from "@/lib/explore-contract";
 import { useModalContext } from "@/ltx-io/components/shared/Modal/ModalContext";
@@ -54,12 +54,6 @@ function emptyTitle(mediaKind: AssetsMediaKind | null): string {
   }
 }
 
-// TODO: when a screen opens this picker with `mediaKind="image"`, filter the items by the
-// types the field accepts (`IMAGE_MIME_TYPES` in `imageAssetInput.ts`). A cutout run stores
-// a GIF as an image asset, and no image field accepts it. Add an `isEligibleAsset` prop and
-// leave the Assets library screen unfiltered, so it still shows the GIF. A filter here
-// keeps the pages as the API returns them. If short pages are a problem, add a MIME type
-// filter to `listAssets` instead.
 function useAssetsByKind(mediaKind: AssetsMediaKind | null) {
   const { api } = useExploreRuntime();
   const listFilters = {
@@ -83,22 +77,56 @@ function useAssetsByKind(mediaKind: AssetsMediaKind | null) {
 
 export function AssetPicker({
   mediaKind,
+  isEligibleAsset,
   onSelect,
   onDropData,
   onUpload,
+  onUploadMany,
 }: {
   /** null lists every kind. */
   mediaKind: AssetsMediaKind | null;
+  /**
+   * Hides assets the field cannot take, for example a GIF cutout in an image field.
+   * It keeps the pages as the API returns them, so a page of hidden assets shows
+   * fewer tiles. While no tile shows and more pages exist, the picker loads the next
+   * page. If short pages are a problem, filter by MIME type in `listAssets`.
+   */
+  isEligibleAsset?: (asset: ExploreAsset) => boolean;
   onSelect: (asset: ExploreAsset) => void;
   onDropData: (dataTransfer: DataTransfer) => void;
   /** Device file chooser. Resolves null when the user cancels. */
   onUpload?: () => Promise<ExploreAsset | null>;
+  /**
+   * Device chooser for several files. It replaces `onUpload` and adds the files itself.
+   * Resolves true when the user chose files, false when the user cancels.
+   */
+  onUploadMany?: () => Promise<boolean>;
 }) {
   const query = useAssetsByKind(mediaKind);
   const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const items = query.data?.pages.flatMap((page) => page.items) ?? [];
+  // Resolves true when the user chose files. `onUploadMany` handles its files itself.
+  const upload =
+    onUploadMany ??
+    (onUpload
+      ? async () => {
+          const asset = await onUpload();
+          if (asset != null) onSelect(asset);
+          return asset != null;
+        }
+      : undefined);
+  const items = (query.data?.pages.flatMap((page) => page.items) ?? []).filter(
+    (asset) => isEligibleAsset?.(asset) ?? true,
+  );
+  const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = query;
+  const shownCount = items.length;
+  // A loaded page can be all hidden. The grid has no tile to scroll, so it would not load more.
+  useEffect(() => {
+    if (shownCount === 0 && hasNextPage && !isFetchingNextPage && !isFetchNextPageError) {
+      void fetchNextPage();
+    }
+  }, [shownCount, hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
   const view = resolveAssetsLibraryView({
     isLoading: query.isLoading,
     error: query.error,
@@ -186,7 +214,7 @@ export function AssetPicker({
         <Text as="h2" variant="heading" size="sm">
           {pickerTitle(mediaKind)}
         </Text>
-        {onUpload ? (
+        {upload ? (
           <Button
             appearance="neutral"
             hierarchy="plain"
@@ -196,10 +224,9 @@ export function AssetPicker({
             onClick={() => {
               // Start in this click so a phone can open its file picker.
               setIsUploading(true);
-              void onUpload()
-                .then((asset) => {
-                  if (asset != null) onSelect(asset);
-                  else setIsUploading(false);
+              void upload()
+                .then((chosen) => {
+                  if (!chosen) setIsUploading(false);
                 })
                 .catch(() => setIsUploading(false));
             }}
@@ -218,19 +245,25 @@ export function AssetPicker({
 
 export function useOpenAssetPicker({
   mediaKind,
+  isEligibleAsset,
   isEligibleFile,
   onSelect,
   onDropFile,
   onDropAssetId,
   onUpload,
+  onUploadMany,
 }: {
   /** null lists every kind. */
   mediaKind: AssetsMediaKind | null;
+  /** Hides listed assets the field cannot take. */
+  isEligibleAsset?: (asset: ExploreAsset) => boolean;
   isEligibleFile: (file: File) => boolean;
   onSelect: (asset: ExploreAsset) => void;
   onDropFile: (file: File) => void;
   onDropAssetId: (assetId: string) => void;
   onUpload?: () => Promise<ExploreAsset | null>;
+  /** Several files from the device. The picker closes when the user chooses files. */
+  onUploadMany?: () => Promise<boolean>;
 }) {
   const { showModal, hideModal } = useModalContext();
 
@@ -246,8 +279,17 @@ export function useOpenAssetPicker({
       content: (
         <AssetPicker
           mediaKind={mediaKind}
+          isEligibleAsset={isEligibleAsset}
           onSelect={(asset) => take(() => onSelect(asset))}
           onUpload={onUpload}
+          onUploadMany={
+            onUploadMany &&
+            (async () => {
+              const chosen = await onUploadMany();
+              if (chosen) hideModal("user_selection");
+              return chosen;
+            })
+          }
           onDropData={(dataTransfer) => {
             const decision = resolveAssetPickerDrop({
               assetPayload: dataTransfer.getData("asset"),
@@ -279,12 +321,14 @@ export function useOpenAssetPicker({
     });
   }, [
     hideModal,
+    isEligibleAsset,
     isEligibleFile,
     mediaKind,
     onDropAssetId,
     onDropFile,
     onSelect,
     onUpload,
+    onUploadMany,
     showModal,
   ]);
 }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -11,6 +12,8 @@ from typing import ClassVar, Generic, Literal, Protocol, Self, TypeVar
 
 from api_types import LTXLocalModelId, OfferingId, PromptProvenance
 from _routes._errors import HTTPError
+from runtime_config.budget_admission import RiskAllowance
+from runtime_config.device_calibration import JobEnvelope
 from runtime_config.ltx_capabilities import LtxCapabilityFeature
 from runtime_config.video_job_budget import (
     LOCAL_GENERATION_RAM_SHORTFALL,
@@ -24,7 +27,6 @@ from services.features.video.job_common import (
     require_existing_asset,
     resolve_generation_seed,
     spec_risk_allowance,
-    spec_unmeasured_bet,
 )
 from services.features.video.text_to_video import (
     VIDEO_OUTPUT_PLAN,
@@ -32,6 +34,14 @@ from services.features.video.text_to_video import (
     require_video_output,
 )
 from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
+from services.fast_video_pipeline.nag_config import (
+    DEFAULT_SCALE as DEFAULT_NAG_SCALE,
+    NagConfig,
+    NagDecision,
+    decide_nag,
+    log_nag_decision,
+)
+from services.generation_queue.sessions import JobSession
 from services.generation_queue.types import ExecutionOutcome, OutputAllocation, OutputPlan
 from services.prompt_enhancement.source_video import SourceVideo
 from services.records import (
@@ -59,9 +69,13 @@ class _AfterProbe:
 
 
 class GpuJobSlot(Protocol):
-    def start_generation(self, generation_id: str) -> None: ...
+    def start_generation(
+        self, generation_id: str, *, ran: JobEnvelope | None = None
+    ) -> None: ...
 
-    def complete_generation(self, result: str | list[str] | None = None) -> None: ...
+    def complete_generation(
+        self, result: str | list[str] | None = None, *, ran: JobEnvelope | None = None
+    ) -> None: ...
 
     def fail_generation(self, error: str) -> None: ...
 
@@ -76,9 +90,8 @@ class RetakePipelineLoader(Protocol):
         height: int | None = None,
         frames: int | None = None,
         queued_home: bool = False,
-        allow_risk: bool | None = None,
-        unmeasured_bet: bool = False,
-    ) -> RetakePipelineState: ...
+        allowance: RiskAllowance | None = None,
+    ) -> tuple[RetakePipelineState, JobEnvelope | None]: ...
 
     def edit_encode_frame_cap(
         self, width: int, height: int, *, total_only: bool = False
@@ -96,6 +109,10 @@ class TextEncodingPrep(Protocol):
     ) -> None: ...
 
     def clear_api_embeddings(self) -> None: ...
+
+    def should_use_local_encoding(
+        self, model_id: LTXLocalModelId | None = None
+    ) -> bool: ...
 
 
 class _ResolvedPrompt(Protocol):
@@ -116,6 +133,7 @@ class SourceVideoPromptResolver(Protocol):
         local_model_id: LTXLocalModelId | None,
         explore_generation: bool,
         source_video: SourceVideo | None,
+        negative_prompt: str = "",
     ) -> _ResolvedPrompt: ...
 
 
@@ -123,6 +141,10 @@ class VideoEditParams(Protocol):
     model: OfferingId
     seed: int | None
     prompt: str
+    negativePrompt: str
+    nagScale: float | None
+    nagAlpha: float | None
+    nagTau: float | None
     promptProvenance: PromptProvenance
 
     def model_copy(self, *, update: Mapping[str, object]) -> Self: ...
@@ -139,9 +161,14 @@ class VideoEditInputs(Protocol):
     def video(self) -> _VideoRef: ...
 
 
+class PreparedEdit(Protocol):
+    @property
+    def ran(self) -> JobEnvelope | None: ...
+
+
 PParams = TypeVar("PParams", bound=VideoEditParams)
 PInputs = TypeVar("PInputs", bound=VideoEditInputs)
-PPrepared = TypeVar("PPrepared")
+PPrepared = TypeVar("PPrepared", bound=PreparedEdit)
 
 
 class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
@@ -159,6 +186,7 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
         default_negative_prompt: str,
         generation: GpuJobSlot,
         prompt_enhancement: SourceVideoPromptResolver,
+        default_nag_scale: Callable[[], float] | None = None,
     ) -> None:
         self._pipelines = pipelines
         self._assets = assets
@@ -167,6 +195,7 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
         self._default_negative_prompt = default_negative_prompt
         self._generation = generation
         self._prompt_enhancement = prompt_enhancement
+        self._default_nag_scale = default_nag_scale or (lambda: DEFAULT_NAG_SCALE)
 
     def validate_params(
         self, spec: Mapping[str, object], *, contract_version: int
@@ -188,9 +217,8 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
         width: int,
         height: int,
         frames: int,
-        allow_risk: bool,
-        unmeasured_bet: bool = False,
-    ) -> RetakePipelineState:
+        allowance: RiskAllowance,
+    ) -> tuple[RetakePipelineState, JobEnvelope | None]:
         return self._pipelines.load_retake_pipeline(
             distilled=True,
             ltx_model_id=local_model_id,
@@ -198,8 +226,7 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
             height=height,
             frames=frames,
             queued_home=True,
-            allow_risk=allow_risk,
-            unmeasured_bet=unmeasured_bet,
+            allowance=allowance,
         )
 
     def _after_probe(
@@ -209,7 +236,7 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
         width: int,
         height: int,
         total_cap: int,
-        allow_risk: bool,
+        allowance: RiskAllowance,
     ) -> _AfterProbe:
         """What to do after the no-bet probe refuses.
 
@@ -220,14 +247,14 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
         total, reloads the original window with the bet.
         """
         if exc.code == LOCAL_GENERATION_RAM_SHORTFALL:
-            if not allow_risk:
+            if not allowance.over:
                 raise exc
             return _AfterProbe(kind="bet")
         if exc.code != VIDEO_JOB_TOO_LARGE:
             raise exc
         free_cap = self._pipelines.edit_encode_frame_cap(width, height)
         if free_cap >= total_cap:
-            if not allow_risk:
+            if not allowance.over:
                 raise exc
             return _AfterProbe(kind="bet")
         if total_cap - free_cap > MAX_SHRINK_GAP_FRAMES:
@@ -252,18 +279,18 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
         height: int,
         frames: int,
         total_cap: int,
-        allow_risk: bool,
-        unmeasured_bet: bool = False,
+        allowance: RiskAllowance,
         generation_id: str,
         log_name: str,
         rewindow: Callable[[int], int],
-    ) -> RetakePipelineState:
-        """Probe without the bet, then shrink or cover what shrink cannot.
+    ) -> tuple[RetakePipelineState, JobEnvelope | None]:
+        """Probe without the over bet, then shrink or cover what shrink cannot.
 
-        The first load passes ``allow_risk=False`` so a free-gate refusal is
-        visible. A re-windowable dip calls ``rewindow`` and loads that frame
-        count with the real bet. A mask ``rewindow`` cannot fit raises there
-        and does not fall through to the original window.
+        The first load passes ``allowance.without_over()`` so a free-gate refusal
+        is visible while any stored unmeasured bet still carries through. A
+        re-windowable dip calls ``rewindow`` and loads that frame count with the
+        real allowance. A mask ``rewindow`` cannot fit raises there and does not
+        fall through to the original window.
         """
         try:
             return self._load_pipeline(
@@ -271,8 +298,7 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
                 width=width,
                 height=height,
                 frames=frames,
-                allow_risk=False,
-                unmeasured_bet=unmeasured_bet,
+                allowance=allowance.without_over(),
             )
         except HTTPError as exc:
             decision = self._after_probe(
@@ -280,7 +306,7 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
                 width=width,
                 height=height,
                 total_cap=total_cap,
-                allow_risk=allow_risk,
+                allowance=allowance,
             )
             if decision.kind == "bet":
                 logger.info(
@@ -296,8 +322,7 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
                         width=width,
                         height=height,
                         frames=frames,
-                        allow_risk=True,
-                        unmeasured_bet=unmeasured_bet,
+                        allowance=allowance,
                     )
                 except HTTPError as bet_exc:
                     raise bet_exc from exc
@@ -307,14 +332,14 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
                 width=width,
                 height=height,
                 frames=rewindow(decision.free_cap),
-                allow_risk=allow_risk,
-                unmeasured_bet=unmeasured_bet,
+                allowance=allowance,
             )
 
     def execute(
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome | None:
         self.validate_params(
             generation.spec, contract_version=generation.contract_version
@@ -344,6 +369,10 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
         # the VRAM a resident pipeline holds. The server-side API flag stays off (it cannot see
         # the video), so enhance_prompt=False below is unchanged.
         typed_prompt = params.prompt
+        nag_decision = self.decide_nag(
+            params,
+            local_encoding=self._text.should_use_local_encoding(local_model_id),
+        )
         enhanced_prompt = self._prompt_enhancement.resolve_for_generation(
             typed_prompt,
             provenance=params.promptProvenance,
@@ -356,6 +385,7 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
                 replaced_window=self.replaced_window(params),
                 writes_blank_prompt=True,
             ),
+            negative_prompt=nag_decision.enhancer_negative,
         ).prompt
         params = params.model_copy(update={"prompt": enhanced_prompt})
         try:
@@ -377,8 +407,7 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
                 seed,
                 dest,
                 windowed_path,
-                allow_risk=spec_risk_allowance(generation.spec),
-                unmeasured_bet=spec_unmeasured_bet(generation.spec),
+                allowance=spec_risk_allowance(generation.spec),
             )
 
             def _infer() -> None:
@@ -389,7 +418,7 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
                 finally:
                     Path(windowed_path).unlink(missing_ok=True)
 
-            run_gpu_job(self._generation, generation.id, str(dest), _infer)
+            run_gpu_job(self._generation, generation.id, str(dest), _infer, ran=prepared.ran)
             if not typed_prompt.strip() and enhanced_prompt.strip():
                 return ExecutionOutcome(written_prompt=enhanced_prompt)
             # Modes unknown: the retake pipeline does not surface its load/offload
@@ -419,6 +448,35 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
         del params
         return None
 
+    def decide_nag(
+        self, params: PParams, *, local_encoding: bool
+    ) -> NagDecision:
+        return decide_nag(
+            params.negativePrompt,
+            os.environ,
+            scale=params.nagScale,
+            alpha=params.nagAlpha,
+            tau=params.nagTau,
+            default_scale=self._default_nag_scale(),
+            local_encoding=local_encoding,
+            compiled=False,
+        )
+
+    def resolve_nag(
+        self, params: PParams, pipeline_state: RetakePipelineState
+    ) -> NagConfig | None:
+        return log_nag_decision(
+            logger,
+            self.capability,
+            self.decide_nag(
+                params,
+                local_encoding=(
+                    self._text.should_use_local_encoding(pipeline_state.ltx_model_id)
+                    and pipeline_state.gemma_root is not None
+                ),
+            ),
+        )
+
     @abstractmethod
     def prepare(
         self,
@@ -430,8 +488,7 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
         dest: Path,
         windowed_path: str,
         *,
-        allow_risk: bool,
-        unmeasured_bet: bool = False,
+        allowance: RiskAllowance = RiskAllowance.none(),
     ) -> PPrepared: ...
 
     @abstractmethod
@@ -446,12 +503,14 @@ def run_gpu_job(
     generation_id: str,
     result_path: str,
     run: Callable[[], None],
+    *,
+    ran: JobEnvelope | None = None,
 ) -> None:
-    slot.start_generation(generation_id)
+    slot.start_generation(generation_id, ran=ran)
     try:
         run()
     except Exception as exc:
         if not is_cancel_exception(exc):
             slot.fail_generation(str(exc))
         raise
-    slot.complete_generation(result_path)
+    slot.complete_generation(result_path, ran=ran)

@@ -6,6 +6,8 @@ import { Outlet, useLocation, useNavigate } from "react-router";
 
 import { useTheme } from "@/ds/styles/themes/useTheme";
 // eslint-disable-next-line no-restricted-imports
+import { DesktopAssistantPanel } from "@/ltx-io/components/Assistant/DesktopAssistantPanel";
+// eslint-disable-next-line no-restricted-imports
 import { GenerationQueuePanel } from "@/ltx-io/components/GenerationQueue/GenerationQueuePanel";
 // eslint-disable-next-line no-restricted-imports
 import { useQuickSearch } from "@/ltx-io/components/QuickSearch/QuickSearchContext";
@@ -32,8 +34,6 @@ import {
 } from "../../lib/open-ltx-api-key-settings";
 import { LocalGenerationUnsupportedNotice } from "../LocalGenerationUnsupportedNotice";
 
-// eslint-disable-next-line no-restricted-imports
-import { DesktopAssistantPanel } from "@/ltx-io/components/Assistant/DesktopAssistantPanel";
 import styles from "./DesktopHomeLayout.module.scss";
 import { DesktopHomeSidebar } from "./DesktopHomeSidebar";
 import { DesktopHomeSupportFab } from "./DesktopHomeSupportFab";
@@ -41,6 +41,7 @@ import { DesktopHomeSupportFab } from "./DesktopHomeSupportFab";
 import { DesktopLtxioQuickSearch } from "./DesktopLtxioQuickSearch";
 import { HistoryNavButtons } from "./HistoryNavButtons";
 import { PageHeader } from "./PageHeader";
+import { CautiousModePill } from "./CautiousModePill";
 import { useHistoryShortcuts } from "./useHistoryNav";
 
 function DesktopHomeLayoutBody({
@@ -62,6 +63,7 @@ function DesktopHomeLayoutBody({
     selectAssistant,
     assistantSelectionPending,
     budgetModeSaving,
+    neverSplitSaving,
   } = useAppSettings();
   const { pathname } = useLocation();
   useHistoryShortcuts();
@@ -73,6 +75,12 @@ function DesktopHomeLayoutBody({
   const isAssetsPage = shellEntry?.id === "assets";
   const isAssistantPage = shellEntry?.id === "assistant";
   const assistantAvailable = !isSettingsPage && shellEntry?.id !== "projects";
+  const nagUnavailableReason =
+    settings.nagScale <= 0
+      ? "Negative prompt guidance (NAG) is turned off in Settings (strength is 0)."
+      : settings.hasLtxApiKey && !settings.useLocalTextEncoder
+        ? "Negative prompt guidance (NAG) requires the local text encoder and is skipped while LTX API text encoding is active."
+        : null;
   const exploreRuntime = useMemo(
     () => ({
       ...createDesktopExploreRuntime(modelsVersion, {
@@ -88,6 +96,8 @@ function DesktopHomeLayoutBody({
           );
         },
         usesLtxApiTextEncoding: !settings.useLocalTextEncoder,
+        nagUnavailableReason,
+        showNagStrengthControls: settings.showNagStrengthControls,
         openLtxApiKeySettings: () => {
           window.dispatchEvent(
             new CustomEvent("open-settings", {
@@ -104,6 +114,13 @@ function DesktopHomeLayoutBody({
         },
         budgetMode: settings.budgetMode,
         budgetModeSaving,
+        advancedControls: settings.advancedControls,
+        neverSplitIntoParts: settings.neverSplitIntoParts,
+        neverSplitSaving,
+        budgetRiskConfirm: {
+          skip: settings.skipBudgetRiskConfirm,
+          setSkip: (skip) => updateSettings({ skipBudgetRiskConfirm: skip }),
+        },
       }),
       askAssistant: (id: string) => {
         setAssistantAttachment({ id });
@@ -133,8 +150,14 @@ function DesktopHomeLayoutBody({
       modelsVersion,
       settings.budgetMode,
       budgetModeSaving,
+      settings.advancedControls,
+      settings.neverSplitIntoParts,
+      neverSplitSaving,
+      settings.skipBudgetRiskConfirm,
       settings.exploreAutoEnhancePrompts,
       settings.useLocalTextEncoder,
+      nagUnavailableReason,
+      settings.showNagStrengthControls,
       settings.assistantProvider,
       settings.assistantLocalModel,
       settings.geminiModel,
@@ -192,6 +215,7 @@ function DesktopHomeLayoutBody({
               <PageHeader
                 showHistoryNav
                 queueControl={queueControl}
+                beforeActions={<CautiousModePill />}
               />
             ) : null}
             <main
@@ -210,6 +234,7 @@ function DesktopHomeLayoutBody({
                     context={{
                       pageHeaderQueueControl: headerSlot === "page" ? queueControl : null,
                       showHistoryNav: true,
+                      beforeHeaderActions: <CautiousModePill />,
                     }}
                   />
                 )}
@@ -221,7 +246,16 @@ function DesktopHomeLayoutBody({
             fullPage={isAssistantPage}
             headerLeading={<HistoryNavButtons />}
             attachmentRequest={assistantAttachment}
-            headerActions={queueControl}
+            headerActions={
+              isAssistantPage ? (
+                <>
+                  <CautiousModePill />
+                  {queueControl}
+                </>
+              ) : (
+                queueControl
+              )
+            }
             onExpand={() => navigate(paths.assistant)}
             onDock={() => {
               setAssistantOpen(true);

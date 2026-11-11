@@ -1,3 +1,8 @@
+import { queueRiskTooltip } from "../../lib/budget-risk.ts";
+import {
+  CUSTOM_LORA_HOME_FEATURE,
+  CUSTOM_LORA_RUN_FALLBACK_LABEL,
+} from "../../lib/custom-lora.ts";
 import { HOME_FEATURES } from "../../lib/home-features.ts";
 import { formatPipelineDisplayName } from "../../lib/video-generation-model-specs.ts";
 import { videoGenerationResolutionLabel } from "../../lib/video-resolution.ts";
@@ -44,7 +49,8 @@ export type GenerationPresentation = {
   label: string;
   prompt: string;
   badges: string[];
-  /** Snapshotted reckless-bet line. Null when the job was not a bet. */
+  /** Snapshotted Brave-bet line. Null when the job was not a bet. */
+  riskTooltip: string | null;
   /** All input asset IDs for queue / summary UI (frames, audio, etc.). */
   inputAssetIds: string[];
   imageInputAssetIds: string[];
@@ -61,12 +67,31 @@ const INPUT_ASSET_KEY_ORDER: Record<string, readonly string[]> = {
   "audio-to-video": ["startFrame", "audio"],
 };
 
+const KEYFRAMES_FEATURE = "keyframes";
+
+/** The stills of a Keyframes run, in time order. They sit in a list, not under one key each. */
+function keyframeAssetIds(inputRecord: Record<string, unknown>): string[] {
+  const keyframes = inputRecord.keyframes;
+  if (!Array.isArray(keyframes)) return [];
+  const frameOf = (value: unknown): number => {
+    const frameIndex = (value as { frameIndex?: unknown } | null)?.frameIndex;
+    return typeof frameIndex === "number" ? frameIndex : 0;
+  };
+  return [...keyframes]
+    .sort((a, b) => frameOf(a) - frameOf(b))
+    .flatMap((keyframe) => {
+      const assetId = readAssetId(keyframe);
+      return assetId == null ? [] : [assetId];
+    });
+}
+
 function readInputAssetIds(generation: GenerationPresentationSource): string[] {
   if (!generation.spec || typeof generation.spec !== "object") return [];
   const inputs = (generation.spec as { inputs?: unknown }).inputs;
   if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) return [];
 
   const inputRecord = inputs as Record<string, unknown>;
+  if (generation.feature === KEYFRAMES_FEATURE) return keyframeAssetIds(inputRecord);
   const names =
     INPUT_ASSET_KEY_ORDER[generation.feature] ??
     Object.keys(inputRecord);
@@ -77,6 +102,8 @@ function readInputAssetIds(generation: GenerationPresentationSource): string[] {
 }
 
 function imageInputAssetIds(generation: GenerationPresentationSource): string[] {
+  // Every keyframe is an image.
+  if (generation.feature === KEYFRAMES_FEATURE) return readInputAssetIds(generation);
   if (
     generation.feature !== "image-to-video" &&
     generation.feature !== "audio-to-video"
@@ -116,17 +143,51 @@ export function formatLoraStrengthBadge(strength: number): string {
   return `Strength ${Number(strength.toFixed(2))}`;
 }
 
-function featureLabel(feature: string): string {
+const TEXT_TO_IMAGE_FEATURE = "text-to-image";
+
+/**
+ * The name the user gave a saved custom LoRA, as it was when the run started. Desktop keeps it on
+ * `loras[0].displayName`. The phone remote withholds `loras` and sends `customLoraName`.
+ */
+function readCustomLoraName(params: Record<string, unknown> | null): string | null {
+  if (!params) return null;
+  const loras = params.loras;
+  const stored =
+    Array.isArray(loras) && loras.length > 0
+      ? (loras[0] as { displayName?: unknown } | null)?.displayName
+      : params.customLoraName;
+  return typeof stored === "string" && stored.trim().length > 0 ? stored : null;
+}
+
+function featureLabel(feature: string, params: Record<string, unknown> | null): string {
+  // Every saved LoRA shares one feature id. The run is named after its LoRA, as in the sidebar.
+  if (feature === CUSTOM_LORA_HOME_FEATURE.id) {
+    const name = readCustomLoraName(params);
+    return name ?? CUSTOM_LORA_RUN_FALLBACK_LABEL;
+  }
   const known = HOME_FEATURES.find((item) => item.id === feature);
   if (known) return known.title;
+  if (feature === TEXT_TO_IMAGE_FEATURE) return "Image";
   return "Generation";
+}
+
+function imageBadges(params: Record<string, unknown> | null): string[] {
+  if (params == null) return [];
+  const badges: string[] = [];
+  if (typeof params.width === "number" && typeof params.height === "number") {
+    badges.push(`${params.width}×${params.height}`);
+  }
+  if (params.provider === "fal") badges.push("fal");
+  else if (params.provider === "local") badges.push("Local");
+  return badges;
 }
 
 export function generationPresentation(
   generation: GenerationPresentationSource,
 ): GenerationPresentation {
   const params = readGenerationParams(generation.spec);
-  const badges: string[] = [];
+  const badges: string[] =
+    generation.feature === TEXT_TO_IMAGE_FEATURE ? imageBadges(params) : [];
   const model =
     typeof params?.model === "string"
       ? formatPipelineDisplayName(params.model) ?? params.model
@@ -168,10 +229,15 @@ export function generationPresentation(
     badges.push(`Seed ${params.seed}`);
   }
 
+  const riskMessage = generation.risk?.message;
   return {
-    label: featureLabel(generation.feature),
+    label: featureLabel(generation.feature, params),
     prompt: typeof params?.prompt === "string" ? params.prompt : "",
     badges,
+    riskTooltip:
+      typeof riskMessage === "string" && riskMessage.length > 0
+        ? queueRiskTooltip(riskMessage, generation.risk?.readout)
+        : null,
     inputAssetIds: readInputAssetIds(generation),
     imageInputAssetIds: imageInputAssetIds(generation),
   };

@@ -71,6 +71,19 @@
   white-space: nowrap;
 }
 
+/* The `showGenerationNegativePrompt` flag: the negative prompt line under the meta bar. */
+.withNegative {
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.negativePrompt {
+  color: var(--semantic-fg-secondary);
+  white-space: normal;
+  padding-bottom: var(--spacing-xs);
+}
+
 @container assistant-result (max-width: 400px) {
   .container {
     flex-wrap: wrap;

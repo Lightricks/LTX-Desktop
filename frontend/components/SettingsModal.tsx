@@ -20,6 +20,7 @@ import {
 } from "../contexts/AppSettingsContext";
 import type { AppUpdate } from "../hooks/use-app-update";
 import { ApiClient, type ApiSuccessOf } from "../lib/api-client";
+import { useDeleteConfirmationPreference } from "../lib/delete-confirmation-preference";
 import { LtxApiKeyInput } from "./LtxApiKeyInput";
 import { ApiKeySettingsBlock } from "./settings/ApiKeySettingsBlock";
 import { AboutSettingsSection } from "./settings/AboutSettingsSection";
@@ -27,6 +28,7 @@ import { AssistantSettingsSection } from "./settings/AssistantSettingsSection";
 import { CudaPerformanceSection } from "./settings/CudaPerformanceSection";
 import { EnhanceSettingsSection } from "./settings/EnhanceSettingsSection";
 import { LegacyTextEncodingSection } from "./settings/LegacyTextEncodingSection";
+import { AssetsFolderSection } from "./settings/AssetsFolderSection";
 import { LegacySettingsSection } from "./settings/LegacySettingsSection";
 import { ModelsSettingsSection } from "./settings/ModelsSettingsSection";
 import pageLayoutStyles from "./settings/SettingsPageLayout.module.scss";
@@ -41,10 +43,13 @@ import {
   SettingsCallout,
   SettingsHint,
   SettingsKeyStatus,
+  SettingsNumberInput,
   SettingsSelect,
   SettingsStack,
   SettingsSubsection,
 } from "./settings/SettingsContent";
+// eslint-disable-next-line no-restricted-imports
+import { MAX_NAG_SCALE } from "@/ltx-io/screens/Feature/definitions/negativePrompt";
 import { isSettingsTabAvailable } from "../lib/settings-navigation";
 import type {
   SettingsInitialReason,
@@ -235,6 +240,31 @@ export function SettingsScreen({
   const [resolvedGeminiModel, setResolvedGeminiModel] = useState(DEFAULT_GEMINI_MODEL);
   const geminiModelSaveSeq = useRef(0);
   const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
+  const { skipDeleteConfirmation, setSkipDeleteConfirmation } =
+    useDeleteConfirmationPreference();
+  const [nagScaleDraft, setNagScaleDraft] = useState(() => String(settings.nagScale));
+
+  useEffect(() => {
+    setNagScaleDraft(String(settings.nagScale));
+  }, [settings.nagScale]);
+
+  const commitNagScaleDraft = () => {
+    const trimmed = nagScaleDraft.trim();
+    if (!trimmed) {
+      setNagScaleDraft(String(settings.nagScale));
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) {
+      setNagScaleDraft(String(settings.nagScale));
+      return;
+    }
+    const clamped = Math.max(0, Math.min(MAX_NAG_SCALE, parsed));
+    setNagScaleDraft(String(clamped));
+    if (clamped !== settings.nagScale) {
+      updateSettings({ nagScale: clamped });
+    }
+  };
 
   // Sync active tab with initialTab when the screen becomes active or the prop changes.
   useEffect(() => {
@@ -434,6 +464,18 @@ export function SettingsScreen({
                 <ThemePreferenceSetting />
               </SettingsSubsection>
 
+              <AssetsFolderSection />
+
+              <SettingsSubsection showDivider title="Confirmations">
+                <SettingToggle
+                  rowLayout="preference"
+                  title="Ask before deleting"
+                  description="Show a confirmation dialog before deleting files, removing feature results, or canceling generations."
+                  enabled={!skipDeleteConfirmation}
+                  onToggle={() => setSkipDeleteConfirmation(!skipDeleteConfirmation)}
+                />
+              </SettingsSubsection>
+
               <SettingsSubsection
                 showDivider
                 title="Generation"
@@ -466,6 +508,59 @@ export function SettingsScreen({
                       updateSettings({ useConvVae: !settings.useConvVae })
                     }
                   />
+                  {window.electronAPI.platform === "darwin" && settings.useConvVae ? (
+                    <SettingToggle
+                      rowLayout="preference"
+                      nested
+                      title="Faster Fast decode (experimental)"
+                      description="Speeds up Fast decode. Output may differ very slightly from the standard path. Takes effect on the next generation."
+                      enabled={settings.mpsConv3DAsConv2DEnabled}
+                      onToggle={() =>
+                        updateSettings({
+                          mpsConv3DAsConv2DEnabled: !settings.mpsConv3DAsConv2DEnabled,
+                        })
+                      }
+                    />
+                  ) : null}
+                  <div className={contentStyles.preferenceRow}>
+                    <div className={contentStyles.preferenceRowCopy}>
+                      <label htmlFor="nag-scale-input" className={contentStyles.preferenceRowTitle}>
+                        Negative guidance strength (NAG)
+                      </label>
+                      <p className={contentStyles.preferenceRowHint}>
+                        Strength of negative prompt guidance for local Fast generations (0 turns NAG off; default 11).
+                      </p>
+                    </div>
+                    <SettingsNumberInput
+                      id="nag-scale-input"
+                      type="number"
+                      min={0}
+                      max={MAX_NAG_SCALE}
+                      step={0.5}
+                      value={nagScaleDraft}
+                      onChange={(event) => {
+                        setNagScaleDraft(event.currentTarget.value);
+                      }}
+                      onBlur={commitNagScaleDraft}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.currentTarget.blur();
+                        }
+                      }}
+                    />
+                  </div>
+                  <SettingToggle
+                    rowLayout="preference"
+                    nested
+                    title="Per-run strength controls"
+                    description="Show a strength row under the negative prompt, with Strong and Max presets and custom scale, α and τ."
+                    enabled={settings.showNagStrengthControls}
+                    onToggle={() =>
+                      updateSettings({
+                        showNagStrengthControls: !settings.showNagStrengthControls,
+                      })
+                    }
+                  />
                 </SettingsStack>
               </SettingsSubsection>
 
@@ -496,6 +591,18 @@ export function SettingsScreen({
                   onOpenGeminiApiKeys={() => geminiApiKey.openAndFocus()}
                 />
               </div>
+
+              <SettingsSubsection showDivider title="Advanced controls">
+                <SettingToggle
+                  rowLayout="preference"
+                  title="Show advanced controls"
+                  description="Shows an Advanced section on features that have one. These controls trade render time against quality."
+                  enabled={settings.advancedControls}
+                  onToggle={() =>
+                    updateSettings({ advancedControls: !settings.advancedControls })
+                  }
+                />
+              </SettingsSubsection>
 
               <SettingsSubsection showDivider title="Privacy">
                 <SettingToggle

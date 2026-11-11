@@ -38,6 +38,9 @@ import {
   SettingsSubsection,
 } from './SettingsContent'
 import contentStyles from './SettingsContent.module.scss'
+// eslint-disable-next-line no-restricted-imports
+import { useCustomLorasWith } from '@/ltx-io/hooks/useCustomLoras'
+import { CustomLoraSettingsBlock } from './CustomLoraSettingsBlock'
 
 function isGatedRepoError(message: string): boolean {
   return message.includes('gated repo') || message.includes('authorized list')
@@ -345,13 +348,18 @@ export function LoraSettingsSection({
 
   const styleEntries = useMemo(() => loras.map(loraListItemToEntry), [loras])
   const icEntries = useMemo(() => icLoras.map(icListItemToEntry), [icLoras])
+  const customLorasQuery = useCustomLorasWith(ApiClient)
 
   const searchMatchCount = useMemo(() => {
     if (!searchQuery) return 1
-    const matches = (entries: LibraryEntry[]) =>
+    const matches = (entries: readonly { name: string }[]) =>
       entries.filter((entry) => entry.name.toLowerCase().includes(searchQuery)).length
-    return matches(styleEntries) + matches(icEntries)
-  }, [icEntries, searchQuery, styleEntries])
+    return (
+      matches(styleEntries) +
+      matches(icEntries) +
+      matches(customLorasQuery.data ?? [])
+    )
+  }, [customLorasQuery.data, icEntries, searchQuery, styleEntries])
 
   useLayoutEffect(() => {
     if (!onSearchHasMatches) return
@@ -359,11 +367,22 @@ export function LoraSettingsSection({
       onSearchHasMatches(true)
       return
     }
-    if (loraCatalogStatus === 'loading' || icCatalogStatus === 'loading') {
+    if (
+      loraCatalogStatus === 'loading' ||
+      icCatalogStatus === 'loading' ||
+      customLorasQuery.isPending
+    ) {
       return
     }
     onSearchHasMatches(searchMatchCount > 0)
-  }, [icCatalogStatus, loraCatalogStatus, onSearchHasMatches, searchMatchCount, searchQuery])
+  }, [
+    customLorasQuery.isPending,
+    icCatalogStatus,
+    loraCatalogStatus,
+    onSearchHasMatches,
+    searchMatchCount,
+    searchQuery,
+  ])
 
   const deleteStyleLora = useCallback(async (id: string, variantId?: string) => {
     const result = await ApiClient.deleteLoraInstallation({
@@ -427,6 +446,8 @@ export function LoraSettingsSection({
         hfAuthStatus={hfAuthStatus}
         startHuggingFaceLogin={() => void startHuggingFaceLogin()}
       />
+
+      <CustomLoraSettingsBlock searchQuery={searchQuery} />
     </>
   )
 }

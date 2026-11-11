@@ -12,6 +12,7 @@ import {
   type IcLoraTrackContext,
   type IcLoraTrackSchema,
 } from "./definitions/icLoraTrack";
+import { referenceImageAssetAction } from "./createWithAiImageActions";
 import { getVideoOptionIcon } from "./fields/videoOptionIcons";
 import { orderVideoSettingsOptionFields } from "./fields/optionControlPresentation";
 import { FeatureFormScreen } from "./FeatureFormScreen";
@@ -25,6 +26,7 @@ const SEED_IDS = [MOTION_TRACK_IMAGE_SEED.kind];
 const presentation: FeatureFormPresentationAdapter<IcLoraTrackSchema> = {
   getOptionIcon: getVideoOptionIcon,
   orderOptionFields: orderVideoSettingsOptionFields,
+  imageAssetAction: referenceImageAssetAction,
 };
 
 function IcLoraTrackForm({
@@ -49,8 +51,9 @@ function IcLoraTrackForm({
     () =>
       createIcLoraTrackDefinition(recipe, {
         audio_mode: controls.defaultAudioMode,
+        default_negative_prompt: controls.defaultNegativePrompt,
       }),
-    [recipe, controls.defaultAudioMode],
+    [recipe, controls.defaultAudioMode, controls.defaultNegativePrompt],
   );
   const context = useMemo<IcLoraTrackContext>(() => {
     return {

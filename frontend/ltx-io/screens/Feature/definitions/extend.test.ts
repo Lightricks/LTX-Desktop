@@ -7,6 +7,7 @@ import { resolveFeatureSeedValues } from "../types.ts";
 import { specFixture, specFixtureBothOfferings } from "./specFixture.ts";
 import {
   EXTEND_DEFAULTS,
+  EXTEND_EXAMPLE_NEGATIVE_PROMPT,
   EXTEND_EXAMPLE_PROMPT,
   extendDefinition,
   fromGeneration,
@@ -202,6 +203,7 @@ describe("extend definition", () => {
       inputs: { video: { assetId: "video-1" } },
       params: {
         prompt: EXTEND_EXAMPLE_PROMPT,
+        negativePrompt: EXTEND_EXAMPLE_NEGATIVE_PROMPT,
         model: "ltx-2.5-fast",
         duration: 8,
         mode: "start",
@@ -222,6 +224,7 @@ describe("extend definition", () => {
       {
         params: {
           prompt: "continue",
+          negativePrompt: "seam jump",
           model: "ltx-2.5-fast",
           duration: 6,
           mode: "start",
@@ -233,6 +236,7 @@ describe("extend definition", () => {
     assert.deepEqual(restored, {
       video: { assetId: "clip-9" },
       prompt: "continue",
+      negativePrompt: "seam jump",
       model: "ltx-2.5-fast",
       resolution: "original",
       mode: "start",
@@ -311,11 +315,10 @@ describe("extend preflight", () => {
 
   function preflight(
     cells: EditPreflightState["response"]["cells"],
-    budgetMode: "standard" | "reckless" = "standard",
   ): EditPreflightState {
     return {
       assetId: "video-1",
-      response: { source, resolutions: [], cells, budgetMode },
+      response: { source, resolutions: [], cells, budgetMode: "brave" },
     };
   }
 
@@ -412,17 +415,14 @@ describe("extend preflight", () => {
     assert.equal(unknown.duration, 12);
   });
 
-  it("does not snap a reckless over-budget preset off the selection", () => {
-    const state = preflight(
-      [
-        cell("original", 4, true),
-        cell("original", 6, true),
-        cell("original", 8, false, "over budget", "over"),
-        cell("original", 10, false, "no pipeline"),
-        cell("original", 12, false, "no pipeline"),
-      ],
-      "reckless",
-    );
+  it("does not snap an admitted Brave bet off the selection", () => {
+    const state = preflight([
+      cell("original", 4, true),
+      cell("original", 6, true),
+      cell("original", 8, true, "over budget", "over"),
+      cell("original", 10, false, "no pipeline"),
+      cell("original", 12, false, "no pipeline"),
+    ]);
     const kept = extendDefinition.normalize(
       values({ resolution: "original", duration: 8 }),
       context({ ...dims, preflight: state }),

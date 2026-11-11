@@ -1,23 +1,17 @@
 import { Text } from "@ds/Text/Text";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
-import { isImageAsset } from "../../../hooks/assetQueryKeys";
+import type { ExploreAsset } from "@/lib/explore-contract";
+
 import formStyles from "../FeatureFormView.module.scss";
 import { MotionPathEditModal } from "../motionPath/MotionPathEditModal";
 import { MotionPathRefTile } from "../motionPath/MotionPathRefTile";
 import { useMotionTrackFrameAspect } from "../motionPath/useMotionTrackFrameAspect";
 import type { MotionPath } from "../../../lib/motionPathSampler";
 import type { AssetRef, FieldOption, MotionPathFieldEdit, ValidationIssue } from "../types";
-import {
-  IMAGE_ACCEPT,
-  IMAGE_EXTENSIONS,
-  imageIngestErrorMessage,
-  imageLookupErrorMessage,
-  isSupportedDroppedImage,
-  UNSUPPORTED_IMAGE_MESSAGE,
-} from "./imageAssetInput";
 import dropStyles from "./ImageDropzone.module.scss";
-import { useMediaAssetField } from "./useMediaAssetField";
+import imageFieldStyles from "./ImageAssetField.module.scss";
+import { useImageAssetField } from "./useImageAssetField";
 
 /**
  * The reference image of a Motion Track run with the path drawn on it, as on ltx.io.
@@ -30,9 +24,12 @@ export function MotionPathField({
   paths,
   duration,
   issue,
+  action,
   onChange,
 }: {
   field: { id: string; label: string; durationOptions: FieldOption<number>[] };
+  /** Beside the label: a way to make the image instead of uploading it. */
+  action?: (input: { setAsset: (asset: ExploreAsset) => void }) => ReactNode;
   image: AssetRef | null;
   paths: MotionPath[];
   duration: number;
@@ -40,21 +37,14 @@ export function MotionPathField({
   onChange: (edit: MotionPathFieldEdit) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
-  const media = useMediaAssetField({
+  const media = useImageAssetField({
     value: image,
     issue,
     onChange: (nextImage) => {
       onChange({ image: nextImage });
       setIsEditing(nextImage != null);
     },
-    accept: IMAGE_ACCEPT,
-    extensions: IMAGE_EXTENSIONS,
     chooserTitle: field.label,
-    isSupportedDropped: isSupportedDroppedImage,
-    isExpectedAsset: isImageAsset,
-    unsupportedMessage: UNSUPPORTED_IMAGE_MESSAGE,
-    ingestErrorMessage: imageIngestErrorMessage,
-    lookupErrorMessage: imageLookupErrorMessage,
   });
   const { previewUrl } = media;
   // The one place that loads the image to read its frame. The tile and the editor get the result.
@@ -63,9 +53,12 @@ export function MotionPathField({
 
   return (
     <div className={formStyles.field}>
-      <Text as="span" variant="body" size="md" className={formStyles.fieldLabel}>
-        {field.label}
-      </Text>
+      <div className={imageFieldStyles.labelRow}>
+        <Text as="span" variant="body" size="md" className={formStyles.fieldLabel}>
+          {field.label}
+        </Text>
+        {action?.({ setAsset: media.acceptAsset })}
+      </div>
       <input
         ref={media.fileInputRef}
         className={dropStyles.hiddenInput}
@@ -83,8 +76,8 @@ export function MotionPathField({
           imageUrl={previewUrl}
           imageAspect={imageAspect}
           onEdit={() => setIsEditing(true)}
-          onUpload={media.choose}
-          onReplace={previewUrl ? media.choose : undefined}
+          onUpload={media.openLibrary}
+          onReplace={previewUrl ? media.openLibrary : undefined}
         />
       </div>
       {media.errorMessage ? (

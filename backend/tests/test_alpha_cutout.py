@@ -29,6 +29,7 @@ from services.features.video.alpha_cutout import (
 from services.features.video.ic_lora_recipe import IcLoraRecipeExecutor
 from services.media_probe import video_frame_count
 from services.generation_queue.types import OutputAllocation
+from tests.fakes.generation import FakeJobSession
 from services.records import AssetRecord, GenerationRecord
 
 _SOURCE_RGB = (200, 40, 40)
@@ -322,7 +323,7 @@ def _run_alpha_gen(test_state, tmp_path: Path, model: object, source: Path, *, f
         ("matte", "video/mp4"),
         ("gif", "image/gif"),
     ]
-    executor.execute(generation, outputs)
+    executor.execute(generation, outputs, FakeJobSession())
     return outputs
 
 

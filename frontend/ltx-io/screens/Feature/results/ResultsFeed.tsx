@@ -1,5 +1,4 @@
 import { clsx } from "clsx";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useCallback, useMemo, useState, type ComponentType } from "react";
 import { useSearchParams } from "react-router";
 
@@ -7,24 +6,25 @@ import { ActivityCircular } from "@ds/ActivityCircular/ActivityCircular";
 import { Button } from "@ds/Button/Button";
 import ArrowUpIcon from "@ds/assets/Icons/Arrow/Up/Small.svg?react";
 
-import { progressPercentByGenerationId } from "../../../components/GenerationQueue/generationQueuePanelModel";
+import {
+  progressPercentByGenerationId,
+  remainingSecondsByGenerationId,
+} from "../../../components/GenerationQueue/generationQueuePanelModel";
 import {
   createToast,
   DEFAULT_AUTOCLOSE_MS,
 } from "../../../components/shared/Toast/toastService";
 import { useGenerationQueue } from "../../../hooks/useGenerationQueue";
+import { useScrollPositionMemory } from "../../../hooks/useScrollPositionMemory";
 import { isInFlightGeneration, type Generation } from "../../../lib/resultsFeedModel";
 import { useExploreRuntime } from "../../../runtime/ExploreRuntime";
 import type { ResultFrameProps } from "./ResultFrame";
 import { ResultStatus } from "./ResultStatus";
 import { RESULT_NOT_FOUND_MESSAGE } from "./resultActionsCopy";
 import { isStillFocusingResult, useResultsFeedScroll } from "./useResultsFeedScroll";
+import { useResultsFeedVirtualizer } from "./useResultsFeedVirtualizer";
 import { useScrollToResultParam } from "./useScrollToResultParam";
 import styles from "./ResultsFeed.module.scss";
-
-const PUSH_S = 0.35;
-const REVEAL_DELAY_S = 0.35;
-const MOTION_EASE = [0, 0, 0.3, 1] as const;
 
 export type EmptyStateAdapter = ComponentType;
 
@@ -64,6 +64,7 @@ function ScrollUpButton({
 }
 
 export function ResultsFeed({
+  pageId,
   generations,
   isLoading,
   isFetching,
@@ -74,6 +75,8 @@ export function ResultsFeed({
   ResultFrameAdapter,
   EmptyStateAdapter,
 }: {
+  /** Names the page for the remembered scroll position. */
+  pageId: string;
   generations: Generation[];
   isLoading: boolean;
   isFetching: boolean;
@@ -84,7 +87,6 @@ export function ResultsFeed({
   ResultFrameAdapter: ComponentType<ResultFrameProps>;
   EmptyStateAdapter?: EmptyStateAdapter;
 }) {
-  const reduceMotion = useReducedMotion();
   const [searchParams, setSearchParams] = useSearchParams();
   const resultId = searchParams.get("result");
   const [settledResultId, setSettledResultId] = useState<string | null>(null);
@@ -98,6 +100,10 @@ export function ResultsFeed({
   });
   const progressById = useMemo(
     () => progressPercentByGenerationId(queueQuery.data),
+    [queueQuery.data],
+  );
+  const remainingById = useMemo(
+    () => remainingSecondsByGenerationId(queueQuery.data),
     [queueQuery.data],
   );
   const {
@@ -114,6 +120,31 @@ export function ResultsFeed({
     focusingResult: isStillFocusingResult(resultId, settledResultId),
   });
 
+  const generationIds = useMemo(
+    () => generations.map((generation) => generation.id),
+    [generations],
+  );
+  const {
+    setListElement,
+    scrollElement,
+    virtualItems,
+    totalSize,
+    scrollMargin,
+    measureElement,
+    scrollToIndex,
+    renderedKey,
+  } = useResultsFeedVirtualizer({ feedRootRef, generationIds });
+
+  // A restored position must not be undone by follow-newest, which would scroll to the top.
+  // A ?result= link sets its own position, so it skips the restore.
+  useScrollPositionMemory({
+    pageId,
+    scrollElement,
+    ready: generations.length > 0,
+    restore: resultId == null,
+    onRestored: unpinFromNewest,
+  });
+
   const newestId = generations[0]?.id ?? null;
   const onResultScrolled = useCallback(
     (id: string) => {
@@ -123,7 +154,7 @@ export function ResultsFeed({
     [newestId, unpinFromNewest],
   );
   // A Queue link can point at a generation this page does not list, for example one
-  // beyond the finished-results cap. Tell the user, then drop the stale param.
+  // that was deleted. Tell the user, then drop the stale param.
   const onResultMissing = useCallback(
     (id: string) => {
       setSettledResultId(id);
@@ -148,29 +179,15 @@ export function ResultsFeed({
     feedRootRef,
     generations,
     resultId,
-    reduceMotion,
     !isLoading && !isFetching && !loadError,
     onResultScrolled,
     onResultMissing,
+    scrollToIndex,
+    renderedKey,
   );
 
   const isEmpty = generations.length === 0 && !isLoading && !loadError;
   const isLoadError = Boolean(loadError) && generations.length === 0 && !isLoading;
-  const itemMotion = useMemo(
-    () =>
-      reduceMotion
-        ? { layout: false as const, initial: false as const }
-        : {
-            layout: "position" as const,
-            initial: { opacity: 0 },
-            animate: { opacity: 1 },
-            transition: {
-              layout: { duration: PUSH_S, ease: MOTION_EASE },
-              opacity: { duration: 0.25, delay: REVEAL_DELAY_S, ease: MOTION_EASE },
-            },
-          },
-    [reduceMotion],
-  );
 
   return (
     <div
@@ -206,27 +223,48 @@ export function ResultsFeed({
           <ActivityCircular appearance="default" size={16} />
         </div>
       ) : null}
-      <AnimatePresence initial={false}>
-        {generations.map((generation) => (
-          <motion.div
-            key={generation.id}
-            ref={generation.id === newestId ? newestRef : undefined}
-            data-generation-id={generation.id}
-            className={
-              isInFlightGeneration(generation) ? styles.resultGroup : undefined
-            }
-            {...itemMotion}
-          >
-            <ResultFrameAdapter
-              generation={generation}
-              onCancel={onCancel}
-              onRetry={onRetry}
-              onDelete={onDelete}
-              progressPercent={progressById.get(generation.id)}
-            />
-          </motion.div>
-        ))}
-      </AnimatePresence>
+      {generations.length > 0 ? (
+        <div
+          ref={setListElement}
+          className={styles.virtualList}
+          style={{ height: totalSize }}
+        >
+          {virtualItems.map((virtualItem) => {
+            const generation = generations[virtualItem.index];
+            if (!generation) return null;
+            return (
+              <div
+                key={virtualItem.key}
+                data-index={virtualItem.index}
+                ref={measureElement}
+                className={styles.virtualRow}
+                style={{
+                  transform: `translateY(${virtualItem.start - scrollMargin}px)`,
+                }}
+              >
+                <div
+                  ref={generation.id === newestId ? newestRef : undefined}
+                  data-generation-id={generation.id}
+                  className={
+                    isInFlightGeneration(generation)
+                      ? styles.resultGroup
+                      : undefined
+                  }
+                >
+                  <ResultFrameAdapter
+                    generation={generation}
+                    onCancel={onCancel}
+                    onRetry={onRetry}
+                    onDelete={onDelete}
+                    progressPercent={progressById.get(generation.id)}
+                    remainingSeconds={remainingById.get(generation.id)}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }

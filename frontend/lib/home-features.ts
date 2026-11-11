@@ -1,7 +1,11 @@
 import { matchPath } from "react-router";
-import { paths } from "../paths.ts";
+
 import type { FetcherToolId } from "../../shared/deep-link.ts";
-import { IC_LORA_RECIPES, type IcLoraRecipe } from "./ic-lora-recipes.ts";
+import { paths } from "../paths.ts";
+
+import type { DevFlagKey } from "./dev-flags.ts";
+import { CUSTOM_LORA_HOME_FEATURE } from "./custom-lora.ts";
+import { IC_LORA_RECIPES } from "./ic-lora-recipes.ts";
 import { LORA_RECIPE_HOME_FEATURES } from "./lora-recipes.ts";
 
 type AppPath = (typeof paths)[keyof typeof paths];
@@ -12,6 +16,7 @@ type HomeFeaturePath = Exclude<
   | typeof paths.project
   | typeof paths.assets
   | typeof paths.fetcherTool
+  | typeof paths.customLoraRun
 >;
 
 type HomeFeatureDefinitionShape = {
@@ -72,6 +77,20 @@ export const FIRST_CLASS_HOME_FEATURES = [
         "Bring a still image to life by describing how it should move. Provide a single frame or both a start and end frame, and receive smooth, natural animation that stays true to your original composition.",
       categories: "Motion",
       typeLabel: "Image to Video",
+    },
+  },
+  {
+    id: "keyframes",
+    path: paths.keyframes,
+    title: "Keyframes",
+    description: "Guide a clip with several images placed at chosen times.",
+    // No Fetcher tool runs this feature.
+    fetcherTool: undefined,
+    listing: {
+      blurb:
+        "Place several images at chosen moments of a clip and describe how it moves between them. Set how strongly each image holds, and receive a video that passes through every keyframe.",
+      categories: "Motion",
+      typeLabel: "Keyframes",
     },
   },
   {
@@ -137,7 +156,7 @@ const HOME_FEATURE_SECTION_DEFINITIONS = [
   {
     id: "workflows",
     heading: "Workflows",
-    featureIds: ["text-to-video", "image-to-video", "audio-to-video"],
+    featureIds: ["text-to-video", "image-to-video", "keyframes", "audio-to-video"],
   },
   {
     id: "vfx",
@@ -178,44 +197,45 @@ export type HomeFeatureSectionsMissingFeature = AssertNever<
   Exclude<FirstClassFeatureId, SectionedFeatureId>
 >;
 
-export const HOME_FEATURE_SECTIONS = HOME_FEATURE_SECTION_DEFINITIONS.map(
-  (section) => ({
-    id: section.id,
-    heading: section.heading,
-    features: section.featureIds.map(firstClassFeature),
-  }),
-);
+export const HOME_FEATURE_SECTIONS = HOME_FEATURE_SECTION_DEFINITIONS.map((section) => ({
+  id: section.id,
+  heading: section.heading,
+  features: section.featureIds.map(firstClassFeature),
+}));
 
-const HIGH_RES_ONLY_FEATURE_IDS: ReadonlySet<string> = new Set(
-  (IC_LORA_RECIPES as readonly IcLoraRecipe[])
-    .filter((recipe) => recipe.requiresHighRes === true)
-    .map((recipe) => recipe.id),
-);
+/** The dev flags that hide a Home feature while they are off. */
+export type HomeFeatureFlagKey = Extract<DevFlagKey, "keyframes">;
+/** A flag that is missing counts as off. */
+export type HomeFeatureFlags = Readonly<Partial<Record<HomeFeatureFlagKey, boolean>>>;
+
+/** The flag a feature needs. A feature that is not in the map needs none. */
+const FEATURE_REQUIRED_FLAG: ReadonlyMap<string, HomeFeatureFlagKey> = new Map([
+  ["keyframes", "keyframes"],
+]);
 
 /**
- * Whether Home lists the feature. A recipe with `requiresHighRes` needs the
- * `highResVideoToVideo` flag. The backend refuses it without the flag as well.
+ * Whether Home lists the feature. Keyframes needs the `keyframes` flag. The backend
+ * refuses it without the flag as well.
+ * "Add custom LoRA" is never listed: it is an entry of the sidebar, not a LoRA with a tile.
  */
-export function isHomeFeatureOffered(
-  id: string,
-  highResVideoToVideo: boolean,
-): boolean {
-  return highResVideoToVideo || !HIGH_RES_ONLY_FEATURE_IDS.has(id);
+export function isHomeFeatureOffered(id: string, flags: HomeFeatureFlags = {}): boolean {
+  if (id === CUSTOM_LORA_HOME_FEATURE.id) return false;
+  const required = FEATURE_REQUIRED_FLAG.get(id);
+  return required === undefined || flags[required] === true;
 }
 
 /** The gallery sections with the features that need a flag removed when the flag is off. */
-export function offeredHomeFeatureSections(highResVideoToVideo: boolean) {
+export function offeredHomeFeatureSections(flags: HomeFeatureFlags = {}) {
   return HOME_FEATURE_SECTIONS.map((section) => ({
     ...section,
-    features: section.features.filter((feature) =>
-      isHomeFeatureOffered(feature.id, highResVideoToVideo),
-    ),
+    features: section.features.filter((feature) => isHomeFeatureOffered(feature.id, flags)),
   }));
 }
 
 export const HOME_FEATURES = [
   ...FIRST_CLASS_HOME_FEATURES,
   ...LORA_RECIPE_HOME_FEATURES,
+  CUSTOM_LORA_HOME_FEATURE,
 ] as const satisfies readonly HomeFeatureDefinitionShape[];
 
 export type HomeFeatureId = (typeof HOME_FEATURES)[number]["id"];
@@ -233,12 +253,8 @@ const HOME_SIDEBAR_FEATURED_FEATURE_IDS = [
 export const HOME_SIDEBAR_FEATURED_FEATURES =
   HOME_SIDEBAR_FEATURED_FEATURE_IDS.map(getHomeFeature);
 
-export function isHomeFeatureId(
-  value: string | undefined,
-): value is HomeFeatureId {
-  return (
-    value !== undefined && HOME_FEATURES.some((feature) => feature.id === value)
-  );
+export function isHomeFeatureId(value: string | undefined): value is HomeFeatureId {
+  return value !== undefined && HOME_FEATURES.some((feature) => feature.id === value);
 }
 
 export function getHomeFeature(id: HomeFeatureId): HomeFeatureDefinition {
@@ -249,9 +265,7 @@ export function getHomeFeature(id: HomeFeatureId): HomeFeatureDefinition {
   return feature;
 }
 
-export function matchHomeFeature(
-  pathname: string,
-): HomeFeatureDefinition | undefined {
+export function matchHomeFeature(pathname: string): HomeFeatureDefinition | undefined {
   return HOME_FEATURES.find(
     (feature) => matchPath({ path: feature.path, end: true }, pathname) != null,
   );

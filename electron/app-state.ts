@@ -1,11 +1,14 @@
 import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
+import { getAppDataDir } from './app-paths'
 
 export interface AppState {
   analyticsEnabled?: boolean
   installationId?: string
   projectAssetsPath?: string
+  /** Custom folder of the asset store. Unset means `<userData>/assets`. */
+  assetsDir?: string
   skippedUpdateVersion?: string
   autoCheckUpdates?: boolean
   setupComplete?: boolean
@@ -31,7 +34,12 @@ export function readAppState(): AppState {
 }
 
 export function writeAppState(state: AppState): void {
-  fs.writeFileSync(getAppStatePath(), JSON.stringify(state, null, 2))
+  // Write a temp file and rename it. A crash must not leave a half file: an unreadable state
+  // reads as empty, and that would drop the saved assets folder.
+  const statePath = getAppStatePath()
+  const tempPath = `${statePath}.tmp`
+  fs.writeFileSync(tempPath, JSON.stringify(state, null, 2))
+  fs.renameSync(tempPath, statePath)
 }
 
 let cachedProjectAssetsPath: string | null = null
@@ -54,6 +62,33 @@ export function setProjectAssetsPath(p: string): void {
   const state = readAppState()
   state.projectAssetsPath = resolvedPath
   writeAppState(state)
+}
+
+export function getDefaultAssetsDir(): string {
+  return path.join(getAppDataDir(), 'assets')
+}
+
+let cachedAssetsDir: string | null = null
+
+/** Folder of the asset store. A custom folder holds the `.ltx-assets` marker. */
+export function getAssetsDir(): string {
+  if (cachedAssetsDir) return cachedAssetsDir
+  const saved = readAppState().assetsDir
+  cachedAssetsDir = saved ? path.resolve(saved) : getDefaultAssetsDir()
+  return cachedAssetsDir
+}
+
+export function isCustomAssetsDir(): boolean {
+  return getAssetsDir() !== getDefaultAssetsDir()
+}
+
+/** `undefined` returns to the default folder. */
+export function setAssetsDir(dir: string | undefined): void {
+  const state = readAppState()
+  if (dir && path.resolve(dir) !== getDefaultAssetsDir()) state.assetsDir = path.resolve(dir)
+  else delete state.assetsDir
+  writeAppState(state)
+  cachedAssetsDir = null
 }
 
 export function getSkippedUpdateVersion(): string | undefined {

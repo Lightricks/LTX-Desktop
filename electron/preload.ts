@@ -1,5 +1,6 @@
 import {
   electronAPISchemas,
+  type AssetsMoveState,
   type BackendHealthStatus,
   type UpdateStatePayload,
 } from '../shared/electron-api-schema'
@@ -34,6 +35,12 @@ api.onUpdateEvent = (cb: (data: UpdateStatePayload) => void) => {
   const listener = (_: unknown, data: UpdateStatePayload) => cb(data)
   ipcRenderer.on('update-event', listener)
   return () => ipcRenderer.removeListener('update-event', listener)
+}
+
+api.onAssetsMoveProgress = (cb: (data: AssetsMoveState) => void) => {
+  const listener = (_: unknown, data: AssetsMoveState) => cb(data)
+  ipcRenderer.on('assets-move-progress', listener)
+  return () => ipcRenderer.removeListener('assets-move-progress', listener)
 }
 
 api.onDeepLink = (cb: (data: DeepLinkIntent) => void) => {

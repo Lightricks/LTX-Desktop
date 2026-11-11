@@ -478,7 +478,6 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
         modelSpecs: gapVideoModelSpecs,
         minimumDuration: gapDuration,
         durationSelection: 'smallest_valid',
-        budgetMode: 'reckless',
       })
   const gapCanGenerateVideo = Boolean(
     gapResolvedVideoOptions
@@ -489,7 +488,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
   // Local-mode only: an empty cloud grid is not a hardware problem.
   const gapLocalUnavailable = shouldVideoGenerateWithLtxApi
     ? null
-    : localUnavailableMessage(videoGenerationModelSpecsResponse, window.electronAPI.platform, 'reckless')
+    : localUnavailableMessage(videoGenerationModelSpecsResponse, window.electronAPI.platform)
   const gapVideoSettingsMessage = isLoadingVideoGenerationModelSpecs
     ? 'Loading generation settings...'
     : videoGenerationModelSpecsErrorMessage

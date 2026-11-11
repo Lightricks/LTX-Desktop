@@ -1,0 +1,17 @@
+"""Bounds and defaults for Normalized Attention Guidance (NAG)."""
+
+from __future__ import annotations
+
+ENV_ENABLED = "LTX_NAG_ENABLED"
+ENV_SCALE = "LTX_NAG_SCALE"
+ENV_ALPHA = "LTX_NAG_ALPHA"
+ENV_TAU = "LTX_NAG_TAU"
+
+DEFAULT_SCALE = 11.0
+DEFAULT_ALPHA = 0.25
+DEFAULT_TAU = 2.5
+
+MAX_SCALE = 100.0
+MAX_ALPHA = 1.0
+MAX_TAU = 10.0
+NEGATIVE_PROMPT_MAX_LENGTH = 2000

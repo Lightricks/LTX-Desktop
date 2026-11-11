@@ -1,5 +1,8 @@
+import { formatRemainingTime } from "../../../../lib/duration-format.ts";
+
 export type InFlightResultStatus = {
   title?: string;
+  body?: string;
   showDots: boolean;
 };
 
@@ -10,12 +13,21 @@ export type InFlightResultStatus = {
 export function inFlightResultStatus(args: {
   status: string;
   progressPercent: number | undefined;
+  remainingSeconds?: number | null;
 }): InFlightResultStatus {
   if (args.status === "cancelling") {
     return { title: "Cancellation in progress", showDots: false };
   }
+  const body = formatRemainingTime(args.remainingSeconds) ?? undefined;
   if (args.progressPercent !== undefined) {
-    return { title: `${Math.round(args.progressPercent)}%`, showDots: false };
+    return {
+      title: `${Math.round(args.progressPercent)}%`,
+      ...(body ? { body } : {}),
+      showDots: false,
+    };
   }
-  return { showDots: true };
+  return {
+    ...(body ? { body } : {}),
+    showDots: true,
+  };
 }

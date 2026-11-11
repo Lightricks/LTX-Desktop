@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from runtime_config.device_calibration import JobEnvelope
 from services.features.video.edit_executor import run_gpu_job
 from services.generation_interrupt import GenerationCancelledError
 
@@ -14,10 +15,16 @@ class _Slot:
         self.completed: list[str | None] = []
         self.failed: list[str] = []
 
-    def start_generation(self, generation_id: str) -> None:
+    def start_generation(
+        self, generation_id: str, *, ran: JobEnvelope | None = None
+    ) -> None:
+        del ran
         self.started.append(generation_id)
 
-    def complete_generation(self, result: str | list[str] | None = None) -> None:
+    def complete_generation(
+        self, result: str | list[str] | None = None, *, ran: JobEnvelope | None = None
+    ) -> None:
+        del ran
         self.completed.append(result if isinstance(result, str) or result is None else result[0])
 
     def fail_generation(self, error: str) -> None:

@@ -17,14 +17,17 @@ from api_types import (
     TextToVideoParams,
 )
 from _routes._errors import HTTPError
+from runtime_config.budget_admission import RiskAllowance
 from runtime_config.offerings import OFFERING_IDS, local_pipeline_for_offering
+from runtime_config.reject_reasons import PassShape
 from services.features.video.job_common import (
     model_from_spec,
     resolve_job_local_model_id,
+    spec_pass_shape,
     spec_risk_allowance,
-    spec_unmeasured_bet,
 )
 from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
+from services.generation_queue.sessions import JobSession
 from services.generation_queue.types import ExecutionOutcome, OutputAllocation, OutputPlan
 from services.records import CapabilityFailedError, GenerationRecord
 
@@ -44,7 +47,11 @@ class ReservedVideoGenerator(Protocol):
     def models_dir(self) -> Path: ...
 
     def validate_local_a2v_request(
-        self, params: AudioToVideoParams, audio_duration_ms: int
+        self,
+        params: AudioToVideoParams,
+        audio_duration_ms: int,
+        *,
+        pass_shape: PassShape,
     ) -> None: ...
 
     def generate_local_reserved(
@@ -57,8 +64,8 @@ class ReservedVideoGenerator(Protocol):
         a2v_num_frames: int | None = None,
         a2v_audio_duration_seconds: float | None = None,
         local_model_id: LTXLocalModelId,
-        risk_allowance: bool | None = None,
-        unmeasured_bet: bool = False,
+        allowance: RiskAllowance | None = None,
+        pass_shape: PassShape | None = None,
     ) -> GenerateVideoResponse: ...
 
 
@@ -102,6 +109,7 @@ class TextToVideoExecutor:
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
         params = self._params(generation)
         output = require_video_output(outputs)
@@ -118,8 +126,8 @@ class TextToVideoExecutor:
                 output_path=Path(output.dest_path),
                 prompt_wrap=self._prompt_wrap,
                 local_model_id=local_model_id,
-                risk_allowance=spec_risk_allowance(generation.spec),
-                unmeasured_bet=spec_unmeasured_bet(generation.spec),
+                allowance=spec_risk_allowance(generation.spec),
+                pass_shape=spec_pass_shape(generation.spec),
             )
         except Exception as exc:
             if is_cancel_exception(exc):
@@ -160,6 +168,8 @@ def offering_payload_from_params(
     params: BaseModel,
 ) -> tuple[dict[str, object], OfferingId]:
     payload = params.model_dump(mode="python")
+    # Queue-only: executors read the stored `_passShape`, and the request model forbids extras.
+    payload.pop("passShape", None)
     raw_model = payload["model"]
     if not isinstance(raw_model, str) or raw_model not in OFFERING_IDS:
         raise HTTPError(422, "INVALID_VIDEO_GENERATION_SPEC")

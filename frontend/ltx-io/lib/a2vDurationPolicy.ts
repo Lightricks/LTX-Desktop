@@ -1,4 +1,3 @@
-import { type BudgetMode, readBudgetMode } from "../../lib/budget-risk.ts";
 import {
   type DisabledVideoGenerationOption,
   type DroppedFastAspectCell,
@@ -10,7 +9,7 @@ import {
   defaultOfferingId,
   disabledOptionsFromDroppedCells,
   isVideoGenerationAspectRatio,
-  offeredFastGrid,
+  specForAspect,
 } from "../../lib/video-generation-model-specs.ts";
 
 export const A2V_RESOLUTION = "540p" as const;
@@ -36,21 +35,16 @@ export function isA2vResolution(value: unknown): value is A2vResolution {
   );
 }
 
-function a2vDurationsFromSpec(
-  spec: A2vSpec,
-  resolution: A2vResolution,
-  budgetMode: BudgetMode = "standard",
-): number[] {
-  const { map } = offeredFastGrid(spec, budgetMode, true);
-  const kept = map[resolution]?.fps_to_durations?.[String(A2V_FPS)] ?? [];
+function a2vDurationsFromSpec(spec: A2vSpec, resolution: A2vResolution): number[] {
+  const kept =
+    spec.a2v_supported_resolutions_durations?.[resolution]?.fps_to_durations?.[
+      String(A2V_FPS)
+    ] ?? [];
   return [...kept].sort((a, b) => a - b);
 }
 
-export function a2vDurationsAt540p24FromSpec(
-  spec: A2vSpec,
-  budgetMode: BudgetMode = "standard",
-): number[] {
-  return a2vDurationsFromSpec(spec, A2V_RESOLUTION, budgetMode);
+export function a2vDurationsAt540p24FromSpec(spec: A2vSpec): number[] {
+  return a2vDurationsFromSpec(spec, A2V_RESOLUTION);
 }
 
 /**
@@ -65,36 +59,25 @@ export function advertisedA2vDurationsAt540p24(
   const downloaded = specs?.downloaded_local_models ?? [];
   if (offering != null) {
     const selected = downloaded.find((item) => item.model === offering);
-    return selected
-      ? a2vDurationsFromSpec(
-          selected.spec,
-          A2V_RESOLUTION,
-          readBudgetMode(specs?.budgetMode),
-        )
-      : [];
+    return selected ? a2vDurationsFromSpec(selected.spec, A2V_RESOLUTION) : [];
   }
   const preferred = defaultOfferingId(specs);
   const selected = downloaded.find((item) => item.model === preferred) ?? downloaded[0];
-  return selected
-    ? a2vDurationsFromSpec(
-        selected.spec,
-        A2V_RESOLUTION,
-        readBudgetMode(specs?.budgetMode),
-      )
-    : [];
+  return selected ? a2vDurationsFromSpec(selected.spec, A2V_RESOLUTION) : [];
 }
 
 function specForOffering(
   specs: VideoGenerationModelSpecsResponse | null | undefined,
   offering?: OfferingId | null,
+  aspectRatio?: string | null,
 ): A2vSpec | null {
   const downloaded = specs?.downloaded_local_models ?? [];
-  if (offering != null) {
-    return downloaded.find((item) => item.model === offering)?.spec ?? null;
-  }
-  const preferred = defaultOfferingId(specs);
-  const selected = downloaded.find((item) => item.model === preferred) ?? downloaded[0];
-  return selected?.spec ?? null;
+  const baseSpec =
+    offering != null
+      ? (downloaded.find((item) => item.model === offering)?.spec ?? null)
+      : ((downloaded.find((item) => item.model === defaultOfferingId(specs)) ?? downloaded[0])
+          ?.spec ?? null);
+  return baseSpec == null ? null : specForAspect(baseSpec, aspectRatio);
 }
 
 /** Kept durations plus dropped ones: the model's ceiling, not the budget filter. */
@@ -102,8 +85,9 @@ export function staticA2vDurations(
   specs: VideoGenerationModelSpecsResponse | null | undefined,
   offering: OfferingId | null | undefined,
   resolution: A2vResolution,
+  aspectRatio?: string | null,
 ): number[] {
-  const spec = specForOffering(specs, offering);
+  const spec = specForOffering(specs, offering, aspectRatio);
   if (spec == null) return [];
   const kept =
     spec.a2v_supported_resolutions_durations?.[resolution]?.fps_to_durations?.[
@@ -120,10 +104,11 @@ export function staticA2vDurations(
 export function staticA2vLongestCellSeconds(
   specs: VideoGenerationModelSpecsResponse | null | undefined,
   offering?: OfferingId | null,
+  aspectRatio?: string | null,
 ): number | null {
   let longest: number | null = null;
   for (const resolution of A2V_RESOLUTIONS) {
-    const cap = staticA2vDurations(specs, offering, resolution).at(-1);
+    const cap = staticA2vDurations(specs, offering, resolution, aspectRatio).at(-1);
     if (cap == null) continue;
     if (longest == null || cap > longest) longest = cap;
   }
@@ -134,11 +119,10 @@ export function advertisedA2vDurations(
   specs: VideoGenerationModelSpecsResponse | null | undefined,
   offering: OfferingId | null | undefined,
   resolution: A2vResolution,
+  aspectRatio?: string | null,
 ): number[] {
-  const spec = specForOffering(specs, offering);
-  return spec == null
-    ? []
-    : a2vDurationsFromSpec(spec, resolution, readBudgetMode(specs?.budgetMode));
+  const spec = specForOffering(specs, offering, aspectRatio);
+  return spec == null ? [] : a2vDurationsFromSpec(spec, resolution);
 }
 
 export function a2vAspectRatios(
@@ -147,21 +131,29 @@ export function a2vAspectRatios(
   resolution: A2vResolution,
 ): VideoGenerationAspectRatio[] {
   const spec = specForOffering(specs, offering);
-  const ratios =
-    spec?.a2v_supported_resolutions_durations?.[resolution]?.aspect_ratios ?? [];
-  return ratios.filter(isVideoGenerationAspectRatio);
+  if (spec == null) return [];
+  const direct = spec.a2v_supported_resolutions_durations?.[resolution]?.aspect_ratios;
+  if (direct != null) {
+    return direct.filter(isVideoGenerationAspectRatio);
+  }
+  for (const aspectSpec of Object.values(spec.aspect_specs ?? {})) {
+    const ratios = aspectSpec.a2v_supported_resolutions_durations?.[resolution]?.aspect_ratios;
+    if (ratios != null) {
+      return ratios.filter(isVideoGenerationAspectRatio);
+    }
+  }
+  return [];
 }
 
 export function a2vResolutionsForOffering(
   specs: VideoGenerationModelSpecsResponse | null | undefined,
   offering: OfferingId | null | undefined,
+  aspectRatio?: string | null,
 ): A2vResolution[] {
-  const spec = specForOffering(specs, offering);
+  const spec = specForOffering(specs, offering, aspectRatio);
   if (spec == null) return [];
   return A2V_RESOLUTIONS.filter(
-    (resolution) =>
-      a2vDurationsFromSpec(spec, resolution, readBudgetMode(specs?.budgetMode)).length >
-      0,
+    (resolution) => a2vDurationsFromSpec(spec, resolution).length > 0,
   );
 }
 
@@ -173,10 +165,11 @@ export function a2vResolutionsForOffering(
 export function a2vDisabledResolutionsForOffering(
   specs: VideoGenerationModelSpecsResponse | null | undefined,
   offering: OfferingId | null | undefined,
+  aspectRatio?: string | null,
 ): DisabledVideoGenerationOption<A2vResolution>[] {
-  const spec = specForOffering(specs, offering);
+  const spec = specForOffering(specs, offering, aspectRatio);
   if (spec == null) return [];
-  const kept = a2vResolutionsForOffering(specs, offering);
+  const kept = a2vResolutionsForOffering(specs, offering, aspectRatio);
   const cells = (spec.dropped_cells ?? []).filter(
     (cell): cell is DroppedFastCell & { resolution: A2vResolution } =>
       cell.audio && isA2vResolution(cell.resolution),
@@ -208,13 +201,37 @@ export function a2vDisabledAspectsForOffering(
 ): DisabledVideoGenerationOption<VideoGenerationAspectRatio>[] {
   const spec = specForOffering(specs, offering);
   if (spec == null || effectiveSeconds == null) return [];
-  const { droppedAspectCells } = offeredFastGrid(
-    spec,
-    readBudgetMode(specs?.budgetMode),
-    true,
-  );
+  const aspectSpecs = spec.aspect_specs;
+  if (aspectSpecs) {
+    const out: DisabledVideoGenerationOption<VideoGenerationAspectRatio>[] = [];
+    for (const [ratio, aspectSpec] of Object.entries(aspectSpecs)) {
+      if (!isVideoGenerationAspectRatio(ratio) || !aspectSpec) continue;
+      let chosen: DroppedFastCell | null = null;
+      for (const cell of aspectSpec.dropped_cells ?? []) {
+        if (
+          !cell.audio ||
+          cell.resolution !== resolution ||
+          cell.fps !== A2V_FPS ||
+          cell.duration > effectiveSeconds
+        ) {
+          continue;
+        }
+        if (chosen == null || cell.duration > chosen.duration) {
+          chosen = cell;
+        }
+      }
+      if (chosen != null) {
+        out.push({
+          value: ratio,
+          message: chosen.message,
+          ...(chosen.readout ? { readout: chosen.readout } : {}),
+        });
+      }
+    }
+    return out;
+  }
   const byAspect = new Map<VideoGenerationAspectRatio, DroppedFastAspectCell>();
-  for (const cell of droppedAspectCells) {
+  for (const cell of spec.dropped_aspect_cells ?? []) {
     if (
       !cell.audio ||
       cell.resolution !== resolution ||
@@ -241,9 +258,8 @@ export function a2vDisabledAspectsForOffering(
 export function hasAdvertisedA2vCell(
   specs: VideoGenerationModelSpecsResponse | null | undefined,
 ): boolean {
-  const budgetMode = readBudgetMode(specs?.budgetMode);
   return (specs?.downloaded_local_models ?? []).some(
-    (item) => a2vDurationsAt540p24FromSpec(item.spec, budgetMode).length > 0,
+    (item) => a2vDurationsAt540p24FromSpec(item.spec).length > 0,
   );
 }
 
@@ -253,6 +269,21 @@ export function a2vTrimCapSeconds(
 ): number | null {
   const advertised = advertisedA2vDurationsAt540p24(specs, offering);
   return advertised.length === 0 ? null : advertised[advertised.length - 1];
+}
+
+/**
+ * Smallest kept cell whose 8k+1 count covers the heard frames.
+ * 241 frames is the 10s cell even when a 20s cell is also offered, so a 10.2s
+ * clip is not priced as 20s.
+ */
+export function a2vDurationForFrames(
+  durations: readonly number[],
+  frames: number | null,
+): number | null {
+  if (frames == null) return null;
+  return (
+    durations.find((duration) => frames <= computeA2vMaxFrames(duration, A2V_FPS)) ?? null
+  );
 }
 
 /**

@@ -12,7 +12,7 @@ import type { ExploreListedAsset } from "@/lib/explore-contract";
 import { isAlphaWebmMime } from "@/ltx-io/screens/Feature/results/cutout/cutoutOutput";
 import { useFeatureFormMuteStore } from "@/ltx-io/stores/featureFormMuteStore";
 
-import { AssetVideoMetaBadge } from "./AssetVideoMetaBadge";
+import { AssetMetaBadge } from "./AssetMetaBadge";
 import {
   activateHoverVideo,
   deactivateHoverVideo,
@@ -116,7 +116,7 @@ export function AssetVideoTile({
         />
       ) : null}
       {!canPlay && !thumbnailUrl ? <VideoPlaceholder kind="video" /> : null}
-      <AssetVideoMetaBadge metadata={asset.metadata} />
+      <AssetMetaBadge metadata={asset.metadata} />
       <div
         className={styles.mute}
         onClick={(event) => event.stopPropagation()}

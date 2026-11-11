@@ -5,6 +5,8 @@ import {
 } from "../../../lib/catalogVariantChoice.ts";
 import { icLoraSelectedFps } from "./icLoraFps.ts";
 import { icLoraModelOfferingIds } from "./icLoraRecipeForm.ts";
+import { isTileBlocked, isWindowBlocked } from "./icLoraTileOptions.ts";
+import { AUTO_TILE, windowFrameChoices } from "./icLoraTilingControls.ts";
 import { icLoraResolutionFor, type UpscalesSource } from "./icLoraResolution.ts";
 import type { IcLoraRecipeContext, IcLoraRecipeValues } from "./icLoraRecipe.ts";
 import { capabilityModelOptions, resolveCapableModel } from "./videoFeature.ts";
@@ -73,13 +75,29 @@ export function normalizeIcLoraRecipeValues(
     upscalesSource,
   );
   const fps = icLoraSelectedFps(values.fps, context.videoFps);
+  // The budget refuses the stored tile size at this cell: fall back to Auto.
+  const tilingSize =
+    values.tilingSize !== AUTO_TILE && isTileBlocked(values.tilingSize, context)
+      ? AUTO_TILE
+      : values.tilingSize;
+  // Auto is stored as null. A maximum falls back to Auto when it is not offered or the preflight
+  // refuses it. A carry stays as the user set it: a refused carry is disabled in the list, and
+  // Generate shows its refusal.
+  const maxWindowFrames =
+    values.maxWindowFrames != null &&
+    (!windowFrameChoices().includes(values.maxWindowFrames) ||
+      isWindowBlocked(values.maxWindowFrames, context))
+      ? null
+      : values.maxWindowFrames;
   if (
     model === values.model &&
+    tilingSize === values.tilingSize &&
+    maxWindowFrames === values.maxWindowFrames &&
     resolution === values.resolution &&
     fps === values.fps &&
     variant === values.variant
   ) {
     return values;
   }
-  return { ...values, model, resolution, fps, variant };
+  return { ...values, model, resolution, fps, variant, tilingSize, maxWindowFrames };
 }

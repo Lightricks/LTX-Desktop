@@ -5,14 +5,14 @@ from __future__ import annotations
 from typing import Literal
 
 from _routes._errors import HTTPError
-from api_types import EnhancePromptRequest
+from api_types import EnhancePromptRequest, KeyframeInput
 from handlers.asset_handler import AssetHandler
 
 
 def resolve_enhance_media_assets(
     assets: AssetHandler, req: EnhancePromptRequest
 ) -> EnhancePromptRequest:
-    """Fill imagePath / lastImagePath / videoPath / imagePaths from asset ids. No-op when ids are absent."""
+    """Fill imagePath / lastImagePath / videoPath / imagePaths / keyframes from asset ids. No-op when ids are absent."""
     updates: dict[str, object] = {}
     if req.imageAssetId:
         updates["imagePath"] = _asset_path(assets, req.imageAssetId, "image")
@@ -23,6 +23,16 @@ def resolve_enhance_media_assets(
     if req.imageAssetIds:
         updates["imagePaths"] = [_asset_path(assets, asset_id, "image") for asset_id in req.imageAssetIds]
         updates["imageAssetIds"] = []
+    if req.keyframeAssets:
+        updates["keyframes"] = [
+            KeyframeInput(
+                imagePath=_asset_path(assets, keyframe.assetId, "image"),
+                frameIndex=keyframe.frameIndex,
+                strength=keyframe.strength,
+            )
+            for keyframe in req.keyframeAssets
+        ]
+        updates["keyframeAssets"] = []
     if req.videoAssetId:
         updates["videoPath"] = _asset_path(assets, req.videoAssetId, "video")
         updates["videoAssetId"] = None

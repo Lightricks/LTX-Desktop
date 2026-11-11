@@ -41,6 +41,34 @@ const PICKER_CONTENT_PROPS = {
   },
 };
 
+const PARTS_TOOLTIP = "videos are generated in smaller overlapping pieces and stitched into one video";
+
+function MemoryLabel({ option }: { option: FieldOption }) {
+  if (option.memory == null) return null;
+  const label = option.memory.label;
+  const partsMatch = label.match(/^(.* · )(\d+ parts)$/);
+  return (
+    <span className={clsx(styles.memoryLabel, option.memory.over && styles.memoryLabelOver)}>
+      {partsMatch ? (
+        <>
+          {partsMatch[1]}
+          <Tooltip content={PARTS_TOOLTIP}>
+            <span className={styles.partsTooltipTrigger}>{partsMatch[2]}</span>
+          </Tooltip>
+        </>
+      ) : (
+        label
+      )}
+    </span>
+  );
+}
+
+function caveatIcon(option: FieldOption) {
+  return option.warning ? (
+    <AspectRatioWarningIcon warning={option.warning} tone={option.warningTone ?? "caveat"} />
+  ) : null;
+}
+
 function buildOptionListItem<TValue extends string | number>(
   option: FieldOption<TValue>,
   value: TValue,
@@ -58,12 +86,14 @@ function buildOptionListItem<TValue extends string | number>(
       rightCta={
         budget != null ? (
           <BudgetFraction readout={budget} />
-        ) : option.warning ? (
-          <AspectRatioWarningIcon
-            warning={option.warning}
-            tone={option.warningTone ?? "caveat"}
-          />
-        ) : undefined
+        ) : option.memory != null ? (
+          <span className={styles.memoryCta}>
+            <MemoryLabel option={option} />
+            {caveatIcon(option)}
+          </span>
+        ) : (
+          caveatIcon(option) ?? undefined
+        )
       }
       thumbnail={option.thumbnail ? { src: option.thumbnail, alt: option.label } : undefined}
       caption={budget == null ? (option.disabledReason ?? option.caption) : undefined}
@@ -76,10 +106,14 @@ function buildOptionListItem<TValue extends string | number>(
     />
   );
   if (option.disabledReason === undefined) {
-    if (budget == null) return item;
+    if (budget == null) {
+      return item;
+    }
     return (
       <Tooltip content={budgetTooltip(budget, option.budgetNote)}>
-        <span className={styles.disabledOptionTrigger}>{item}</span>
+        <span className={styles.disabledOptionTrigger}>
+          {item}
+        </span>
       </Tooltip>
     );
   }
@@ -87,7 +121,9 @@ function buildOptionListItem<TValue extends string | number>(
   // fire even though the row itself is disabled.
   return (
     <Tooltip content={budget ? budgetTooltip(budget) : option.disabledReason}>
-      <span className={styles.disabledOptionTrigger}>{item}</span>
+      <span className={styles.disabledOptionTrigger}>
+        {item}
+      </span>
     </Tooltip>
   );
 }
@@ -196,6 +232,7 @@ export function FormOptionControl<TValue extends string | number>({
           <span className={styles.formOptionSegmentLabel}>
             {icon}
             {option.label}
+            <MemoryLabel option={option} />
             {option.budget ? (
               <>
                 <BudgetFraction readout={option.budget} />

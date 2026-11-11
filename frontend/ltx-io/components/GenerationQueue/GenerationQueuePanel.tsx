@@ -27,6 +27,8 @@ import { Button } from "@/ds/Button/Button";
 import { Text } from "@ds/Text/Text";
 import { Skeleton } from "@ds/Skeleton/Skeleton";
 import { TooltipProvider } from "@ds/Tooltip/Tooltip";
+import { GENERATION_CANCEL_CONFIRMATION } from "../../hooks/useCancelGeneration.ts";
+import { useConfirmDeleteAction } from "../../hooks/useConfirmDeleteAction.tsx";
 import {
   generationQueueQueryOptions,
   useGenerationQueue,
@@ -54,6 +56,7 @@ import {
 } from "./GenerationQueueRow.tsx";
 import {
   getQueuePanelState,
+  isActiveCancelDisabled,
   isQueueReorderConflict,
   queuedEntryForActiveDrag,
   reorderQueuedEntries,
@@ -132,12 +135,15 @@ export function GenerationQueuePanel({
 
   useEffect(() => {
     if (!isOpen) return;
+    const overlaySelector =
+      '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-modal-backdrop]';
     const onPointerDown = (event: PointerEvent) => {
       if (activeDragIdRef.current != null) return;
       const target = event.target;
       if (!(target instanceof Node)) return;
       const root = rootRef.current;
       if (root?.contains(target)) return;
+      if (target instanceof Element && target.closest(overlaySelector)) return;
       closePanel();
     };
     // Capture phase: the open popover owns Escape, so the Assistant panel around it
@@ -149,7 +155,7 @@ export function GenerationQueuePanel({
       if (
         target instanceof Element &&
         !rootRef.current?.contains(target) &&
-        target.closest('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]')
+        target.closest(overlaySelector)
       ) {
         return;
       }
@@ -164,6 +170,7 @@ export function GenerationQueuePanel({
   }, [isOpen]);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const confirmDelete = useConfirmDeleteAction();
   const queueQuery = useGenerationQueue({
     api,
     generationPolling,
@@ -191,6 +198,7 @@ export function GenerationQueuePanel({
       entry.generation.feature,
       entry.generation.id,
       HOME_FEATURES,
+      entry.generation.spec,
     );
     if (location == null) {
       setFeedback("Couldn’t open this result.");
@@ -208,10 +216,12 @@ export function GenerationQueuePanel({
     },
   });
   const cancelGeneration = (generationId: string) => {
-    cancel.mutate(generationId, {
-      onError: () => {
-        setFeedback("Couldn’t cancel that generation. Try again.");
-      },
+    confirmDelete(GENERATION_CANCEL_CONFIRMATION, () => {
+      cancel.mutate(generationId, {
+        onError: () => {
+          setFeedback("Couldn’t cancel that generation. Try again.");
+        },
+      });
     });
   };
   const sensors = useSensors(
@@ -222,7 +232,7 @@ export function GenerationQueuePanel({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const snapshot: ExploreQueueSnapshot = queueQuery.data ?? {
-    active: null,
+    active: [],
     queued: [],
     done: [],
     failed: [],
@@ -297,7 +307,7 @@ export function GenerationQueuePanel({
 
   const queueCount =
     snapshot.queued.length +
-    (snapshot.active ? 1 : 0) +
+    snapshot.active.length +
     doneEntries.length +
     failedEntries.length;
   const queueToggleAriaLabel =
@@ -308,9 +318,9 @@ export function GenerationQueuePanel({
       ? "Couldn’t load the generation queue."
       : queueCount === 0
         ? "No generations are waiting."
-        : snapshot.active != null && snapshot.queued.length > 0
+        : snapshot.active.length > 0 && snapshot.queued.length > 0
           ? `Generating. ${snapshot.queued.length} queued.`
-          : snapshot.active != null
+          : snapshot.active.length > 0
             ? "Generating."
             : snapshot.queued.length > 0
               ? `${snapshot.queued.length} queued.`
@@ -322,7 +332,7 @@ export function GenerationQueuePanel({
   const isQueueEmpty =
     !queueQuery.isLoading &&
     queueQuery.data != null &&
-    snapshot.active == null &&
+    snapshot.active.length === 0 &&
     snapshot.queued.length === 0 &&
     doneEntries.length === 0 &&
     failedEntries.length === 0;
@@ -424,23 +434,22 @@ export function GenerationQueuePanel({
               >
                 <ul className={styles.rows}>
                   <AnimatePresence initial={false} mode="popLayout">
-                    {snapshot.active ? (
+                    {snapshot.active.map((entry) => (
                       <ActiveQueueRow
-                        key={snapshot.active.generation.id}
-                        entry={snapshot.active}
-                        isCancelling={
-                          snapshot.active.generation.status === "cancelling"
-                        }
-                        cancelDisabled={panelState.activeCancelDisabled}
+                        key={entry.generation.id}
+                        entry={entry}
+                        isCancelling={entry.generation.status === "cancelling"}
+                        cancelDisabled={isActiveCancelDisabled(
+                          entry,
+                          cancel.isPending,
+                        )}
                         listItemMotion={queueRowListMotion}
                         mediaUrlForAsset={mediaUrlForAsset}
                         thumbUrlForAsset={thumbUrlForAsset}
-                        onCancel={() =>
-                          cancelGeneration(snapshot.active!.generation.id)
-                        }
-                        onOpen={() => openResult(snapshot.active!)}
+                        onCancel={() => cancelGeneration(entry.generation.id)}
+                        onOpen={() => openResult(entry)}
                       />
-                    ) : null}
+                    ))}
                     {snapshot.queued.length > 0 ? (
                       <li
                         key="queue-section-header"

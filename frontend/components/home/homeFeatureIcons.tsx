@@ -5,6 +5,7 @@ import AlphaGenIcon from "@/ds/assets/Icons/AlphaGen.svg?react";
 import AudioIcon from "@/ds/assets/Icons/Audio.svg?react";
 import BackdropIcon from "@/ds/assets/Icons/Backdrop.svg?react";
 import CubeSketchIcon from "@/ds/assets/Icons/CubeSketch.svg?react";
+import CustomLoraIcon from "@/ds/assets/Icons/CustomLora.svg?react";
 import ExtendIcon from "@/ds/assets/Icons/ExtendDuration.svg?react";
 import MagicWandIcon from "@/ds/assets/Icons/MagicWand.svg?react";
 import PhotoIcon from "@/ds/assets/Icons/Photo.svg?react";
@@ -33,6 +34,7 @@ const FEATURE_ICONS: Partial<Record<HomeFeatureId, SvgIcon>> = {
   decompression: AdjustIcon,
   "layout-to-render": CubeSketchIcon,
   "motion-track": WorkflowIcon,
+  "custom-lora": CustomLoraIcon,
 };
 
 export function homeFeatureIcon(id: HomeFeatureId): ReactNode {

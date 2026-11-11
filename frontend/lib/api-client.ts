@@ -472,6 +472,7 @@ export function createApiClient(fetchImpl: BackendFetch) {
     getRuntimePolicy: makeEndpointClient(fetchImpl, '/api/runtime-policy', 'get'),
 
     getFeatureFlags: makeEndpointClient(fetchImpl, '/api/feature-flags', 'get'),
+    getUiPreferences: makeEndpointClient(fetchImpl, '/api/ui-preferences', 'get'),
 
     updateFeatureFlags: makeEndpointClient(fetchImpl, '/api/feature-flags', 'patch'),
 
@@ -745,12 +746,17 @@ export function createApiClient(fetchImpl: BackendFetch) {
 
     createTextToVideo: makeEndpointClient(fetchImpl, '/api/generations/text-to-video', 'post'),
 
+    createTextToImage: makeEndpointClient(fetchImpl, '/api/generations/text-to-image', 'post'),
+
+    getImageGenerationStatus: makeEndpointClient(fetchImpl, '/api/image-generation/status', 'get'),
+
     getGeneration(generationId: string): Promise<EndpointResult<'/api/generations/{generation_id}', 'get'>> {
       return requestEndpointResult(fetchImpl, '/api/generations/{generation_id}', 'get', [] as const,
         undefined, `/api/generations/${encodeURIComponent(generationId)}`)
     },
 
     createImageToVideo: makeEndpointClient(fetchImpl, '/api/generations/image-to-video', 'post'),
+    createKeyframes: makeEndpointClient(fetchImpl, '/api/generations/keyframes', 'post'),
 
     createLoraRecipe(
       recipeId: string,
@@ -780,8 +786,34 @@ export function createApiClient(fetchImpl: BackendFetch) {
         `/api/generations/ic-lora-recipes/${encodeURIComponent(recipeId)}`,
       )
     },
+    preflightIcLoraRecipe(
+      recipeId: string,
+      body: JsonBodyFor<'/api/generations/ic-lora-recipes/{recipe_id}/preflight', 'post'>,
+    ): Promise<EndpointResult<'/api/generations/ic-lora-recipes/{recipe_id}/preflight', 'post'>> {
+      return requestEndpointResult(
+        fetchImpl,
+        '/api/generations/ic-lora-recipes/{recipe_id}/preflight',
+        'post',
+        [] as const,
+        buildJsonRequestInit(body),
+        `/api/generations/ic-lora-recipes/${encodeURIComponent(recipeId)}/preflight`,
+      )
+    },
     createExtend: makeEndpointClient(fetchImpl, '/api/generations/extend', 'post'),
     preflightEdit: makeEndpointClient(fetchImpl, '/api/generations/edit/preflight', 'post'),
+    icLoraRecipeMemory(
+      recipeId: string,
+      body: JsonBodyFor<'/api/generations/ic-lora-recipes/{recipe_id}/memory', 'post'>,
+    ): Promise<EndpointResult<'/api/generations/ic-lora-recipes/{recipe_id}/memory', 'post'>> {
+      return requestEndpointResult(
+        fetchImpl,
+        '/api/generations/ic-lora-recipes/{recipe_id}/memory',
+        'post',
+        [] as const,
+        buildJsonRequestInit(body),
+        `/api/generations/ic-lora-recipes/${encodeURIComponent(recipeId)}/memory`,
+      )
+    },
 
     deleteGeneration(
       generationId: string,
@@ -841,6 +873,58 @@ export function createApiClient(fetchImpl: BackendFetch) {
     getLoraDownloadActive: makeEndpointClient(fetchImpl, '/api/loras/download/active', 'get'),
 
     deleteLoraInstallation: makeEndpointClient(fetchImpl, '/api/loras/installation', 'delete'),
+
+    // Custom LoRA: the user's own weights. List works on both hosts; the rest is Desktop only.
+    createCustomLora: makeEndpointClient(fetchImpl, '/api/generations/custom-lora', 'post'),
+    listCustomLoras: makeEndpointClient(fetchImpl, '/api/custom-loras', 'get'),
+    importCustomLora: makeEndpointClient(fetchImpl, '/api/custom-loras', 'post'),
+    getCustomLoraLinkInfo: makeEndpointClient(fetchImpl, '/api/custom-loras/link-info', 'post'),
+    getCustomLoraImportProgress(
+      query: QueryFor<'/api/custom-loras/import/progress', 'get'>,
+    ): Promise<EndpointResult<'/api/custom-loras/import/progress', 'get'>> {
+      const path = `/api/custom-loras/import/progress${buildQueryString(query as Record<string, unknown>)}`
+      return requestEndpointResult(fetchImpl, '/api/custom-loras/import/progress', 'get', [] as const, undefined, path)
+    },
+    getCustomLoraImportActive: makeEndpointClient(fetchImpl, '/api/custom-loras/import/active', 'get'),
+    deleteCustomLora(
+      customLoraId: string,
+    ): Promise<EndpointResult<'/api/custom-loras/{custom_lora_id}', 'delete'>> {
+      return requestEndpointResult(
+        fetchImpl,
+        '/api/custom-loras/{custom_lora_id}',
+        'delete',
+        [] as const,
+        undefined,
+        `/api/custom-loras/${encodeURIComponent(customLoraId)}`,
+      )
+    },
+    // Delete the weights and keep the entry, like Delete on a catalog LoRA.
+    deleteCustomLoraWeights(
+      customLoraId: string,
+    ): Promise<EndpointResult<'/api/custom-loras/{custom_lora_id}/weights', 'delete'>> {
+      return requestEndpointResult(
+        fetchImpl,
+        '/api/custom-loras/{custom_lora_id}/weights',
+        'delete',
+        [] as const,
+        undefined,
+        `/api/custom-loras/${encodeURIComponent(customLoraId)}/weights`,
+      )
+    },
+    // Put the weights back: from the saved link, or from `source_path`.
+    restoreCustomLoraWeights(
+      customLoraId: string,
+      body: JsonBodyFor<'/api/custom-loras/{custom_lora_id}/weights', 'post'>,
+    ): Promise<EndpointResult<'/api/custom-loras/{custom_lora_id}/weights', 'post'>> {
+      return requestEndpointResult(
+        fetchImpl,
+        '/api/custom-loras/{custom_lora_id}/weights',
+        'post',
+        [] as const,
+        buildJsonRequestInit(body),
+        `/api/custom-loras/${encodeURIComponent(customLoraId)}/weights`,
+      )
+    },
   }
 }
 

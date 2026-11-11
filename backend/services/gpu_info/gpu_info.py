@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Protocol, TypedDict
 
+from runtime_config.device_calibration import RunMemoryBaseline, RunMemoryEnd
+
 
 class GpuTelemetryPayload(TypedDict):
     name: str
@@ -67,3 +69,14 @@ class GpuInfo(Protocol):
         Fail-None probe: Mac-profiled callers fail closed to unsupported.
         Sampled live per call — never frozen into config.
         """
+
+    def get_swap_used_bytes(self) -> int | None:
+        """Swap in use (pagefile on Windows), or None when unknowable."""
+
+    def begin_run_memory_watch(self) -> RunMemoryBaseline:
+        """Sample free, reserved, and swap, and start the run peak. Fail-None per field."""
+        ...
+
+    def end_run_memory_watch(self) -> RunMemoryEnd:
+        """Close the run peak and sample swap. Fail-None per field."""
+        ...

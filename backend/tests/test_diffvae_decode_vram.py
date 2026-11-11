@@ -366,3 +366,24 @@ def test_conv_vae_keeps_pipeline_tiling(monkeypatch) -> None:
     old_tiling = object()
     args, _kwargs = patch._patched_video_decoder_call(_FakeDecoder(torch.device("cuda")), latent, old_tiling)
     assert args[1] is old_tiling
+
+
+@pytest.mark.parametrize(
+    ("is_diffvae", "expected"),
+    [(True, "before DiffVAE decode"), (False, "before ConvVAE decode")],
+)
+def test_release_log_names_the_vae_being_decoded(monkeypatch, caplog, is_diffvae: bool, expected: str) -> None:
+    monkeypatch.setattr(patch, "is_diffusion_video_vae", lambda _path: is_diffvae)
+    monkeypatch.setattr(patch.diffusion_stage_cache, "evict", lambda: None)
+    monkeypatch.setattr(patch, "cleanup_memory", lambda: None)
+    with caplog.at_level("INFO", logger=patch.logger.name):
+        patch._release_denoise_weights(_FakeDecoder(torch.device("cpu")))
+    assert expected in caplog.text
+
+
+def test_release_log_falls_back_when_decoder_has_no_checkpoint(monkeypatch, caplog) -> None:
+    monkeypatch.setattr(patch.diffusion_stage_cache, "evict", lambda: None)
+    monkeypatch.setattr(patch, "cleanup_memory", lambda: None)
+    with caplog.at_level("INFO", logger=patch.logger.name):
+        patch._release_denoise_weights(object())
+    assert "before video VAE decode" in caplog.text

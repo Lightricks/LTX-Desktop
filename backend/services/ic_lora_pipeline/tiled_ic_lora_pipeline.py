@@ -19,14 +19,19 @@ from __future__ import annotations
 
 import logging
 
+from typing import Any
+
 from ltx_core.conditioning import ConditioningItem
 from ltx_core.model.video_vae import TileSizeConfig, VideoEncoder
 from ltx_core.types import VIDEO_SCALE_FACTORS
 from ltx_pipelines.chunks import Chunk, MakeVideoConditionings, SequentialVideoFrameSource
 from ltx_pipelines.ic_lora import ICLoraPipeline, ICLoraStageConfig, _ICLoraRunContext  # pyright: ignore[reportPrivateUsage]
-from ltx_pipelines.utils.helpers import combined_image_conditionings
+from ltx_pipelines.utils.helpers import image_conditionings
+from ltx_pipelines.utils.types import PipelineOutput
 
 from api_types import REFERENCE_STILL_FRAME_IDX
+from services.fast_video_pipeline.nag_config import NagConfig
+from services.fast_video_pipeline.nag_distilled import NagDistilledMixin
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +74,11 @@ def encode_tiling_for_canvas(
     return reference_encode_tiling(encode_height, encode_width, num_frames)
 
 
-class TiledICLoraPipeline(ICLoraPipeline):
+class TiledICLoraPipeline(NagDistilledMixin[_ICLoraRunContext], ICLoraPipeline):
+    def __call__(self, *args: Any, nag: NagConfig | None = None, **kwargs: Any) -> PipelineOutput:
+        with self._nag_request(nag):
+            return super().__call__(*args, **kwargs)
+
     def _video_conditionings(
         self,
         ctx: _ICLoraRunContext,
@@ -127,7 +136,6 @@ class TiledICLoraPipeline(ICLoraPipeline):
                         chunk,
                         images=frame_images,
                         video_encoder=enc,
-                        color_space=ctx.color_space,
                     ),
                     *reference_video_conditionings_for_chunk(
                         chunk,
@@ -141,16 +149,16 @@ class TiledICLoraPipeline(ICLoraPipeline):
                         encode_tiling=encode_tiling,
                         color_space=ctx.color_space,
                     ),
-                    # frame_idx != 0 becomes a VideoConditionByKeyframeIndex. Its time
-                    # offset puts a -1 still at [-1, 0) / fps, as a 1-frame token.
-                    *combined_image_conditionings(
+                    # A still at a negative index is an ImageGuide, so it becomes a
+                    # VideoConditionByKeyframeIndex. Its time offset puts a -1 still at
+                    # [-1, 0) / fps, as a 1-frame token.
+                    *image_conditionings(
                         images=stills,
                         height=height,
                         width=width,
                         video_encoder=enc,
                         dtype=dtype,
                         device=device,
-                        color_space=ctx.color_space,
                     ),
                 ]
 

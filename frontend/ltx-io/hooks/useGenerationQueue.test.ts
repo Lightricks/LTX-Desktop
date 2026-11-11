@@ -19,6 +19,7 @@ import {
   fetchQueueSnapshotAfterReorder,
   generationQueryKeys,
   invalidateAffectedGenerationQueries,
+  normalizeQueueSnapshot,
   replaceGenerationQueueCache,
   type ExploreQueueSnapshot,
   type ReorderGenerationQueueRequest,
@@ -39,7 +40,7 @@ const generation = {
 };
 
 const emptySnapshot = {
-  active: null,
+  active: [],
   queued: [],
   done: [],
   failed: [],
@@ -47,7 +48,7 @@ const emptySnapshot = {
 };
 
 const optimisticSnapshot = {
-  active: null,
+  active: [],
   queued: [
     { generation: { ...generation, id: "gen-a" }, input_assets: [], progress: null },
     { generation: { ...generation, id: "gen-b" }, input_assets: [], progress: null },
@@ -58,7 +59,7 @@ const optimisticSnapshot = {
 };
 
 const serverSnapshot = {
-  active: null,
+  active: [],
   queued: [
     { generation: { ...generation, id: "gen-b" }, input_assets: [], progress: null },
     { generation: { ...generation, id: "gen-a" }, input_assets: [], progress: null },
@@ -164,7 +165,7 @@ describe("generation queue client", () => {
   it("replaces optimistic order with the returned queue snapshot", async () => {
     const calls: string[] = [];
     const posts: unknown[] = [];
-    const staleSnapshot = { active: null, queued: [] };
+    const staleSnapshot = { active: [], queued: [] };
     const api = createApiClient(async (path, init) => {
       calls.push(`${init?.method ?? "GET"} ${path}`);
       if (path === "/api/generation-queue/reorder") {
@@ -268,5 +269,49 @@ describe("generation queue client", () => {
       queryClient.getQueryState(generationQueryKeys.list("text-to-video"))?.isInvalidated,
       true,
     );
+  });
+
+  it("reads a single active entry, a list or null as a list", () => {
+    // Bug caught: a cached or older snapshot with one active entry breaks the queue panel.
+    const entry = {
+      generation: { ...generation, id: "gen-run", status: "running" as const },
+      input_assets: [],
+      progress: null,
+      cancellable: true,
+    };
+    const base = { queued: [] };
+
+    assert.deepEqual(normalizeQueueSnapshot({ ...base, active: entry }).active, [entry]);
+    assert.deepEqual(normalizeQueueSnapshot({ ...base, active: [entry, entry] }).active, [entry, entry]);
+    assert.deepEqual(normalizeQueueSnapshot({ ...base, active: null }).active, []);
+    assert.deepEqual(normalizeQueueSnapshot(base).active, []);
+  });
+
+  it("keeps Cancel for an active entry that has no cancellable field, and hides it for an explicit false", () => {
+    // Bug caught: an older snapshot has no `cancellable`, so the queue panel hides Cancel for a running job.
+    const { cancellable: _omitted, ...legacy } = {
+      generation: { ...generation, id: "gen-run", status: "running" as const },
+      input_assets: [],
+      progress: null,
+      cancellable: true,
+    };
+    const base = { queued: [] };
+
+    assert.equal(normalizeQueueSnapshot({ ...base, active: legacy }).active[0]?.cancellable, true);
+    assert.equal(normalizeQueueSnapshot({ ...base, active: [legacy] }).active[0]?.cancellable, true);
+    assert.equal(
+      normalizeQueueSnapshot({ ...base, active: [{ ...legacy, cancellable: false }] }).active[0]?.cancellable,
+      false,
+    );
+  });
+
+  it("goes idle only when no job runs in any lane", () => {
+    // Bug caught: an empty active list is not null, so polling never slowed down.
+    const state = { error: null, fetchFailureCount: 0 };
+    const idle = queueRefetchInterval(DESKTOP_GENERATION_POLLING_POLICY, { ...state, data: { active: [], queued: [] } }, true);
+    const running = queueRefetchInterval(DESKTOP_GENERATION_POLLING_POLICY, { ...state, data: { active: [{}, {}], queued: [] } }, true);
+
+    assert.equal(idle, IDLE_QUEUE_POLL_INTERVAL_MS);
+    assert.equal(running, DESKTOP_GENERATION_POLLING_POLICY.queueActiveIntervalMs);
   });
 });

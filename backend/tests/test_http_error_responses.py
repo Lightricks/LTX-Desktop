@@ -13,6 +13,7 @@ def test_validation_errors_use_http_error_response(client):
     payload = response.json()
     assert payload["code"] == "HTTP_422"
     assert "Field required" in payload["message"]
+    assert 'File "' not in payload["message"]
 
 
 def test_unhandled_exceptions_use_http_error_response(test_state, monkeypatch):

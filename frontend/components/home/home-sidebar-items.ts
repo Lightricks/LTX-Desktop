@@ -1,23 +1,30 @@
 import { generatePath } from "react-router";
 
 import {
-  getHomeFeature,
+  CUSTOM_LORA_HOME_FEATURE,
+  type CustomLoraNavId,
+  customLoraNavId,
+  isCustomLoraNavId,
+} from "../../lib/custom-lora.ts";
+import {
   HOME_SIDEBAR_FEATURED_FEATURES,
-  isHomeFeatureId,
   type HomeFeatureId,
+  getHomeFeature,
+  isHomeFeatureId,
 } from "../../lib/home-features.ts";
 import type { RecentProjectSidebarItem } from "../../lib/home-recent-projects-preference.ts";
-import { MAX_SIDEBAR_RECENT_ITEMS } from "../../lib/home-sidebar-recents.ts";
-import { paths } from "../../paths.ts";
-import type { SettingsOpenDetail } from "../../lib/settings-navigation.ts";
 import {
+  HOME_SHELL_ENTRIES,
+  type HomeShellHost,
   areHomeFeaturesInNav,
   getHomeShellEntry,
-  HOME_SHELL_ENTRIES,
   homeShellEntryServesHost,
   isHomeShellNavVisible,
-  type HomeShellHost,
 } from "../../lib/home-shell.ts";
+import { MAX_SIDEBAR_RECENT_ITEMS } from "../../lib/home-sidebar-recents.ts";
+import type { SettingsOpenDetail } from "../../lib/settings-navigation.ts";
+import { customLoraRunPath } from "../../paths.ts";
+import { paths } from "../../paths.ts";
 
 export type HomeSidebarHost = HomeShellHost;
 
@@ -42,6 +49,7 @@ export type HomeSidebarNavItemId =
   | "home"
   | "assistant"
   | HomeFeatureId
+  | CustomLoraNavId
   | "assets"
   | "remote"
   | "projects";
@@ -87,13 +95,38 @@ export type HomeSidebarActions = {
   openQuickSearch?: () => void;
   openProject?: (projectId: string) => void;
   openSettings?: (detail?: SettingsOpenDetail) => void;
+  /** Desktop only. Opens the add dialog instead of navigating to the add route. */
+  openAddCustomLora?: () => void;
   isSettingsModalOpen?: boolean;
 };
+
+/** A LoRA the user saved. Only the id and the name matter to the sidebar. */
+export type SidebarCustomLora = { id: string; name: string };
+
+/**
+ * What the sidebar needs of the custom LoRA feature. `saved` are the saved LoRAs.
+ * `recentIds` are the ones the user ran, newest run first.
+ */
+export type SidebarCustomLoras = {
+  saved: readonly SidebarCustomLora[];
+  recentIds: readonly string[];
+};
+
+const NO_CUSTOM_LORAS: SidebarCustomLoras = { saved: [], recentIds: [] };
+
+function toCustomLoraNavItem(lora: SidebarCustomLora): HomeSidebarNavItem {
+  return {
+    id: customLoraNavId(lora.id),
+    label: lora.name,
+    path: customLoraRunPath(lora.id),
+  };
+}
 
 export function planHomeSidebarNavEntries(
   plan: HomeSidebarItemPlan,
   recentFeatureIds: readonly HomeFeatureId[] = [],
   recentProjects: readonly RecentProjectSidebarItem[] = [],
+  customLoras: SidebarCustomLoras = NO_CUSTOM_LORAS,
 ): HomeSidebarNavEntry[] {
   const entries: HomeSidebarNavEntry[] = [];
   for (const entry of HOME_SHELL_ENTRIES) {
@@ -108,11 +141,14 @@ export function planHomeSidebarNavEntries(
         path: entry.path,
       },
     });
-    if (
-      entry.id === "projects" &&
-      plan.host === "desktop" &&
-      recentProjects.length > 0
-    ) {
+    // Adding a LoRA needs the computer, so a phone does not get the entry.
+    if (entry.id === "projects" && plan.host === "desktop" && plan.localViable) {
+      entries.push({
+        kind: "item",
+        item: toFeatureNavItem(getHomeFeature(CUSTOM_LORA_HOME_FEATURE.id)),
+      });
+    }
+    if (entry.id === "projects" && plan.host === "desktop" && recentProjects.length > 0) {
       entries.push({
         kind: "section",
         id: "recent-projects",
@@ -128,16 +164,24 @@ export function planHomeSidebarNavEntries(
     }
   }
   if (areHomeFeaturesInNav(plan.host, plan.localViable)) {
-    const recentTools = recentFeatureIds.slice(0, MAX_SIDEBAR_RECENT_ITEMS);
-    const recentIds = new Set(recentTools);
-    if (recentTools.length > 0) {
+    // Every saved LoRA runs as the one Custom LoRA feature. Its place in the recent list goes to
+    // the saved LoRAs the user ran, each by its own name.
+    const savedById = new Map(customLoras.saved.map((lora) => [lora.id, lora]));
+    const recentLoras = customLoras.recentIds.flatMap((id) => {
+      const lora = savedById.get(id);
+      return lora === undefined ? [] : [lora];
+    });
+    const recent: HomeSidebarNavItem[] = recentFeatureIds
+      .flatMap((featureId): HomeSidebarNavItem[] =>
+        featureId === CUSTOM_LORA_HOME_FEATURE.id
+          ? recentLoras.map(toCustomLoraNavItem)
+          : [toFeatureNavItem(getHomeFeature(featureId))],
+      )
+      .slice(0, MAX_SIDEBAR_RECENT_ITEMS);
+    const recentIds = new Set(recent.map((item) => item.id));
+    if (recent.length > 0) {
       entries.push({ kind: "section", id: "recent", label: "Recent workflows" });
-      for (const featureId of recentTools) {
-        entries.push({
-          kind: "item",
-          item: toFeatureNavItem(getHomeFeature(featureId)),
-        });
-      }
+      for (const item of recent) entries.push({ kind: "item", item });
     }
     const featured = HOME_SIDEBAR_FEATURED_FEATURES.filter(
       (feature) => !recentIds.has(feature.id),
@@ -156,11 +200,13 @@ export function planHomeSidebarNavItems(
   plan: HomeSidebarItemPlan,
   recentFeatureIds: readonly HomeFeatureId[] = [],
   recentProjects: readonly RecentProjectSidebarItem[] = [],
+  customLoras: SidebarCustomLoras = NO_CUSTOM_LORAS,
 ): HomeSidebarNavItem[] {
   return planHomeSidebarNavEntries(
     plan,
     recentFeatureIds,
     recentProjects,
+    customLoras,
   ).flatMap((entry) => (entry.kind === "item" ? [entry.item] : []));
 }
 
@@ -222,7 +268,11 @@ export function selectHomeSidebarNavItem(
   item: HomeSidebarNavItem,
   actions: HomeSidebarActions,
 ): void {
-  if (isHomeFeatureId(item.id)) {
+  if (item.id === CUSTOM_LORA_HOME_FEATURE.id && actions.openAddCustomLora) {
+    actions.openAddCustomLora();
+    return;
+  }
+  if (isHomeFeatureId(item.id) || isCustomLoraNavId(item.id)) {
     actions.goTo(item.path, { clearActiveProject: false });
     return;
   }

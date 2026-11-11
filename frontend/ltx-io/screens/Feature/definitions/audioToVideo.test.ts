@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import type {
   DroppedFastAspectCell,
+  FastCellAsk,
   VideoGenerationDuration,
   VideoGenerationModelSpecsResponse,
 } from "../../../../lib/video-generation-model-specs.ts";
@@ -10,11 +11,13 @@ import { resolveFeatureFormValues, resolveFeatureSeedValues } from "../types.ts"
 
 import {
   AUDIO_TO_VIDEO_DEFAULTS,
+  AUDIO_TO_VIDEO_EXAMPLE_NEGATIVE_PROMPT,
   AUDIO_TO_VIDEO_EXAMPLE_PROMPT,
   type AudioToVideoContext,
   type AudioToVideoValues,
   a2vAudioNumFrames,
   audioToVideoDefinition,
+  buildAudioToVideoForm,
   fromGeneration,
   toCreateBody,
   validateAudioToVideo,
@@ -88,6 +91,25 @@ function values(overrides: Partial<AudioToVideoValues> = {}): AudioToVideoValues
   };
 }
 
+/** Audio-grid asks against a 32 GB GPU, at 24 fps. */
+function withA2vAsks(
+  specs: VideoGenerationModelSpecsResponse,
+  asks: { resolution: FastCellAsk["resolution"]; duration: FastCellAsk["duration"]; ask_gib: number }[],
+): VideoGenerationModelSpecsResponse {
+  const cellAsks: FastCellAsk[] = asks.map((ask) => ({
+    ...ask,
+    fps: 24,
+    audio: true,
+    confidence: "solid",
+    windows: 1,
+    tight: false,
+  }));
+  for (const item of [...specs.local_models, ...(specs.downloaded_local_models ?? [])]) {
+    item.spec.cell_asks = cellAsks;
+  }
+  return { ...specs, memory: { device: "gpu", capacity_gib: 32 } };
+}
+
 function aspectOptions(
   formValues: AudioToVideoValues,
   formContext: AudioToVideoContext = context(),
@@ -103,15 +125,17 @@ describe("audioToVideo definition", () => {
     assert.deepEqual(AUDIO_TO_VIDEO_DEFAULTS, {
       startFrame: null,
       prompt: AUDIO_TO_VIDEO_EXAMPLE_PROMPT,
+      negativePrompt: AUDIO_TO_VIDEO_EXAMPLE_NEGATIVE_PROMPT,
       audio: null,
       model: "ltx-2.5-fast",
       resolution: "540p",
       aspectRatio: "auto",
+      passShape: null,
     });
     assert.deepEqual(audioToVideoDefinition.defaults, AUDIO_TO_VIDEO_DEFAULTS);
   });
 
-  it("renders start frame, prompt, audio, model, resolution, then aspect — no duration/fps", () => {
+  it("renders start frame, prompt, negativePrompt, audio, model, resolution, then aspect — no duration/fps", () => {
     const fields = audioToVideoDefinition.form(values(), context()).fields;
     assert.deepEqual(
       fields.map((field) => ({
@@ -122,6 +146,7 @@ describe("audioToVideo definition", () => {
       [
         { kind: "image-asset", id: "startFrame", dataKey: "startFrame" },
         { kind: "textarea", id: "prompt", dataKey: "prompt" },
+        { kind: "textarea", id: "negativePrompt", dataKey: "negativePrompt" },
         { kind: "audio-asset", id: "audio", dataKey: "audio" },
         { kind: "options", id: "model", dataKey: "model" },
         { kind: "options", id: "resolution", dataKey: "resolution" },
@@ -332,8 +357,9 @@ describe("audioToVideo definition", () => {
         resolution: "540p",
         fps: 24,
         cameraMotion: "none",
-        negativePrompt: "",
+        negativePrompt: AUDIO_TO_VIDEO_EXAMPLE_NEGATIVE_PROMPT,
         promptProvenance: "typed",
+        passShape: "auto",
       },
     });
     assert.equal(JSON.stringify(body).includes("/"), false);
@@ -566,11 +592,54 @@ describe("audioToVideo Generate gate", () => {
   });
 });
 
+describe("audioToVideo pass shape", () => {
+  // 7.2 s of audio prices the 8 s cell, which runs in parts with a one-pass alternative.
+  function shapedA2vSpecs(): VideoGenerationModelSpecsResponse {
+    const specs = a2vSpecs();
+    for (const item of [...specs.local_models, ...(specs.downloaded_local_models ?? [])]) {
+      item.spec.cell_asks = [
+        {
+          resolution: "540p",
+          fps: 24,
+          duration: 8,
+          audio: true,
+          ask_gib: 12,
+          confidence: "solid",
+          windows: 2,
+          tight: false,
+          alternative: { ask_gib: 15, confidence: "solid", windows: 1, tight: false },
+        },
+      ];
+    }
+    return { ...specs, budgetMode: "brave", memory: { device: "gpu", capacity_gib: 16 } };
+  }
+
+  it("audio to video keeps a restored shape until the audio's length is known", () => {
+    const specs = shapedA2vSpecs();
+    const restored = resolveFeatureSeedValues(audioToVideoDefinition, {
+      context: context({ specs, audioDurationSeconds: null, audioDurationPending: true }),
+      hasStoredValues: false,
+      storedValues: undefined,
+      lastGenerationSpec: {
+        params: { prompt: "a singer", aspectRatio: "16:9", passShape: "one_pass" },
+        inputs: { audio: audioAsset, startFrame: startAsset },
+      },
+    });
+    assert.equal(restored.passShape, "one_pass");
+
+    const loaded = context({ specs, audioDurationSeconds: 7.2 });
+    const next = audioToVideoDefinition.normalize(restored, loaded);
+    assert.equal(next.passShape, "one_pass");
+    assert.equal(toCreateBody(next, loaded).params.passShape, "one_pass");
+  });
+});
+
 describe("audioToVideo fromGeneration", () => {
-  it("restores prompt, aspect, and both input slots from spec asset IDs", () => {
+  it("restores prompt, negativePrompt, aspect, and both input slots from spec asset IDs", () => {
     const parsed = fromGeneration({
       params: {
         prompt: "a singer",
+        negativePrompt: "closed mouth",
         model: "ltx-2.5-fast",
         aspectRatio: "9:16",
         resolution: "540p",
@@ -585,10 +654,12 @@ describe("audioToVideo fromGeneration", () => {
     assert.deepEqual(parsed, {
       startFrame: { assetId: "from-start" },
       prompt: "a singer",
+      negativePrompt: "closed mouth",
       audio: { assetId: "from-audio" },
       model: "ltx-2.5-fast",
       resolution: "540p",
       aspectRatio: "9:16",
+      passShape: null,
     });
   });
 
@@ -904,6 +975,54 @@ describe("audioToVideo resolution", () => {
     assert.equal(audioToVideoDefinition.isReady?.(at1080p, long), false);
   });
 
+  it("offers a lower resolution at that resolution's own length, never a shorter clip", () => {
+    // 15 s of audio runs as the 10 s cell at 1080p (its longest) but as the 20 s cell at 720p
+    // and 540p. 720p fits at 10 s and is over at 20 s, so only 540p is a fix.
+    const specs = withA2vAsks(structuredClone(specFixture()), [
+      { resolution: "1080p", duration: 10, ask_gib: 40 },
+      { resolution: "720p", duration: 10, ask_gib: 20 },
+      { resolution: "720p", duration: 20, ask_gib: 36 },
+      { resolution: "540p", duration: 20, ask_gib: 25 },
+    ]);
+    const clip = context({ specs, audioDurationSeconds: 15 });
+    const memory = buildAudioToVideoForm(values({ resolution: "1080p" }), clip).memory;
+    assert.equal(memory?.over, true);
+    assert.deepEqual(
+      memory?.fixes.map((fix) => [fix.dataKey, fix.value]),
+      [["resolution", "540p"]],
+    );
+  });
+
+  it("shows no meter before the audio is chosen", () => {
+    const specs = withA2vAsks(structuredClone(specFixture()), [
+      { resolution: "1080p", duration: 5, ask_gib: 12 },
+      { resolution: "1080p", duration: 10, ask_gib: 20 },
+    ]);
+    const memory = buildAudioToVideoForm(
+      values({ resolution: "1080p", audio: null }),
+      context({ specs, audioDurationSeconds: 7.2 }),
+    ).memory;
+    assert.equal(memory, null);
+  });
+
+  it("prices 10.2s audio as the 10s cell, not the next longer one", () => {
+    const specs = withA2vAsks(structuredClone(specFixture()), [
+      { resolution: "1080p", duration: 10, ask_gib: 20 },
+      { resolution: "1080p", duration: 20, ask_gib: 40 },
+    ]);
+    const spec = specs.downloaded_local_models[0]?.spec;
+    if (spec?.a2v_supported_resolutions_durations?.["1080p"] == null) {
+      throw new Error("missing 1080p");
+    }
+    spec.a2v_supported_resolutions_durations["1080p"].fps_to_durations["24"] = [5, 10, 20];
+    const memory = buildAudioToVideoForm(
+      values({ resolution: "1080p" }),
+      context({ specs, audioDurationSeconds: 10.2 }),
+    ).memory;
+    assert.equal(memory?.askGib, 20);
+    assert.equal(memory?.over, false);
+  });
+
   it("accepts 10.2s audio when it floors onto the kept 10s frame count", () => {
     const specs = structuredClone(specFixture());
     const spec = specs.downloaded_local_models[0]?.spec;
@@ -948,30 +1067,6 @@ describe("audioToVideo resolution", () => {
     assert.equal(issues[0]?.id, "audio-past-kept");
     assert.doesNotMatch(issues[0]?.message ?? "", /up to/);
     assert.match(issues[0]?.message ?? "", /can't run at 1080p/);
-    assert.equal(audioToVideoDefinition.isReady?.(at1080p, clip), false);
-  });
-
-  it("does not generate a reckless clip that only fits a free-VRAM drop", () => {
-    const specs = structuredClone(specFixture());
-    specs.budgetMode = "reckless";
-    const spec = specs.downloaded_local_models[0]?.spec;
-    if (spec == null) throw new Error("missing spec");
-    spec.dropped_cells = [
-      {
-        resolution: "1080p",
-        fps: 24,
-        duration: 20,
-        reason: "stream_over",
-        message: "card is busy",
-        audio: true,
-        shortfall_kind: "free",
-      },
-    ];
-    const clip = context({ specs, audioDurationSeconds: 15 });
-    const at1080p = values({ resolution: "1080p" });
-    const issues = validateAudioToVideo(at1080p, clip);
-    assert.equal(issues[0]?.id, "audio-past-kept");
-    assert.match(issues[0]?.message ?? "", /up to 10s/);
     assert.equal(audioToVideoDefinition.isReady?.(at1080p, clip), false);
   });
 

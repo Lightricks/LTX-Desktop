@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import type { components } from "@/generated/backend-openapi";
-import type { EnhanceProvider } from "@/hooks/use-prompt-enhancer-provider";
+import { CUSTOM_LORA_HOME_FEATURE } from "@/lib/custom-lora";
 import { isEnhanceBlockedByMissingGeminiKey } from "@/lib/enhance-gemini-key";
-import { resolveUsableEnhanceProvider } from "@/lib/enhance-provider";
 import type { HomeFeatureId } from "@/lib/home-features";
 import {
   icLoraCatalogId,
@@ -14,28 +13,34 @@ import { getLoraRecipe, isLoraRecipeId } from "@/lib/lora-recipes";
 import type { PromptProvenance } from "@/lib/prompt-provenance";
 import {
   type PromptHistoryEntry,
-  appendEnhanceResult,
   resolvePromptProvenance,
   shouldApplyEnhanceResult,
 } from "@/lib/prompt-provenance";
 
 import { useExploreRuntime } from "../runtime/ExploreRuntime";
-import { useFeatureFormStore } from "../stores/featureFormStore";
+import { type FeatureFormKey, useFeatureFormStore } from "../stores/featureFormStore";
+import { enhanceFailureMessage, historyAfterEnhance } from "./manualEnhanceOutcome";
+import { useEnhanceProviderChoice } from "./useEnhanceProviderChoice";
+import { useNagUnavailableReason } from "./useNagUnavailableReason";
 import {
+  type EnhanceKeyframe,
   assetIdOf,
   enhanceImageAssetId,
+  enhanceKeyframeFields,
   hasManualEnhanceInput,
   isEnhanceSourceCurrent,
+  keyframesSignature,
   lookImageAssetId,
   panelImageAssetIds,
   replacedWindowFor,
-  resolveShowManualEnhance,
+  resolveShowNagStrengthControls,
 } from "./manualEnhanceVisibility";
 
 type EnhancePromptRequest = components["schemas"]["EnhancePromptRequest"];
 
 export type PromptValues = {
   prompt?: string;
+  negativePrompt?: string;
   startFrame?: { assetId: string } | null;
   endFrame?: { assetId: string } | null;
   // The source video of an IC-LoRA recipe, Extend, or Retake.
@@ -44,6 +49,9 @@ export type PromptValues = {
   image?: { assetId: string } | null;
   // The images of an image-list recipe (Ingredients), in order.
   images?: readonly { assetId: string }[] | null;
+  // The stills of a Keyframes clip. `duration` (seconds) and `fps` are then the clip's.
+  keyframes?: readonly EnhanceKeyframe[] | null;
+  fps?: number;
   aspectRatio?: EnhancePromptRequest["aspectRatio"];
   resolution?: EnhancePromptRequest["resolution"];
   // The Retake selection, in seconds.
@@ -51,24 +59,16 @@ export type PromptValues = {
   duration?: number;
 };
 
-type PromptEnhancerStatus = {
-  exploreAutoEnhancePrompts: boolean;
-  hasGeminiApiKey: boolean;
-  localEnhancementSupported: boolean;
-  defaultProvider: EnhanceProvider;
-  canToggleProvider: boolean;
-  showManualEnhance: boolean;
-};
-
-const MISSING_GEMINI_KEY_MESSAGE =
-  "Add a Gemini API key in Desktop Settings, or use local Enhance when Gemma is downloaded.";
-
 function numberOrUndefined(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
 }
 
-function liveFormState(featureId: HomeFeatureId): {
+function liveFormState(
+  featureId: HomeFeatureId,
+  storeKey: FeatureFormKey = featureId,
+): {
   prompt: string | undefined;
+  negativePrompt: string | undefined;
   history: PromptHistoryEntry[] | undefined;
   index: number | undefined;
   // null: the form has no source video. undefined: no live values to compare.
@@ -79,16 +79,22 @@ function liveFormState(featureId: HomeFeatureId): {
   referenceImageAssetId: string | null | undefined;
   // The live panel images of an image-list recipe, in order. Empty for any other feature.
   panelAssetIds: string[] | undefined;
+  // The live stills of a Keyframes clip, as a `keyframesSignature`. Empty for any other feature.
+  keyframes: string | undefined;
   // The live Retake selection. undefined for any other feature, or when the values are gone.
   replacedWindow: { start: number; end: number } | undefined;
 } {
   const state = useFeatureFormStore.getState();
-  const values = state.getValues(featureId);
-  const stored = state.promptHistoryByFeature[featureId];
+  const values = state.getValues(storeKey);
+  const stored = state.promptHistoryByFeature[storeKey];
   return {
     prompt:
       values != null && "prompt" in values && typeof values.prompt === "string"
         ? values.prompt
+        : undefined,
+    negativePrompt:
+      values != null && "negativePrompt" in values && typeof values.negativePrompt === "string"
+        ? values.negativePrompt
         : undefined,
     history: stored?.history,
     index: stored?.index,
@@ -104,6 +110,16 @@ function liveFormState(featureId: HomeFeatureId): {
             isSheetRecipe: isIcLoraSheetRecipeId(featureId),
             images: "images" in values && Array.isArray(values.images) ? values.images : null,
           }) ?? [],
+    keyframes:
+      values == null
+        ? undefined
+        : keyframesSignature(
+            "keyframes" in values && Array.isArray(values.keyframes) ? values.keyframes : null,
+            {
+              duration: "duration" in values ? values.duration : undefined,
+              fps: "fps" in values ? values.fps : undefined,
+            },
+          ),
     replacedWindow:
       values == null
         ? undefined
@@ -116,6 +132,8 @@ function liveFormState(featureId: HomeFeatureId): {
 
 export function useManualEnhance({
   featureId,
+  storeKey,
+  customLoraId,
   values,
   promptHistory,
   historyIndex,
@@ -123,6 +141,8 @@ export function useManualEnhance({
   isCreating,
 }: {
   featureId: HomeFeatureId;
+  storeKey?: FeatureFormKey;
+  customLoraId?: string;
   values: PromptValues;
   promptHistory: PromptHistoryEntry[];
   historyIndex: number;
@@ -131,63 +151,41 @@ export function useManualEnhance({
 }) {
   const {
     api,
-    modelsVersion,
-    persistEnhanceProviderPreference,
-    readEnhanceProviderPreference,
-    autoEnhancePrompts,
     onGeminiKeyRequired,
+    showNagStrengthControls: runtimeShowNagStrengthControls,
   } = useExploreRuntime();
-  const [status, setStatus] = useState<PromptEnhancerStatus | null>(null);
-  const [providerOverride, setProviderOverride] = useState<EnhanceProvider | null>(
-    () => readEnhanceProviderPreference?.() ?? null,
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    void api.getPromptEnhancer().then((result) => {
-      if (!cancelled && result.ok) {
-        setStatus(result.data);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [api, modelsVersion]);
-
-  const hasGeminiApiKey = status?.hasGeminiApiKey ?? false;
-  const hasLocalTextEncoder = status?.localEnhancementSupported ?? false;
-  const enhanceProvider = resolveUsableEnhanceProvider({
-    preference: providerOverride,
+  const {
     hasGeminiApiKey,
     hasLocalTextEncoder,
-    fallback: status?.defaultProvider ?? "api",
-  });
-  const canToggleEnhanceProvider = status?.canToggleProvider ?? false;
-  const showManualEnhance = resolveShowManualEnhance(
-    autoEnhancePrompts,
-    status?.showManualEnhance,
-  );
-
-  const setEnhanceProvider = useCallback(
-    (provider: EnhanceProvider) => {
-      setProviderOverride(provider);
-      persistEnhanceProviderPreference?.(provider);
-    },
-    [persistEnhanceProviderPreference],
-  );
+    enhanceProvider,
+    canToggleEnhanceProvider,
+    showManualEnhance,
+    setEnhanceProvider,
+    status,
+  } = useEnhanceProviderChoice();
 
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [enhanceError, setEnhanceError] = useState<string | null>(null);
 
   const prompt = String(values.prompt ?? "");
+  const negativePrompt = String(values.negativePrompt ?? "");
   const hasEnhanceInput = hasManualEnhanceInput({
     prompt,
     startFrame: values.startFrame,
     video: values.video,
     images: values.images,
+    keyframes: values.keyframes,
   });
   const promptRef = useRef(prompt);
   promptRef.current = prompt;
+  const negativePromptRef = useRef(negativePrompt);
+  negativePromptRef.current = negativePrompt;
+
+  const nagUnavailableReason = useNagUnavailableReason(featureId);
+  const showNagStrengthControls = resolveShowNagStrengthControls(
+    runtimeShowNagStrengthControls,
+    status?.showNagStrengthControls,
+  );
 
   const runEnhance = useCallback(async () => {
     if (isEnhancing || !hasEnhanceInput) return;
@@ -195,7 +193,9 @@ export function useManualEnhance({
     setEnhanceError(null);
 
     const sourcePrompt = prompt;
+    const sourceNegativePrompt = nagUnavailableReason == null ? negativePrompt : "";
     const loraCatalogIds: string[] = [];
+    const customLoraIds: string[] = [];
     const startFrameAssetId = values.startFrame?.assetId ?? null;
     const referenceImageAssetId = lookImageAssetId({
       isIcLoraRecipe: isIcLoraRecipeId(featureId),
@@ -215,6 +215,11 @@ export function useManualEnhance({
       isSheetRecipe: isIcLoraSheetRecipeId(featureId),
       images: values.images,
     });
+    const keyframeFields = enhanceKeyframeFields({
+      keyframes: values.keyframes,
+      duration: values.duration,
+      fps: values.fps,
+    });
     const videoAssetId = values.video?.assetId;
     const sourceVideoAssetId = videoAssetId ?? null;
     const replacedWindow =
@@ -227,6 +232,9 @@ export function useManualEnhance({
     if (isLoraRecipeId(featureId)) {
       loraCatalogIds.push(getLoraRecipe(featureId).catalogId);
     }
+    if (featureId === CUSTOM_LORA_HOME_FEATURE.id && customLoraId) {
+      customLoraIds.push(customLoraId);
+    }
     const icLoraId = isIcLoraRecipeId(featureId)
       ? icLoraCatalogId(featureId)
       : undefined;
@@ -234,7 +242,9 @@ export function useManualEnhance({
     try {
       const result = await api.enhancePrompt({
         prompt: sourcePrompt,
+        negativePrompt: sourceNegativePrompt,
         loraCatalogIds,
+        customLoraIds,
         icLoraId,
         imageAssetId,
         lastImageAssetId,
@@ -245,6 +255,7 @@ export function useManualEnhance({
               resolution: values.resolution,
             }
           : {}),
+        ...keyframeFields,
         videoAssetId,
         replacedWindow,
         provider: enhanceProvider,
@@ -252,25 +263,24 @@ export function useManualEnhance({
       });
 
       if (!result.ok) {
-        if (
-          result.error.code === "GEMINI_INVALID_API_KEY" ||
-          result.error.code === "GEMINI_API_KEY_MISSING"
-        ) {
-          onGeminiKeyRequired?.();
-          setEnhanceError(
-            onGeminiKeyRequired ? result.error.message : MISSING_GEMINI_KEY_MESSAGE,
-          );
-        } else {
-          setEnhanceError(result.error.message);
-        }
+        setEnhanceError(enhanceFailureMessage(result.error, onGeminiKeyRequired));
         return;
       }
 
-      const live = liveFormState(featureId);
+      const live = liveFormState(featureId, storeKey);
       const history = live.history ?? promptHistory;
       const index = live.index ?? historyIndex;
+      const liveNegative =
+        nagUnavailableReason == null
+          ? (live.negativePrompt ?? negativePromptRef.current)
+          : "";
       if (
-        !shouldApplyEnhanceResult(live.prompt ?? promptRef.current, sourcePrompt)
+        !shouldApplyEnhanceResult(
+          live.prompt ?? promptRef.current,
+          sourcePrompt,
+          liveNegative,
+          sourceNegativePrompt,
+        )
       ) {
         return;
       }
@@ -280,21 +290,21 @@ export function useManualEnhance({
           startFrameAssetId,
           referenceImageAssetId: referenceImageAssetId ?? null,
           panelAssetIds: panelAssetIds ?? [],
+          keyframes: keyframesSignature(values.keyframes, {
+            duration: values.duration,
+            fps: values.fps,
+          }),
           replacedWindow,
         })
       ) {
         return;
       }
 
-      const next = appendEnhanceResult({
+      const next = historyAfterEnhance({
         history,
         index,
         sourcePrompt,
-        sourceProvenance: resolvePromptProvenance(
-          sourcePrompt,
-          history,
-          index,
-        ),
+        sourceNegativePrompt,
         enhancedPrompt: result.data.enhancedPrompt,
       });
       onPromptHistoryChange(next.history, next.index);
@@ -305,17 +315,23 @@ export function useManualEnhance({
     }
   }, [
     api,
+    customLoraId,
     enhanceProvider,
     featureId,
     hasEnhanceInput,
     historyIndex,
     isEnhancing,
+    nagUnavailableReason,
+    negativePrompt,
     onGeminiKeyRequired,
     onPromptHistoryChange,
     prompt,
     promptHistory,
+    storeKey,
     values.aspectRatio,
     values.duration,
+    values.fps,
+    values.keyframes,
     values.endFrame?.assetId,
     values.image?.assetId,
     values.images,
@@ -343,6 +359,7 @@ export function useManualEnhance({
     prompt,
     promptHistory,
     historyIndex,
+    negativePrompt,
   );
 
   return {
@@ -357,5 +374,7 @@ export function useManualEnhance({
     enhanceProvider,
     canToggleEnhanceProvider,
     setEnhanceProvider,
+    nagUnavailableReason,
+    showNagStrengthControls,
   };
 }

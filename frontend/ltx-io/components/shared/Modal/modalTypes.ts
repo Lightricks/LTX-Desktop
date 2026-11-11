@@ -42,6 +42,5 @@ export interface ShowModalParams {
   shouldPreventDismiss?: () => boolean;
   noPadding?: boolean;
   disableCloseButtonUntilMs?: number;
-  shouldBeTopmost?: boolean;
   onClose?: (reason: CloseReason) => void;
 }

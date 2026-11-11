@@ -19,6 +19,7 @@ with the following adjustments:
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 from dataclasses import replace
 from collections.abc import Iterator
 from typing import Any
@@ -35,7 +36,13 @@ from ltx_pipelines.utils.media_io import encode_video, get_videostream_metadata
 from ltx_pipelines.utils.types import ModalitySpec, OffloadMode, VideoAudio
 
 from api_types import ExtendMode
+from services.fast_video_pipeline.nag_config import NagConfig
+from services.fast_video_pipeline.nag_distilled import (
+    prompts_with_negative,
+    with_negative_context,
+)
 from services.ltx_pipeline_common import build_model_paths, resolve_tiling_config
+from services.patches.nag_cross_attention import NagState, nag_scope
 from services.services_utils import TilingConfigType
 from services.retake_pipeline.frame_rate import restamp_to_source_rate
 from services.retake_pipeline.retake_pipeline import RetakePipeline
@@ -237,6 +244,7 @@ class LTXRetakePipeline:
         encode_max_duration: float | None = None,
         content_width: int | None = None,
         content_height: int | None = None,
+        nag: NagConfig | None = None,
     ) -> tuple[Iterator[torch.Tensor], Audio, TilingConfigType]:
         from ltx_core.components.guiders import MultiModalGuider
         from ltx_core.components.noisers import GaussianNoiser
@@ -357,7 +365,11 @@ class LTXRetakePipeline:
 
         # --- Text encoding ---
 
-        prompts_to_encode = [prompt] if distilled else [prompt, negative_prompt]
+        prompts_to_encode = (
+            prompts_with_negative(prompt, nag)
+            if distilled
+            else [prompt, negative_prompt]
+        )
         contexts = self.prompt_encoder(
             prompts_to_encode,
             enhance_first_prompt=enhance_prompt,
@@ -366,6 +378,11 @@ class LTXRetakePipeline:
 
 
         v_context_p, a_context_p = contexts[0].video_encoding, contexts[0].audio_encoding
+        nag_state: NagState | None = None
+        if distilled and nag is not None:
+            v_context_p, nag_state = with_negative_context(
+                v_context_p, contexts[1].video_encoding, nag
+            )
 
         # --- Build modality specs ---
         video_modality_spec = ModalitySpec(
@@ -395,29 +412,28 @@ class LTXRetakePipeline:
         # --- Build denoiser ---
         if distilled:
             sigmas = torch.tensor(_distilled_sigmas).to(dtype=torch.float32, device=self.device)
-            denoiser = SimpleDenoiser(v_context=v_context_p, a_context=a_context_p)
+            denoiser = SimpleDenoiser()
         else:
             sigmas = LTX2Scheduler().execute(steps=num_inference_steps).to(dtype=torch.float32, device=self.device)  # type: ignore[no-untyped-call]
             assert video_guider_params is not None, "video_guider_params required for non-distilled"
             assert audio_guider_params is not None, "audio_guider_params required for non-distilled"
             v_context_n, a_context_n = contexts[1].video_encoding, contexts[1].audio_encoding
             denoiser = GuidedDenoiser(
-                v_context=v_context_p,
-                a_context=a_context_p,
                 video_guider=MultiModalGuider(params=video_guider_params, negative_context=v_context_n),
                 audio_guider=MultiModalGuider(params=audio_guider_params, negative_context=a_context_n),
             )
 
         # --- Run diffusion stage ---
-        video_state, audio_state = self._denoise_masked_latents(
-            distilled=distilled,
-            seed=effective_seed,
-            denoiser=denoiser,
-            sigmas=sigmas,
-            noiser=noiser,
-            video=video_modality_spec,
-            audio=audio_modality_spec,
-        )
+        with nag_scope(nag_state) if nag_state is not None else nullcontext():
+            video_state, audio_state = self._denoise_masked_latents(
+                distilled=distilled,
+                seed=effective_seed,
+                denoiser=denoiser,
+                sigmas=sigmas,
+                noiser=noiser,
+                video=video_modality_spec,
+                audio=audio_modality_spec,
+            )
 
         # --- Decode audio first (eager, small) ---
         assert audio_state is not None
@@ -461,6 +477,7 @@ class LTXRetakePipeline:
         encode_max_duration: float | None = None,
         content_width: int | None = None,
         content_height: int | None = None,
+        nag: NagConfig | None = None,
     ) -> None:
         meta = get_videostream_metadata(video_path)
         fps = meta.fps
@@ -496,6 +513,7 @@ class LTXRetakePipeline:
                 encode_max_duration=encode_max_duration,
                 content_width=content_width,
                 content_height=content_height,
+                nag=nag,
             )
         audio_out: Audio | None = audio
         video_chunks = get_video_chunks_number(num_frames, tiling_config)
@@ -529,6 +547,7 @@ class LTXRetakePipeline:
         encode_max_duration: float | None = None,
         content_width: int | None = None,
         content_height: int | None = None,
+        nag: NagConfig | None = None,
     ) -> None:
         meta = get_videostream_metadata(video_path)
         fps = meta.fps
@@ -566,6 +585,7 @@ class LTXRetakePipeline:
                 encode_max_duration=encode_max_duration,
                 content_width=content_width,
                 content_height=content_height,
+                nag=nag,
             )
         video_chunks = get_video_chunks_number(total_frames, tiling_config)
         encode_video(

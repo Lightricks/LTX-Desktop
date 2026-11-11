@@ -425,6 +425,21 @@
   margin-inline-start: 4px;
 }
 
+.riskBadge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  color: var(--semantic-fg-warning-primary-enabled);
+
+  svg {
+    display: block;
+    width: 12px;
+    height: 12px;
+  }
+}
+
 .rowBadges {
   flex: 1 1 auto;
   min-width: 0;
@@ -440,20 +455,6 @@
   > * {
     flex-shrink: 0;
   }
-}
-
-.gripIcon {
-  display: block;
-  flex-shrink: 0;
-  // Two columns × three rows at 3px — needs 6×9px or the right column clips.
-  width: 6px;
-  height: 9px;
-  background-image: radial-gradient(
-    circle,
-    currentcolor 0.8px,
-    transparent 0.8px
-  );
-  background-size: 3px 3px;
 }
 
 .promptRow {
@@ -503,6 +504,16 @@
   color: var(--semantic-fg-tertiary);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+/* The `showGenerationNegativePrompt` flag: one line under the prompt; the full text is in the title. */
+.negativePrompt {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--semantic-fg-tertiary);
 }
 
 @media (max-width: shell.$shell-compact-breakpoint) {

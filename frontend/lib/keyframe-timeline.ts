@@ -101,6 +101,53 @@ export function parseKeyframeTimecode(value: string, fps: number): number | null
   return (minutes * 60 + seconds) * fps + frames
 }
 
+/** Seconds with two decimals and no minutes, like `1.50s`. A clip is never long enough for minutes. */
+export function formatKeyframeSeconds(frameIndex: number, fps: number): string {
+  return `${(Math.max(0, Math.round(frameIndex)) / fps).toFixed(2)}s`
+}
+
+/**
+ * Parses seconds like `1.5`, `1.5s` or `.5` into the nearest frame index. Returns null for
+ * anything else. A time past the clip is the caller's to clamp.
+ */
+export function parseKeyframeSeconds(value: string, fps: number): number | null {
+  const match = /^(\d+(?:\.\d*)?|\.\d+)\s*s?$/i.exec(value.trim())
+  if (!match) return null
+  return Math.round(Number(match[1]) * fps)
+}
+
+export type RulerTick = {
+  frame: number
+  /** Set on a main tick, like `2s`. A small tick between two main ticks has none. */
+  label: string | null
+}
+
+/** Seconds between two labels, from short to long. The first step that gives few enough labels wins. */
+const RULER_LABEL_STEPS = [1, 2, 5, 10, 15, 30, 60]
+const RULER_MAX_LABELS = 10
+
+/**
+ * The ticks of a ruler for a clip of `lastFrame + 1` frames: a labelled tick at each step and a
+ * small tick halfway between. The step grows with the clip so the labels stay apart.
+ */
+export function rulerTicks(lastFrame: number, fps: number): RulerTick[] {
+  // A `NaN` would never end the loop below, so it gets no ticks.
+  if (!Number.isFinite(lastFrame) || !Number.isFinite(fps)) return []
+  if (lastFrame <= 0 || fps <= 0) return []
+  const totalSeconds = lastFrame / fps
+  const step =
+    RULER_LABEL_STEPS.find((candidate) => totalSeconds / candidate <= RULER_MAX_LABELS) ??
+    RULER_LABEL_STEPS[RULER_LABEL_STEPS.length - 1]
+  const ticks: RulerTick[] = []
+  for (let index = 0; ; index++) {
+    const seconds = (index * step) / 2
+    const frame = Math.round(seconds * fps)
+    if (frame > lastFrame) break
+    ticks.push({ frame, label: index % 2 === 0 ? `${seconds}s` : null })
+  }
+  return ticks
+}
+
 export function frameFromPointer(
   clientX: number,
   trackRect: { left: number; width: number },

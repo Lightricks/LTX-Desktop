@@ -12,6 +12,8 @@ from typing import Protocol, cast
 import psutil
 import torch
 
+from runtime_config.device_calibration import RunMemoryBaseline, RunMemoryEnd
+from services.gpu_info import run_peak
 from services.gpu_info.gpu_info import GpuTelemetryPayload
 
 logger = logging.getLogger(__name__)
@@ -256,3 +258,27 @@ class GpuInfoImpl:
         except Exception:
             logger.debug("MPS pool probe failed; Mac callers fail closed", exc_info=True)
             return None
+
+    def get_swap_used_bytes(self) -> int | None:
+        try:
+            return int(psutil.swap_memory().used)
+        except Exception:
+            logger.debug("swap probe failed; the run is not recorded", exc_info=True)
+            return None
+
+    def begin_run_memory_watch(self) -> RunMemoryBaseline:
+        baseline = RunMemoryBaseline(
+            free_vram_bytes=self.get_free_cuda_vram_bytes(),
+            reserved_bytes=self.get_cuda_reserved_bytes(),
+            swap_used_bytes=self.get_swap_used_bytes(),
+        )
+        run_peak.begin_run()
+        return baseline
+
+    def end_run_memory_watch(self) -> RunMemoryEnd:
+        peak_reserved, min_free = run_peak.end_run()
+        return RunMemoryEnd(
+            peak_reserved_bytes=peak_reserved,
+            min_free_vram_bytes=min_free,
+            swap_used_bytes=self.get_swap_used_bytes(),
+        )

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import type { GenerationSettings } from '../components/SettingsPanel'
 import { ApiClient, type ApiRequestBodyOf, type ApiSuccessOf } from '../lib/api-client'
+import { IMAGE_SHORT_SIDE_BY_RESOLUTION } from '../lib/genspace-image-resolution'
 import { createLocalGenerationError, type GenerationError } from '../lib/generation-errors'
 import { canCancelLocalJob, withGenerationActive } from '../lib/generation-active'
 import { useAppSettings } from '../contexts/AppSettingsContext'
@@ -9,6 +10,7 @@ import { displayPolledProgress } from '../lib/generation-display-progress'
 import type { GenSpaceMode } from '../lib/genspace-multi-keyframe'
 import type { KeyframeItem, PersistedKeyframe } from '../lib/multi-keyframe'
 import type { PromptProvenance } from '../lib/prompt-provenance'
+import { formatShortRemainingTime } from '../lib/duration-format'
 
 const POLLING_INTERVAL_MS = 2000
 
@@ -95,12 +97,6 @@ interface UseGenerationReturn extends GenerationState {
   resumeIfRunning: () => Promise<'running' | 'complete' | 'none'>
 }
 
-const IMAGE_SHORT_SIDE_BY_RESOLUTION: Record<string, number> = {
-  '1080p': 1080,
-  '1440p': 1440,
-  '2048p': 2048,
-}
-
 const IMAGE_ASPECT_RATIO_VALUE: Record<string, number> = {
   '1:1': 1,
   '16:9': 16 / 9,
@@ -111,7 +107,9 @@ const IMAGE_ASPECT_RATIO_VALUE: Record<string, number> = {
 }
 
 function getImageDimensions(settings: GenerationSettings): { width: number; height: number } {
-  const shortSide = IMAGE_SHORT_SIDE_BY_RESOLUTION[settings.imageResolution]
+  const shortSide = (IMAGE_SHORT_SIDE_BY_RESOLUTION as Record<string, number | undefined>)[
+    settings.imageResolution
+  ]
   if (!shortSide) {
     throw new Error(`Unsupported image resolution mapping: ${settings.imageResolution}`)
   }
@@ -296,7 +294,11 @@ export function useGeneration(): UseGenerationReturn {
               elapsedInferenceS: elapsed,
               estimatedInferenceS: estimatedInferenceTime,
             })
-            let statusMessage = getPhaseMessage(data.phase)
+            const remainingLabel = formatShortRemainingTime(data.remainingSeconds)
+            let statusMessage =
+              remainingLabel && data.phase === 'inference'
+                ? `${getPhaseMessage(data.phase)} (${remainingLabel})`
+                : getPhaseMessage(data.phase)
 
             // Keep API/local completion as a terminal response state, not polling state.
             // Polling complete means backend state is finalized, but request can still be in-flight.

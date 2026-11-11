@@ -345,9 +345,10 @@ SCENARIOS["t2v_1080p_5s"].tags.append("bump")
 SCENARIOS["t2v_1080p_5s"].tags.append("e1")
 SCENARIOS["t2v_1080p_5s"].checks = list(BUMP_VIDEO_CHECKS)
 
-# 5s @ 24fps = 120 frames. Same still at 0 / mid / last — exercises the Distilled
-# guiding-latent swap (distilled_keyframe_guiding), not visual variety.
-_add(Scenario("mkf_interpolation", "Multi-keyframe interpolation (guiding swap)",
+# 5s @ 24fps snaps to 121 frames (indices 0..120); the last still sits one frame before the end
+# on purpose, so runs stay comparable with earlier baselines. Same still at 0 / mid / last — exercises the Distilled
+# guide-all image binding (to_ltx_images guide_all=True), not visual variety.
+_add(Scenario("mkf_interpolation", "Multi-keyframe interpolation (guide-all binding)",
               {"prompt": "a fox and a panda walking through a sunlit forest",
                "seed": 42, "resolution": "540p", "duration": 5, "fps": 24,
                "keyframes": [

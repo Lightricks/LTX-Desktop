@@ -21,8 +21,8 @@ export function LegacyProjectAssetsSection() {
 
   return (
     <SettingsSubsection
-      title="Project assets"
-      description="Where generated videos and images are stored. Each project gets its own subfolder."
+      title="Legacy project assets"
+      description="Where the legacy tools store generated videos and images. Each project gets its own subfolder. Assets from the main app use the Assets folder setting in General."
       descriptionClassName={contentStyles.apiKeysDescriptionLine}
       descriptionSize="sm"
     >

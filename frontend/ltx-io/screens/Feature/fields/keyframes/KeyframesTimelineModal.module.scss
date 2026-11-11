@@ -1,0 +1,70 @@
+.modal {
+  width: min(960px, calc(95vw - 48px));
+  max-height: calc(95vh - 48px);
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  min-width: 0;
+  width: 100%;
+  // A drop of files shows the same highlight as the field, through `dragOver`.
+  border: 1px dashed transparent;
+  border-radius: var(--radius-md);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-lg);
+}
+
+// The image keeps its own shape and fits the box. The box height does not change with the image.
+.preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: min(420px, 45vh);
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-secondary);
+}
+
+.previewImage {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
+}
+
+.caption {
+  position: absolute;
+  bottom: var(--spacing-sm);
+  left: var(--spacing-sm);
+  padding: var(--spacing-xxs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  color: var(--semantic-fg-primary);
+  background: color-mix(in srgb, var(--semantic-bg-primary) 75%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-lg);
+}
+
+.hint {
+  color: var(--semantic-fg-tertiary);
+}
+
+.actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--spacing-sm);
+}

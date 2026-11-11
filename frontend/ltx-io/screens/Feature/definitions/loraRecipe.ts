@@ -4,6 +4,16 @@ import type {
   LoraRecipeId,
 } from "../../../../lib/lora-recipes.ts";
 import { recipeHasEndFrame } from "../../../../lib/lora-recipes.ts";
+import { buildMemoryMeterModel } from "../../../../lib/memory-meter.ts";
+import {
+  isForcedPassShape,
+  meterCell,
+  passShapeToSend,
+  pricedCell,
+  withVisiblePassShape,
+  type ForcedPassShape,
+  type ImageSize,
+} from "../../../../lib/pass-shape.ts";
 import {
   restoreOfferingId,
   withDefaultOffering,
@@ -23,7 +33,9 @@ import {
 } from "../../../lib/videoFieldPolicy.ts";
 import {
   applyVideoSettingsChange,
+  createPassShapeFields,
   createVideoSettingsOptionFields,
+  fastBudgetIssues,
   isSupportedVideoDuration,
   isSupportedVideoFps,
   isSupportedVideoResolution,
@@ -47,6 +59,7 @@ import {
   type CatalogVariantChoice,
 } from "../../../lib/catalogVariantChoice.ts";
 import { readEndFrameFromGeneration, readStartFrameFromGeneration } from "./loraRecipeStartFrame.ts";
+import { negativePromptField, readNegativePrompt, swapDemoNegative } from "./negativePrompt.ts";
 
 type CreateLoraRecipeRequest = components["schemas"]["CreateLoraRecipeRequest"];
 
@@ -60,12 +73,14 @@ type CreateLoraRecipeRequest = components["schemas"]["CreateLoraRecipeRequest"];
  */
 export type LoraRecipeSchema = {
   prompt: { kind: "textarea" };
+  negativePrompt: { kind: "textarea" };
   model: { kind: "options"; value: OfferingId };
   variant: { kind: "options"; value: string };
   aspectRatio: { kind: "options"; value: VideoFeatureAspectRatio };
   resolution: { kind: "options"; value: VideoGenerationResolution };
   duration: { kind: "options"; value: VideoGenerationDuration };
   fps: { kind: "options"; value: VideoGenerationFps };
+  passShape: { kind: "options"; value: ForcedPassShape | null };
   strength: { kind: "slider"; value: number };
   startFrame: { kind: "image-asset"; value: AssetRef | null };
   endFrame: { kind: "image-asset"; value: AssetRef | null };
@@ -79,6 +94,10 @@ export type LoraRecipeContext = VideoFeatureContext & {
   catalogVariants?: CatalogVariantChoice[];
   /** The catalog `supported_models`. A model outside it is listed but disabled. */
   supportedModels?: CatalogSupportedModels;
+  /** The start image's size, for the ratio Auto runs at. Null while it loads. */
+  startFrameSize?: ImageSize | null;
+  /** Generic `default_negative_prompt` from the catalog entry, when present. */
+  defaultNegativePrompt?: string | null;
 };
 
 // UI strength range. Intentionally tighter than the backend LoraEntry scale
@@ -95,12 +114,14 @@ function isI2vRecipe(recipe: LoraRecipeMeta): boolean {
 function baseDefaults(recipe: LoraRecipeMeta): LoraRecipeValues {
   return {
     prompt: recipe.seedPrompt,
+    negativePrompt: recipe.seedNegativePrompt,
     model: "ltx-2.5-fast",
     variant: "",
     aspectRatio: isI2vRecipe(recipe) ? "auto" : "16:9",
     resolution: "720p",
     duration: 8,
     fps: 24,
+    passShape: null,
     strength: recipe.defaultStrength,
     startFrame: null,
     endFrame: null,
@@ -163,6 +184,7 @@ function variantParam(
   return variantId ? { variantId } : {};
 }
 
+
 function recipeSettingFields(
   values: LoraRecipeValues,
   context: LoraRecipeContext,
@@ -171,7 +193,7 @@ function recipeSettingFields(
   const [model, ...rest] = createVideoSettingsOptionFields<LoraRecipeSchema>(
     values,
     context.specs,
-    { includeAuto },
+    { includeAuto, memoryMeter: true, startFrameSize: context.startFrameSize },
   );
   const offeringIds = model.options.map((option) => String(option.value));
   const choice = resolveVariantChoice(
@@ -208,6 +230,10 @@ function recipeSettingFields(
         ]
       : []),
     ...rest,
+    ...createPassShapeFields(
+      pricedCell(context.specs, values, context.startFrameSize),
+      context.specs,
+    ),
   ];
 }
 
@@ -226,6 +252,7 @@ export function createLoraRecipeDefinition(
   function seedValues(context: LoraRecipeContext): LoraRecipeValues {
     return {
       ...withDefaultOffering(context.specs, defaults),
+      negativePrompt: recipe.seedNegativePrompt || context.defaultNegativePrompt || "",
       startFrame: i2v ? (context.seed ?? null) : null,
       endFrame: needsEndFrame ? (context.endSeed ?? null) : null,
     };
@@ -239,6 +266,7 @@ export function createLoraRecipeDefinition(
     if (!params || typeof params.prompt !== "string") return null;
     return {
       prompt: params.prompt,
+      negativePrompt: readNegativePrompt(spec),
       model: restoreOfferingId(params.model, context.specs) ?? defaults.model,
       variant: readStoredVariantId(params),
       aspectRatio: restoreAspectRatio(params.aspectRatio, recipe, defaults.aspectRatio),
@@ -249,6 +277,7 @@ export function createLoraRecipeDefinition(
         ? params.duration
         : defaults.duration,
       fps: isSupportedVideoFps(params.fps) ? params.fps : defaults.fps,
+      passShape: isForcedPassShape(params.passShape) ? params.passShape : null,
       strength: readScale(params, recipe.defaultStrength),
       startFrame: i2v ? (readStartFrameFromGeneration(spec) ?? context.seed ?? null) : null,
       endFrame: needsEndFrame
@@ -292,6 +321,7 @@ export function createLoraRecipeDefinition(
           dataKey: "prompt",
           placeholder: recipe.placeholder,
         },
+        negativePromptField<LoraRecipeSchema>(),
         ...recipeSettingFields(values, context, i2v),
         {
           kind: "slider",
@@ -303,6 +333,12 @@ export function createLoraRecipeDefinition(
           step: STRENGTH_STEP,
         },
       ],
+      // The Fast laws ignore LoRA weights, so a recipe asks what its plain cell asks.
+      memory: buildMemoryMeterModel(
+        context.specs,
+        meterCell(context.specs, values, context.startFrameSize),
+        { fixFields: ["passShape", "duration", "resolution"] },
+      ),
     }),
     applyChange: (
       values,
@@ -317,12 +353,23 @@ export function createLoraRecipeDefinition(
       }
       // clampVideoFields (via applyVideoSettingsChange) preserves prompt +
       // strength + startFrame + endFrame.
-      return applyVideoSettingsChange<LoraRecipeSchema>(
+      const next = applyVideoSettingsChange<LoraRecipeSchema>(
         values,
         change,
         context.specs,
         withDefaultOffering(context.specs, defaults),
       );
+      return swapDemoNegative(values, next, {
+        demoNegative: recipe.seedNegativePrompt,
+        catalogDefault: context.defaultNegativePrompt,
+        changed: (before, after) =>
+          (change.dataKey === "prompt" ||
+            change.dataKey === "startFrame" ||
+            change.dataKey === "endFrame") &&
+          (after.prompt !== before.prompt ||
+            after.startFrame?.assetId !== before.startFrame?.assetId ||
+            after.endFrame?.assetId !== before.endFrame?.assetId),
+      });
     },
     normalize: (values, context) => {
       const base = clampVideoFields(
@@ -351,7 +398,12 @@ export function createLoraRecipeDefinition(
           modelOfferingIds(clamped, context, i2v),
         ),
       );
-      return variant === clamped.variant ? clamped : { ...clamped, variant };
+      const varied = variant === clamped.variant ? clamped : { ...clamped, variant };
+      return withVisiblePassShape(
+        context.specs,
+        varied,
+        pricedCell(context.specs, varied, context.startFrameSize),
+      );
     },
     fromGeneration,
     validate: (values, context): ValidationIssue[] => {
@@ -390,6 +442,12 @@ export function createLoraRecipeDefinition(
           message: "End Frame is required.",
         });
       }
+      issues.push(
+        ...fastBudgetIssues(
+          context.specs,
+          meterCell(context.specs, values, context.startFrameSize),
+        ),
+      );
       return issues;
     },
     toCreateBody: (values, context): CreateLoraRecipeRequest => {
@@ -409,7 +467,7 @@ export function createLoraRecipeDefinition(
           duration: values.duration,
           fps: values.fps,
           cameraMotion: "none",
-          negativePrompt: "",
+          negativePrompt: values.negativePrompt.trim(),
           // catalogId on the wire; the backend resolves the installed path. No ref.
           catalogId: recipe.catalogId,
           scale: values.strength,
@@ -420,6 +478,7 @@ export function createLoraRecipeDefinition(
             modelOfferingIds(values, context, i2v),
           ),
           promptProvenance: "typed",
+          passShape: passShapeToSend(context.specs, values, context.startFrameSize),
         },
         ...(i2v && values.startFrame != null
           ? {

@@ -13,6 +13,7 @@ export type ListedEntry = {
   sizeBytes: number | undefined;
   defaultLoraStrength: number | undefined;
   defaultAudioMode: "source" | "generated" | "off" | undefined;
+  defaultNegativePrompt: string | undefined;
   variants: CatalogVariantChoice[];
 };
 
@@ -25,6 +26,7 @@ export function listedIcLoraEntry(entry: IcLoraListItem): ListedEntry {
     sizeBytes: entry.ic_lora.download.variants[0]?.size_bytes,
     defaultLoraStrength: entry.ic_lora.default_settings?.lora_strength,
     defaultAudioMode: entry.ic_lora.default_settings?.audio_mode ?? undefined,
+    defaultNegativePrompt: entry.ic_lora.default_negative_prompt ?? undefined,
     variants: catalogVariantsFor(entry.ic_lora, entry.downloaded_variant_ids),
   };
 }
@@ -38,6 +40,7 @@ export function listedLoraEntry(entry: LoraCatalogListItem): ListedEntry {
     sizeBytes: entry.lora.download.variants[0]?.size_bytes,
     defaultLoraStrength: undefined,
     defaultAudioMode: undefined,
+    defaultNegativePrompt: entry.lora.default_negative_prompt ?? undefined,
     variants: catalogVariantsFor(entry.lora, entry.downloaded_variant_ids),
   };
 }

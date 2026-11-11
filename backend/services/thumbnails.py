@@ -23,6 +23,17 @@ _GRID_SIZE = 16
 _ALPHA_FRAME_TIMEOUT_SECONDS = 30.0
 
 
+def resolve_stored_thumbnail(assets_dir: Path, stored: str | None) -> Path | None:
+    """Thumbnail path for a stored value. Old rows hold an absolute path, so only the
+    file name is used. A name that is empty, ``.`` or ``..`` is rejected (CWE-22)."""
+    if stored is None:
+        return None
+    name = Path(stored).name
+    if name in ("", ".", ".."):
+        return None
+    return assets_dir / name
+
+
 class ThumbnailWriter(Protocol):
     def write(self, source_path: str, media_kind: MediaKind) -> str | None:
         """JPEG path beside the media, or None (audio / failure). Never raises."""

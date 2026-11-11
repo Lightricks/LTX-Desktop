@@ -16,10 +16,10 @@ from api_types import (
     LTXVideoGenerationResolutionSpec,
 )
 from frame_math import compute_num_frames
+from runtime_config.budget_admission import Admitted
 from runtime_config.ic_lora_job_budget import (
     HOME_IC_LORA_PREVIEW_SETTINGS,
     MAC_IC_LORA_FLOOR_GIB,
-    IcLoraJobLoad,
     catalog_preview_stage1,
     decide_ic_lora_job,
 )
@@ -48,6 +48,7 @@ from runtime_config.video_job_budget import (
     LocalJobFilter,
     MemoryBudget,
     advertised_fast_durations,
+    mac_disk_stream_host_gib,
     memory_gb_for_job,
 )
 
@@ -185,7 +186,10 @@ def _band_pool_bytes(band: _Band) -> int | None:
 
 
 def _band_filter(band: _Band) -> LocalJobFilter:
-    """Hardware class as the same filter the app serves, with nominal bytes."""
+    """Hardware class as the same filter the app serves, with nominal bytes.
+
+    Strict mode: the published matrix lists only what the lab has measured.
+    """
     return LocalJobFilter(
         profile=HardwareProfile(
             system=band.system,
@@ -199,6 +203,7 @@ def _band_filter(band: _Band) -> LocalJobFilter:
             memory_gb=_job_memory(band),
             mps_pool_bytes=_band_pool_bytes(band),
         ),
+        budget_mode="cautious",
     )
 
 
@@ -229,14 +234,14 @@ def _ic_lora_viable(band: _Band) -> bool:
     on 12-20 GB cards where this returns True.
     """
     stage1_w, stage1_h = catalog_preview_stage1(HOME_IC_LORA_PREVIEW_SETTINGS)
-    decision = decide_ic_lora_job(
+    admission = decide_ic_lora_job(
         stage1_w,
         stage1_h,
         compute_num_frames(5, 24),
         stage_mode=HOME_IC_LORA_PREVIEW_SETTINGS.stage_mode,
         job_filter=_band_filter(band),
     )
-    return isinstance(decision, IcLoraJobLoad)
+    return isinstance(admission, Admitted)
 
 
 def _retake_extend_cell(feature: LtxCapabilityFeature, band: _Band) -> str:
@@ -304,8 +309,8 @@ def render_compat_matrix() -> str:
         "Retake/Extend rows are viability + RAM floor (`Yes*` — VRAM depends on",
         "your source length): no canonical input exists for a representative",
         "cell, but the floor is input-free. Bands carry no drive class, so",
-        "Windows bands take the CPU path (64 GB floor; NVMe maps from disk at",
-        "32 GB instead).",
+        "Windows bands take the CPU path (64 GB floor; NVMe streams from disk at",
+        f"{WINDOWS_EDIT_DISK_STREAMING_RAM_GB} GB instead).",
         "Regenerate: `cd backend && uv run python -m runtime_config.local_compat_matrix`.",
         "",
         "| " + " | ".join(headers) + " |",
@@ -322,7 +327,8 @@ def render_compat_matrix() -> str:
             f"Windows streamed Fast needs **{windows_ram_floor}** GiB total RAM;",
             f"Darwin **{DARWIN_ADVERTISED_FLOOR_GB}** GiB total RAM and macOS **{DARWIN_MIN_MACOS_MAJOR}** or later",
             "(macOS 14 and 15 run the app but not local generation); Fast cells gate on the MPS pool",
-            f"({MAC_FAST_FLOOR_GIB} GiB floor); ~72 GB disk for the 2.5 Fast core pack",
+            f"({MAC_FAST_FLOOR_GIB} GiB floor, plus {mac_disk_stream_host_gib(get_latest_ltx_model_id()):.2f} GiB",
+            "of loader host buffers); ~72 GB disk for the 2.5 Fast core pack",
             "(kitchen-sink installs with 2.3, image models, and processors are larger).",
             "",
             f"CUDA stream ({_CUDA_STREAM_EXAMPLE_GB} GB) still runs T2V/I2V/A2V;",
@@ -330,22 +336,21 @@ def render_compat_matrix() -> str:
             f"because `decide_video_job` would reject them. CUDA full ({CUDA_FULL_VRAM_GB} GB)",
             "keeps those cells (they stream) except 1080p/20s, whose stream ask exceeds `CUDA_FULL_VRAM_GB`.",
             "Darwin stream gates each Fast cell against the sampled MPS",
-            f"pool (M2/F1 model, {MAC_FAST_FLOOR_GIB} GiB floor); the 48 GB example keeps the full grid except 1080p/20s",
+            f"pool (M2/F1 model, {MAC_FAST_FLOOR_GIB} GiB floor); the 48 GB example keeps the full grid (1080p/20s in windows)",
             f"(nominal {NOMINAL_MPS_POOL_RATIO} pool ratio — min of 2 F0 probes, SKU-dependent).",
             "",
-            f"Windows stream ({_WINDOWS_STREAM_VRAM_GB} GB VRAM, {_WINDOWS_STREAM_RAM_GB} GB RAM) runs",
-            "the limited grid (540p through 20s, 720p through 10s, 1080p through 6s); 24 GB VRAM runs the",
-            "full grid including 1080p/10s, and 12 GB VRAM runs 540p through 10s plus 720p",
-            f"through 8s (no 1080p — the 5s cell needs 14.14 reserved). Below {windows_ram_floor} GB RAM, streamed Fast cells are not",
+            f"Windows stream ({_WINDOWS_STREAM_VRAM_GB} GB VRAM, {_WINDOWS_STREAM_RAM_GB} GB RAM) runs every Fast cell",
+            "through 1080p/20s, in time windows where one pass does not fit (1080p/10s runs in 3); what each card size runs is in",
+            f"`docs/hardware-compatibility.md`. Below {windows_ram_floor} GB RAM, streamed Fast cells are not",
             f"offered (`ram_shortfall`). Streamed edit cells gate on E3-measured floors ({WINDOWS_EDIT_CPU_STREAMING_RAM_GB} GB CPU,",
             f"{WINDOWS_EDIT_DISK_STREAMING_RAM_GB} GB NVMe DISK); streamed IC-LoRA on L5-measured floors ({WINDOWS_ICLORA_CPU_STREAMING_RAM_GB} GB CPU,",
-            f"{WINDOWS_ICLORA_DISK_STREAMING_RAM_GB} GB DISK, L5-48 holds both temps). The live picker lists every total-fitting cell;",
+            f"{WINDOWS_ICLORA_DISK_STREAMING_RAM_GB} GB DISK, L5-32 holds both temps). The live picker lists every total-fitting cell;",
             "GenSpace refuses cells over free VRAM at click, and queued jobs re-check at execute.",
-            f"On NVMe drives, streamed Fast maps weights from disk and the RAM floor is **{WINDOWS_FAST_DISK_STREAMING_RAM_GB}** GiB instead.",
+            f"On NVMe drives below {windows_ram_floor} GB, streamed Fast reads weights from disk and the RAM floor is **{WINDOWS_FAST_DISK_STREAMING_RAM_GB}** GiB instead.",
             "",
             "1440p and 4K Fast cells run long clips in overlapping time windows, and the job budget prices one window.",
-            "1440p and 4K are offered for Fast, A2V and the Home recipes; Retake, Extend and IC-LoRA need `highResVideoToVideo`. Both are provisional, and",
-            "the Mac window extra is a copy of the Windows one. The cells above are the 24 fps / 16:9 anchor and do not list these two rows.",
+            "1440p and 4K are offered for Fast, A2V and the Home recipes; Retake, Extend and IC-LoRA need `highResVideoToVideo` (Refine Details does not). Both are provisional;",
+            "Windows and Mac each fit their own window extra. The cells above are the 24 fps / 16:9 anchor and do not list these two rows.",
             "",
         ]
     )

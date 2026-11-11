@@ -1,9 +1,8 @@
-import { readBudgetMode, type BudgetMode } from "../../lib/budget-risk.ts";
 import {
   GENSPACE_MIN_SELECTABLE_DURATION_S,
-  budgetedResolutionMap,
   getOfferingVideoGenerationModelSpecs,
   disabledOptionsFromDroppedCells,
+  itemForAspect,
   offeringSpecsAsPipelineItems,
   resolveVideoGenerationOptions,
   isVideoGenerationAspectRatio,
@@ -49,12 +48,6 @@ function offeringPipelineSpecs(
   return offeringSpecsAsPipelineItems(getOfferingVideoGenerationModelSpecs(specs));
 }
 
-function budgetModeOf(
-  specs: VideoGenerationModelSpecsResponse | null | undefined,
-): BudgetMode {
-  return readBudgetMode(specs?.budgetMode);
-}
-
 function toSettingsShape(values: ClampedVideoFields): VideoGenerationSettingsShape {
   const aspectRatio = persistAspectRatio(values.aspectRatio);
   return {
@@ -82,7 +75,6 @@ export function clampVideoFields<T extends ClampedVideoFields>(
   const clampOptions = {
     hasAudio: false,
     minimumDuration: GENSPACE_MIN_SELECTABLE_DURATION_S,
-    budgetMode: budgetModeOf(specs),
   } as const;
 
   let mapped = toSettingsShape(values);
@@ -204,7 +196,6 @@ export function isLocalVideoSelectionReady(
     modelSpecs,
     hasAudio: options.hasAudio ?? false,
     minimumDuration: GENSPACE_MIN_SELECTABLE_DURATION_S,
-    budgetMode: budgetModeOf(specs),
   });
   // "auto" is not a shape, so it never appears in the refused list.
   const aspectRefused = resolved.disabledAspectRatioOptions.some(
@@ -231,7 +222,6 @@ export function localVideoHasCompatibleOptions(
     modelSpecs,
     hasAudio: options.hasAudio ?? false,
     minimumDuration: GENSPACE_MIN_SELECTABLE_DURATION_S,
-    budgetMode: budgetModeOf(specs),
   }).hasCompatibleOptions;
 }
 
@@ -243,21 +233,17 @@ function isLegalDuration(duration: number): boolean {
   return duration >= GENSPACE_MIN_SELECTABLE_DURATION_S;
 }
 
-function resolutionSpecMap(
-  item: VideoGenerationModelSpecItem,
-  budgetMode: BudgetMode,
-) {
-  return budgetedResolutionMap(item, budgetMode, false) ?? {};
+function resolutionSpecMap(item: VideoGenerationModelSpecItem) {
+  return item.spec.supported_resolutions_durations ?? {};
 }
 
 function durationsForFps(
   item: VideoGenerationModelSpecItem,
   resolution: string,
   fps: number,
-  budgetMode: BudgetMode,
 ): number[] {
   const list =
-    resolutionSpecMap(item, budgetMode)[resolution as VideoGenerationResolution]?.fps_to_durations[
+    resolutionSpecMap(item)[resolution as VideoGenerationResolution]?.fps_to_durations[
       String(fps) as `${VideoGenerationFps}`
     ] ?? [];
   return list.filter(isLegalDuration);
@@ -266,11 +252,10 @@ function durationsForFps(
 export function collectModelFpsOptions(
   item: VideoGenerationModelSpecItem | undefined,
   fallback: readonly number[] = [],
-  budgetMode: BudgetMode = "standard",
 ): number[] {
   if (!item) return uniqueSortedNumbers(fallback);
   const fpsValues: number[] = [];
-  for (const spec of Object.values(resolutionSpecMap(item, budgetMode))) {
+  for (const spec of Object.values(resolutionSpecMap(item))) {
     for (const [fpsKey, list] of Object.entries(spec.fps_to_durations ?? {})) {
       if (list.some(isLegalDuration)) fpsValues.push(Number(fpsKey));
     }
@@ -311,9 +296,13 @@ export function collectModelDisabledFpsOptions(
 function selectedModelItem(
   specs: VideoGenerationModelSpecsResponse | null | undefined,
   model: string,
+  aspectRatio?: VideoFeatureAspectRatio,
 ): VideoGenerationModelSpecItem | undefined {
   const modelSpecs = offeringPipelineSpecs(specs);
-  return modelSpecs.find((item) => item.pipeline === model) ?? modelSpecs[0];
+  const item = modelSpecs.find((candidate) => candidate.pipeline === model) ?? modelSpecs[0];
+  if (!item) return undefined;
+  const resolvedAspect = aspectRatio === "auto" ? "16:9" : aspectRatio;
+  return itemForAspect(item, resolvedAspect);
 }
 
 /**
@@ -326,11 +315,10 @@ export function retargetVideoFields<T extends ClampedVideoFields>(
   specs: VideoGenerationModelSpecsResponse | null | undefined,
   preserve: "duration" | "fps",
 ): T {
-  const item = selectedModelItem(specs, values.model);
+  const item = selectedModelItem(specs, values.model, values.aspectRatio);
   if (!item) return values;
-  const budgetMode = budgetModeOf(specs);
 
-  const resolutions = Object.keys(resolutionSpecMap(item, budgetMode));
+  const resolutions = Object.keys(resolutionSpecMap(item));
   const nearbyResolutions = [
     values.resolution,
     ...resolutions.filter((resolution) => resolution !== values.resolution),
@@ -338,16 +326,16 @@ export function retargetVideoFields<T extends ClampedVideoFields>(
 
   if (preserve === "duration") {
     for (const resolution of nearbyResolutions) {
-      if (durationsForFps(item, resolution, values.fps, budgetMode).includes(values.duration)) {
+      if (durationsForFps(item, resolution, values.fps).includes(values.duration)) {
         return { ...values, resolution };
       }
     }
     for (const resolution of nearbyResolutions) {
-      const spec = resolutionSpecMap(item, budgetMode)[resolution as VideoGenerationResolution];
+      const spec = resolutionSpecMap(item)[resolution as VideoGenerationResolution];
       if (!spec) continue;
       for (const fpsKey of Object.keys(spec.fps_to_durations ?? {})) {
         const fps = Number(fpsKey);
-        if (durationsForFps(item, resolution, fps, budgetMode).includes(values.duration)) {
+        if (durationsForFps(item, resolution, fps).includes(values.duration)) {
           return { ...values, resolution, fps };
         }
       }
@@ -356,9 +344,9 @@ export function retargetVideoFields<T extends ClampedVideoFields>(
   }
 
   for (const resolution of nearbyResolutions) {
-    const spec = resolutionSpecMap(item, budgetMode)[resolution as VideoGenerationResolution];
+    const spec = resolutionSpecMap(item)[resolution as VideoGenerationResolution];
     if (!spec?.fps_to_durations[String(values.fps) as `${VideoGenerationFps}`]) continue;
-    const durations = durationsForFps(item, resolution, values.fps, budgetMode);
+    const durations = durationsForFps(item, resolution, values.fps);
     if (durations.length === 0) continue;
     const duration = durations.includes(values.duration)
       ? values.duration

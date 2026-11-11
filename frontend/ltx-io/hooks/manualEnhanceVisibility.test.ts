@@ -4,14 +4,17 @@ import { describe, it } from "node:test";
 import {
   assetIdOf,
   enhanceImageAssetId,
+  enhanceKeyframeFields,
   hasManualEnhanceInput,
   isEnhanceSourceCurrent,
   isPanelListCurrent,
   isSameReplacedWindow,
   isSourceVideoCurrent,
+  keyframesSignature,
   lookImageAssetId,
   replacedWindowFor,
   resolveShowManualEnhance,
+  resolveShowNagStrengthControls,
 } from "./manualEnhanceVisibility.ts";
 
 describe("resolveShowManualEnhance", () => {
@@ -38,6 +41,12 @@ describe("hasManualEnhanceInput", () => {
   it("enables Enhance for the images of an image-list recipe, not for an empty list", () => {
     assert.equal(hasManualEnhanceInput({ prompt: " ", images: [{ assetId: "a" }] }), true);
     assert.equal(hasManualEnhanceInput({ prompt: " ", images: [] }), false);
+  });
+
+  it("enables Enhance for one still of a Keyframes clip with an empty prompt, not for none", () => {
+    const still = { asset: { assetId: "a" }, frameIndex: 0, strength: 1 };
+    assert.equal(hasManualEnhanceInput({ prompt: "", keyframes: [still] }), true);
+    assert.equal(hasManualEnhanceInput({ prompt: "", keyframes: [] }), false);
   });
 
   it("enables Enhance for a typed prompt alone", () => {
@@ -176,15 +185,81 @@ describe("enhanceImageAssetId", () => {
   });
 });
 
+describe("keyframesSignature", () => {
+  const still = (assetId: string, frameIndex: number, strength = 1) => ({
+    asset: { assetId },
+    frameIndex,
+    strength,
+  });
+
+  it("does not depend on the order the stills were added in", () => {
+    assert.equal(
+      keyframesSignature([still("b", 48), still("a", 0)]),
+      keyframesSignature([still("a", 0), still("b", 48)]),
+    );
+  });
+
+  it("changes when a strength changes, because the rewrite weights each still by it", () => {
+    assert.notEqual(keyframesSignature([still("a", 0, 1)]), keyframesSignature([still("a", 0, 0.4)]));
+  });
+
+  it("changes when the clip length or the frame rate changes, even if no frame moves", () => {
+    const stills = [still("a", 0)];
+    const base = keyframesSignature(stills, { duration: 5, fps: 24 });
+    assert.notEqual(base, keyframesSignature(stills, { duration: 6, fps: 24 }));
+    assert.notEqual(base, keyframesSignature(stills, { duration: 5, fps: 48 }));
+    assert.equal(base, keyframesSignature(stills, { duration: 5, fps: 24 }));
+  });
+
+  it("is empty for no stills, whatever the clip timing is", () => {
+    assert.equal(keyframesSignature([], { duration: 5, fps: 24 }), "");
+    assert.equal(keyframesSignature(null, { duration: 5, fps: 24 }), "");
+  });
+});
+
+describe("enhanceKeyframeFields", () => {
+  const still = (assetId: string, frameIndex: number) => ({
+    asset: { assetId },
+    frameIndex,
+    strength: 0.5,
+  });
+
+  it("sends the stills in time order with the clip timing", () => {
+    assert.deepEqual(
+      enhanceKeyframeFields({ keyframes: [still("b", 48), still("a", 0)], duration: 5, fps: 24 }),
+      {
+        keyframeAssets: [
+          { assetId: "a", frameIndex: 0, strength: 0.5 },
+          { assetId: "b", frameIndex: 48, strength: 0.5 },
+        ],
+        duration: 5,
+        fps: 24,
+      },
+    );
+  });
+
+  it("sends no timing the backend would refuse, and nothing for a form without stills", () => {
+    assert.deepEqual(enhanceKeyframeFields({ keyframes: [still("a", 0)], duration: 5.5, fps: 24 })?.duration, undefined);
+    assert.equal(enhanceKeyframeFields({ keyframes: [], duration: 5, fps: 24 }), undefined);
+  });
+});
+
 describe("isEnhanceSourceCurrent", () => {
   const source = {
     videoAssetId: null,
     startFrameAssetId: "frog",
     referenceImageAssetId: null,
     panelAssetIds: [],
+    keyframes: "",
     replacedWindow: undefined,
   };
   const live = { ...source };
+
+  it("drops a rewrite of old keyframes, so it does not land on a changed timeline", () => {
+    const withStills = { ...source, keyframes: "a@0,b@48" };
+    assert.equal(isEnhanceSourceCurrent({ ...withStills, keyframes: "a@0,b@72" }, withStills), false);
+    assert.equal(isEnhanceSourceCurrent(withStills, withStills), true);
+  });
 
   it("drops a rewrite of an old start frame, so it does not land on the new one", () => {
     assert.equal(isEnhanceSourceCurrent({ ...live, startFrameAssetId: "cat" }, source), false);
@@ -202,6 +277,7 @@ describe("isEnhanceSourceCurrent", () => {
           startFrameAssetId: undefined,
           referenceImageAssetId: undefined,
           panelAssetIds: undefined,
+          keyframes: undefined,
           replacedWindow: undefined,
         },
         source,
@@ -211,3 +287,19 @@ describe("isEnhanceSourceCurrent", () => {
   });
 });
 
+
+describe("resolveShowNagStrengthControls", () => {
+  it("follows the live Desktop setting, even when the status is older", () => {
+    assert.equal(resolveShowNagStrengthControls(true, false), true);
+    assert.equal(resolveShowNagStrengthControls(false, true), false);
+  });
+
+  it("follows the status on Remote, which has no live setting", () => {
+    assert.equal(resolveShowNagStrengthControls(undefined, true), true);
+    assert.equal(resolveShowNagStrengthControls(undefined, false), false);
+  });
+
+  it("is off while the status has not loaded", () => {
+    assert.equal(resolveShowNagStrengthControls(undefined, undefined), false);
+  });
+});

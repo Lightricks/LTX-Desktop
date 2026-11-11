@@ -5,6 +5,8 @@ import path from 'path'
 import { sendAnalyticsEvent } from './analytics'
 import { startAnalyticsSink, type AnalyticsSink } from './analytics-sink'
 import { getAppDataDir } from './app-paths'
+import { getAssetsDir, isCustomAssetsDir } from './app-state'
+import { ensureAssetsDirReady } from './assets-startup'
 import { getCurrentDir, isDev } from './config'
 import { clearHeartbeatFile, decideThresholdTick, readHeartbeatState } from './liveness-grace'
 import { logger, writeLog } from './logger'
@@ -327,7 +329,28 @@ export function getPythonPath(): string {
   return 'python'
 }
 
-export async function startPythonBackend(): Promise<void> {
+// While an assets move runs, the backend must stay stopped. A renderer reload calls
+// `startPythonBackend`, and that start would use the old folder while files are copied.
+let startHold: Promise<void> | null = null
+
+/** Makes `startPythonBackend` wait until the returned function is called. */
+export function holdBackendStart(): () => void {
+  let release = () => {}
+  startHold = new Promise<void>((resolve) => {
+    release = () => {
+      startHold = null
+      resolve()
+    }
+  })
+  return release
+}
+
+/**
+ * `askUser: false` is for the assets move. A folder that cannot be used then fails the start, so the
+ * move can roll back by itself. The recovery dialog could change the setting behind the move.
+ */
+export async function startPythonBackend({ askUser = true }: { askUser?: boolean } = {}): Promise<void> {
+  while (startHold) await startHold
   if (startPromise) {
     return startPromise
   }
@@ -349,13 +372,17 @@ export async function startPythonBackend(): Promise<void> {
   isIntentionalShutdown = false
   const epoch = startEpoch
 
-  const openSink: Promise<AnalyticsSink | null> = analyticsSink
-    ? Promise.resolve(analyticsSink)
-    : startAnalyticsSink(sendAnalyticsEvent).catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error)
-        logger.warn(`Analytics sink failed to start; continuing without it: ${message}`)
-        return null
-      })
+  // The check may show a native dialog, so it runs inside the start promise: a second
+  // caller waits on `startPromise` and does not spawn a second backend.
+  const openSink: Promise<AnalyticsSink | null> = ensureAssetsDirReady({ askUser }).then(() =>
+    analyticsSink
+      ? analyticsSink
+      : startAnalyticsSink(sendAnalyticsEvent).catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error)
+          logger.warn(`Analytics sink failed to start; continuing without it: ${message}`)
+          return null
+        }),
+  )
 
   startPromise = openSink.then((sink) => new Promise<void>((resolve, reject) => {
     if (epoch !== startEpoch) {
@@ -418,6 +445,8 @@ export async function startPythonBackend(): Promise<void> {
         LTX_ADMIN_TOKEN: adminToken,
         LTX_LOG_FILE: getCurrentLogFilename(),
         LTX_APP_DATA_DIR: getAppDataDir(),
+        // Always set: an empty value stops a LTX_ASSETS_DIR from the parent environment.
+        LTX_ASSETS_DIR: isCustomAssetsDir() ? getAssetsDir() : '',
         LTX_DEV_MODE: isDev ? '1' : '0',
         LTX_ANALYTICS_SINK_URL: sink?.url ?? '',
         LTX_ANALYTICS_TOKEN: sink?.token ?? '',
@@ -606,6 +635,33 @@ export async function startPythonBackend(): Promise<void> {
   } finally {
     startPromise = null
   }
+}
+
+/** True when the backend was started outside this app (dev). This app cannot restart it. */
+export function isBackendAdopted(): boolean {
+  return backendOwnership === 'adopted'
+}
+
+/**
+ * Stops the backend and waits until the process exits. A new start must not overlap the old
+ * exit. It throws when the process is still alive after the timeout.
+ */
+export async function stopPythonBackendAndWait(timeoutMs = 15000): Promise<void> {
+  const proc = pythonProcess
+  // A start that is still running ends with "stopped during startup". Wait for that end, so
+  // the next start does not join the old attempt.
+  const pendingStart = startPromise
+  stopPythonBackend()
+  if (proc && proc.exitCode === null && proc.signalCode === null) {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('timeout')), timeoutMs)
+      proc.once('exit', () => {
+        clearTimeout(timer)
+        resolve()
+      })
+    })
+  }
+  await pendingStart?.catch(() => undefined)
 }
 
 export function stopPythonBackend(): void {

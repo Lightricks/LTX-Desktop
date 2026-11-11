@@ -19,6 +19,7 @@ from api_types import (
     VideoAssetMetadata,
     VideoMeta,
 )
+from runtime_config.budget_admission import RiskAllowance
 from runtime_config.video_job_budget import VIDEO_JOB_TOO_LARGE
 from services.records import AssetRecord
 from tests.fakes.services import FakeCapture
@@ -30,24 +31,24 @@ _GIB = 1024**3
 
 @dataclass(frozen=True)
 class Gate:
-    """A catalog shape, and the risk tier Reckless mode gives a count the gate refuses."""
+    """A catalog shape, and the risk tier Brave mode gives a count the gate refuses."""
 
     settings: IcLoraSettings
     resolution: str
     tier: str
-    flags: dict[str, bool]  # the stored allowance that tier leaves on the generation
+    flags: dict[str, object]  # the stored allowance that tier leaves on the generation
 
 
 # A single-stage job is refused for memory. A two-stage job is refused by a fence that moves
-# with the frame count, and that Reckless mode runs as an unmeasured bet.
+# with the frame count, and that Brave mode runs as an unmeasured bet.
 _GATES = {
     "memory": Gate(
         IcLoraSettings(skip_stage_2=True, resolution_factor=1.0, audio_mode="source"),
-        "540p", "over", {"risk_allowance": True},
+        "540p", "over", {"allowance": RiskAllowance(over=True, unmeasured=False)},
     ),
     "fence": Gate(
         IcLoraSettings(skip_stage_2=False, resolution_factor=1.0, audio_mode="source"),
-        "1080p", "unmeasured", {"unmeasured_bet": True},
+        "1080p", "unmeasured", {"allowance": RiskAllowance(over=False, unmeasured=True)},
     ),
 }
 
@@ -100,8 +101,8 @@ class Runner:
         raise AssertionError("the gate never refused a count")
 
     def refused(self, clip_frames: int, mode: str, **kwargs: object) -> None:
-        """The count is refused: a 422 in standard mode, the gate's risk in reckless mode."""
-        if mode == "standard":
+        """The count is refused: a 422 in cautious mode, the gate's risk in brave mode."""
+        if mode == "cautious":
             with pytest.raises(HTTPError) as exc_info:
                 self.run(clip_frames, **kwargs)
             assert exc_info.value.code == VIDEO_JOB_TOO_LARGE
@@ -119,7 +120,7 @@ def runner(request, test_state, fake_services, create_fake_model_files) -> Runne
     return Runner(test_state, gate)
 
 
-@pytest.fixture(params=["standard", "reckless"])
+@pytest.fixture(params=["cautious", "brave"])
 def mode(request, test_state) -> str:
     test_state.state.app_settings.budget_mode = request.param
     return request.param
@@ -139,7 +140,7 @@ def test_a_clip_below_the_floor_runs_the_floor_count(runner: Runner, mode: str) 
 def test_a_snapped_up_count_over_budget_falls_back_to_the_clean_snapped_down_count(
     runner: Runner, mode: str
 ) -> None:
-    """Reckless returns a risk in place of the 422. The fallback must read that risk."""
+    """Brave returns a risk in place of the 422. The fallback must read that risk."""
     limit = runner.first_refused()
 
     assert runner.run(limit - 3) == (limit - 8, None)
@@ -159,7 +160,7 @@ def test_when_both_counts_are_over_budget_the_snapped_up_count_is_refused_or_run
     limit = runner.first_refused()
 
     runner.refused(limit + 3, mode)
-    if mode == "reckless":
+    if mode == "brave":
         assert runner.run(limit + 3)[0] == limit + 8
 
 
@@ -169,7 +170,7 @@ def test_a_recipe_that_always_pads_never_falls_back_to_snapped_down(
     limit = runner.first_refused(cutout=True)
 
     runner.refused(limit - 3, mode, cutout=True)
-    if mode == "reckless":
+    if mode == "brave":
         assert runner.run(limit - 3, cutout=True)[0] == limit
     assert runner.run(limit - 11, cutout=True) == (limit - 8, None)
 
@@ -181,11 +182,11 @@ def test_the_stored_allowance_and_not_the_live_mode_gates_the_run(
     limit = runner.first_refused()
     flags = runner.gate.flags
 
-    test_state.state.app_settings.budget_mode = "reckless"
+    test_state.state.app_settings.budget_mode = "brave"
     # Create picked the clean snapped-down count, so nothing is stored. Execute must too.
-    assert runner.run(limit - 3, risk_allowance=False, unmeasured_bet=False) == (limit - 8, None)
+    assert runner.run(limit - 3, allowance=RiskAllowance.none()) == (limit - 8, None)
 
-    test_state.state.app_settings.budget_mode = "standard"
+    test_state.state.app_settings.budget_mode = "cautious"
     # Create ran the over-budget count with a risk, and stored it. Execute must keep it.
     count, risk = runner.run(limit, **flags)
     assert count == limit

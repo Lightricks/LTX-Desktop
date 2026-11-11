@@ -1160,6 +1160,7 @@ class TestActiveModelResolution:
         assert by_model["ltx-2.3-fast"]["spec"]["capabilities"]["auto_duration"] is False
         assert data["local_models"][0]["spec"]["capabilities"]["auto_duration"] is False
 
+    @pytest.mark.usefixtures("single_pass_only")
     def test_downloaded_2_5_row_uses_measured_profile_when_2_3_active(
         self, client, test_state, create_fake_model_files
     ):

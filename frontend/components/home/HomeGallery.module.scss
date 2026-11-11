@@ -120,6 +120,19 @@
   }
 }
 
+.blankCover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--semantic-bg-secondary);
+  color: var(--semantic-fg-secondary);
+}
+
+.blankCoverIcon {
+  width: var(--scale-32);
+  height: var(--scale-32);
+}
+
 .copy {
   display: flex;
   flex: 1 1 auto;

@@ -73,21 +73,21 @@ Release notes are on the [GitHub releases page](https://github.com/Lightricks/LT
 
 ### System requirements
 
-These are the requirements for local generation. They match the [LTX Desktop page](https://ltx.io/ltx-desktop).
+These are the recommended specs for local generation. What each GPU and Mac size can run, and why, is in [`docs/hardware-compatibility.md`](docs/hardware-compatibility.md).
 
-| Platform | Requirements |
+| Platform | Recommended |
 | --- | --- |
-| **Windows 10/11** (64-bit) | NVIDIA GPU with CUDA and **24 GB or more VRAM** (32 GB recommended). 32 GB RAM. |
+| **Windows 10/11** (64-bit) | NVIDIA GPU with CUDA and **24 GB or more VRAM** (32 GB recommended). 64 GB RAM; with the models on an NVMe drive, 32 GB runs every tool and 24 GB runs generation and editing. |
 | **Linux** (Ubuntu 22.04+ or similar, x64 or arm64) | NVIDIA GPU with CUDA and **24 GB or more VRAM** (32 GB recommended), NVIDIA driver installed. 32 GB RAM. |
-| **macOS 26+** (Tahoe) | Apple Silicon (M1 or later) with **48 GB or more** for full local generation. Apple Silicon with 32 GB is limited to 540p and 5 s. Apple Silicon with less than 24 GB, and Intel Macs, use the Gen Space API only. |
+| **macOS 26+** (Tahoe) | Apple Silicon (M1 or later) with **48 GB or more** for every local job. 32 GB is the advertised minimum: 32 and 36 GB Macs run most jobs up to 1080p and shorter 1440p and 4K clips. Apple Silicon with less than 24 GB, and Intel Macs, use the Gen Space API only. |
 
 The app itself needs **macOS 14 or later**. On macOS 14 and 15, local generation is not available and the app shows the **Coming soon to your device** notice. macOS 13 and earlier cannot run the app.
 
 All platforms need **100 GB or more** of free disk space. Plan for up to **160 GB or more** if you add LoRAs and IC-LoRAs.
 
-The app offers local generation on lower-spec machines, but we do not recommend them. The app checks 9 GiB VRAM on Windows with an fp8-capable GPU (15 GiB on other CUDA setups), 32 GiB total RAM on macOS, and macOS 26 or later. Below these floors, the app shows a **Coming soon to your device** notice instead of the generation tools. Assets, Settings, Gen Space, and the Video Editor stay available. Cloud APIs are optional. An LTX API key is never required to start.
+The app offers local generation on lower-spec machines, but we do not recommend them. The app checks 9 GiB VRAM on Windows with an fp8-capable GPU (15 GiB on other CUDA setups), 24 GiB total memory on macOS, and macOS 26 or later. Below these floors, the app shows a **Coming soon to your device** notice instead of the generation tools. Assets, Settings, Gen Space, and the Video Editor stay available. Cloud APIs are optional. An LTX API key is never required to start.
 
-See [`docs/local-compat-matrix.md`](docs/local-compat-matrix.md) for the tool-by-hardware table.
+Smaller cards run longer clips in parts rather than in one pass: a 16 GB card runs Fast 720p/20s in 2 parts and 1080p/10s in 3. See [`docs/hardware-compatibility.md`](docs/hardware-compatibility.md) for what each GPU and memory size can run, and [`docs/local-compat-matrix.md`](docs/local-compat-matrix.md) for the tool-by-hardware table.
 
 ## Models
 
@@ -128,6 +128,7 @@ For the architecture and API boundary, see [`docs/remote-lan.md`](docs/remote-la
 - [`docs/tools-and-options.md`](docs/tools-and-options.md): every tool and setting, and how prompt enhancement works
 - [`docs/models-and-loras.md`](docs/models-and-loras.md): models, gated models, LoRA library, custom LoRAs
 - [`docs/setup-and-settings.md`](docs/setup-and-settings.md): per-platform requirements, first run, data folders, text encoding, Settings tabs
+- [`docs/hardware-compatibility.md`](docs/hardware-compatibility.md): will it run on your machine — per-hardware capabilities for generation, editing, and IC-LoRA
 - [`docs/api-keys-and-privacy.md`](docs/api-keys-and-privacy.md): LTX, fal, and Gemini keys, cost, and privacy
 - [`docs/desktop-assistant.md`](docs/desktop-assistant.md): the Assistant's tools, runs, providers, and local runtime
 - [`docs/remote-lan.md`](docs/remote-lan.md): Remote architecture and API boundary

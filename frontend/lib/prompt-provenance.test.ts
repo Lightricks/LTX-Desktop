@@ -43,6 +43,36 @@ describe("resolvePromptProvenance", () => {
   it("reports typed for an out-of-range history index", () => {
     assert.equal(resolvePromptProvenance("a cat", [typed("a cat")], 5), "typed");
   });
+
+  it("editing only the negative prompt after Enhance keeps provenance as enhanced so Generate does not rewrite the approved positive prompt", () => {
+    const next = appendEnhanceResult({
+      history: [],
+      index: -1,
+      sourcePrompt: "a cat",
+      sourceNegativePrompt: "blurry",
+      sourceProvenance: "typed",
+      enhancedPrompt: "a long descriptive caption",
+    });
+    assert.equal(
+      resolvePromptProvenance(
+        "a long descriptive caption",
+        next.history,
+        next.index,
+        "blurry, watermark",
+      ),
+      "enhanced",
+    );
+    assert.deepEqual(next.history[0], {
+      text: "a cat",
+      negativeText: "blurry",
+      provenance: "typed",
+    });
+    assert.deepEqual(next.history[1], {
+      text: "a long descriptive caption",
+      negativeText: "blurry",
+      provenance: "enhanced",
+    });
+  });
 });
 
 describe("appendEnhanceResult", () => {

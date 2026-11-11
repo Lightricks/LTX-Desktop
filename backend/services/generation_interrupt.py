@@ -38,6 +38,11 @@ def is_requested() -> bool:
     return _cancel.is_set()
 
 
+def wait_requested(timeout: float) -> bool:
+    """Sleep up to ``timeout`` seconds. Wakes at once when a cancel is requested."""
+    return _cancel.wait(timeout)
+
+
 def raise_if_requested() -> None:
     if _cancel.is_set():
         raise GenerationCancelledError()

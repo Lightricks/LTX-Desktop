@@ -1,4 +1,3 @@
-import { Text } from "@ds/Text/Text";
 import type { ReactNode } from "react";
 
 import formStyles from "../FeatureFormView.module.scss";
@@ -9,6 +8,7 @@ import type {
   OptionsFieldKey,
   ValidationIssue,
 } from "../types";
+import { FieldLabel } from "./FieldLabel";
 import { FormOptionControl } from "./FormOptionControl";
 
 export function SettingField<
@@ -31,9 +31,7 @@ export function SettingField<
 }) {
   return (
     <div className={formStyles.field}>
-      <Text as="span" variant="body" size="md" className={formStyles.fieldLabel}>
-        {field.label}
-      </Text>
+      <FieldLabel label={field.label} tooltip={field.tooltip} />
       <div className={formStyles.fieldControl}>
         <FormOptionControl
           options={field.options}

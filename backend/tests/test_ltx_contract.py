@@ -69,30 +69,6 @@ def test_initial_latent_helpers_take_explicit_scale_factors() -> None:
     assert "video_scale_factors" in _params(helpers.create_initial_audio_latent)
 
 
-def test_keyframe_swap_targets_exist_in_both_modules() -> None:
-    """`distilled_keyframe_guiding` rebinds this name in both modules."""
-    for module in (helpers, chunk_conditionings):
-        assert callable(module.combined_image_conditionings)
-    assert callable(helpers.image_conditionings_by_adding_guiding_latent)
-
-
-def test_chunk_keyframes_resolve_the_swappable_name_from_the_chunks_module() -> None:
-    """The per-chunk factory looks the name up in its module globals at call time.
-
-    If upstream stops doing that (e.g. binds it as a default argument), swapping the
-    module attribute silently stops changing multi-keyframe behaviour.
-    """
-    from services.fast_video_pipeline.distilled_keyframe_guiding import distilled_keyframe_guiding
-
-    factory_globals = chunk_conditionings.image_conditionings_for_chunk.__globals__
-    assert factory_globals is vars(chunk_conditionings)
-
-    with distilled_keyframe_guiding():
-        assert factory_globals["combined_image_conditionings"] is helpers.image_conditionings_by_adding_guiding_latent
-
-    assert factory_globals["combined_image_conditionings"] is not helpers.image_conditionings_by_adding_guiding_latent
-
-
 def test_ic_lora_override_point_and_stage_config() -> None:
     assert _params(ICLoraPipeline._video_conditionings) == ["self", "ctx", "stage_config", "frame_sources"]  # type: ignore[attr-defined]
     assert "apply_ic_lora" in {field.name for field in dataclasses.fields(ICLoraStageConfig)}

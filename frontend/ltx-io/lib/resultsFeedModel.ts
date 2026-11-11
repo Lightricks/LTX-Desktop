@@ -2,19 +2,11 @@ import type { ExploreGeneration } from "@/lib/explore-contract";
 
 export type Generation = ExploreGeneration;
 
-export const MAX_VISIBLE_FINISHED_RESULTS = 10;
-
 const IN_FLIGHT_STATUSES = new Set<Generation["status"]>([
   "queued",
   "running",
   "cancelling",
 ]);
-const FINISHED_STATUSES = new Set<Generation["status"]>([
-  "succeeded",
-  "failed",
-  "cancelled",
-]);
-
 export function isInFlightGeneration(generation: Generation): boolean {
   return IN_FLIGHT_STATUSES.has(generation.status);
 }
@@ -35,26 +27,6 @@ export function hasNewSucceededGeneration(
       generation.status === "succeeded" &&
       !previouslySucceeded.has(generation.id),
   );
-}
-
-/** Newest-first: keep every in-flight row; cap finished frames. */
-export function getVisibleGenerations(
-  generations: Generation[],
-  maxFinished: number = MAX_VISIBLE_FINISHED_RESULTS,
-): Generation[] {
-  const visible: Generation[] = [];
-  let finishedCount = 0;
-  for (const generation of generations) {
-    if (isInFlightGeneration(generation)) {
-      visible.push(generation);
-      continue;
-    }
-    if (FINISHED_STATUSES.has(generation.status) && finishedCount < maxFinished) {
-      visible.push(generation);
-      finishedCount += 1;
-    }
-  }
-  return visible;
 }
 
 /**

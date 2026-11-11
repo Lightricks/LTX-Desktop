@@ -1,12 +1,13 @@
 """The generation stats projection. JSON paths for the dashboard live here.
 
 fps is null unless the JSON value is a number, so a string like "24" cannot
-pass for a real frame rate.
+pass for a real frame rate. The dashboard measures video, so image runs are left out.
 """
 
 from __future__ import annotations
 
 from services.features.ic_lora_recipes import queued_ic_lora_recipes
+from services.features.image.feature_id import FEATURE as TEXT_TO_IMAGE_FEATURE
 
 _IC_LORA_IDS = ", ".join(
     f"'{recipe.recipe_id}'" for recipe in queued_ic_lora_recipes()
@@ -38,6 +39,7 @@ WITH generation_stats AS (
             {_IC_LORA_GROUP}WHEN feature IN (
                 'text-to-video',
                 'image-to-video',
+                'keyframes',
                 'audio-to-video',
                 'retake',
                 'extend'
@@ -71,6 +73,7 @@ WITH generation_stats AS (
         deleted_at IS NOT NULL AS is_deleted
     FROM generations
     WHERE status IN ('succeeded', 'failed', 'cancelled')
+        AND feature != '{TEXT_TO_IMAGE_FEATURE}'
 )
 """
 

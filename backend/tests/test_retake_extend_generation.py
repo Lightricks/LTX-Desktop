@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from api_types import ExtendParams, LTXLocalModelId, RetakeParams
+from runtime_config.budget_admission import RiskAllowance
 from runtime_config.ltx_runtime_paths import resolve_ltx_runtime_paths
 from runtime_config.model_download_specs import get_existing_cp_path, get_ltx_model_spec
 from runtime_config.video_job_budget import (
@@ -331,7 +332,7 @@ def _prepare_extend(test_state, video_path: str, duration: float):
         42,
         test_state.config.outputs_dir / "out.mp4",
         str(test_state.config.outputs_dir / "windowed.mp4"),
-        allow_risk=False,
+        allowance=RiskAllowance.none(),
     )
 
 
@@ -396,7 +397,7 @@ def test_queued_home_edit_loads_the_text_encoder_of_its_own_model(
         1,
         tmp_path / "out.mp4",
         str(tmp_path / "out.window.mp4"),
-        allow_risk=False,
+        allowance=RiskAllowance.none(),
     )
 
     assert fake_services.retake_pipeline.create_calls[-1]["gemma_root"] == expected_gemma_root

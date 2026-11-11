@@ -85,6 +85,24 @@ export const VIDEO_GUIDE_IMAGE_SEED = {
   /** Bump when the packaged start frame changes, so a stored copy is replaced. */
   revision: 1,
 } as const;
+/**
+ * The four season stills that fill the Keyframes form at first open. The summer still
+ * sits at both the first and the last slot, so it is packaged once.
+ */
+export const KEYFRAMES_SEED_KINDS = [
+  "keyframes-summer-image",
+  "keyframes-autumn-image",
+  "keyframes-winter-image",
+  "keyframes-spring-image",
+] as const;
+export type KeyframesSeedKind = (typeof KEYFRAMES_SEED_KINDS)[number];
+export const KEYFRAMES_SEED_FILES: Record<KeyframesSeedKind, string> = {
+  "keyframes-summer-image": "keyframes-summer.jpg",
+  "keyframes-autumn-image": "keyframes-autumn.jpg",
+  "keyframes-winter-image": "keyframes-winter.jpg",
+  "keyframes-spring-image": "keyframes-spring.jpg",
+};
+
 /** Single-file packaged seeds resolved by `getPackagedSeedPath({ kind })`. */
 export const PACKAGED_SEED_KINDS = [
   "image-to-video-start-frame",
@@ -107,5 +125,6 @@ export const PACKAGED_SEED_KINDS = [
   "motion-track-image",
   "video-guide-video",
   "video-guide-image",
+  ...KEYFRAMES_SEED_KINDS,
 ] as const;
 export type PackagedSeedKind = (typeof PACKAGED_SEED_KINDS)[number];

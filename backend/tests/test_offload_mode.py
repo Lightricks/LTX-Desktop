@@ -56,13 +56,54 @@ def test_linux_cuda_streaming_with_unknown_ram_is_disk() -> None:
 
 
 def test_windows_cuda_streaming_routes_disk_on_nvme() -> None:
-    for ram_bytes in (64 * _GIB, 32 * _GIB, None):
+    for ram_bytes in (32 * _GIB, None):
         assert (
             offload_mode_for_prefetch_count(
                 2, torch.device("cuda"), drive_type="nvme", system="Windows", ram_bytes=ram_bytes
             )
             is OffloadMode.DISK
         )
+    for ram_bytes in (40 * _GIB, 64 * _GIB):
+        assert (
+            offload_mode_for_prefetch_count(
+                2, torch.device("cuda"), drive_type="nvme", system="Windows", ram_bytes=ram_bytes
+            )
+            is OffloadMode.CPU
+        )
+    # A nominal 64 GB Windows box reports ~63.45 GiB usable; ceiling GiB keeps it on CPU at the 64 GB floor.
+    assert (
+        offload_mode_for_prefetch_count(
+            2,
+            torch.device("cuda"),
+            drive_type="nvme",
+            system="Windows",
+            ram_bytes=int(63.45 * _GIB),
+            cpu_ram_floor_gb=64,
+        )
+        is OffloadMode.CPU
+    )
+    assert (
+        offload_mode_for_prefetch_count(
+            2,
+            torch.device("cuda"),
+            drive_type="nvme",
+            system="Windows",
+            ram_bytes=48 * _GIB,
+            cpu_ram_floor_gb=64,
+        )
+        is OffloadMode.DISK
+    )
+    assert (
+        offload_mode_for_prefetch_count(
+            2,
+            torch.device("cuda"),
+            drive_type="nvme",
+            system="Windows",
+            ram_bytes=64 * _GIB,
+            cpu_ram_floor_gb=None,
+        )
+        is OffloadMode.DISK
+    )
 
 
 def test_windows_cuda_streaming_stays_cpu_without_nvme() -> None:

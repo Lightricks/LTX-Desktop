@@ -42,6 +42,21 @@ export function isSupportedDroppedImage(file: DroppedFileLike): boolean {
   return IMAGE_EXTENSIONS.some((entry) => entry === droppedFileExtension(file));
 }
 
+/**
+ * An image asset a field can use. A cutout run stores a GIF as an image asset,
+ * and no image field accepts it.
+ */
+export function isSupportedImageAsset(asset: {
+  media_kind: string;
+  mime_type: string;
+  name: string;
+}): boolean {
+  return (
+    asset.media_kind === "image" &&
+    isSupportedDroppedImage({ name: asset.name, type: asset.mime_type })
+  );
+}
+
 export function prepareDroppedImageIngest(
   file: DroppedFileLike,
   getPathForFile: (file: DroppedFileLike) => string | null,

@@ -2,9 +2,24 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from api_types import GenerateVideoRequest
 from frame_math import compute_num_frames
 from server_utils.media_validation import normalize_optional_path
+
+
+def validate_keyframe_frames(frame_indices: Sequence[int], *, duration: int, fps: int) -> str | None:
+    """The frame checks for any multi-keyframe request: unique, and inside the clip."""
+    if len(set(frame_indices)) != len(frame_indices):
+        return "Keyframe frame indices must be unique"
+
+    last_frame = compute_num_frames(duration, fps) - 1
+    for frame_idx in frame_indices:
+        if frame_idx < 0 or frame_idx > last_frame:
+            return f"Keyframe frame index {frame_idx} is outside 0..{last_frame}"
+
+    return None
 
 
 def validate_keyframe_inputs(
@@ -34,13 +49,6 @@ def validate_keyframe_inputs(
     if any(normalize_optional_path(keyframe.imagePath) is None for keyframe in entries):
         return "Each keyframe requires an image path"
 
-    indices = [keyframe.frameIndex for keyframe in entries]
-    if len(set(indices)) != len(indices):
-        return "Keyframe frame indices must be unique"
-
-    last_frame = compute_num_frames(req.duration, req.fps) - 1
-    for frame_idx in indices:
-        if frame_idx < 0 or frame_idx > last_frame:
-            return f"Keyframe frame index {frame_idx} is outside 0..{last_frame}"
-
-    return None
+    return validate_keyframe_frames(
+        [keyframe.frameIndex for keyframe in entries], duration=req.duration, fps=req.fps
+    )

@@ -8,12 +8,15 @@ import {
 
 export function useScrollToResultParam(
   feedRootRef: RefObject<HTMLElement | null>,
-  generations: readonly unknown[],
+  generations: readonly { id: string }[],
   resultId: string | null,
-  reduceMotion: boolean | null,
   listSettled: boolean,
   onSettled: (resultId: string) => void,
   onMissing: (resultId: string) => void,
+  /** The feed is virtualized, so a row far from the viewport is not in the DOM. */
+  scrollToIndex: (index: number) => void,
+  /** Changes when the set of mounted rows changes. It re-runs the lookup after a jump. */
+  renderedKey: string,
 ): void {
   const scrolledResultIdRef = useRef<string | null>(null);
   const missingResultIdRef = useRef<string | null>(null);
@@ -21,6 +24,8 @@ export function useScrollToResultParam(
   onSettledRef.current = onSettled;
   const onMissingRef = useRef(onMissing);
   onMissingRef.current = onMissing;
+  const scrollToIndexRef = useRef(scrollToIndex);
+  scrollToIndexRef.current = scrollToIndex;
 
   useEffect(() => {
     if (resultId == null) {
@@ -33,6 +38,12 @@ export function useScrollToResultParam(
       `[data-generation-id="${CSS.escape(resultId)}"]`,
     );
     if (!(match instanceof HTMLElement)) {
+      const index = generations.findIndex((row) => row.id === resultId);
+      if (index >= 0) {
+        // In the list but not mounted. The jump mounts the row and `renderedKey` re-runs this.
+        scrollToIndexRef.current(index);
+        return;
+      }
       if (
         isResultMissing({ resultId, found: false, listSettled }) &&
         missingResultIdRef.current !== resultId
@@ -44,13 +55,11 @@ export function useScrollToResultParam(
     }
     const scroller = getScrollParent(match);
     scrolledResultIdRef.current = resultId;
-    const settle = () => onSettledRef.current(resultId);
+    // No smooth scroll. The virtualizer sets the scroll position while rows are measured,
+    // and that cancels a smooth scroll.
     if (scroller == null) {
-      match.scrollIntoView({
-        block: "center",
-        behavior: reduceMotion ? "auto" : "smooth",
-      });
-      settle();
+      match.scrollIntoView({ block: "center", behavior: "auto" });
+      onSettledRef.current(resultId);
       return;
     }
     const targetRect = match.getBoundingClientRect();
@@ -63,16 +72,7 @@ export function useScrollToResultParam(
       targetTop: targetRect.top,
       targetHeight: targetRect.height,
     });
-    const behavior = reduceMotion ? "auto" : "smooth";
-    const alreadyThere = Math.abs(scroller.scrollTop - top) < 1;
-    scroller.scrollTo({ top, behavior });
-    // Keep follow-newest suppressed until the smooth scroll finishes, or it
-    // cancels this scroll while the pin still thinks we are at the top.
-    if (behavior === "auto" || alreadyThere) {
-      settle();
-      return;
-    }
-    scroller.addEventListener("scrollend", settle, { once: true });
-    return () => scroller.removeEventListener("scrollend", settle);
-  }, [feedRootRef, generations, listSettled, reduceMotion, resultId]);
+    scroller.scrollTo({ top, behavior: "auto" });
+    onSettledRef.current(resultId);
+  }, [feedRootRef, generations, listSettled, renderedKey, resultId]);
 }

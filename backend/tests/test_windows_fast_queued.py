@@ -345,6 +345,7 @@ def test_windows_low_ram_rejects_queued_fast_before_insert(
         ("i2v", "1080p", 10, 18.0),
     ],
 )
+@pytest.mark.usefixtures("single_pass_only")
 def test_windows_over_envelope_rejects_queued_fast_before_insert(
     test_state,
     create_fake_model_files,
@@ -446,6 +447,7 @@ def test_linux_queued_t2v_still_enqueues_stream_over_cell(
     test_state.config.vram_bytes = 16 * _GIB
     test_state.config.total_ram_bytes = 32 * _GIB
     test_state.config.local_generations_mode = "streaming_models_loading"
+    test_state.state.app_settings.budget_mode = "brave"
 
     with _surface_client(test_state, "home") as (client, headers):
         response = client.post(
@@ -456,10 +458,12 @@ def test_linux_queued_t2v_still_enqueues_stream_over_cell(
 
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "queued"
+    assert response.json()["risk"] is not None
     assert len(_store(test_state).list_generations("text-to-video")) == 1
 
 
 @pytest.mark.parametrize("surface", ["home", "remote"])
+@pytest.mark.usefixtures("single_pass_only")
 def test_windows_queued_21_9_refuses_before_insert_where_16_9_enqueues(
     test_state, create_fake_model_files, surface: str
 ) -> None:
@@ -535,7 +539,7 @@ def test_windows_queued_auto_fully_dropped_cell_names_figures_not_unsupported(
         status_code=422,
         code=VIDEO_JOB_TOO_LARGE,
         message=(
-            "This job needs 77.0 GB of GPU memory but this card has 8.0 GB. "
+            "This job needs 11.2 GB of GPU memory but this card has 8.0 GB. "
             "Lower the resolution, duration, frame rate, or aspect width."
         ),
     )
@@ -543,6 +547,7 @@ def test_windows_queued_auto_fully_dropped_cell_names_figures_not_unsupported(
 
 
 @pytest.mark.parametrize("surface", ["home", "remote"])
+@pytest.mark.usefixtures("single_pass_only")
 def test_windows_queued_i2v_auto_resolves_start_frame_before_insert(
     test_state, create_fake_model_files, tmp_path: Path, surface: str
 ) -> None:
@@ -583,6 +588,7 @@ def test_windows_queued_i2v_auto_resolves_start_frame_before_insert(
 
 
 @pytest.mark.parametrize("surface", ["home", "remote"])
+@pytest.mark.usefixtures("single_pass_only")
 def test_windows_queued_recipe_21_9_refuses_before_insert_where_16_9_enqueues(
     test_state, create_fake_model_files, surface: str, monkeypatch
 ) -> None:
@@ -621,6 +627,7 @@ def test_windows_queued_recipe_21_9_refuses_before_insert_where_16_9_enqueues(
 
 
 @pytest.mark.parametrize("surface", ["home", "remote"])
+@pytest.mark.usefixtures("single_pass_only")
 def test_windows_queued_recipe_i2v_auto_resolves_start_frame_before_insert(
     test_state, create_fake_model_files, tmp_path: Path, surface: str, monkeypatch
 ) -> None:
@@ -667,6 +674,7 @@ def test_windows_queued_recipe_i2v_auto_resolves_start_frame_before_insert(
 
 
 @pytest.mark.parametrize("surface", ["home", "remote"])
+@pytest.mark.usefixtures("single_pass_only")
 def test_windows_queued_a2v_21_9_refuses_before_insert_where_16_9_enqueues(
     test_state, create_fake_model_files, tmp_path: Path, surface: str
 ) -> None:
@@ -707,6 +715,7 @@ def test_windows_queued_a2v_21_9_refuses_before_insert_where_16_9_enqueues(
 
 
 @pytest.mark.parametrize("surface", ["home", "remote"])
+@pytest.mark.usefixtures("single_pass_only")
 def test_windows_queued_a2v_auto_resolves_start_frame_before_insert(
     test_state, create_fake_model_files, tmp_path: Path, surface: str
 ) -> None:

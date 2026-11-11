@@ -39,7 +39,10 @@ import { useAssistantChat } from "./useAssistantChat";
 import { useAssistantChatId } from "./useAssistantChatId";
 import { SettingsSelect } from "@/components/settings/SettingsContent";
 import { useAssistantModels } from "@/hooks/use-assistant-models";
-import { progressPercentByGenerationId } from "@/ltx-io/components/GenerationQueue/generationQueuePanelModel";
+import {
+  progressPercentByGenerationId,
+  remainingSecondsByGenerationId,
+} from "@/ltx-io/components/GenerationQueue/generationQueuePanelModel";
 import { assetQueryKeys } from "@/ltx-io/hooks/assetQueryKeys";
 import {
   generationQueryKeys,
@@ -230,6 +233,7 @@ export function DesktopAssistantPanel({
       open && results.some((result) => result.data && isInFlightGeneration(result.data)),
   });
   const progressById = progressPercentByGenerationId(queueQuery.data);
+  const remainingById = remainingSecondsByGenerationId(queueQuery.data);
   const resultsById = new Map(resultIds.map((id, index) => [id, results[index]]));
 
   const busy = assistantChatBusy(conversation, chatId, {
@@ -465,6 +469,7 @@ export function DesktopAssistantPanel({
                       <ResultFrame
                         generation={generation}
                         progressPercent={progressById.get(generation.id)}
+                        remainingSeconds={remainingById.get(generation.id)}
                         onCancel={(id) => void jobAction(id, "cancel")}
                         onRetry={(id) => void jobAction(id, "retry")}
                         onDelete={(id) => void jobAction(id, "delete")}

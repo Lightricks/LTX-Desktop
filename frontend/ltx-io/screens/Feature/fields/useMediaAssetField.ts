@@ -8,6 +8,8 @@ import { assetQueryKeys } from "../../../hooks/assetQueryKeys";
 import { fetchAsset } from "../../../hooks/generationQueryKeys";
 import { useAsset } from "../../../hooks/useAsset";
 import { useExploreRuntime } from "../../../runtime/ExploreRuntime";
+import { useOpenAssetPicker } from "../../Assets/AssetPicker";
+import type { AssetsMediaKind } from "../../Assets/assetsSearchParams";
 import { type AssetRef, type ValidationIssue, toDurableAssetRef } from "../types";
 
 import { applyImportedAsset } from "./applyImportedAsset";
@@ -16,6 +18,7 @@ export function useMediaAssetField({
   value,
   issue,
   onChange,
+  mediaKind,
   accept,
   extensions,
   chooserTitle,
@@ -29,6 +32,8 @@ export function useMediaAssetField({
   value: AssetRef | null;
   issue?: ValidationIssue;
   onChange: (value: AssetRef | null) => void;
+  /** The kind the asset library lists for this field. */
+  mediaKind: AssetsMediaKind;
   accept: string;
   extensions: readonly string[];
   chooserTitle: string;
@@ -108,12 +113,6 @@ export function useMediaAssetField({
     void applyAsset(asset).catch(reportIngestError);
   };
 
-  const choose = () => {
-    void pickFile().then((asset) => {
-      if (asset != null) acceptAsset(asset);
-    });
-  };
-
   const acceptAssetId = (assetId: string) => {
     setLocalError(null);
     void fetchAsset(api, assetId)
@@ -129,12 +128,21 @@ export function useMediaAssetField({
     runIngest(mediaInput.ingestDroppedFile(file));
   };
 
+  // The asset library, filtered to this field's kind. It has its own upload button.
+  const openLibrary = useOpenAssetPicker({
+    mediaKind,
+    isEligibleAsset: isExpectedAsset,
+    isEligibleFile: isSupportedDropped,
+    onSelect: acceptAsset,
+    onUpload: pickFile,
+    onDropFile: ingestFile,
+    onDropAssetId: acceptAssetId,
+  });
+
   const upload = useUploadDnd({
     isMultiple: false,
     acceptedFilesTypes: accept,
-    onClickOverride: () => {
-      choose();
-    },
+    onClickOverride: openLibrary,
     onUpload: (file) => {
       ingestFile(file);
     },
@@ -153,7 +161,7 @@ export function useMediaAssetField({
       chooserBusy || ingestMutation.isPending || (value != null && assetQuery.isPending),
     isDragOver: upload.isDragOver,
     dragHandlers: upload.handlers,
-    choose,
+    openLibrary,
     pickFile,
     acceptAsset,
     acceptAssetId,

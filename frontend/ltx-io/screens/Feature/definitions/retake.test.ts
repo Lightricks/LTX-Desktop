@@ -8,6 +8,7 @@ import { specFixture, specFixtureBothOfferings } from "./specFixture.ts";
 import {
   RETAKE_DEFAULTS,
   RETAKE_EXAMPLE_DURATION_SECONDS,
+  RETAKE_EXAMPLE_NEGATIVE_PROMPT,
   RETAKE_EXAMPLE_PROMPT,
   RETAKE_EXAMPLE_START_SECONDS,
   RETAKE_MAX_DURATION_SECONDS,
@@ -213,7 +214,7 @@ describe("retake definition", () => {
     const form = retakeDefinition.form(values(), context());
     assert.deepEqual(
       form.fields.map((field) => field.id),
-      ["video", "prompt", "model"],
+      ["video", "prompt", "negativePrompt", "model"],
     );
     const video = form.fields[0];
     assert.equal(video?.kind, "video-asset");
@@ -312,6 +313,7 @@ describe("retake definition", () => {
       inputs: { video: { assetId: "video-1" } },
       params: {
         prompt: RETAKE_EXAMPLE_PROMPT,
+        negativePrompt: RETAKE_EXAMPLE_NEGATIVE_PROMPT,
         model: "ltx-2.5-fast",
         startTime: 1,
         duration: 3,
@@ -341,6 +343,7 @@ describe("retake definition", () => {
       {
         params: {
           prompt: "turn",
+          negativePrompt: "abrupt cut",
           model: "ltx-2.5-fast",
           startTime: 0.5,
           duration: 2,
@@ -353,6 +356,7 @@ describe("retake definition", () => {
     assert.deepEqual(restored, {
       video: { assetId: "clip-9" },
       prompt: "turn",
+      negativePrompt: "abrupt cut",
       model: "ltx-2.5-fast",
       resolution: "original",
       startTime: 0.5,

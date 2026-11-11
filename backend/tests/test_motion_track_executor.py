@@ -28,6 +28,7 @@ from services.features.video.job_common import resolve_job_local_model_id
 from services.features.video.motion_path import positions, render_motion_track
 from services.generation_interrupt import GenerationCancelledError
 from services.generation_queue.types import OutputAllocation, OutputPlan
+from tests.fakes.generation import FakeJobSession
 from services.records import AssetRecord, CapabilityFailedError, GenerationRecord
 from tests.lora_catalog_helpers import download_spec
 
@@ -283,7 +284,7 @@ def test_run_sends_the_camera_locked_scene_without_a_rewrite_and_the_clip_at_the
     executor = IcLoraTrackRecipeExecutor(
         test_state.ic_lora, assets, lambda: models_dir, recipe=IC_LORA_RECIPES["motion-track"]
     )
-    executor.execute(generation, outputs)
+    executor.execute(generation, outputs, FakeJobSession())
 
     expected_prompt = CAMERA_LOCK_PROMPT_TEMPLATE.replace("{prompt}", "the frog conducts")
     assert fake_services.ic_lora_pipeline.generate_calls[-1]["prompt"] == expected_prompt
@@ -294,7 +295,7 @@ def test_run_sends_the_camera_locked_scene_without_a_rewrite_and_the_clip_at_the
     with pytest.raises(GenerationCancelledError):
         IcLoraTrackRecipeExecutor(
             recorder, assets, lambda: models_dir, recipe=IC_LORA_RECIPES["motion-track"]
-        ).execute(generation, outputs)
+        ).execute(generation, outputs, FakeJobSession())
     request = recorder.request
     assert getattr(request, "prompt") == expected_prompt
     assert getattr(request, "prompt_provenance") == "typed"
@@ -321,7 +322,7 @@ def test_run_deletes_the_control_clip_when_the_run_is_cancelled_or_fails(
         recorder, assets, lambda: models_dir, recipe=IC_LORA_RECIPES["motion-track"]
     )
     with pytest.raises(RuntimeError if fail else GenerationCancelledError):
-        executor.execute(generation, outputs)
+        executor.execute(generation, outputs, FakeJobSession())
     assert recorder.clip_path is not None and not recorder.clip_path.exists()
 
 
@@ -335,7 +336,7 @@ def test_a_stored_high_res_spec_fails_without_the_recipe_slug_in_the_message(
         _ClipRecorder(), assets, lambda: models_dir, recipe=IC_LORA_RECIPES["motion-track"]
     )
     with pytest.raises(CapabilityFailedError) as raised:
-        executor.execute(generation, outputs)
+        executor.execute(generation, outputs, FakeJobSession())
     assert "cannot render above 1080p" in str(raised.value)
     assert "motion-track" not in str(raised.value)
 

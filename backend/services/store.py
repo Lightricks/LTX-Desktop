@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from datetime import datetime
 from typing import Protocol
 
 from pydantic import JsonValue
 
+from runtime_config.device_calibration import CalibrationBucket, DeviceIdentity, FrontierPoint
 from services.dashboard_stats import DashboardSnapshot, DashboardWindow
 
 from services.records import (
+    LOCAL_LANE,
     AssetListPage,
     AssetRecord,
     AssistantQueueRecord,
@@ -17,11 +19,34 @@ from services.records import (
     GenerationRecord,
     MediaKind,
     OutputSpec,
+    ProviderOrphan,
     QueueGenerationRecord,
 )
 
 
-class Store(Protocol):
+class CalibrationStore(Protocol):
+    def load_device_frontier(
+        self, identity: DeviceIdentity, epoch: int
+    ) -> Mapping[CalibrationBucket, tuple[FrontierPoint, ...]]: ...
+    def load_device_machine_factor(
+        self, identity: DeviceIdentity, epoch: int
+    ) -> float | None: ...
+    def widen_device_frontier(
+        self,
+        identity: DeviceIdentity,
+        epoch: int,
+        bucket: CalibrationBucket,
+        point: FrontierPoint,
+        *,
+        priced_gib: float,
+        generation_id: str | None,
+        conv_vae: bool = False,
+    ) -> tuple[FrontierPoint, ...] | None:
+        """The bucket's frontier after adding ``point``; None when a stored point covers it."""
+        ...
+
+
+class Store(CalibrationStore, Protocol):
     def get_assistant_run(self, run_id: str) -> AssistantRunRecord | None: ...
     def get_latest_assistant_run(self, conversation_id: str) -> AssistantRunRecord | None: ...
     def insert_assistant_run(self, run: AssistantRunRecord, *, title: str, after: str | None, queued: bool = False) -> bool: ...
@@ -66,9 +91,10 @@ class Store(Protocol):
         *,
         contract_version: int = 1,
         generation_id: str | None = None,
+        lane: str = LOCAL_LANE,
     ) -> GenerationRecord: ...
-    def has_queued(self) -> bool: ...
-    def claim_next_queued(self) -> GenerationRecord | None: ...
+    def has_queued(self, lane: str = LOCAL_LANE) -> bool: ...
+    def claim_next_queued(self, lane: str = LOCAL_LANE) -> GenerationRecord | None: ...
     def dashboard(
         self,
         *,
@@ -80,8 +106,14 @@ class Store(Protocol):
     def reorder_queued_generation(
         self, generation_id: str, before_generation_id: str | None
     ) -> GenerationRecord: ...
-    def request_generation_cancellation(self, generation_id: str) -> GenerationRecord: ...
-    def retry_generation(self, generation_id: str) -> GenerationRecord: ...
+    def request_generation_cancellation(
+        self, generation_id: str, *, uncancellable_lanes: Collection[str] = ()
+    ) -> GenerationRecord:
+        """Raises StatusError for a running job on one of uncancellable_lanes."""
+        ...
+    def retry_generation(
+        self, generation_id: str, lane: str | None = None
+    ) -> GenerationRecord: ...
     def mark_succeeded(
         self,
         generation_id: str,
@@ -117,4 +149,21 @@ class Store(Protocol):
         Canonical and thumbnail unlinks are best-effort after commit."""
         ...
     def fail_running_on_boot(self) -> int: ...
+    def reassign_unknown_lanes(self, known: Collection[str]) -> int: ...
+    def set_provider_job_id(
+        self, generation_id: str, attempt_count: int, provider_job_id: str
+    ) -> bool:
+        """Record the id of a running attempt at its provider. False when it is not running."""
+        ...
+    def clear_provider_job_id(self, generation_id: str, provider_job_id: str) -> bool:
+        """Forget a provider job once the provider dropped it. False if nothing holds that id."""
+        ...
+    def list_provider_orphans(self) -> list[ProviderOrphan]:
+        """Jobs that may still run at a provider: an id is stored and not yet cancelled.
+
+        Includes the older attempts that a retry replaced, and deleted rows."""
+        ...
+    def list_displaced_provider_jobs(self, generation_id: str) -> list[ProviderOrphan]:
+        """The ids of older attempts of one job that a retry replaced and nobody cancelled."""
+        ...
     def unlink_partial_outputs(self, paths: list[str]) -> None: ...

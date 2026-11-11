@@ -5,9 +5,11 @@ import {
   cheapestDroppedCellMessage,
   type ChunkedFastCell,
   resolveVideoGenerationOptions,
+  withoutBetCells,
   type DroppedFastAspectCell,
   type DroppedFastCell,
   type VideoGenerationModelSpecItem,
+  type VideoGenerationModelSpecsResponse,
   type WarnedFastCell,
 } from "./video-generation-model-specs.ts";
 
@@ -198,64 +200,7 @@ describe("resolveVideoGenerationOptions disabled options", () => {
   });
 });
 
-describe("resolveVideoGenerationOptions reckless promotion", () => {
-  it("offers a stream-over duration and keeps an unsupported resolution disabled", () => {
-    const item = specItem(
-      { "720p": { fps_to_durations: { "24": [5] } } },
-      [
-        dropped("720p", 24, 20, "needs 14.1"),
-        { ...dropped("1080p", 24, 5, "no pipeline"), reason: "unsupported" },
-      ],
-    );
-    const standard = resolveVideoGenerationOptions({
-      settings: { model: "fast", duration: 5, videoResolution: "720p", fps: 24 },
-      modelSpecs: [item],
-    });
-    assert.deepEqual(standard.durationOptions, [5]);
-    assert.deepEqual(standard.disabledDurationOptions, [
-      { value: 20, message: "needs 14.1" },
-    ]);
-
-    const reckless = resolveVideoGenerationOptions({
-      settings: { model: "fast", duration: 20, videoResolution: "720p", fps: 24 },
-      modelSpecs: [item],
-      budgetMode: "reckless",
-    });
-    assert.deepEqual(reckless.durationOptions, [5, 20]);
-    assert.deepEqual(reckless.disabledDurationOptions, []);
-    assert.deepEqual(reckless.warnedDurationOptions, [
-      { value: 20, message: "needs 14.1", tier: "over" },
-    ]);
-    assert.deepEqual(
-      reckless.disabledResolutionOptions.map((option) => option.value),
-      ["1080p"],
-    );
-  });
-
-  it("leaves a free-VRAM drop and a busy-card drop disabled", () => {
-    const item = specItem(
-      { "720p": { fps_to_durations: { "24": [5] } } },
-      [
-        {
-          ...dropped("720p", 24, 10, "busy"),
-          shortfall_kind: "free",
-          readout: { kind: "gpu_busy", need_gb: 18, have_gb: 12 },
-        },
-        { ...dropped("720p", 24, 20, "free now"), shortfall_kind: "free" },
-      ],
-    );
-    const reckless = resolveVideoGenerationOptions({
-      settings: { model: "fast", duration: 5, videoResolution: "720p", fps: 24 },
-      modelSpecs: [item],
-      budgetMode: "reckless",
-    });
-    assert.deepEqual(reckless.durationOptions, [5]);
-    assert.deepEqual(
-      reckless.disabledDurationOptions.map((option) => option.value),
-      [10, 20],
-    );
-  });
-
+describe("resolveVideoGenerationOptions warnings", () => {
   it("marks a kept tight cell without removing it from the offered durations", () => {
     const item = specItem(
       { "720p": { fps_to_durations: { "24": [5] } } },
@@ -330,23 +275,6 @@ describe("resolveVideoGenerationOptions chunked cells", () => {
     assert.deepEqual(resolved.chunkedDurationOptions, []);
   });
 
-  it("lists a cell Reckless mode promotes, from the window its refusal carries", () => {
-    const base = item([]);
-    base.spec.dropped_cells = [
-      { ...dropped("1080p", 24, 20, "too big"), windows: 3, window_frames: 241 },
-    ];
-    const settings = { model: "fast", duration: 20, videoResolution: "1080p", fps: 24 } as const;
-    const reckless = resolveVideoGenerationOptions({
-      settings,
-      modelSpecs: [base],
-      budgetMode: "reckless",
-    });
-    assert.deepEqual(reckless.durationOptions.includes(20), true);
-    assert.deepEqual(reckless.chunkedDurationOptions, [{ value: 20, windows: 3, windowFrames: 241 }]);
-    const standard = resolveVideoGenerationOptions({ settings, modelSpecs: [base] });
-    assert.deepEqual(standard.chunkedDurationOptions, []);
-  });
-
   it("names the resolutions that offer the selected cell and run it in one pass", () => {
     const base = specItem(
       {
@@ -390,3 +318,85 @@ describe("cheapestDroppedCellMessage", () => {
     );
   });
 });
+
+describe("per-aspect spec resolution and bet stripping", () => {
+  const aspects = ["21:9", "16:9", "3:2", "4:3", "1:1", "4:5", "9:16"] as const;
+
+  it("test_resolve_video_generation_options_switches_duration_grid_and_disabled_aspects_by_selected_aspect", () => {
+    const item = specItem(
+      { "1080p": { fps_to_durations: { "24": [5] }, aspect_ratios: [...aspects] } as never },
+      [dropped("1080p", 24, 10, "16:9 needs 22.7 GiB")],
+    );
+    item.spec.aspect_specs = {
+      "16:9": {
+        supported_resolutions_durations: {
+          "1080p": { fps_to_durations: { "24": [5] }, aspect_ratios: [...aspects] },
+        },
+        dropped_cells: [dropped("1080p", 24, 10, "16:9 needs 22.7 GiB")],
+      },
+      "1:1": {
+        supported_resolutions_durations: {
+          "1080p": { fps_to_durations: { "24": [5, 10] }, aspect_ratios: [...aspects] },
+        },
+        dropped_cells: [],
+      },
+    };
+
+    const at16x9 = resolveVideoGenerationOptions({
+      settings: { model: "fast", duration: 10, videoResolution: "1080p", fps: 24, aspectRatio: "16:9" },
+      modelSpecs: [item],
+    });
+    assert.deepEqual(at16x9.durationOptions, [5]);
+    assert.deepEqual(at16x9.disabledDurationOptions, [{ value: 10, message: "16:9 needs 22.7 GiB" }]);
+
+    const at1x1 = resolveVideoGenerationOptions({
+      settings: { model: "fast", duration: 10, videoResolution: "1080p", fps: 24, aspectRatio: "1:1" },
+      modelSpecs: [item],
+    });
+    assert.deepEqual(at1x1.durationOptions, [5, 10]);
+    assert.equal(at1x1.selectedDuration, 10);
+    assert.deepEqual(at1x1.disabledAspectRatioOptions, [
+      { value: "16:9", message: "16:9 needs 22.7 GiB" },
+    ]);
+  });
+
+  it("test_strip_bet_cells_strips_over_and_unmeasured_cells_inside_per_aspect_specs_in_cautious_mode", () => {
+    const item = specItem(
+      { "1080p": { fps_to_durations: { "24": [5, 10] }, aspect_ratios: [...aspects] } as never },
+      [],
+    );
+    const overCell: WarnedFastCell = {
+      resolution: "1080p",
+      fps: 24,
+      duration: 10,
+      tier: "over",
+      message: "1:1 10s over budget",
+      audio: false,
+    };
+    item.spec.aspect_specs = {
+      "1:1": {
+        supported_resolutions_durations: {
+          "1080p": { fps_to_durations: { "24": [5, 10] }, aspect_ratios: [...aspects] },
+        },
+        warned_cells: [overCell],
+        dropped_cells: [],
+      },
+    };
+    const response: VideoGenerationModelSpecsResponse = {
+      api_models: [],
+      local_models: [item],
+      downloaded_local_models: [{ model: "ltx-2.5-fast", spec: item.spec }],
+    };
+
+    const stripped = withoutBetCells(response);
+    const aspectSpec = stripped.local_models[0]?.spec.aspect_specs?.["1:1"];
+    assert.deepEqual(
+      aspectSpec?.supported_resolutions_durations["1080p"]?.fps_to_durations["24"],
+      [5],
+    );
+    assert.equal(aspectSpec?.warned_cells?.length, 0);
+    assert.equal(aspectSpec?.dropped_cells?.[0]?.duration, 10);
+    assert.equal(aspectSpec?.dropped_cells?.[0]?.message, "1:1 10s over budget");
+  });
+});
+

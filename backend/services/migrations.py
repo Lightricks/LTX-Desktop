@@ -6,6 +6,18 @@ from pathlib import Path
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "schema"
 
+# Version 3 was also issued to the device calibration migration on some builds, so a store at
+# version 3 can be missing what 0003_generation_lane.sql adds. Keep these in step with that file.
+_GENERATION_LANE_COLUMNS = (
+    ("lane", "ALTER TABLE generations ADD COLUMN lane TEXT NOT NULL DEFAULT 'local'"),
+    ("provider_job_id", "ALTER TABLE generations ADD COLUMN provider_job_id TEXT"),
+)
+_GENERATION_LANE_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_generations_pending_lane_rank
+    ON generations(lane, queue_rank ASC, id ASC)
+    WHERE status = 'queued' AND deleted_at IS NULL
+"""
+
 
 def _sql_statements(script: str) -> list[str]:
     statements: list[str] = []
@@ -88,4 +100,26 @@ def apply_migrations(conn: sqlite3.Connection, migrations_dir: Path) -> None:
     finally:
         if restore_foreign_keys:
             conn.execute("PRAGMA foreign_keys = ON")
+        conn.isolation_level = previous_isolation
+
+
+def repair_generation_lane(conn: sqlite3.Connection) -> None:
+    """Add the lane columns and index of 0003_generation_lane.sql where they are missing."""
+    previous_isolation = conn.isolation_level
+    conn.isolation_level = None
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            columns = {
+                str(row[1]) for row in conn.execute("PRAGMA table_info(generations)").fetchall()
+            }
+            for name, statement in _GENERATION_LANE_COLUMNS:
+                if name not in columns:
+                    conn.execute(statement)
+            conn.execute(_GENERATION_LANE_INDEX)
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
         conn.isolation_level = previous_isolation

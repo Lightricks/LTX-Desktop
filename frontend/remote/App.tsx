@@ -4,7 +4,10 @@ import { createBrowserRouter, RouterProvider, useRouteError, useSearchParams } f
 import { ThemeProvider } from "@/ds/styles/themes/useTheme";
 import { queryClient } from "@/lib/queryClient";
 import { useDevPanelShortcut } from "@/hooks/use-dev-panel-shortcut";
-import { REMOTE_HOME_FEATURE_SCREENS } from "@/lib/home-feature-registry";
+import {
+  CUSTOM_LORA_RUN_ROUTE,
+  REMOTE_HOME_FEATURE_SCREENS,
+} from "@/lib/home-feature-registry";
 import { FeatureChromeLayout } from "@/ltx-io/screens/Feature/chrome/FeatureChromeLayout";
 import { ModalProvider } from "@/ltx-io/components/shared/Modal/ModalProvider";
 import { loadPackagedExploreSeed } from "@/ltx-io/assets/packaged-explore-assets";
@@ -122,6 +125,7 @@ const remoteRouter = createBrowserRouter(
     },
     screens: REMOTE_HOME_FEATURE_SCREENS,
     featureLayout: FeatureChromeLayout,
+    extraFeatureRoutes: [CUSTOM_LORA_RUN_ROUTE],
   }),
 );
 

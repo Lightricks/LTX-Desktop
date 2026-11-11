@@ -13,14 +13,43 @@ from pydantic import (
     JsonValue,
     StringConstraints,
     field_validator,
-    model_serializer,
     model_validator,
-    SerializerFunctionWrapHandler,
     Tag,
 )
 from pydantic.json_schema import SkipJsonSchema
 
 from api_motion_path import MOTION_PATH_MAX_PATHS, MotionPath
+from api_types_lora import (
+    CUSTOM_LORA_DESCRIPTION_MAX as CUSTOM_LORA_DESCRIPTION_MAX,
+    CUSTOM_LORA_EXAMPLE_MAX as CUSTOM_LORA_EXAMPLE_MAX,
+    CUSTOM_LORA_EXAMPLES_MAX as CUSTOM_LORA_EXAMPLES_MAX,
+    CUSTOM_LORA_TRIGGER_MAX as CUSTOM_LORA_TRIGGER_MAX,
+    ActiveCustomLoraImportResponse as ActiveCustomLoraImportResponse,
+    ActiveIcLoraDownloadResponse as ActiveIcLoraDownloadResponse,
+    ActiveLoraDownloadResponse as ActiveLoraDownloadResponse,
+    CatalogDownloadStartResponse as CatalogDownloadStartResponse,
+    CatalogDownloadStatus as CatalogDownloadStatus,
+    CustomLoraDescription as CustomLoraDescription,
+    CustomLoraExample as CustomLoraExample,
+    CustomLoraId as CustomLoraId,
+    CustomLoraImportProgressResponse as CustomLoraImportProgressResponse,
+    CustomLoraImportRequest as CustomLoraImportRequest,
+    CustomLoraImportStartResponse as CustomLoraImportStartResponse,
+    CustomLoraItem as CustomLoraItem,
+    CustomLoraLinkInfoRequest as CustomLoraLinkInfoRequest,
+    CustomLoraLinkInfoResponse as CustomLoraLinkInfoResponse,
+    CustomLoraListResponse as CustomLoraListResponse,
+    CustomLoraRestoreRequest as CustomLoraRestoreRequest,
+    CustomLoraSource as CustomLoraSource,
+    CustomLoraTrigger as CustomLoraTrigger,
+    IcLoraDeleteRequest as IcLoraDeleteRequest,
+    IcLoraDownloadProgressResponse as IcLoraDownloadProgressResponse,
+    IcLoraDownloadRequest as IcLoraDownloadRequest,
+    LoraDeleteRequest as LoraDeleteRequest,
+    LoraDownloadProgressResponse as LoraDownloadProgressResponse,
+    LoraDownloadRequest as LoraDownloadRequest,
+    LoraEntry as LoraEntry,
+)
 from assistant_limits import ASSISTANT_LIMITS
 from frame_math import compute_num_frames
 from runtime_config.eta import EtaBasis, EtaFeature
@@ -28,15 +57,40 @@ from runtime_config.reject_reasons import (
     BudgetMode,
     IcLoraDroppedReason,
     JobRiskTier,
-    LoadRiskTier,
+    PassShape,
     ShortfallKind,
+    UnmeasuredBasis,
     VideoJobRejectReason,
+    WarnedCellTier,
 )
 from runtime_config.ic_lora_stage_mode import IcLoraStageMode, ic_lora_stage_mode
-from runtime_config.ic_lora_tiling import IcLoraTiling
+from runtime_config.ic_lora_tiling import (
+    MAX_TILE_OVERLAP,
+    MIN_CARRY_FRAMES,
+    MIN_TILE_OVERLAP,
+    MIN_WINDOW_FRAMES,
+    IcLoraTileSize,
+    IcLoraTiling,
+)
+from runtime_config.nag_limits import (
+    MAX_ALPHA as NAG_MAX_ALPHA,
+    MAX_SCALE as NAG_MAX_SCALE,
+    MAX_TAU as NAG_MAX_TAU,
+    NEGATIVE_PROMPT_MAX_LENGTH,
+)
 
 NonEmptyPrompt = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 LocalAssistantModel = Literal["qwen3.5:9b"]
+
+
+class NagParams(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    negativePrompt: str = Field(default="", max_length=NEGATIVE_PROMPT_MAX_LENGTH)
+    nagScale: float | None = Field(default=None, ge=0.0, le=NAG_MAX_SCALE, allow_inf_nan=False)
+    nagAlpha: float | None = Field(default=None, ge=0.0, le=NAG_MAX_ALPHA, allow_inf_nan=False)
+    nagTau: float | None = Field(default=None, ge=0.0, le=NAG_MAX_TAU, allow_inf_nan=False)
+
 
 
 class AssistantModelDownloadRequest(BaseModel):
@@ -193,6 +247,21 @@ class FeatureFlags(BaseModel):
     # still gates every job, and a cell with no measured run (measured_cells.py) is
     # refused in Standard mode. The flag only adds the cell. Off by default.
     highResVideoToVideo: bool = False
+    # Show "Create with AI" next to the start frame, end frame and reference image fields.
+    # It opens the image generator and puts the image in the field. Off by default.
+    createWithAi: bool = False
+    # Show a "Negative prompt:" line under each result's meta bar, for every feature
+    # that stores a negative prompt. For comparing runs with and without one. Off by default.
+    showGenerationNegativePrompt: bool = False
+    # Offer the Keyframes feature on Home. The backend refuses the create route while it is
+    # off, and Home hides the feature. GenSpace multi-keyframe has no flag. Off by default.
+    keyframes: bool = False
+
+
+class UiPreferences(BaseModel):
+    """The user settings that change what a form shows. Read-only, so Remote may read them."""
+
+    advancedControls: bool = False
 
 
 class FeatureFlagsPatch(BaseModel):
@@ -203,6 +272,9 @@ class FeatureFlagsPatch(BaseModel):
     customIcLora: bool | None = None
     advancedIcLoraControls: bool | None = None
     highResVideoToVideo: bool | None = None
+    createWithAi: bool | None = None
+    showGenerationNegativePrompt: bool | None = None
+    keyframes: bool | None = None
 
 
 class GenerationProgressResponse(BaseModel):
@@ -225,6 +297,7 @@ class GenerationProgressResponse(BaseModel):
     # measured hardware only). None means unknown, not zero. Shared with the
     # pre-generate estimate endpoint so both surfaces speak one contract.
     estimate: WallTimeEstimateResponse | None = None
+    remainingSeconds: int | None = None
 
 
 class WallTimeEstimateResponse(BaseModel):
@@ -600,11 +673,12 @@ class BudgetReadout(BaseModel):
 
 
 class WarnedFastCell(BaseModel):
-    """One kept grid cell carrying a warning tier (tight fit or unmeasured).
+    """One kept grid cell carrying a warning tier: a tight fit, or a Brave bet
+    (over budget or untested) the echoed mode admits.
 
     Kept + warned render the full grid for warned-with-tooltip pickers:
     ``fps_to_durations`` stays the kept set, this list marks the risky subset.
-    ``headroom_gib`` is set on tight cells only (unmeasured compares nothing).
+    ``headroom_gib`` is set on tight cells only.
     ``message`` is backend-composed, same builder as the create annotation, so
     the picker tooltip and the queue badge read identically.
     """
@@ -612,7 +686,7 @@ class WarnedFastCell(BaseModel):
     resolution: LTXVideoGenResolution
     fps: LTXVideoGenFps
     duration: LTXVideoGenDuration
-    tier: LoadRiskTier
+    tier: WarnedCellTier
     headroom_gib: float | None = None
     message: str
     readout: BudgetReadout | None = None
@@ -628,7 +702,7 @@ class WarnedFastAspectCell(BaseModel):
     fps: LTXVideoGenFps
     duration: LTXVideoGenDuration
     aspectRatio: LTXVideoGenAspectRatio
-    tier: LoadRiskTier
+    tier: WarnedCellTier
     headroom_gib: float | None = None
     message: str
     readout: BudgetReadout | None = None
@@ -670,7 +744,8 @@ class DroppedFastCell(BaseModel):
     over_ram_gb: int | None = None
     shortfall_kind: ShortfallKind | None = None
     readout: BudgetReadout | None = None
-    # Set when the run this cell would get (a Reckless run, or an unmeasured bet) is in
+    unmeasured_basis: UnmeasuredBasis | None = None
+    # Set when the run this cell would get (a Brave run, or an unmeasured bet) is in
     # overlapping windows: the window count and the pixel frames of one window. A picker that
     # offers the cell anyway tells the user, as it does for a kept ``ChunkedFastCell``.
     windows: int | None = None
@@ -698,6 +773,94 @@ class DroppedFastAspectCell(BaseModel):
     over_ram_gb: int | None = None
     shortfall_kind: ShortfallKind | None = None
     readout: BudgetReadout | None = None
+    unmeasured_basis: UnmeasuredBasis | None = None
+
+
+MemoryConfidence = Literal["solid", "estimate", "rough"]
+
+
+class GenerationRisk(BaseModel):
+    """Create-time snapshot of the bet a Brave job took.
+
+    Stored privately as spec["_risk"] (no store migration), promoted to this
+    typed field on every read. Drives the queue badge and the failure backstop
+    copy. An `over` tier also waives a later memory miss at execute. An
+    `unmeasured` tier does not. `over_gib`/`over_ram_gb` mirror the dropped-
+    cell figure semantics; `message` is the snapshotted tier line.
+    """
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    tier: JobRiskTier
+    shortfall_kind: ShortfallKind | None = None
+    over_gib: float | None = None
+    over_ram_gb: int | None = None
+    readout: BudgetReadout | None = None
+    message: str
+    unmeasured_basis: UnmeasuredBasis | None = None
+
+
+class JobMemoryAsk(BaseModel):
+    """What one job asks of the memory the gate compares.
+
+    ``ask_gib`` is the figure admission compares against ``MemoryCapacity.capacity_gib``, rounded
+    up to 0.001 GiB, so a meter drawn from it never shows an over job as fitting. ``windows`` is
+    1 for a single pass. ``tight`` is the gate's own tight-fit flag. The band is sent on
+    ``estimate`` asks only: one ask per Fast grid point and aspect makes this the bulk of the
+    specs payload. ``risk`` is sent on ``FastCellAsk.alternative`` when the alternative pass
+    shape is an ``over`` or ``unmeasured`` bet.
+    """
+
+    ask_gib: float
+    confidence: MemoryConfidence
+    windows: int = 1
+    tight: bool = False
+    band_low_gib: float | None = Field(default=None, exclude_if=lambda value: value is None)
+    band_high_gib: float | None = Field(default=None, exclude_if=lambda value: value is None)
+    risk: GenerationRisk | None = Field(default=None, exclude_if=lambda value: value is None)
+    estimated_seconds: int | None = Field(default=None, exclude_if=lambda value: value is None)
+
+
+class FastCellAsk(JobMemoryAsk):
+    """One Fast grid cell's ask, kept or withheld.
+
+    The ask is the shape the budget picks (``windows`` 1 is one pass). ``alternative`` is the
+    other shape's ask, sent only where a Brave form offers the choice, so a shape the form
+    shows is always one create runs.
+    """
+
+    resolution: LTXVideoGenResolution
+    fps: LTXVideoGenFps
+    duration: LTXVideoGenDuration
+    audio: bool
+    alternative: JobMemoryAsk | None = Field(default=None, exclude_if=lambda value: value is None)
+
+
+class MemoryCapacity(BaseModel):
+    """The figure every ``FastCellAsk`` is compared against.
+
+    ``gpu`` is total VRAM (list time gates on total). ``mac`` is the MPS pool macOS recommends
+    for this Mac, which is the whole allowance video may use. None when the backend compared
+    nothing (unknown VRAM, unsupported process).
+    """
+
+    device: Literal["gpu", "mac"]
+    capacity_gib: float | None
+
+
+class LTXVideoGenerationAspectSpec(BaseModel):
+    """Per-aspect kept grids and cell annotations priced at that ratio's real canvas."""
+
+    supported_resolutions_durations: dict[
+        LTXVideoGenResolution, LTXVideoGenerationResolutionSpec
+    ]
+    a2v_supported_resolutions_durations: (
+        dict[LTXVideoGenResolution, LTXVideoGenerationResolutionSpec] | None
+    ) = None
+    dropped_cells: list[DroppedFastCell] = Field(default_factory=list[DroppedFastCell])
+    warned_cells: list[WarnedFastCell] = Field(default_factory=list[WarnedFastCell])
+    chunked_cells: list[ChunkedFastCell] = Field(default_factory=list[ChunkedFastCell])
+    cell_asks: list[FastCellAsk] = Field(default_factory=list[FastCellAsk])
 
 
 class LTXVideoGenerationSpec(BaseModel):
@@ -721,6 +884,11 @@ class LTXVideoGenerationSpec(BaseModel):
     # Kept cells that run in more than one window (the anchor shape; a wider shape can need
     # more windows). Same None/empty contract as warned_cells.
     chunked_cells: list[ChunkedFastCell] | None = None
+    # Every priced cell's ask, kept and withheld, at the anchor shape. Same None/empty contract.
+    cell_asks: list[FastCellAsk] | None = None
+    # Per-aspect kept grids and cell annotations priced at each ratio's real canvas.
+    # None where no gating ran (API specs, unfiltered validation ceiling).
+    aspect_specs: dict[LTXVideoGenAspectRatio, LTXVideoGenerationAspectSpec] | None = None
 
 
 class LTXVideoGenerationModelSpecItem(BaseModel):
@@ -758,7 +926,10 @@ class GenerateVideoModelsSpecsResponse(BaseModel):
     # The backend machine is slow for heavy local runs. The backend decides, so the
     # desktop app and the Remote app show the same warnings.
     low_performance_machine: bool = False
-    budgetMode: BudgetMode = "standard"
+    budgetMode: BudgetMode = "brave"
+    # "Never split into parts" the grid was priced with, echoed like the mode.
+    neverSplitIntoParts: bool = False
+    memory: MemoryCapacity | None = None
 
 
 class InstalledModelResponse(BaseModel):
@@ -772,31 +943,6 @@ class InstalledModelResponse(BaseModel):
 
 class InstalledModelsResponse(BaseModel):
     models: list[InstalledModelResponse]
-
-
-class LoraEntry(BaseModel):
-    model_config = ConfigDict(strict=True)
-
-    ref: str
-    scale: float = Field(default=1.0, ge=0.0, le=4.0)
-    # Catalog id when this LoRA was picked from the library, so automatic enhancement can look
-    # up its trigger/instructions. Absent for a custom LoRA the user supplied themselves, which
-    # stays weights-only — the weights' filename is never matched against the catalog.
-    catalogId: str | None = None
-    # Catalog name at enqueue time. Kept after the LoRA leaves the catalog so
-    # the dashboard can still label the run.
-    displayName: str | None = None
-    # Checkpoint chosen at enqueue, next to scale, so a later variant can be told apart.
-    variantId: str | None = None
-
-    @model_serializer(mode="wrap")
-    def _omit_unset_variant(
-        self, handler: SerializerFunctionWrapHandler
-    ) -> dict[str, JsonValue]:
-        data = cast("dict[str, JsonValue]", handler(self))
-        if data.get("variantId") is None:
-            data.pop("variantId", None)
-        return data
 
 
 # Local Distilled offering cap. API pipelines stay at 0 via multi_keyframe=False.
@@ -813,6 +959,16 @@ class KeyframeInput(BaseModel):
     strength: float = Field(default=1.0, ge=0.0, le=1.0)
 
 
+class KeyframeRef(BaseModel):
+    """One still on the timeline. An asset id, never a path."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    assetId: str = Field(min_length=1)
+    frameIndex: int = Field(ge=0)
+    strength: float = Field(default=1.0, ge=0.0, le=1.0)
+
+
 # Where the submitted prompt came from. "typed" (the default for any client that omits it) is
 # eligible for automatic enhancement; "enhanced" is the exact text a successful manual Enhance
 # produced and the user chose to keep, so generation must submit it untouched rather than
@@ -820,7 +976,7 @@ class KeyframeInput(BaseModel):
 PromptProvenance: TypeAlias = Literal["typed", "enhanced"]
 
 
-class GenerateVideoRequest(BaseModel):
+class GenerateVideoRequest(NagParams):
     model_config = ConfigDict(strict=True)
 
     prompt: Annotated[str, StringConstraints(strip_whitespace=True)]
@@ -828,7 +984,6 @@ class GenerateVideoRequest(BaseModel):
     resolution: LTXVideoGenResolution = "1080p"
     model: LTXVideoGenPipeline = "fast"
     cameraMotion: VideoCameraMotion = "none"
-    negativePrompt: str = ""
     # None = automatic duration (API 2.5 t2v/i2v only): the worker picks length from the prompt.
     duration: LTXVideoGenDuration | None = 5
     fps: LTXVideoGenFps = 24
@@ -848,13 +1003,17 @@ class GenerateVideoRequest(BaseModel):
         return self
 
 
+# Z-Image Turbo is distilled for four steps. Every image path uses it.
+ZIT_DEFAULT_STEPS = 4
+
+
 class GenerateImageRequest(BaseModel):
     model_config = ConfigDict(strict=True)
 
     prompt: NonEmptyPrompt
     width: int = Field(default=1024, ge=16)
     height: int = Field(default=1024, ge=16)
-    numSteps: int = Field(default=4, ge=1)
+    numSteps: int = Field(default=ZIT_DEFAULT_STEPS, ge=1)
     numImages: int = Field(default=1, ge=1)
     imagePath: str | None = None
     strength: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -1053,6 +1212,13 @@ class IcLoraGenerateRequest(BaseModel):
     # LoRA adapter merge weight (baked at load time). Bounded to [0, 2] to match the
     # desktop IC-LoRA strength control (same practical ceiling as the plain-LoRA UI slider).
     lora_strength: float | None = Field(default=None, ge=0.0, le=2.0)
+    # Advanced controls of a tiled catalog entry (Refine Details). None keeps the catalog
+    # value, or the high cell default for the carry. A request for an entry without a tile
+    # plan, or a pair the pipeline cannot run, is refused (422).
+    tile_overlap: float | None = Field(default=None, ge=MIN_TILE_OVERLAP, le=MAX_TILE_OVERLAP)
+    carry_frames: int | None = Field(default=None, ge=MIN_CARRY_FRAMES)
+    tile_size: IcLoraTileSize | None = None
+    max_window_frames: int | None = Field(default=None, ge=MIN_WINDOW_FRAMES)
     # Override the control-video fps by temporally resampling it. Lower fps = fewer frames =
     # less compute/VRAM (fits longer clips), at the cost of choppier motion. None = source fps.
     # Only decimates (ignored if >= source fps).
@@ -1068,7 +1234,10 @@ class IcLoraGenerateRequest(BaseModel):
     loop_seconds: LTXVideoGenDuration | None = None
     num_inference_steps: int = 30
     cfg_guidance_scale: float = 1.0
-    negative_prompt: str = ""
+    negative_prompt: str = Field(default="", max_length=NEGATIVE_PROMPT_MAX_LENGTH)
+    nag_scale: float | None = Field(default=None, ge=0.0, le=NAG_MAX_SCALE, allow_inf_nan=False)
+    nag_alpha: float | None = Field(default=None, ge=0.0, le=NAG_MAX_ALPHA, allow_inf_nan=False)
+    nag_tau: float | None = Field(default=None, ge=0.0, le=NAG_MAX_TAU, allow_inf_nan=False)
     images: list[IcLoraImageInput] = Field(default_factory=_default_ic_lora_images)
     # "custom" conditioning: the user's own IC-LoRA + a pre-rendered control video.
     # Ignored for canny/depth; required (both) when conditioning_type == "custom".
@@ -1350,6 +1519,8 @@ class LoraCatalogItem(BaseModel):
     enhancement_examples: list[str] = Field(default_factory=list)
     # Suggested LoRA scale when a plain LoRA is selected (IC-LoRAs use default_settings instead).
     recommended_strength: float | None = None
+    # Generic negative prompt from the Hugging Face model card, when the card names one.
+    default_negative_prompt: str | None = None
     # When true, generation may run with an empty prompt (e.g. outpainting fills from the scene).
     # Enforced for the catalog IC-LoRA path; plain-LoRA t2v enforcement is not wired yet.
     allows_empty_prompt: bool = False
@@ -1426,6 +1597,7 @@ class DroppedIcLoraDuration(BaseModel):
     over_ram_gb: int | None = None
     shortfall_kind: ShortfallKind | None = None
     readout: BudgetReadout | None = None
+    unmeasured_basis: UnmeasuredBasis | None = None
 
 
 class IcLoraControl(BaseModel):
@@ -1504,6 +1676,7 @@ _HOME_RECIPE_FIELDS = frozenset({
     "base_model",
     "controls",
     "created_at",
+    "default_negative_prompt",
     "default_settings",
     "description",
     "download",
@@ -1678,14 +1851,17 @@ class ReplacedWindow(BaseModel):
 
 class EnhancePromptRequest(BaseModel):
     """Regular-LoRA, IC-LoRA, and built-in conditioning-type selection are mutually exclusive UI
-    surfaces — a request never carries more than one of loraCatalogIds/icLoraId/conditioningType.
+    surfaces — a request never carries more than one of loraCatalogIds/customLoraIds/icLoraId/conditioningType.
     """
 
     model_config = ConfigDict(strict=True)
     # Empty is allowed when imagePath or keyframes are set — the rewrite is then captioned
     # from the attached frame(s), plus any extra text the user did type.
     prompt: str
+    negativePrompt: str | None = Field(default=None, max_length=NEGATIVE_PROMPT_MAX_LENGTH)
     loraCatalogIds: list[str] = Field(default_factory=list)
+    # The user's saved custom LoRA. The enhancer reads what the user told it about the LoRA.
+    customLoraIds: list[str] = Field(default_factory=list, max_length=1)
     icLoraId: str | None = None
     # Set only for the built-in (non-catalog) "bring your own IC-LoRA" canny/depth conditioning
     # modes — those have no catalog entry to draw a system prompt from, but still need the same
@@ -1701,6 +1877,9 @@ class EnhancePromptRequest(BaseModel):
     # Same shape as GenerateVideoRequest.keyframes. Mutually exclusive with imagePath/
     # lastImagePath — middle markers have nowhere to go on the two-slot i2v path.
     keyframes: list[KeyframeInput] = Field(default_factory=list[KeyframeInput])
+    # The same stills as asset ids. Explore sends these and the route resolves them to
+    # `keyframes`. Mutually exclusive with `keyframes`, and bound by the same rules.
+    keyframeAssets: list[KeyframeRef] = Field(default_factory=list[KeyframeRef])
     # The panel images of an image-list IC-LoRA (Ingredients), in order. Explore sends asset
     # ids and the route resolves them to paths. Needs an icLoraId whose entry takes an image
     # list. Mutually exclusive with every other image input and with a video.
@@ -1740,16 +1919,17 @@ class EnhancePromptRequest(BaseModel):
     def _check_selection_is_mutually_exclusive(self) -> "EnhancePromptRequest":
         selected = [
             bool(self.loraCatalogIds),
+            bool(self.customLoraIds),
             self.icLoraId is not None,
             self.conditioningType is not None,
         ]
         if sum(selected) > 1:
             raise ValueError(
-                "loraCatalogIds, icLoraId, and conditioningType are mutually exclusive"
+                "loraCatalogIds, customLoraIds, icLoraId, and conditioningType are mutually exclusive"
             )
         if self.mediaType == "image" and sum(selected) > 0:
             raise ValueError(
-                "loraCatalogIds, icLoraId, and conditioningType only apply to mediaType='video'"
+                "loraCatalogIds, customLoraIds, icLoraId, and conditioningType only apply to mediaType='video'"
             )
         has_first_path = bool((self.imagePath or "").strip())
         has_last_path = bool((self.lastImagePath or "").strip())
@@ -1761,19 +1941,27 @@ class EnhancePromptRequest(BaseModel):
             raise ValueError("Use lastImagePath or lastImageAssetId, not both")
         has_first = has_first_path or has_first_asset
         has_last = has_last_path or has_last_asset
-        has_keyframes = bool(self.keyframes)
+        if self.keyframes and self.keyframeAssets:
+            raise ValueError("Use keyframes or keyframeAssets, not both")
+        keyframe_indices = [
+            keyframe.frameIndex for keyframe in (self.keyframes or self.keyframeAssets)
+        ]
+        has_keyframes = bool(keyframe_indices)
         if self.mediaType == "image" and has_keyframes:
             raise ValueError("keyframes only apply to mediaType='video'")
+        # Explore text-to-image has no input image. A path is the GenSpace edit rewrite.
+        if self.mediaType == "image" and (has_first_asset or has_last_asset or self.imageAssetIds):
+            raise ValueError("mediaType='image' takes no image asset ids")
         if has_keyframes and (has_first or has_last):
             raise ValueError("Keyframes cannot be combined with a first or last frame")
         if has_last and not has_first:
             raise ValueError("Last frame requires a first-frame image")
         if has_keyframes:
-            if len(self.keyframes) > LOCAL_MULTI_KEYFRAME_MAX_COUNT:
+            if len(keyframe_indices) > LOCAL_MULTI_KEYFRAME_MAX_COUNT:
                 raise ValueError(
                     f"You can place up to {LOCAL_MULTI_KEYFRAME_MAX_COUNT} keyframes"
                 )
-            indices = [keyframe.frameIndex for keyframe in self.keyframes]
+            indices = keyframe_indices
             if len(set(indices)) != len(indices):
                 raise ValueError("Keyframe frame indices must be unique")
             if self.duration is not None and self.fps is not None and self.fps > 0:
@@ -1795,7 +1983,9 @@ class EnhancePromptRequest(BaseModel):
             raise ValueError("A video cannot be combined with last-frame or keyframe input")
         if has_video and has_first and self.icLoraId is None:
             raise ValueError("A video combines with an image only for an IC-LoRA look image")
-        if has_video and (self.loraCatalogIds or self.conditioningType is not None):
+        if has_video and (
+            self.loraCatalogIds or self.customLoraIds or self.conditioningType is not None
+        ):
             raise ValueError("A video only combines with icLoraId or no selection")
         if self.replacedWindow is not None and (not has_video or self.icLoraId is not None):
             raise ValueError("replacedWindow needs a video and does not combine with icLoraId")
@@ -1832,6 +2022,10 @@ class PromptEnhancerStatusResponse(BaseModel):
     defaultProvider: Literal["local", "api"]
     canToggleProvider: bool
     showManualEnhance: bool
+    nagUnavailableReason: str | None = None
+    nagUnavailableReasonByFeature: dict[str, str] = Field(default_factory=dict)
+    # The Desktop setting that shows the per-run NAG strength row; Remote follows it.
+    showNagStrengthControls: bool = False
 
 
 class IcLoraListItem(BaseModel):
@@ -1845,44 +2039,7 @@ class IcLoraListItem(BaseModel):
 class IcLoraListResponse(BaseModel):
     model_config = ConfigDict(strict=True)
     ic_loras: list[IcLoraListItem]
-    budgetMode: BudgetMode = "standard"
-
-
-class IcLoraDownloadRequest(BaseModel):
-    model_config = ConfigDict(strict=True)
-    ic_lora_id: str
-    # Optional catalog download.variants[].id; omit to download the default filename.
-    variant_id: str | None = None
-    # Dev escape hatch: attach the in-app HuggingFace token even when HF gating is off
-    # (gated IC-LoRA repos need auth; gating is normally env-driven in packaged builds).
-    use_hf_auth: bool = False
-
-
-class IcLoraDeleteRequest(BaseModel):
-    model_config = ConfigDict(strict=True)
-    ic_lora_id: str
-    variant_id: str | None = None
-
-
-# Shared start-response for both catalog download kinds (IC-LoRA + plain LoRA).
-class CatalogDownloadStartResponse(BaseModel):
-    model_config = ConfigDict(strict=True)
-    status: str
-    sessionId: str
-
-
-CatalogDownloadStatus: TypeAlias = Literal["downloading", "complete", "error"]
-
-
-class IcLoraDownloadProgressResponse(BaseModel):
-    model_config = ConfigDict(strict=True)
-    status: CatalogDownloadStatus
-    ic_lora_id: str | None = None
-    downloaded_bytes: int = 0
-    expected_bytes: int = 0
-    progress: float = 0.0
-    speed_bytes_per_sec: float = 0.0
-    error: str | None = None
+    budgetMode: BudgetMode = "brave"
 
 
 # --- Plain LoRA catalog (list + download). Mirrors the IC-LoRA flow with a separate
@@ -1898,48 +2055,6 @@ class LoraListItem(BaseModel):
 class LoraListResponse(BaseModel):
     model_config = ConfigDict(strict=True)
     loras: list[LoraListItem]
-
-
-class LoraDownloadRequest(BaseModel):
-    model_config = ConfigDict(strict=True)
-    lora_id: str
-    # Optional catalog download.variants[].id; omit to download the default filename.
-    variant_id: str | None = None
-    use_hf_auth: bool = False
-
-
-class LoraDeleteRequest(BaseModel):
-    model_config = ConfigDict(strict=True)
-    lora_id: str
-    variant_id: str | None = None
-
-
-class LoraDownloadProgressResponse(BaseModel):
-    model_config = ConfigDict(strict=True)
-    status: CatalogDownloadStatus
-    lora_id: str | None = None
-    downloaded_bytes: int = 0
-    expected_bytes: int = 0
-    progress: float = 0.0
-    speed_bytes_per_sec: float = 0.0
-    error: str | None = None
-
-
-class ActiveLoraDownloadResponse(BaseModel):
-    model_config = ConfigDict(strict=True)
-    # The currently-running plain-LoRA download session. Nulls when idle.
-    session_id: str | None
-    lora_id: str | None
-    # 0–99 while downloading so a remount can seed the progress label instead of flashing 0%.
-    progress: float | None = None
-
-
-class ActiveIcLoraDownloadResponse(BaseModel):
-    model_config = ConfigDict(strict=True)
-    # The currently-running IC-LoRA download session. Nulls when idle.
-    session_id: str | None
-    ic_lora_id: str | None
-    progress: float | None = None
 
 
 class GeminiModelOptionPayload(BaseModel):
@@ -1981,6 +2096,8 @@ GenerationErrorCode = Literal[
     # Other capability failures stay CAPABILITY_FAILED.
     "LTX_INVALID_API_KEY",
     "LTX_API_PROMPT_EMBEDDING_FAILED",
+    # The image provider's safety checker returned no image for the prompt.
+    "IMAGE_BLOCKED_BY_SAFETY_CHECKER",
 ]
 
 
@@ -2095,26 +2212,6 @@ class AssetListResponse(BaseModel):
     next_cursor: str | None = None
 
 
-class GenerationRisk(BaseModel):
-    """Create-time snapshot of the bet a reckless job took.
-
-    Stored privately as spec["_risk"] (no store migration), promoted to this
-    typed field on every read. Drives the queue badge and the failure backstop
-    copy. An `over` tier also waives a later memory miss at execute. An
-    `unmeasured` tier does not. `over_gib`/`over_ram_gb` mirror the dropped-
-    cell figure semantics; `message` is the snapshotted tier line.
-    """
-
-    model_config = ConfigDict(strict=True, extra="forbid")
-
-    tier: JobRiskTier
-    shortfall_kind: ShortfallKind | None = None
-    over_gib: float | None = None
-    over_ram_gb: int | None = None
-    readout: BudgetReadout | None = None
-    message: str
-
-
 class GenerationCore(BaseModel):
     """Lifecycle fields shared by Desktop and Remote generations.
 
@@ -2135,6 +2232,10 @@ class GenerationCore(BaseModel):
     started_at: int | None = None
     finished_at: int | None = None
     risk: GenerationRisk | None = None
+    # The execution lane the job runs on ("local" or a provider). Set when the job is queued.
+    lane: str = Field(default="local", min_length=1)
+    # The id of the job at its provider. Null for a local job and until the provider accepts it.
+    provider_job_id: str | None = None
 
     @model_validator(mode="after")
     def _failed_has_error_code(self) -> Self:
@@ -2148,6 +2249,13 @@ class Generation(GenerationCore):
     outputs: list[Asset]
 
 
+# What a provider reports for a running external job. Memory only, never stored.
+ApiActivityStatus = Literal["pending", "processing"]
+
+# Who rewrote the prompt of a run: local Gemma, Gemini, or the provider's own expansion.
+PromptRewriteSource = Literal["local", "gemini", "fal_expansion"]
+
+
 class QueueProgress(BaseModel):
     """Live progress for the persisted active queue entry."""
 
@@ -2156,6 +2264,7 @@ class QueueProgress(BaseModel):
     progress: int
     currentStep: int | None
     totalSteps: int | None
+    remainingSeconds: int | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class QueueEntry(BaseModel):
@@ -2163,11 +2272,15 @@ class QueueEntry(BaseModel):
     generation: Generation
     input_assets: list[Asset]
     progress: QueueProgress | None = None
+    # Live queue facts, never stored. A queued or finished row is always cancellable.
+    cancellable: bool = True
+    api_status: ApiActivityStatus | None = None
 
 
 class QueueSnapshot(BaseModel):
     model_config = ConfigDict(strict=True)
-    active: QueueEntry | None
+    # One entry per running job. Jobs on different lanes run at the same time.
+    active: list[QueueEntry] = Field(default_factory=list[QueueEntry])
     queued: list[QueueEntry]
     done: list[QueueEntry] = Field(default_factory=list[QueueEntry])
     failed: list[QueueEntry] = Field(default_factory=list[QueueEntry])
@@ -2191,17 +2304,17 @@ class TrimMediaRequest(BaseModel):
     endSec: float = Field(gt=0, allow_inf_nan=False)
 
 
-class _QueuedVideoParams(BaseModel):
+class _QueuedVideoParams(NagParams):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     resolution: LTXVideoGenResolution = "1080p"
     model: OfferingId
     cameraMotion: VideoCameraMotion = "none"
-    negativePrompt: str = ""
     duration: LTXVideoGenDuration | None = 5
     fps: LTXVideoGenFps = 24
     seed: int | None = None
     promptProvenance: PromptProvenance = "typed"
+    passShape: PassShape = "auto"
 
 
 class TextToVideoParams(_QueuedVideoParams):
@@ -2262,6 +2375,30 @@ class ImageToVideoInputs(BaseModel):
     endFrame: InputAssetRef | None = None
 
 
+class KeyframesParams(_QueuedVideoParams):
+    """Non-media params of a Home Keyframes job. Several stills guide one clip.
+
+    The keyframes need a known length, so ``duration`` cannot be ``None``. A blank prompt
+    is refused: the generate request takes a blank one only with a start image.
+    """
+
+    prompt: NonEmptyPrompt
+    aspectRatio: LTXQueuedAspectRatio = "auto"
+
+    @field_validator("duration")
+    @classmethod
+    def _duration_is_set(cls, value: LTXVideoGenDuration | None) -> LTXVideoGenDuration:
+        if value is None:
+            raise ValueError("Keyframes cannot be combined with automatic duration")
+        return value
+
+
+class KeyframesInputs(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    keyframes: list[KeyframeRef] = Field(min_length=1, max_length=LOCAL_MULTI_KEYFRAME_MAX_COUNT)
+
+
 class LoraRecipeInputs(BaseModel):
     """Start frame for an i2v LoRA recipe. t2v recipes omit this object.
 
@@ -2282,9 +2419,87 @@ class CreateLoraRecipeRequest(BaseModel):
     contract_version: int = Field(default=1, ge=1)
 
 
+class CustomLoraParams(_QueuedVideoParams):
+    """Create-body params for a custom LoRA run.
+
+    The client sends the custom LoRA id + scale, never a filesystem path. Create stores
+    ``loras: [{ ref: "", scale, displayName, customLoraId }]`` and execute hydrates the
+    weights path (see ``make_custom_lora_resolver``). ``aspectRatio`` includes ``auto`` only
+    when the run has a start frame (resolved from the start frame at execute); a run without
+    one rejects ``auto``.
+    """
+
+    prompt: NonEmptyPrompt
+    aspectRatio: LTXQueuedAspectRatio = "16:9"
+    customLoraId: CustomLoraId
+    scale: float = Field(default=1.0, ge=0.0, le=4.0)
+
+
+class CreateCustomLoraRequest(BaseModel):
+    """``inputs`` carries the optional Start Frame. With it the run is image to video. Without it, text to video."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    params: CustomLoraParams
+    inputs: LoraRecipeInputs | None = None
+    contract_version: int = Field(default=1, ge=1)
+
+
 class CreateTextToVideoRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
     params: TextToVideoParams
+    contract_version: int = Field(default=1, ge=1)
+
+
+ImageProvider: TypeAlias = Literal["local", "fal"]
+
+ImageProviderBlocker: TypeAlias = Literal[
+    "FAL_API_KEY_NOT_CONFIGURED",
+    "LOCAL_GENERATION_UNSUPPORTED",
+    "IMAGE_MODEL_NOT_DOWNLOADED",
+]
+
+IMAGE_MIN_SIDE = 256
+IMAGE_MAX_SIDE = 2048
+IMAGE_SIDE_GRID = 16
+
+
+class _TextToImageFields(BaseModel):
+    """Shared text-to-image params. No image input exists: Z-Image edit is not used."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    prompt: NonEmptyPrompt = Field(max_length=4000)
+    promptProvenance: PromptProvenance = "typed"
+    width: int = Field(default=1024, ge=IMAGE_MIN_SIDE, le=IMAGE_MAX_SIDE)
+    height: int = Field(default=1024, ge=IMAGE_MIN_SIDE, le=IMAGE_MAX_SIDE)
+    seed: int | None = None
+
+
+class TextToImageParams(_TextToImageFields):
+    """Create-body params. An omitted provider resolves from the settings at create time."""
+
+    provider: ImageProvider | None = None
+
+
+class TextToImageStoredParams(_TextToImageFields):
+    """Params stored on the row: the provider is always resolved, so a retry keeps it."""
+
+    provider: ImageProvider
+
+
+class ImageGenerationStatusResponse(BaseModel):
+    """Which image providers can run now. A blocker is the code create would refuse with."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+    defaultProvider: ImageProvider
+    localBlocker: ImageProviderBlocker | None
+    falBlocker: ImageProviderBlocker | None
+
+
+class CreateTextToImageRequest(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+    params: TextToImageParams
     contract_version: int = Field(default=1, ge=1)
 
 
@@ -2388,7 +2603,14 @@ class CreateImageToVideoRequest(BaseModel):
     contract_version: int = Field(default=1, ge=1)
 
 
-class CreateAudioToVideoParams(BaseModel):
+class CreateKeyframesRequest(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+    params: KeyframesParams
+    inputs: KeyframesInputs
+    contract_version: int = Field(default=1, ge=1)
+
+
+class CreateAudioToVideoParams(NagParams):
     """Public non-media A2V inputs; the server derives inference frames from audio."""
 
     model_config = ConfigDict(strict=True, extra="forbid")
@@ -2399,9 +2621,9 @@ class CreateAudioToVideoParams(BaseModel):
     model: OfferingId
     fps: LTXVideoGenFps = 24
     cameraMotion: VideoCameraMotion = "none"
-    negativePrompt: str = ""
     seed: int | None = None
     promptProvenance: PromptProvenance = "typed"
+    passShape: PassShape = "auto"
 
 
 class AudioToVideoParams(CreateAudioToVideoParams):
@@ -2436,7 +2658,7 @@ class CreateAudioToVideoRequest(BaseModel):
 RETAKE_MAX_DURATION_SECONDS = 10.0
 
 
-class RetakeParams(BaseModel):
+class RetakeParams(NagParams):
     """Queued Home/Remote retake.
 
     ``resolution`` omitted keeps the source size. Either way the picture is
@@ -2481,7 +2703,7 @@ class CreateRetakeRequest(BaseModel):
     contract_version: int = Field(default=1, ge=1)
 
 
-class ExtendParams(BaseModel):
+class ExtendParams(NagParams):
     """Queued Home/Remote extend.
 
     ``resolution`` omitted keeps the source size. Either way the picture is
@@ -2601,8 +2823,10 @@ class EditPreflightResolution(BaseModel):
 
 
 class EditPreflightCell(BaseModel):
-    """Verdict for one (candidate, duration) cell. ``message``/``code`` are None
-    when ``ok``; otherwise the exact refusal Generate would return."""
+    """Verdict for one (candidate, duration) cell. ``ok`` means Generate would
+    enqueue it in the echoed mode. An ok cell admitted on a bet carries the bet
+    line as ``message``; a failing cell carries the exact refusal Generate
+    would return."""
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
@@ -2611,14 +2835,14 @@ class EditPreflightCell(BaseModel):
     ok: bool
     message: str | None = None
     code: str | None = None
-    # Set on a failing cell the memory check could downgrade. Hard refusals
-    # (window math, unsupported) leave these empty, so a picker can tell them
-    # apart while ``ok`` stays false in both modes.
+    # The bet: admitted on an ok cell, refused on a failing one. Hard refusals
+    # (window math, unsupported) leave these empty.
     tier: JobRiskTier | None = None
     over_gib: float | None = None
     over_ram_gb: int | None = None
     shortfall_kind: ShortfallKind | None = None
     readout: BudgetReadout | None = None
+    estimated_seconds: int | None = None
 
 
 class EditPreflightResponse(BaseModel):
@@ -2629,7 +2853,7 @@ class EditPreflightResponse(BaseModel):
     source: EditPreflightSource
     resolutions: list[EditPreflightResolution]
     cells: list[EditPreflightCell]
-    budgetMode: BudgetMode = "standard"
+    budgetMode: BudgetMode = "brave"
 
 
 class IcLoraPreflightRequest(BaseModel):
@@ -2677,23 +2901,32 @@ class IcLoraPreflightSource(BaseModel):
     fps: float = Field(gt=0)
 
 
-class IcLoraPreflightCell(BaseModel):
-    """Verdict for one duration. ``message``/``code`` are None when ``ok``;
-    otherwise the exact refusal Generate would return for this input."""
+class IcLoraPreflightVerdict(BaseModel):
+    """Verdict for one candidate. ``ok`` means Generate would enqueue it in the echoed mode.
+
+    A failing cell carries the exact refusal Generate would return. An ok cell admitted on a
+    bet carries the bet (``tier`` and ``message``).
+    """
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    duration: float
     ok: bool
     message: str | None = None
     code: str | None = None
-    # Set on a failing cell the memory check could downgrade. Hard refusals
-    # leave these empty. ``ok`` stays false in both modes.
+    # The bet: admitted on an ok cell, refused on a failing one. Hard refusals
+    # leave these empty.
     tier: JobRiskTier | None = None
     over_gib: float | None = None
     over_ram_gb: int | None = None
     shortfall_kind: ShortfallKind | None = None
     readout: BudgetReadout | None = None
+
+
+class IcLoraPreflightCell(IcLoraPreflightVerdict):
+    """Verdict for one duration. ``message``/``code`` are None when ``ok``;
+    otherwise the exact refusal Generate would return for this input."""
+
+    duration: float
 
 
 class IcLoraPreflightResponse(BaseModel):
@@ -2703,7 +2936,7 @@ class IcLoraPreflightResponse(BaseModel):
 
     source: IcLoraPreflightSource
     cells: list[IcLoraPreflightCell]
-    budgetMode: BudgetMode = "standard"
+    budgetMode: BudgetMode = "brave"
 
 
 # 1440p and 2160p run on AlphaGen only, behind the highResVideoToVideo feature flag.
@@ -2712,7 +2945,61 @@ IcLoraRecipeResolution: TypeAlias = Literal[
 ]
 
 
-class _IcLoraRecipeCore(BaseModel):
+class IcLoraRecipeMemorySource(BaseModel):
+    """The picked clip: its file size and its frames at the output rate."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    width: int = Field(gt=0, le=16384)
+    height: int = Field(gt=0, le=16384)
+    frames: int = Field(gt=0, le=10000)
+
+
+class IcLoraRecipeMemoryRequest(BaseModel):
+    """Memory advice for a Home video recipe, before and after a clip is picked.
+
+    ``cells`` are the output cells the form offers. Without ``source`` each is priced for a 16:9
+    clip of that size. ``resolution`` is the selected cell, priced for ``source`` when given.
+    """
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    model: OfferingId
+    resolution: IcLoraRecipeResolution
+    cells: list[IcLoraRecipeResolution] = Field(max_length=7)
+    audioMode: IcLoraAudioMode | None = None
+    scale: float | None = Field(default=None, ge=0.0, le=2.0)
+    source: IcLoraRecipeMemorySource | None = None
+    # The Advanced choices of the form, as in the create body. None is Auto. The advice then
+    # prices the same tiling the run uses.
+    tilingOverlap: float | None = Field(default=None, ge=MIN_TILE_OVERLAP, le=MAX_TILE_OVERLAP)
+    carryFrames: int | None = Field(default=None, ge=MIN_CARRY_FRAMES)
+    tilingSize: IcLoraTileSize | None = None
+    maxWindowFrames: int | None = Field(default=None, ge=MIN_WINDOW_FRAMES)
+
+
+class IcLoraCellFit(BaseModel):
+    """How long a clip one output cell fits on this machine.
+
+    ``max_frames`` is the longest clip, in frames at the output rate, whose job loads. 0 when none
+    does. ``full`` is a clip at the input cap.
+    """
+
+    resolution: IcLoraRecipeResolution
+    max_frames: int
+    full: bool
+
+
+class IcLoraRecipeMemoryResponse(BaseModel):
+    memory: MemoryCapacity
+    # The longest clip a recipe takes, in frames. Every ``IcLoraCellFit`` is measured against it.
+    max_input_frames: int
+    cells: list[IcLoraCellFit]
+    # The selected cell for the picked clip. None without a source, or when the cell cannot run.
+    selected: JobMemoryAsk | None = None
+
+
+class _IcLoraRecipeCore(NagParams):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     prompt: str = ""
@@ -2744,6 +3031,97 @@ class IcLoraVideoRecipeParams(IcLoraRecipeParams):
     # Only a recipe whose catalog entry has a control_type control takes it. Create fills the
     # catalog default when it is omitted, and refuses it for any other recipe.
     controlType: IcLoraControlType | None = None
+    # Advanced controls of a recipe whose catalog entry has a tile plan (Refine Details). A
+    # recipe without one refuses them. Omitted keeps the catalog tile overlap and the carry
+    # of the cell.
+    tilingOverlap: float | None = Field(default=None, ge=MIN_TILE_OVERLAP, le=MAX_TILE_OVERLAP)
+    carryFrames: int | None = Field(default=None, ge=MIN_CARRY_FRAMES)
+    tilingSize: IcLoraTileSize | None = None
+    maxWindowFrames: int | None = Field(default=None, ge=MIN_WINDOW_FRAMES)
+
+
+IcLoraTilePreset: TypeAlias = Literal["standard", "large", "extra-large"]
+
+
+class IcLoraTilePreflightRequest(BaseModel):
+    """Advisory verdict per tile size and per window for a recipe create.
+
+    The body is the create body. Each requested tile size replaces its ``tilingSize``, each
+    requested maximum chunk length replaces its ``maxWindowFrames``, and each requested carry replaces its
+    ``carryFrames``. The other choice of the body stays. ``standard`` is the tile of the
+    catalog entry. An empty prompt is accepted here. Create still refuses one. The response
+    also gives the carry, window and tile the run uses when the body omits them.
+    """
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    params: IcLoraVideoRecipeParams
+    inputs: IcLoraRecipeInputs
+    tileSizes: list[IcLoraTilePreset] = Field(default_factory=list[IcLoraTilePreset], max_length=3)
+    maxWindows: list[Annotated[int, Field(ge=MIN_WINDOW_FRAMES)]] = Field(default_factory=list[int], max_length=4)
+    # Carries to judge against the window the body holds. The form sends the shared preset list.
+    carries: list[Annotated[int, Field(ge=MIN_CARRY_FRAMES)]] = Field(default_factory=list[int], max_length=8)
+
+
+class IcLoraTilePreflightCell(IcLoraPreflightVerdict):
+    tileSize: IcLoraTilePreset
+
+
+class IcLoraMaxWindowPreflightCell(IcLoraPreflightVerdict):
+    maxWindowFrames: int
+
+
+class IcLoraCarryPreflightCell(IcLoraPreflightVerdict):
+    carryFrames: int
+
+
+class IcLoraAutoSinglePass(BaseModel):
+    """Auto runs the whole clip in one pass."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    kind: Literal["single-pass"] = "single-pass"
+
+
+class IcLoraAutoWindowed(BaseModel):
+    """Auto runs the clip in chunks of ``frames`` frames."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    kind: Literal["windowed"] = "windowed"
+    frames: int = Field(gt=0)
+
+
+IcLoraAutoChunking: TypeAlias = Annotated[
+    IcLoraAutoSinglePass | IcLoraAutoWindowed, Field(discriminator="kind")
+]
+
+
+class IcLoraTilingDefaults(BaseModel):
+    """What Auto runs when the request omits a tiling control.
+
+    ``carryFrames`` is the Auto carry. ``overlapFraction`` is the Auto tile overlap of the LoRA.
+    ``auto`` is the Auto chunk length, picked from the clip and the resolution. It is None when
+    Auto is refused: the cells carry the refusal.
+    """
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    carryFrames: int
+    overlapFraction: float | None = None
+    auto: IcLoraAutoChunking | None = None
+
+
+class IcLoraTilePreflightResponse(BaseModel):
+    """Verdicts only. The input is never echoed."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    cells: list[IcLoraTilePreflightCell]
+    maxWindowCells: list[IcLoraMaxWindowPreflightCell] = Field(default_factory=list[IcLoraMaxWindowPreflightCell])
+    carryCells: list[IcLoraCarryPreflightCell] = Field(default_factory=list[IcLoraCarryPreflightCell])
+    defaults: IcLoraTilingDefaults
+    budgetMode: BudgetMode = "brave"
 
 
 class IcLoraRecipeStoredParams(_IcLoraRecipeCore):
@@ -2759,6 +3137,11 @@ class IcLoraRecipeStoredParams(_IcLoraRecipeCore):
     audioMode: IcLoraAudioMode
     fps: float = Field(gt=0)
     loras: list[LoraEntry] = Field(default_factory=list[LoraEntry])
+    # Advanced tiling controls of a recipe with a catalog tile plan. None keeps the plan.
+    tilingOverlap: float | None = Field(default=None, ge=MIN_TILE_OVERLAP, le=MAX_TILE_OVERLAP)
+    carryFrames: int | None = Field(default=None, ge=MIN_CARRY_FRAMES)
+    tilingSize: IcLoraTileSize | None = None
+    maxWindowFrames: int | None = Field(default=None, ge=MIN_WINDOW_FRAMES)
 
     @model_validator(mode="after")
     def _require_one_catalog_lora(self) -> "IcLoraRecipeStoredParams":

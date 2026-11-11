@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { components } from "../../generated/backend-openapi";
 import { unwrapApiResult } from "../lib/unwrapApiResult";
-import { generationQueryKeys } from "./generationQueryKeys";
 import type { ExploreApi } from "../runtime/ExploreRuntime";
 
 type FeatureFlagsPatch = components["schemas"]["FeatureFlagsPatch"];
@@ -31,10 +30,6 @@ export function useUpdateFeatureFlags(api: FeatureFlagsApi) {
       queryClient.setQueryData(FEATURE_FLAGS_QUERY_KEY, flags);
       // Edit verdicts follow highResVideoToVideo, so a cached one would outlive the toggle.
       void queryClient.invalidateQueries({ queryKey: ["edit-preflight"] });
-      // The recent features list leaves out a recipe that needs highResVideoToVideo.
-      void queryClient.invalidateQueries({
-        queryKey: [...generationQueryKeys.all, "recent-features"],
-      });
     },
   });
 }

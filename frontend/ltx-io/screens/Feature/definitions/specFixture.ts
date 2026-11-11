@@ -41,7 +41,8 @@ const LTX_23_FAST_SPEC = localSpec("LTX 2.3 Fast");
 export function specFixture(): VideoGenerationModelSpecsResponse {
   return {
     api_models: [],
-    budgetMode: "standard",
+    budgetMode: "brave",
+    neverSplitIntoParts: false,
     local_models: [
       {
         pipeline: "fast",
@@ -67,7 +68,8 @@ export function specFixtureBothOfferings(
     activeDisplayName === "LTX 2.3 Fast" ? LTX_23_FAST_SPEC : LTX_25_FAST_SPEC;
   return {
     api_models: [],
-    budgetMode: "standard",
+    budgetMode: "brave",
+    neverSplitIntoParts: false,
     local_models: [{ pipeline: "fast", spec: activeSpec }],
     downloaded_local_models: [
       {

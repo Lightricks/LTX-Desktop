@@ -12,8 +12,10 @@ import numpy as np
 from PIL import Image
 
 from api_types import (
+    ApiActivityStatus,
     IcLoraRecipeInputs,
     IcLoraVideoRecipeStoredParams,
+    QueueProgress,
     IcLoraSheetInputs,
     IcLoraSynthesizedStoredParams,
     IcLoraTrackInputs,
@@ -28,6 +30,8 @@ from api_types import (
 from services.features.ic_lora_recipes import get_ic_lora_recipe
 from services.generation_interrupt import GenerationCancelledError, is_requested
 from services.features.video import require_supported_contract_version
+from services.generation_queue.control import QueueLiveState
+from services.generation_queue.sessions import JobProgress, JobSession, LocalGenerationOps, LocalJobSession
 from services.generation_queue.types import ExecutionOutcome, OutputAllocation, OutputPlan
 from services.records import GenerationRecord
 
@@ -130,6 +134,7 @@ class FakeGenerationExecutor:
         self,
         generation: GenerationRecord,
         outputs: tuple[OutputAllocation, ...],
+        session: JobSession,
     ) -> ExecutionOutcome:
         if self._seen_prompts is not None:
             prompt = _spec_params(generation.spec).get("prompt")
@@ -143,3 +148,93 @@ class FakeGenerationExecutor:
         for allocation in outputs:
             _write_valid_output(allocation)
         return ExecutionOutcome()
+
+
+class FakeJobSession:
+    """A JobSession that records cancellation and nothing else. For executors under test."""
+
+    def __init__(self, generation_id: str = "test-generation") -> None:
+        self._generation_id = generation_id
+        self.cancelled = False
+        self.progress_updates: list[tuple[str, int]] = []
+        self.provider_job_ids: list[str] = []
+
+    @property
+    def generation_id(self) -> str:
+        return self._generation_id
+
+    @property
+    def holds_gpu_slot(self) -> bool:
+        return False
+
+    def start_api(self) -> None:
+        return None
+
+    def set_progress(
+        self,
+        phase: str,
+        progress: int,
+        current_step: int | None = None,
+        total_steps: int | None = None,
+    ) -> None:
+        del current_step, total_steps
+        self.progress_updates.append((phase, progress))
+
+    def set_api_status(self, status: ApiActivityStatus) -> None:
+        del status
+
+    def set_provider_job_id(self, provider_job_id: str) -> bool:
+        self.provider_job_ids.append(provider_job_id)
+        return True
+
+    def progress(self) -> JobProgress | None:
+        return None
+
+    def api_status(self) -> ApiActivityStatus | None:
+        return None
+
+    def raise_if_cancelled(self) -> None:
+        if self.cancelled:
+            raise GenerationCancelledError()
+
+    def wait_cancelled(self, timeout: float) -> bool:
+        del timeout
+        return self.cancelled
+
+    def cancel(self) -> None:
+        self.cancelled = True
+
+    def complete(self, result: str | list[str] | None) -> None:
+        del result
+
+    def fail(self, error: str) -> None:
+        del error
+
+
+class LocalLiveQueueControl:
+    """A queue control for tests that run no runner: it reads progress from the shared slot."""
+
+    def __init__(self, generation: LocalGenerationOps) -> None:
+        self._generation = generation
+
+    def wake(self) -> None:
+        return None
+
+    def interrupt(self, generation_id: str, attempt_count: int) -> None:
+        del generation_id, attempt_count
+
+    def live_state(self, generation_id: str) -> QueueLiveState:
+        progress = LocalJobSession(self._generation, generation_id).progress()
+        return QueueLiveState(
+            progress=None
+            if progress is None
+            else QueueProgress(
+                phase=progress.phase,
+                progress=progress.progress,
+                currentStep=progress.current_step,
+                totalSteps=progress.total_steps,
+                remainingSeconds=progress.remaining_seconds,
+            ),
+            api_status=None,
+            cancellable=True,
+        )
