@@ -29,9 +29,9 @@ from api_types import (
     WarnedFastAspectCell,
     WarnedFastCell,
 )
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 from keyframe_request import validate_keyframe_inputs
-from runtime_config.fast_chunking import job_window_count
+from inference.fast_chunking import job_window_count
 from runtime_config.ltx_capabilities import (
     CanvasMode,
     LtxOfferingCapabilities,

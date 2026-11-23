@@ -15,7 +15,7 @@ from services.features.video.synthesized_ic_lora import (
     SynthesizedIcLoraExecutor,
     SynthesizedJob,
 )
-from services.records import CapabilityFailedError
+from inference.errors import CapabilityFailedError
 
 
 class IcLoraSheetRecipeExecutor(SynthesizedIcLoraExecutor[IcLoraSheetInputs]):

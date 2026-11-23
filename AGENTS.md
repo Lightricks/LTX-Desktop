@@ -82,7 +82,7 @@ Key patterns:
 - Python 3.13+ (per `.python-version`), managed with `uv`
 - Pyright strict mode (`backend/pyrightconfig.json`)
 - Dependencies in `backend/pyproject.toml`
-- Bumping `ltx-core` / `ltx-pipelines`: re-verify every `services.patches` import in `backend/ltx2_server.py` (private upstream monkey-patches). Drop a patch only if upstream now includes the fix.
+- Bumping `ltx-core` / `ltx-pipelines`: re-verify every CUDA patch in `backend/inference/patches/` (imported from `backend/inference/apply_patches.py`), plus the Darwin leftovers in `backend/services/patches/` (imported from `backend/ltx2_server.py`). These are private upstream monkey-patches. Drop a patch only if upstream now includes the fix.
 
 ## Key File Locations
 

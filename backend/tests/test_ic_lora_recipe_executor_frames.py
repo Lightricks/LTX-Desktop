@@ -23,7 +23,8 @@ from services.features.video.ic_lora_recipe import IcLoraRecipeExecutor
 from services.generation_queue.types import OutputAllocation
 from tests.fakes.generation import FakeJobSession
 from services.media_probe import first_audio_codec, video_frame_count
-from services.records import AssetRecord, CapabilityFailedError, GenerationRecord
+from inference.errors import CapabilityFailedError
+from services.records import AssetRecord, GenerationRecord
 from tests.lora_catalog_helpers import add_ic_lora
 from tests.video_fixtures import write_pattern_clip
 

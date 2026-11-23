@@ -7,7 +7,7 @@ from runtime_config.ic_lora_chunking import (
     ic_lora_chunk_pixel_frames,
 )
 from runtime_config.ic_lora_stage_mode import IcLoraStageMode
-from runtime_config.ic_lora_tiling import IcLoraTiling
+from inference.ic_lora_tiling import IcLoraTiling
 
 
 def test_large_single_stage_long_clip_chunks() -> None:

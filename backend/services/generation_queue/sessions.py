@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from api_types import ApiActivityStatus, GenerationProgressResponse
-from services import generation_interrupt
+import inference.interrupt as interrupt
 from services.generation_queue.control import SharedGenerationSlot
 
 
@@ -171,7 +171,7 @@ class LocalJobSession:
     def wait_cancelled(self, timeout: float) -> bool:
         # The interrupt Event is the cancel signal of the running job (see raise_if_cancelled).
         # The generation state is not: it stays "cancelled" after the slot is released.
-        return generation_interrupt.wait_requested(timeout)
+        return interrupt.wait_requested(timeout)
 
     def cancel(self) -> None:
         self._generation.cancel_generation()

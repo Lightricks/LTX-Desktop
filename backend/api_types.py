@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Annotated, Literal, NamedTuple, Self, TypeAlias, cast, get_args
+from typing import Annotated, Literal, Self, TypeAlias, cast, get_args
 
 from pydantic import (
     BaseModel,
@@ -51,7 +51,7 @@ from api_types_lora import (
     LoraEntry as LoraEntry,
 )
 from assistant_limits import ASSISTANT_LIMITS
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 from runtime_config.eta import EtaBasis, EtaFeature
 from runtime_config.reject_reasons import (
     BudgetMode,
@@ -64,7 +64,7 @@ from runtime_config.reject_reasons import (
     WarnedCellTier,
 )
 from runtime_config.ic_lora_stage_mode import IcLoraStageMode, ic_lora_stage_mode
-from runtime_config.ic_lora_tiling import (
+from inference.ic_lora_tiling import (
     MAX_TILE_OVERLAP,
     MIN_CARRY_FRAMES,
     MIN_TILE_OVERLAP,
@@ -72,11 +72,21 @@ from runtime_config.ic_lora_tiling import (
     IcLoraTileSize,
     IcLoraTiling,
 )
-from runtime_config.nag_limits import (
+from inference.nag_limits import (
     MAX_ALPHA as NAG_MAX_ALPHA,
     MAX_SCALE as NAG_MAX_SCALE,
     MAX_TAU as NAG_MAX_TAU,
     NEGATIVE_PROMPT_MAX_LENGTH,
+)
+
+from inference.types import (
+    DEFAULT_EDIT_CONTEXT_MODE,
+    EditContextMode,
+    ExtendMode,
+    ImageConditioningInput as ImageConditioningInput,
+    LTXLocalModelId,
+    REFERENCE_STILL_FRAME_IDX as REFERENCE_STILL_FRAME_IDX,
+    RetakeMode,
 )
 
 NonEmptyPrompt = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -140,23 +150,9 @@ ModelCheckpointID = Literal[
     "gemma-4-e2b-it",
     "z-image-turbo",
 ]
-LTXLocalModelId = Literal[
-    "ltx-2.5-22b-distilled",
-    "ltx-2.3-22b-distilled-1.1",
-    "ltx-2.3-22b-distilled",
-]
 # T2V/I2V/A2V/LoRA create-body `params.model`. Not a GenSpace pipeline (`fast`)
 # and not a checkpoint id. Future API rows (`ltx-2.5-pro`, …) join this union.
 OfferingId = Literal["ltx-2.3-fast", "ltx-2.5-fast"]
-
-
-class ImageConditioningInput(NamedTuple):
-    """Image conditioning triplet used by all video pipelines."""
-
-    path: str
-    frame_idx: int
-    strength: float
-
 
 JsonObject: TypeAlias = dict[str, object]
 VideoCameraMotion = Literal[
@@ -253,9 +249,6 @@ class FeatureFlags(BaseModel):
     # Show a "Negative prompt:" line under each result's meta bar, for every feature
     # that stores a negative prompt. For comparing runs with and without one. Off by default.
     showGenerationNegativePrompt: bool = False
-    # Offer the Keyframes feature on Home. The backend refuses the create route while it is
-    # off, and Home hides the feature. GenSpace multi-keyframe has no flag. Off by default.
-    keyframes: bool = False
 
 
 class UiPreferences(BaseModel):
@@ -274,7 +267,6 @@ class FeatureFlagsPatch(BaseModel):
     highResVideoToVideo: bool | None = None
     createWithAi: bool | None = None
     showGenerationNegativePrompt: bool | None = None
-    keyframes: bool | None = None
 
 
 class GenerationProgressResponse(BaseModel):
@@ -1068,10 +1060,6 @@ class SuggestGapPromptRequest(BaseModel):
         return self
 
 
-RetakeMode: TypeAlias = Literal[
-    "replace_audio_and_video", "replace_video", "replace_audio"
-]
-
 # ltxv-api /v2/retake and /v2/extend accept ltx-2-pro / ltx-2-3-pro. Desktop maps
 # those to pipeline "pro" — narrower than LTXVideoGenPipeline on purpose.
 RetakeExtendModel: TypeAlias = Literal["pro"]
@@ -1099,9 +1087,6 @@ class RetakeRequest(BaseModel):
     resolution: TargetResolution | None = None
     # API-mode only; ignored for local generation (there is no local model choice).
     model: RetakeExtendModel = "pro"
-
-
-ExtendMode: TypeAlias = Literal["start", "end"]
 
 
 class ExtendRequest(BaseModel):
@@ -1141,12 +1126,6 @@ class IcLoraExtractRequest(BaseModel):
     video_path: str
     conditioning_type: ConditioningType = "canny"
     frame_time: float = 0
-
-
-# The frame index of a reference still (the look still of Layout To Render). Upstream
-# rejects a negative index, so the pipeline keeps the still apart from the clip frames.
-# Only a catalog entry can pin it (``reference_image_frame``). A request cannot send it.
-REFERENCE_STILL_FRAME_IDX = -1
 
 
 class IcLoraImageInput(BaseModel):
@@ -2673,6 +2652,9 @@ class RetakeParams(NagParams):
     startTime: float = Field(ge=0, allow_inf_nan=False)
     duration: float = Field(ge=2, allow_inf_nan=False)
     mode: RetakeMode = "replace_audio_and_video"
+    # "short" keeps about 2 s of context on each side of the selection instead of filling the
+    # window to the cap (see continuation_context_frames).
+    contextMode: EditContextMode = DEFAULT_EDIT_CONTEXT_MODE
     resolution: TargetResolution | None = None
     seed: int | None = None
     # Accepted so the shared Home form can submit provenance like every other
@@ -2717,6 +2699,9 @@ class ExtendParams(NagParams):
     model: OfferingId
     duration: float = Field(ge=2, le=20, allow_inf_nan=False)
     mode: ExtendMode = "end"
+    # "short" conditions on only the last frames of the clip (see
+    # CONTINUATION_CONTEXT_FRAMES) instead of the whole encode window.
+    contextMode: EditContextMode = DEFAULT_EDIT_CONTEXT_MODE
     resolution: TargetResolution | None = None
     seed: int | None = None
     # Accepted so the shared Home form can submit provenance like every other
@@ -2771,8 +2756,9 @@ class EditPreflightRequest(BaseModel):
     presets, retake minimum) so every candidate has an exact resolution-level
     verdict; callers add the durations they display (extend presets, retake
     current selection) for exact per-cell messages. ``startTime`` only affects
-    retake windowing, ``mode`` only extend stitching; both default so each
-    feature sends what it needs.
+    retake windowing, ``mode`` only extend stitching and ``contextMode`` only how
+    much of the clip an extend keeps as context (which sets the window it is
+    priced at); all default so each feature sends what it needs.
     """
 
     model_config = ConfigDict(strict=True, extra="forbid")
@@ -2781,6 +2767,7 @@ class EditPreflightRequest(BaseModel):
     assetId: str = Field(min_length=1)
     startTime: float = Field(default=0, ge=0, allow_inf_nan=False)
     mode: ExtendMode = "end"
+    contextMode: EditContextMode = DEFAULT_EDIT_CONTEXT_MODE
     candidates: list[EditPreflightCandidate] = Field(min_length=1, max_length=8)
     durations: list[float] = Field(min_length=1, max_length=32)
 

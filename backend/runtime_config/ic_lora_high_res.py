@@ -23,7 +23,7 @@ from __future__ import annotations
 from typing import Final, Literal
 
 from api_types import IcLoraSettings
-from runtime_config.ic_lora_tiling import HIGH_RES_CARRY_FRAMES, IC_LORA_TILE_OVERLAP, IcLoraTiling
+from inference.ic_lora_tiling import HIGH_RES_CARRY_FRAMES, IC_LORA_TILE_OVERLAP, IcLoraTiling
 from runtime_config.ltx_capabilities import TWO_PASS_PIXELS_16_9
 
 HighResResolution = Literal["1440p", "2160p"]

@@ -40,11 +40,6 @@ export const DEV_FLAG_SECTIONS: DevFlagSection[] = [
         label: 'Show negative prompt on results',
         description: 'Show a "Negative prompt:" line under each result, in every feature that has a negative prompt. It shows the text the model got, with the NAG scale. It shows "(none)" when no negative prompt was sent, for example when the text is empty or NAG is off. Off by default.',
       },
-      {
-        key: 'keyframes',
-        label: 'Keyframes (Home)',
-        description: 'Show the Keyframes feature on Home. You place several images on the timeline of one video and set the strength of each. It needs a downloaded local LTX model. GenSpace multi-keyframe is not affected. Off by default.',
-      },
     ],
   },
   {

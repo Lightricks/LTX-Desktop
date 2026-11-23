@@ -9,9 +9,9 @@ from threading import Event, Lock, Thread, current_thread
 from typing import Literal, TypeVar
 
 from services.store import Store
+from inference.errors import CapabilityFailedError
 from services.records import (
     AttemptError,
-    CapabilityFailedError,
     GenerationErrorCode,
     GenerationRecord,
     MarkSucceededError,
@@ -40,10 +40,10 @@ from services.generation_queue.output_names import output_asset_name
 from services.generation_queue.registry import ExecutorRegistry
 from services.generation_queue.sessions import JobSession, SlotCancelSession
 from services.generation_queue.types import ExecutionOutcome, OutputAllocation
-from services.generation_interrupt import is_cancel_exception
+from inference.interrupt import is_cancel_exception
 from services.gpu_info.gpu_info import GpuInfo
-from services.patches import diffusion_stage_cache
-from services.patches.pinned_pool_fix import is_cuda_oom_error
+from inference.patches import diffusion_stage_cache
+from inference.patches.pinned_pool_fix import is_cuda_oom_error
 from services.storage_info.storage_info import DriveType
 
 logger = logging.getLogger(__name__)

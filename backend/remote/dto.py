@@ -17,6 +17,7 @@ from api_types import (
     ApiActivityStatus,
     Asset,
     AssetCore,
+    EditContextMode,
     ExtendMode,
     IcLoraAudioMode,
     IcLoraControlType,
@@ -31,7 +32,7 @@ from api_types import (
 )
 from api_motion_path import MotionPath
 from remote.media_urls import MediaUrlSigner
-from runtime_config.ic_lora_tiling import (
+from inference.ic_lora_tiling import (
     MAX_TILE_OVERLAP,
     MIN_CARRY_FRAMES,
     MIN_TILE_OVERLAP,
@@ -53,6 +54,7 @@ _SAFE_PARAM_STRINGS = frozenset(
         "promptProvenance",
         "provider",
         "mode",
+        "contextMode",
         "audioMode",
         "passShape",
         "controlType",
@@ -66,6 +68,7 @@ _REMOTE_CONTROL_TYPES = frozenset(get_args(IcLoraControlType))
 _REMOTE_TILE_SIZES = frozenset(get_args(IcLoraTileSize))
 _SAFE_PARAM_NUMBERS = frozenset({"duration", "fps", "startTime", "tilingOverlap", *_NAG_NUMBER_FIELDS})
 _REMOTE_MODES = frozenset((*get_args(RetakeMode), *get_args(ExtendMode)))
+_REMOTE_CONTEXT_MODES = frozenset(get_args(EditContextMode))
 
 
 class RemoteAsset(AssetCore):
@@ -135,6 +138,8 @@ class RemoteGenerationParams(BaseModel):
     customLoraName: str | None = None
     numFrames: int | None = None
     mode: RetakeMode | ExtendMode | None = None
+    # How much of the clip an Extend or Retake keeps as context, so the phone shows it and Reuse restores it.
+    contextMode: EditContextMode | None = None
     startTime: int | float | None = None
     seed: int | None = None
     audioMode: IcLoraAudioMode | None = None
@@ -352,6 +357,7 @@ def _project_params(value: object) -> RemoteGenerationParams:
         customLoraName=_project_custom_lora_name(mapping.get("loras")),
         numFrames=_optional_int(mapping.get("numFrames")),
         mode=_project_mode(strings.get("mode")),
+        contextMode=_project_context_mode(strings.get("contextMode")),
         startTime=_non_negative_number(numbers.get("startTime")),
         seed=_optional_int(mapping.get("seed")),
         audioMode=_project_audio_mode(strings.get("audioMode")),
@@ -516,6 +522,12 @@ def _non_negative_number(value: int | float | None) -> int | float | None:
 def _project_mode(value: str | None) -> RetakeMode | ExtendMode | None:
     if value in _REMOTE_MODES:
         return cast(RetakeMode | ExtendMode, value)
+    return None
+
+
+def _project_context_mode(value: str | None) -> EditContextMode | None:
+    if value in _REMOTE_CONTEXT_MODES:
+        return cast(EditContextMode, value)
     return None
 
 

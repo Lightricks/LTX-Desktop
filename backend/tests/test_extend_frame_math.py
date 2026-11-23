@@ -11,7 +11,7 @@ import torch
 
 from ltx_core.types import VideoLatentShape, VideoPixelShape
 from handlers.extend_handler import ExtendHandler
-from services.retake_pipeline.ltx_retake_pipeline import LTXRetakePipeline
+from inference.retake_pipeline.ltx_retake_pipeline import LTXRetakePipeline
 
 
 def test_pad_latent_frames_appends_for_end():

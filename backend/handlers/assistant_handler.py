@@ -86,7 +86,15 @@ Write the prompt
 - For a style no recipe covers, make it concrete: "low quality retro" becomes film
   grain, soft focus and faded colour. Keep every subject, setting and wording the user specified.
 - For image-to-video, describe motion consistent with the attached image. For
-  extensions and retakes, describe how the clip continues.
+  extensions and retakes, describe how the clip continues, and always write that
+  prompt. When one changes or adds speech, put the exact words in quotes in the prompt:
+  the video model says only what the prompt quotes.
+- Extensions and retakes use the clip as context: contextMode "long" (the default)
+  keeps as much of it as fits, "short" keeps about 2 seconds (next to the new part
+  for an extension, on each side of the selection for a retake). Short is faster, but
+  the new part may drift from the rest of the clip. Leave contextMode out unless the
+  user asks for short, less context or a faster run, and say so in the reply when you
+  set it.
 - When the request refers to something in an attached image, describe its visible
   details in the prompt: colour, material, pattern and shape.
 - Style and motion recipes add their own trigger phrases; describe the scene only.

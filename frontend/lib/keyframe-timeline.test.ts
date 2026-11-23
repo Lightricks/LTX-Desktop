@@ -28,7 +28,7 @@ describe('lastFrameFromDuration', () => {
   it('matches backend compute_num_frames - 1 so stills cannot sit past the clip', () => {
     // Cross-language parity (no shared code with frame_math). Re-verify with:
     //   cd backend && uv run python -c "
-    //   from frame_math import compute_num_frames
+    //   from inference.frame_math import compute_num_frames
     //   for s, f in [(5,24),(5,25),(5,50),(10,24),(10,25),(10,50),(4,50)]: print(s, f, compute_num_frames(s,f)-1)"
     assert.equal(lastFrameFromDuration(5, 24), 120)
     assert.equal(lastFrameFromDuration(5, 25), 120)

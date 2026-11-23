@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 
 from api_model_specs import build_generate_video_model_specs_response
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 from runtime_config.budget_admission import PricedJob
 from runtime_config.budget_decision import VideoJobLoad
 from runtime_config.budget_evidence import Extrapolated, JobShape

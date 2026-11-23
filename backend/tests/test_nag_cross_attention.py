@@ -14,19 +14,19 @@ from ltx_pipelines.ic_lora import ICLoraPipeline
 from ltx_pipelines.utils.types import LoadedImageConditioning
 
 from api_types import ExtendParams, RetakeParams, TextToVideoParams
-from runtime_config.nag_limits import NEGATIVE_PROMPT_MAX_LENGTH
-from services.fast_video_pipeline.distilled_skip_stage_2 import DistilledPipelineWithSkipStage2
-from services.fast_video_pipeline.nag_config import (
+from inference.nag_limits import NEGATIVE_PROMPT_MAX_LENGTH
+from inference.fast_video_pipeline.distilled_skip_stage_2 import DistilledPipelineWithSkipStage2
+from inference.fast_video_pipeline.nag_config import (
     NagConfig,
     NagOffReason,
     decide_nag,
     nag_config_for_request,
 )
-from services.fast_video_pipeline.nag_distilled import NagDistilledMixin
+from inference.fast_video_pipeline.nag_distilled import NagDistilledMixin
 from services.features.video.extend import ExtendExecutor
 from services.features.video.retake import RetakeExecutor
-from services.ic_lora_pipeline.tiled_ic_lora_pipeline import TiledICLoraPipeline
-from services.patches.nag_cross_attention import (
+from inference.ic_lora_pipeline.tiled_ic_lora_pipeline import TiledICLoraPipeline
+from inference.patches.nag_cross_attention import (
     NagState,
     active_state,
     nag_scope,
@@ -296,11 +296,11 @@ def test_scoped_chunks_activates_nag_only_inside_next_and_not_between_chunks() -
 
 def test_skip_stage_2_activates_nag_denoise_scope_during_stage_1(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "services.fast_video_pipeline.distilled_skip_stage_2.image_conditionings",
+        "inference.fast_video_pipeline.distilled_skip_stage_2.image_conditionings",
         lambda **_kwargs: [],
     )
     monkeypatch.setattr(
-        "services.fast_video_pipeline.distilled_skip_stage_2.create_initial_av_latents",
+        "inference.fast_video_pipeline.distilled_skip_stage_2.create_initial_av_latents",
         lambda *, pixel_shape, **_kwargs: (
             torch.zeros(1, 4, pixel_shape.frames, pixel_shape.height, pixel_shape.width),
             torch.zeros(1, 8, pixel_shape.frames, 16),

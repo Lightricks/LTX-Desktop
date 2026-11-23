@@ -39,7 +39,7 @@ try {
 
 try {
   if (Get-Command uv -ErrorAction SilentlyContinue) {
-    uv run python run_dashboard.py --port $Port
+    uv run --extra desktop python run_dashboard.py --port $Port
   } else {
     python run_dashboard.py --port $Port
   }

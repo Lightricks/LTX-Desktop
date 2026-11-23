@@ -16,17 +16,19 @@ from runtime_config.budget_admission import RiskAllowance
 from runtime_config.device_calibration import JobEnvelope
 from services.features.video.edit_executor import VideoEditExecutor
 from services.features.video.job_common import model_from_spec
-from services.fast_video_pipeline.windowed_run import measured_edit
-from services.records import AssetRecord, CapabilityFailedError, GenerationRecord
-from services.retake_pipeline.retake_mode import (
+from inference.fast_video_pipeline.windowed_run import measured_edit
+from services.features.video.window_estimates import edit_window_estimate_gib
+from inference.errors import CapabilityFailedError
+from services.records import AssetRecord, GenerationRecord
+from inference.retake_pipeline.retake_mode import (
     InvalidRetakeModeError,
     resolve_retake_mode,
 )
-from services.retake_pipeline.retake_stitch import stitch_retake_output
-from services.retake_pipeline.window import (
+from inference.retake_pipeline.retake_stitch import stitch_retake_output
+from inference.retake_pipeline.window import (
     EditRefusal,
     RetakeEncodeWindow,
-    feathered_mask_times,
+    retake_mask_times,
     prepare_retake_window,
 )
 from state.app_state_types import RetakePipelineState
@@ -113,11 +115,12 @@ class RetakeExecutor(VideoEditExecutor[RetakeParams, RetakeInputs, _PreparedReta
             frame_cap=frame_cap,
             start_time=params.startTime,
             duration=params.duration,
+            context_mode=params.contextMode,
         )
         if isinstance(prepared, EditRefusal):
             prepared.raise_capability_error()
         window, end_time = prepared.window, prepared.end_time
-        region_start, region_end = feathered_mask_times(window, fps)
+        region_start, region_end = retake_mask_times(window, fps)
         if (
             abs(content_width - source_width) > 31
             or abs(content_height - source_height) > 31
@@ -140,6 +143,7 @@ class RetakeExecutor(VideoEditExecutor[RetakeParams, RetakeInputs, _PreparedReta
                 frame_cap=free_cap,
                 start_time=params.startTime,
                 duration=params.duration,
+                context_mode=params.contextMode,
             )
             if isinstance(shrunk, EditRefusal):
                 shrunk.raise_capability_error()
@@ -151,7 +155,7 @@ class RetakeExecutor(VideoEditExecutor[RetakeParams, RetakeInputs, _PreparedReta
                 shrunk.window.encode_frames,
             )
             window, end_time = shrunk.window, shrunk.end_time
-            region_start, region_end = feathered_mask_times(window, fps)
+            region_start, region_end = retake_mask_times(window, fps)
             return window.encode_frames
 
         pipeline_state, ran = self._load_edit_window(
@@ -166,9 +170,10 @@ class RetakeExecutor(VideoEditExecutor[RetakeParams, RetakeInputs, _PreparedReta
             rewindow=rewindow,
         )
         logger.info(
-            "Retake %s started (%s, source %dx%d → %dx%d canvas %dx%d, %d frames @ %g fps, %s %.2fs–%.2fs, encode %d, seed=%d)",
+            "Retake %s started (%s, %s context, source %dx%d → %dx%d canvas %dx%d, %d frames @ %g fps, %s %.2fs–%.2fs, encode %d, seed=%d)",
             generation.id,
             local_model_id,
+            params.contextMode,
             source_width,
             source_height,
             content_width,
@@ -204,7 +209,12 @@ class RetakeExecutor(VideoEditExecutor[RetakeParams, RetakeInputs, _PreparedReta
         )
 
     def generate(self, prepared: _PreparedRetake) -> None:
-        with measured_edit(prepared.canvas_width, prepared.canvas_height, prepared.window.encode_frames):
+        with measured_edit(
+            prepared.canvas_width,
+            prepared.canvas_height,
+            prepared.window.encode_frames,
+            estimate_gib=edit_window_estimate_gib,
+        ):
             self._generate(prepared)
 
     def _generate(self, prepared: _PreparedRetake) -> None:
@@ -243,4 +253,5 @@ class RetakeExecutor(VideoEditExecutor[RetakeParams, RetakeInputs, _PreparedReta
             fps=prepared.fps,
             target_width=prepared.content_width,
             target_height=prepared.content_height,
+            regenerate_audio=prepared.regenerate_audio,
         )

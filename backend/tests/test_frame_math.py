@@ -1,6 +1,6 @@
 """Unit tests for shared video frame-count calculations."""
 
-from frame_math import effective_a2v_audio_seconds, num_frames_for_audio_duration
+from inference.frame_math import effective_a2v_audio_seconds, num_frames_for_audio_duration
 
 
 def test_audio_duration_10_563_seconds_floors_to_249_frames_under_cap() -> None:

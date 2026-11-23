@@ -5,6 +5,7 @@ import {
 import type { BudgetReadout } from "../../lib/budget-figure.ts";
 import { formatEstimatedDuration } from "../../lib/duration-format.ts";
 import type { components } from "../../generated/backend-openapi";
+import { DEFAULT_EDIT_CONTEXT_MODE, type EditContextMode } from "./editContextMode.ts";
 
 export type EditPreflightResponse =
   components["schemas"]["EditPreflightResponse"];
@@ -22,8 +23,30 @@ export type EditPreflightFeature = "retake" | "extend";
  */
 export type EditPreflightState = {
   assetId: string;
+  /** The context mode the verdicts were priced at. */
+  contextMode: EditContextMode;
   response: EditPreflightResponse;
 };
+
+/** The verdicts only when they were priced at this context mode. */
+export function preflightForContextMode(
+  preflight: EditPreflightState | null | undefined,
+  contextMode: EditContextMode,
+): EditPreflightState | null {
+  if (preflight == null) return null;
+  return preflight.contextMode === contextMode ? preflight : null;
+}
+
+/**
+ * The context with only the verdicts priced at the mode these values hold. The screen fetches
+ * for the stored mode, but restored or just-changed values can name another one for a render.
+ */
+export function scopeToContextMode<
+  TContext extends { preflight?: EditPreflightState | null },
+>(values: { contextMode: EditContextMode }, context: TContext): TContext {
+  const preflight = preflightForContextMode(context.preflight, values.contextMode);
+  return preflight === context.preflight ? context : { ...context, preflight };
+}
 
 /** Request grid: 0.5s keeps trim drags from refetching every pixel. */
 export function roundPreflightSeconds(value: number): number {
@@ -113,17 +136,19 @@ export function preflightMaxDuration(
 }
 
 /**
- * Fresh-or-absent gate: verdicts for another video never reach the
- * definitions, so a new selection never wears the old video's disables.
+ * Fresh-or-absent gate: verdicts for another video, or priced at another
+ * Extend or Retake context mode, never reach the definitions, so a new selection never wears the old
+ * disables.
  */
 export function selectFreshPreflight(
   result: EditPreflightState | null,
   assetId: string | null,
+  contextMode: EditContextMode = DEFAULT_EDIT_CONTEXT_MODE,
 ): EditPreflightState | null {
   if (result == null || assetId == null || result.assetId !== assetId) {
     return null;
   }
-  return result;
+  return preflightForContextMode(result, contextMode);
 }
 
 /**

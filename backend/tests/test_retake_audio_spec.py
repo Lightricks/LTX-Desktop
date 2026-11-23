@@ -10,7 +10,7 @@ import torch
 from ltx_core.conditioning.types.noise_mask_cond import TemporalRegionMask
 from ltx_core.types import VIDEO_SCALE_FACTORS, AudioLatentShape, SpatioTemporalScaleFactors
 
-from services.retake_pipeline.ltx_retake_pipeline import _audio_modality_spec
+from inference.retake_pipeline.ltx_retake_pipeline import _audio_modality_spec
 
 _FPS = 24.0
 # 4 latent frames at time-scale 8 is 25 pixel frames, about 1.04 s.

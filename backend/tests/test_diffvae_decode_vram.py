@@ -7,8 +7,8 @@ import torch
 from ltx_core.model.video_vae import DimensionSizeConfig, TileSizeConfig
 from ltx_core.tiling import _validate_overlap
 
-from services.patches import diffusion_stage_cache as dsc
-from services.patches import diffvae_decode_vram as patch
+from inference.patches import diffusion_stage_cache as dsc
+from inference.patches import diffvae_decode_vram as patch
 
 
 def _tiles(*, frames: int, height: int, width: int, overlap_t: int = 40, overlap_hw: int = 160) -> TileSizeConfig:

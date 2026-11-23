@@ -35,8 +35,8 @@ from api_types import (
 from runtime_config.budget_admission import RiskAllowance, unmeasured_refusal_message
 from runtime_config.reject_reasons import PassShape
 from runtime_config.ic_lora_job_budget import REFINE_DECODE_FLOOR_MESSAGE
-from runtime_config.ic_lora_tiling import IcLoraTiling
-from frame_math import compute_num_frames
+from inference.ic_lora_tiling import IcLoraTiling
+from inference.frame_math import compute_num_frames
 from runtime_config.ltx_capabilities import budget_shape, local_caps
 from tests.conftest import TEST_ADMIN_TOKEN
 from tests.fakes import FakeCapture
@@ -46,7 +46,7 @@ from services.features.ic_lora_recipes import IC_LORA_RECIPES, IcLoraRecipe
 from services.features.video.job_common import spec_risk_allowance
 from services.features.video.ic_lora_recipe import IcLoraRecipeExecutor
 from services.features.video.text_to_video import TextToVideoExecutor
-from services.generation_interrupt import GenerationCancelledError
+from inference.interrupt import GenerationCancelledError
 from services.generation_queue.types import OutputAllocation
 from tests.fakes.generation import FakeJobSession
 from services.records import AssetRecord, GenerationRecord

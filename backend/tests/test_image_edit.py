@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
-from services.generation_interrupt import GenerationCancelledError
+from inference.interrupt import GenerationCancelledError
 from services.services_utils import compute_edit_dimensions
 from runtime_config.video_job_budget import (
     LOCAL_GENERATION_UNSUPPORTED,

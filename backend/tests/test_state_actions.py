@@ -17,9 +17,9 @@ from runtime_config.video_job_budget import (
     decide_edit_job,
 )
 from runtime_config.budget_decision import VideoJobLoad
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 from handlers.generation_handler import GenerationSlotWaitAborted, _RESERVATION_TIMEOUT_S
-from services import generation_interrupt
+import inference.interrupt as generation_interrupt
 from runtime_config.model_download_specs import (
     DEPTH_PROCESSOR_CP_ID,
     get_ltx_model_spec,
@@ -184,7 +184,7 @@ def test_raise_if_cancelled_ignores_sticky_cancelled_from_previous_job(
 
 
 def test_start_generation_honors_cancel_during_reservation(test_state, create_fake_model_files):
-    from services.generation_interrupt import GenerationCancelledError
+    from inference.interrupt import GenerationCancelledError
 
     create_fake_model_files()
     test_state.pipelines.load_gpu_pipeline("fast")

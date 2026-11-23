@@ -23,7 +23,7 @@ from threading import Event, Lock, Thread
 from mps_prebuilt_ext import mps_memory_sample, reset_mps_sdpa_stats
 from server_utils.generation_liveness import liveness_hold
 from server_utils.units import gib
-from services.gpu_info.run_peak import fold_and_reset_cuda_peak, note_free_sample
+from inference.run_peak import fold_and_reset_cuda_peak, note_free_sample
 
 logger = logging.getLogger(__name__)
 _active = Lock()

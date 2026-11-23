@@ -10,7 +10,7 @@ The manual test plan is in `docs/ltx-2-1-5-0-manual-test-plan.md`.
 | --- | --- |
 | Pins | `backend/pyproject.toml` pins `ltx-core==1.5.0`, `ltx-pipelines==1.5.0`, tag `v1.5.0`, and the two `dependency-metadata` versions. |
 | Lock | `backend/uv.lock` has the new version and commit `e98f6d927d83c92ef2be6aec76c8440b19306e39`. No dependency changed. |
-| Image inputs | One helper, `to_ltx_images` in `services/ltx_pipeline_common.py`, converts Desktop stills to upstream inputs. Fast, A2V and IC-LoRA use it. |
+| Image inputs | One helper, `to_ltx_images` in `inference/common.py`, converts Desktop stills to upstream inputs. Fast, A2V and IC-LoRA use it. |
 | Fast pipeline | `guide_all_images` now selects `ImageConditioningInput.guide` for every still. The helper swap in `distilled_keyframe_guiding.py` is deleted. |
 | Skip stage 2 | `_call_stage_1_only` calls `load_conditionings` and `image_conditionings`. |
 | A2V | `_prepare` calls `load_conditionings`. Both stages and every window encode the loaded stills. `resolve_image_conditionings` and `encode_stage_image_conditionings` are deleted. |
@@ -91,7 +91,7 @@ Proposed experiment after the upgrade ships:
 - `uv.lock` changes, so the Python deps hash changes. Windows and Linux users download a new Python environment on first start.
 - Build and upload the archive for the new hash before the release (`electron/python-setup.ts`, `scripts/prepare-python.*`).
 - `uv lock` fails in the current CI image with a resolver error on Python 3.14 markers. This also happens on `main`. The lock was edited by hand (only the two ltx entries). `uv lock --check` passes.
-- Developers run `uv sync` in `backend/` after they pull.
+- Developers run `uv sync --extra desktop` in `backend/` after they pull. A plain `uv sync` removes FastAPI.
 
 ## Open PRs
 

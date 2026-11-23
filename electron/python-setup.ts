@@ -265,17 +265,24 @@ async function fetchRemoteDepsHash(base: string, tempFileName: string): Promise<
     if (base.endsWith('.tar.gz')) return null // can't inspect a single tar.gz without extracting
     return readHash(path.join(base, 'deps-hash.txt'))
   }
-  const hashUrl = `${base}/python-deps-hash.txt`
+  // Prefer the per-platform hash: the Windows hash can differ from the Linux hash.
+  // Releases built before the per-platform file existed only have the shared one.
+  const hashUrls = [
+    `${base}/${getPythonArchivePrefix()}.deps-hash.txt`,
+    `${base}/python-deps-hash.txt`,
+  ]
   const hashDest = path.join(app.getPath('userData'), tempFileName)
-  try {
-    await downloadFileRaw(hashUrl, hashDest)
-    return readHash(hashDest)
-  } catch (err) {
-    logger.warn( `[python-setup] Could not fetch deps hash from ${hashUrl}: ${err}`)
-    return null
-  } finally {
-    try { fs.unlinkSync(hashDest) } catch { /* ignore */ }
+  for (const hashUrl of hashUrls) {
+    try {
+      await downloadFileRaw(hashUrl, hashDest)
+      return readHash(hashDest)
+    } catch (err) {
+      logger.warn( `[python-setup] Could not fetch deps hash from ${hashUrl}: ${err}`)
+    } finally {
+      try { fs.unlinkSync(hashDest) } catch { /* ignore */ }
+    }
   }
+  return null
 }
 
 /**

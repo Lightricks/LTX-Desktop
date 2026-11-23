@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from types import SimpleNamespace
 
-from services.patches.natten_libnatten_gate import _gate_natten_available, _has_libnatten
+from inference.patches.natten_libnatten_gate import _gate_natten_available, _has_libnatten
 
 
 def test_has_libnatten_is_false_when_import_fails(monkeypatch) -> None:

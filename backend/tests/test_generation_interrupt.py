@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from services.generation_interrupt import (
+from inference.interrupt import (
     GenerationCancelledError,
     clear,
     diffusers_step_callback,

@@ -10,29 +10,11 @@ import logging
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
 
-import psutil
-
+from inference.phase_log import rss_gb as rss_gb
 from server_utils.heartbeat import log_heartbeat
-from services.gpu_info.run_peak import fold_and_reset_cuda_peak
-
-if TYPE_CHECKING:
-    import torch
 
 PREFIX = "[alpha-gen]"
-
-
-def rss_gb() -> float:
-    """Memory of the backend and its child processes (ffmpeg holds 10 GB or more at 8K)."""
-    process = psutil.Process()
-    total = process.memory_info().rss
-    for child in process.children(recursive=True):
-        try:
-            total += child.memory_info().rss
-        except psutil.Error:
-            continue
-    return total / 1e9
 
 
 @contextmanager
@@ -58,36 +40,3 @@ def logged_phase(
         )
         raise
     logger.info("%s %s: done in %.1fs (memory %.1f GB)", prefix, label, time.monotonic() - started, rss_gb())
-
-
-@contextmanager
-def measured_gpu_phase(
-    logger: logging.Logger,
-    label: str,
-    *,
-    device: "torch.device",
-    prefix: str,
-    estimate_gib: float | None = None,
-) -> Iterator[None]:
-    """``logged_phase`` with a heartbeat, plus the peak VRAM of the step next to the budget estimate.
-
-    The estimate is the job-budget curve. Real peaks from a 4K run refit it.
-    """
-    import torch
-
-    cuda = device.type == "cuda" and torch.cuda.is_available()
-    if cuda:
-        fold_and_reset_cuda_peak(device)
-    try:
-        with logged_phase(logger, label, heartbeat=True, prefix=prefix):
-            yield
-    finally:
-        if cuda:
-            logger.info(
-                "%s %s: peak VRAM allocated %.1f GiB, reserved %.1f GiB (budget estimate %s)",
-                prefix,
-                label,
-                torch.cuda.max_memory_allocated(device) / 1024**3,
-                torch.cuda.max_memory_reserved(device) / 1024**3,
-                "none" if estimate_gib is None else f"{estimate_gib:.1f} GiB",
-            )

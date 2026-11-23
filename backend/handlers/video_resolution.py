@@ -8,12 +8,15 @@ bars off after generation. Frame count is always trimmed down to the nearest ``8
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from _routes._errors import HTTPError
-from frame_math import snap_up_to_multiple
+from inference.frame_math import snap_up_to_multiple
+from inference.retake_pipeline.letterbox import (
+    SpatialLetterbox as SpatialLetterbox,
+    generation_letterbox as generation_letterbox,
+)
 
 if TYPE_CHECKING:
     from api_types import TargetResolution
@@ -84,45 +87,6 @@ def correct_resolution(
 # is not shrunk. A 3840×2160 picture is letterboxed up to 3840×2176, then cropped back.
 _1080P_EDIT_BOX = (1920, 1088)
 _2160P_EDIT_BOX = (3840, 2176)
-
-
-@dataclass(frozen=True)
-class SpatialLetterbox:
-    """Picture rect centered on the ÷32 canvas the model actually encodes."""
-
-    content_width: int
-    content_height: int
-    canvas_width: int
-    canvas_height: int
-    left: int
-    top: int
-
-    @property
-    def right(self) -> int:
-        return self.canvas_width - self.content_width - self.left
-
-    @property
-    def bottom(self) -> int:
-        return self.canvas_height - self.content_height - self.top
-
-
-def generation_letterbox(width: int, height: int) -> SpatialLetterbox:
-    """Pad ``width``×``height`` up to the next multiple of 32, split evenly.
-
-    An odd remainder gives the extra pixel to the right or the bottom.
-    """
-    canvas_width = ((width + _SPATIAL_FACTOR - 1) // _SPATIAL_FACTOR) * _SPATIAL_FACTOR
-    canvas_height = ((height + _SPATIAL_FACTOR - 1) // _SPATIAL_FACTOR) * _SPATIAL_FACTOR
-    pad_x = canvas_width - width
-    pad_y = canvas_height - height
-    return SpatialLetterbox(
-        content_width=width,
-        content_height=height,
-        canvas_width=canvas_width,
-        canvas_height=canvas_height,
-        left=pad_x // 2,
-        top=pad_y // 2,
-    )
 
 
 def cap_edit_size(width: int, height: int, *, high_res: bool = False) -> tuple[int, int]:

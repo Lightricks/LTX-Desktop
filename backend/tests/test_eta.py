@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 from runtime_config.budget_evidence import JobShape
 from runtime_config.device_calibration import envelope_for
 from runtime_config.eta import (
@@ -19,7 +19,7 @@ from runtime_config.eta import (
     remaining_wall_time_s,
     spatial_tile_count,
 )
-from runtime_config.ic_lora_tiling import IcLoraTiling
+from inference.ic_lora_tiling import IcLoraTiling
 
 # (width, height, seconds, full_cold, stream_cpu_cold)
 _CELLS = [

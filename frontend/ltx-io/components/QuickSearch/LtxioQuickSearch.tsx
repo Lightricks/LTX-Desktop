@@ -15,8 +15,6 @@ import { useKeyboardShortcut } from "@ds/lib/useKeyboardShortcut";
 import { useThemedPortalContainer } from "@ds/styles/themes/useTheme";
 import { useRecentSidebarTools } from "@/components/home/useRecentSidebarTools";
 import { useCustomLoras } from "../../hooks/useCustomLoras.ts";
-import { useHomeFeatureFlags } from "../../hooks/useHomeFeatureFlags.ts";
-
 import type { QuickSearchNavigateOptions } from "./quickSearchNavigation.ts";
 
 import { useQuickSearch } from "./QuickSearchContext.tsx";
@@ -54,27 +52,20 @@ export function LtxioQuickSearch({
   const stickActiveItem = useRef(false);
   const trimmedQuery = query.trim();
 
-  const featureFlags = useHomeFeatureFlags();
-
   const savedLoras = useCustomLoras().data;
   const customLoras = useMemo(() => savedLoras ?? [], [savedLoras]);
 
   const browseSections = useMemo(
-    () =>
-      buildQuickSearchBrowseSections(
-        recentFeatureIds,
-        featureFlags,
-        customLoras,
-      ),
-    [recentFeatureIds, featureFlags, customLoras],
+    () => buildQuickSearchBrowseSections(recentFeatureIds, customLoras),
+    [recentFeatureIds, customLoras],
   );
 
   const rows = useMemo(() => {
     if (trimmedQuery) {
-      return searchQuickSearchRows(trimmedQuery, featureFlags, customLoras);
+      return searchQuickSearchRows(trimmedQuery, customLoras);
     }
     return browseSectionsToRows(browseSections);
-  }, [browseSections, trimmedQuery, featureFlags, customLoras]);
+  }, [browseSections, trimmedQuery, customLoras]);
 
   const filters = useMemo(
     () =>

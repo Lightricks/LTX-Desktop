@@ -22,7 +22,7 @@ from ltx_core.loader.simple_builder import LoRARequest, SimpleBuilder
 from ltx_core.loader.streaming_builder import StreamingBuilder, StreamingConfig
 from ltx_core.allocator_trim_strategy import AllocatorTrimStrategy
 from ltx_pipelines.utils.gpu_model import gpu_model
-from services.patches import diffusion_stage_cache as dsc
+from inference.patches import diffusion_stage_cache as dsc
 
 
 class _FakeModel:

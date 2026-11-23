@@ -30,6 +30,8 @@ class AssistantRun(BaseModel):
     # The recipe nudge fires at most once per request, and not after a recipe job is queued,
     # so continuations after job updates and plain jobs beside a recipe job are not nudged.
     recipe_nudged: bool = False
+    # The empty-prompt nudge for an extension or retake fires at most once per request.
+    prompt_nudged: bool = False
     response: AssistantTurnResponse | None = None
     stopped: bool = False
 

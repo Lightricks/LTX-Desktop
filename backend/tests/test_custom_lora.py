@@ -37,7 +37,7 @@ from services.features.video import TextToVideoExecutor
 from services.features.video.custom_lora import CustomLoraExecutor
 from services.features.video.image_to_video import ImageToVideoExecutor
 from services.generation_queue.types import OutputAllocation
-from services.records import CapabilityFailedError
+from inference.errors import CapabilityFailedError
 from services.sqlite_store import SqliteStore
 from services.url_downloader import UrlDownloadError
 from state.app_state_types import CatalogDownloadSession, DownloadSessionId

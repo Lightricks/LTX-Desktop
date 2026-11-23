@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from api_model_specs import _filter_local_fast_resolution_map  # pyright: ignore[reportPrivateUsage]
-from frame_math import compute_num_frames
-from runtime_config.fast_chunking import job_window_count
+from inference.frame_math import compute_num_frames
+from inference.fast_chunking import job_window_count
 from runtime_config.ltx_capabilities import local_caps
 from runtime_config.model_download_specs import get_ltx_model_spec
 from tests.test_video_job_budget import _job_filter, _mac_profile, _windows_measured_filter

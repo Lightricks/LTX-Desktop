@@ -15,21 +15,18 @@ unchunked. It is the one place that decides. The pipeline receives the window it
 
 from __future__ import annotations
 
-from frame_math import snap_to_frame_grid
+from inference.frame_math import snap_to_frame_grid
 from runtime_config.ic_lora_stage_mode import IcLoraStageMode, heavy_pass_size
-from runtime_config.ic_lora_tiling import DEFAULT_CARRY_FRAMES, IcLoraTiling, transformer_pass_size
-from runtime_config.video_job_budget import video_tokens
+from inference.ic_lora_tiling import (
+    IC_LORA_CHUNK_CARRY_FRAMES as IC_LORA_CHUNK_CARRY_FRAMES,
+    IcLoraTiling,
+    ic_lora_carry_frames as ic_lora_carry_frames,
+    transformer_pass_size,
+)
+from inference.job_budget import video_tokens
 
 # ltx-pipelines default layout: 97-frame windows, 25-frame carry.
 IC_LORA_CHUNK_PIXEL_FRAMES = 97
-IC_LORA_CHUNK_CARRY_FRAMES = DEFAULT_CARRY_FRAMES
-
-
-def ic_lora_carry_frames(tiling: IcLoraTiling | None) -> int:
-    """The carry an IC-LoRA run chunks with: the LoRA's own, else the pipeline default."""
-    if tiling is not None and tiling.carry_frames is not None:
-        return tiling.carry_frames
-    return IC_LORA_CHUNK_CARRY_FRAMES
 
 _FORMER_CAP_PIXELS = 1024 * 576
 IC_LORA_MAX_SINGLE_WINDOW_TOKENS = 32_940

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
-from frame_math import (
+from inference.frame_math import (
     AutoDurationSpec,
     compute_num_frames,
     effective_a2v_audio_seconds,
@@ -105,17 +105,17 @@ from server_utils.media_validation import (
     validate_image_file,
 )
 from server_utils.oriented_image import open_oriented_rgb, oriented_image_file
-from services.denoising_progress import distilled_total_steps
-from services.fast_video_pipeline.nag_config import (
+from inference.progress import distilled_total_steps
+from inference.fast_video_pipeline.nag_config import (
     NagDecision,
     decide_nag,
     log_nag_decision,
 )
-from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
+from inference.interrupt import GenerationCancelledError, is_cancel_exception
 from services.interfaces import GpuInfo, LTXAPIClient
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError
 from services.ltx_api_client.ltx_api_errors import map_ltx_api_client_error, missing_ltx_api_key_error
-from services.patches import diffusion_stage_cache
+from inference.patches import diffusion_stage_cache
 from state.app_state_types import AppState
 from state.app_settings import resolved_use_conv_vae, should_video_generate_with_ltx_api
 
@@ -815,7 +815,7 @@ class VideoGenerationHandler(StateHandlerBase):
             compile_enabled = (
                 compiled
                 and self.state.app_settings.use_torch_compile
-                and not self.config.use_sage_attention
+                and self.config.torch_compile_available
             )
         return decide_nag(
             negative_prompt,
@@ -925,7 +925,7 @@ class VideoGenerationHandler(StateHandlerBase):
                 default_nag_scale = self.state.app_settings.nag_scale
                 compile_enabled = (
                     self.state.app_settings.use_torch_compile
-                    and not self.config.use_sage_attention
+                    and self.config.torch_compile_available
                 )
             nag = log_nag_decision(
                 logger,

@@ -9,7 +9,7 @@ from runtime_config.ic_lora_auto_carry import picked_carry_tiling
 from runtime_config.ic_lora_high_res import high_res_tiling
 from runtime_config.ic_lora_job_budget import price_ic_lora_job
 from runtime_config.ic_lora_stage_mode import IcLoraStageMode
-from runtime_config.ic_lora_tiling import (
+from inference.ic_lora_tiling import (
     CARRY_PRESETS,
     IcLoraTiling,
     auto_carry_candidates,

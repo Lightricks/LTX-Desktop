@@ -13,7 +13,7 @@ import psutil
 import torch
 
 from runtime_config.device_calibration import RunMemoryBaseline, RunMemoryEnd
-from services.gpu_info import run_peak
+import inference.run_peak as run_peak
 from services.gpu_info.gpu_info import GpuTelemetryPayload
 
 logger = logging.getLogger(__name__)

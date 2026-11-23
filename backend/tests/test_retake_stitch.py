@@ -10,22 +10,22 @@ import imageio_ffmpeg
 import numpy as np
 import pytest
 
-from services.retake_pipeline.retake_stitch import (
+from inference.retake_pipeline.retake_stitch import (
     fade_window_for_retake,
     reencode_span,
     retake_audio_graph,
     stitch_retake_output,
 )
-from services.ffmpeg import (
+from inference.ffmpeg import (
     FFMPEG_TIMEOUT_SECONDS,
     STITCH_TIMEOUT_CAP_SECONDS,
     timeout_for_source_duration,
 )
-from services.retake_pipeline.rgb_stitch import iter_span, write_rgb_video
-from services.retake_pipeline.window import (
+from inference.retake_pipeline.rgb_stitch import iter_span, write_rgb_video
+from inference.retake_pipeline.window import (
     MAX_FADE_FRAMES,
     denoised_frame_span,
-    feathered_mask_times,
+    retake_mask_times,
     window_for_retake,
 )
 
@@ -63,7 +63,7 @@ def test_fade_sits_on_the_user_mask_for_at_most_16_frames() -> None:
 def test_denoised_span_snaps_out_to_whole_latents() -> None:
     window = _ted_retake_window()
     start, end = denoised_frame_span(window, NTSC_FILM)
-    region_start, region_end = feathered_mask_times(window, NTSC_FILM)
+    region_start, region_end = retake_mask_times(window, NTSC_FILM)
     assert start / NTSC_FILM <= region_start and end / NTSC_FILM >= region_end
     assert (start - 1) % 8 == 0 and (end - 1) % 8 == 0
 
@@ -256,9 +256,9 @@ def test_python_writer_receives_only_the_blend_and_the_mask(monkeypatch, tmp_pat
         seen.append(sum(1 for _ in frames))  # type: ignore[arg-type]
         Path(dest).write_bytes(b"middle")
 
-    monkeypatch.setattr("services.retake_pipeline.retake_stitch.write_rgb_video", _capture)
-    monkeypatch.setattr("services.retake_pipeline.retake_stitch.run_ffmpeg", lambda *_a, **_k: None)
-    monkeypatch.setattr("services.retake_pipeline.retake_stitch._has_audio", lambda _path: False)
+    monkeypatch.setattr("inference.retake_pipeline.retake_stitch.write_rgb_video", _capture)
+    monkeypatch.setattr("inference.retake_pipeline.retake_stitch.run_ffmpeg", lambda *_a, **_k: None)
+    monkeypatch.setattr("inference.retake_pipeline.retake_stitch._has_audio", lambda _path: False)
     stitch_retake_output(
         source_path=str(tmp_path / "source.mp4"),
         windowed_path=str(tmp_path / "generated.mp4"),
@@ -302,13 +302,13 @@ def test_silent_source_keeps_generated_audio(monkeypatch, tmp_path: Path) -> Non
     def _capture(args: list[str], **_kwargs: object) -> None:
         captured.append(args)
 
-    monkeypatch.setattr("services.retake_pipeline.retake_stitch.run_ffmpeg", _capture)
+    monkeypatch.setattr("inference.retake_pipeline.retake_stitch.run_ffmpeg", _capture)
     monkeypatch.setattr(
-        "services.retake_pipeline.retake_stitch.write_rgb_video",
+        "inference.retake_pipeline.retake_stitch.write_rgb_video",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "services.retake_pipeline.retake_stitch._has_audio",
+        "inference.retake_pipeline.retake_stitch._has_audio",
         lambda path: path == "/window.mp4",
     )
     window = window_for_retake(
@@ -428,3 +428,57 @@ def test_write_rgb_video_closes_the_frame_source_when_the_encode_fails(tmp_path:
         assert closed == [True]
     else:
         pytest.fail("an odd width should not encode")
+
+
+def test_audio_graph_levels_only_the_new_part() -> None:
+    window = _ted_retake_window()
+    graph = retake_audio_graph(window, NTSC_FILM, source_label="[1:a]", generated_gain_db=-6.0)
+    assert graph.count("volume=-6.00dB") == 1
+    plain = retake_audio_graph(window, NTSC_FILM, source_label="[1:a]")
+    assert "volume=" not in plain
+
+
+def _output_speech_db(path: Path, start: float, end: float, seconds: float) -> float:
+    from inference.retake_pipeline.audio_level import speech_level_db
+    from inference.retake_pipeline.speech_analysis import decode_mono
+
+    level = speech_level_db(decode_mono(str(path), seconds, start=start, end=end))
+    assert level is not None
+    return level
+
+
+@pytest.mark.parametrize(("regenerate_audio", "expected_gap_db"), [(True, 0.0), (False, 12.0)])
+def test_stitched_retake_speech_is_leveled_to_the_speech_around_it(
+    tmp_path: Path, regenerate_audio: bool, expected_gap_db: float
+) -> None:
+    # Bug: the new speech of a retake came out louder than the original speech around it.
+    from tests.video_fixtures import write_clip_with_tone_spans
+
+    fps = 24
+    window = window_for_retake(
+        source_frames=192, mask_start_frame=48, mask_end_frame=96, max_input_frames=505, fps=float(fps)
+    )
+    source = write_clip_with_tone_spans(
+        tmp_path / "source.mp4", frames=192, spans=[(0.0, 2.0), (4.0, 8.0)], amplitude=0.1
+    )
+    new_start = window.context_before_frames / fps
+    generated = write_clip_with_tone_spans(
+        tmp_path / "generated.mp4",
+        frames=window.encode_frames,
+        spans=[(new_start, new_start + 2.0)],
+        amplitude=0.4,
+    )
+    dest = tmp_path / "out.mp4"
+    stitch_retake_output(
+        source_path=str(source),
+        windowed_path=str(generated),
+        dest_path=str(dest),
+        window=window,
+        fps=float(fps),
+        target_width=64,
+        target_height=64,
+        regenerate_audio=regenerate_audio,
+    )
+    around = _output_speech_db(dest, 0.2, 1.8, 8.0)
+    new_part = _output_speech_db(dest, 2.3, 3.7, 8.0)
+    assert new_part - around == pytest.approx(expected_gap_db, abs=1.5)

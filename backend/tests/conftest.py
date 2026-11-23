@@ -109,7 +109,7 @@ class _AppImageRenderer:
 
 @pytest.fixture(autouse=True)
 def _reset_generation_interrupt() -> None:
-    from services.generation_interrupt import clear
+    from inference.interrupt import clear
 
     clear()
     yield
@@ -118,7 +118,7 @@ def _reset_generation_interrupt() -> None:
 
 @pytest.fixture(autouse=True)
 def _reset_denoising_progress() -> None:
-    from services.denoising_progress import reset
+    from inference.progress import reset
 
     reset()
     yield

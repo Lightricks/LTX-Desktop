@@ -11,7 +11,7 @@ from starlette.testclient import TestClient
 
 from api_types import IcLoraSettings, parse_lora_catalog
 from handlers.base import resolve_models_dir
-from runtime_config.ic_lora_tiling import (
+from inference.ic_lora_tiling import (
     TILE_SIZES,
     IcLoraTileSize,
     IcLoraTiling,

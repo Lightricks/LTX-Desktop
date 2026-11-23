@@ -5,13 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 import shutil
 import threading
 import time
 
 from PIL import Image
-from frame_math import AutoDurationSpec
+from inference.frame_math import AutoDurationSpec
 from ltx_pipelines.utils.types import OffloadMode
 from api_types import (
     ApiActivityStatus,
@@ -31,9 +31,9 @@ from api_types import (
     VideoCameraMotion,
 )
 from runtime_config.custom_lora_urls import HuggingFaceRepo
-from runtime_config.ic_lora_tiling import IcLoraTiling
-from services.fast_video_pipeline.nag_config import NagConfig
-from services.generation_interrupt import GenerationCancelledError
+from inference.ic_lora_tiling import IcLoraTiling
+from inference.fast_video_pipeline.nag_config import NagConfig
+from inference.interrupt import GenerationCancelledError
 from services.http_client import HttpBodyTooLargeError
 from services.interfaces import VideoInfoPayload
 from services.ltx_api_client.ltx_api_client import LTXRetakeResult
@@ -42,6 +42,9 @@ from services.url_downloader import UrlDownloadError
 from services.zit_api_client.zit_api_client import ZitQueuedImage
 from tests.fakes.assistant import FakeAssistantModels, FakeAssistantProvider
 from tests.fakes.fake_gpu_info import FakeGpuInfo
+
+if TYPE_CHECKING:
+    from inference.fast_video_pipeline.windowed_run import WindowEstimate
 
 
 def _dl(repo_id: str, filename: str, size_bytes: int = 10) -> DownloadSpec:
@@ -995,6 +998,7 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
         video_vae_path: str | None = None,
         audio_vae_path: str | None = None,
         duration_head_path: str | None = None,
+        window_estimate_gib: WindowEstimate | None = None,
     ) -> "FakeFastVideoPipeline":
         del (
             checkpoint_path,
@@ -1004,6 +1008,7 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
             video_vae_path,
             audio_vae_path,
             duration_head_path,
+            window_estimate_gib,
         )
         pipeline = FakeFastVideoPipeline._singleton
         if pipeline is None:
@@ -1045,7 +1050,7 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
             "nag": nag,
         }
         if self.inference_steps:
-            from services.generation_interrupt import raise_if_requested
+            from inference.interrupt import raise_if_requested
 
             self.entered_inference.set()
             for _ in range(self.inference_steps):
@@ -1098,7 +1103,7 @@ class FakeImageGenerationPipeline:
         self.generate_calls.append(kwargs)
         callback = kwargs.get("callback_on_step_end")
         if self.inference_steps:
-            from services.generation_interrupt import raise_if_requested
+            from inference.interrupt import raise_if_requested
 
             self.entered_inference.set()
             for step_idx in range(self.inference_steps):
@@ -1367,6 +1372,7 @@ class FakeA2VPipeline:
         video_vae_path: str | None = None,
         audio_vae_path: str | None = None,
         duration_head_path: str | None = None,
+        window_estimate_gib: WindowEstimate | None = None,
     ) -> "FakeA2VPipeline":
         del (
             checkpoint_path,
@@ -1376,6 +1382,7 @@ class FakeA2VPipeline:
             video_vae_path,
             audio_vae_path,
             duration_head_path,
+            window_estimate_gib,
         )
         pipeline = FakeA2VPipeline._singleton
         if pipeline is None:

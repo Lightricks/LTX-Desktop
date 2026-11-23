@@ -15,7 +15,7 @@ from dataclasses import replace
 
 from runtime_config.budget_admission import PricedJob, safety_rank
 from runtime_config.ic_lora_chunking import ic_lora_carry_frames
-from runtime_config.ic_lora_tiling import IcLoraTiling, auto_carry_candidates
+from inference.ic_lora_tiling import IcLoraTiling, auto_carry_candidates
 
 _ONE_PASS = float("inf")
 

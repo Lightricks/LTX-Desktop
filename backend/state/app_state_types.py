@@ -13,20 +13,20 @@ from runtime_config.device_calibration import (
     RunMemoryBaseline,
 )
 from runtime_config.eta import WallTimeEstimate
-from runtime_config.ic_lora_tiling import IcLoraTiling
+from inference.ic_lora_tiling import IcLoraTiling
 from runtime_config.runtime_policy import LocalGenerationMode
 from state.conditioning_cache import ConditioningCache
 
 if TYPE_CHECKING:
     from state.app_settings import AppSettings
+    from inference.a2v_pipeline.a2v_pipeline import A2VPipeline
+    from inference.fast_video_pipeline.fast_video_pipeline import FastVideoPipeline
+    from inference.ic_lora_pipeline.ic_lora_pipeline import IcLoraPipeline
+    from inference.retake_pipeline.retake_pipeline import RetakePipeline
     from services.interfaces import (
-        A2VPipeline,
         DepthProcessorPipeline,
-        FastVideoPipeline,
         ImageGenerationPipeline,
-        IcLoraPipeline,
         PoseProcessorPipeline,
-        RetakePipeline,
         TextEncoder,
     )
     import torch

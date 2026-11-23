@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 
 from api_types import ApiActivityStatus
-from services.generation_interrupt import GenerationCancelledError
+from inference.interrupt import GenerationCancelledError
 from services.http_client.http_client import HttpTransportError
 from services.zit_api_client.zit_api_client import ZitImageBlockedError
 from services.zit_api_client import zit_api_client_impl

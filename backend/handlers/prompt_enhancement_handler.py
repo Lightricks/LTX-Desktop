@@ -48,7 +48,7 @@ from services.features.image.prompt_rewrite import ImagePromptRewrite
 from services.features.video.job_common import UNNAMED_RECIPE, denoise_canvas_for
 from services.features.video.reference_sheet import ensure_reference_sheet
 from services.gemini_text_client import resolve_gemini_model
-from services.generation_interrupt import is_cancel_exception
+from inference.interrupt import is_cancel_exception
 from services.interfaces import PromptEnhancerPipeline
 from services.lora_catalog import LoraCatalogProvider
 from services.prompt_enhancement import (
@@ -72,7 +72,7 @@ from services.prompt_enhancement.source_video import SourceVideo
 from services.prompt_enhancement.video_frames import sampled_video_frames
 from services.prompt_enhancer_pipeline.gemini_prompt_enhancer_pipeline import GeminiPromptEnhancerPipeline
 from services.records import MediaError
-from services.services_utils import get_device_type
+from inference.device import get_device_type
 from state.app_state_types import AppState
 
 logger = logging.getLogger(__name__)
@@ -152,7 +152,7 @@ class PromptEnhancementHandler(StateHandlerBase):
             )
         local_encoding = self._text_handler.should_use_local_encoding()
         compile_on = (
-            settings.use_torch_compile and not self.config.use_sage_attention
+            settings.use_torch_compile and self.config.torch_compile_available
         )
         base_reason, reason_by_feature = nag_unavailable_reasons(
             nag_scale=settings.nag_scale, local_encoding=local_encoding, compile_on=compile_on

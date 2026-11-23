@@ -35,6 +35,7 @@ _APPROVED_PARAM_KEYS = frozenset(
         "numFrames",
         "promptProvenance",
         "mode",
+        "contextMode",
         "startTime",
         "seed",
         "passShape",
@@ -1047,6 +1048,7 @@ def test_remote_create_extend_keeps_video_asset_id_and_omits_paths(
                     "model": "ltx-2.5-fast",
                     "duration": 4,
                     "mode": "start",
+                    "contextMode": "short",
                 },
                 "inputs": {"video": {"assetId": video.id}},
             },
@@ -1069,6 +1071,7 @@ def test_remote_create_extend_keeps_video_asset_id_and_omits_paths(
     assert params["model"] == "ltx-2.5-fast"
     assert params["duration"] == 4
     assert params["mode"] == "start"
+    assert params["contextMode"] == "short"
     assert video.path not in json.dumps(body)
     _assert_no_path_keys(body)
     _assert_no_secret_paths(body)
@@ -1308,3 +1311,31 @@ def test_desktop_asset_and_generation_keep_filesystem_paths(
         assert Path(fetched_asset.json()["path"]).is_file()
     finally:
         test_state.generation.release_generation_start_reservation()
+
+
+def test_remote_create_retake_keeps_the_context_mode(
+    test_state, create_fake_model_files, tmp_path: Path
+) -> None:
+    create_fake_model_files()
+    store = _store(test_state)
+    video = store.ingest_upload(str(_mp4(tmp_path / "clip.mp4")))
+    app = create_remote_app(handler=test_state, remote_token="pair-token")
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/generations/retake",
+            headers=AUTH,
+            json={
+                "params": {
+                    "prompt": "the speaker says the new name",
+                    "model": "ltx-2.5-fast",
+                    "startTime": 0,
+                    "duration": 2,
+                    "contextMode": "short",
+                },
+                "inputs": {"video": {"assetId": video.id}},
+            },
+        )
+    assert created.status_code == 200, created.text
+    params = created.json()["spec"]["params"]
+    assert set(params) <= _APPROVED_PARAM_KEYS
+    assert params["contextMode"] == "short"

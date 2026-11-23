@@ -140,7 +140,7 @@ def validate_safetensors_weights(path: Path) -> None:
 
     The ``safetensors`` library is not used for this check: it memory-maps the whole file, and the
     app patches it on purpose because of the Windows commit-charge cost of that
-    (``services/patches/safetensors_metadata_fix.py``).
+    (``inference/patches/safetensors_metadata_fix.py``).
     """
     try:
         file_size = path.stat().st_size

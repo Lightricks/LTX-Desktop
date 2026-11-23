@@ -32,7 +32,7 @@ from api_types import (
 )
 from runtime_config.model_download_specs import get_latest_ltx_model_id, get_ltx_model_spec
 from services.features.lora_recipes import get_lora_recipe, make_recipe_prompt_wrap
-from services.generation_interrupt import GenerationCancelledError
+from inference.interrupt import GenerationCancelledError
 from tests.fakes import FakeCapture
 from tests.lora_catalog_helpers import add_ic_lora, add_lora, download_spec
 

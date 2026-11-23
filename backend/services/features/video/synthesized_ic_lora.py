@@ -41,14 +41,15 @@ from services.features.video.text_to_video import (
     require_supported_contract_version,
     require_video_output,
 )
-from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
+from inference.interrupt import GenerationCancelledError, is_cancel_exception
 from services.generation_queue.sessions import JobSession
 from services.generation_queue.types import (
     ExecutionOutcome,
     OutputAllocation,
     OutputPlan,
 )
-from services.records import CapabilityFailedError, GenerationRecord
+from inference.errors import CapabilityFailedError
+from services.records import GenerationRecord
 
 TInputs = TypeVar("TInputs", bound=BaseModel)
 

@@ -187,9 +187,9 @@ describe("packaged seed path resolution", () => {
       "ic-lora-input-cap.json",
       "motion-path.json",
       "ic-lora-stage-2-upscale.json",
-      "ic-lora-tiling-controls.json",
     ]) {
       assert.equal(yaml.includes(`- ${name}`), true, name);
     }
+    assert.equal(yaml.includes("- inference/ic-lora-tiling-controls.json"), true);
   });
 });

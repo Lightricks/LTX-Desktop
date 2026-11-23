@@ -6,6 +6,7 @@ import { preflightCellStatus } from "../../lib/budget-risk.ts";
 import {
   type EditPreflightState,
   preflightFallbackMessage,
+  scopeToContextMode,
   selectFreshPreflight,
   selectTrimMaxSeconds,
 } from "./editPreflight.ts";
@@ -13,6 +14,7 @@ import {
 function preflight(overrides: Partial<EditPreflightState> = {}): EditPreflightState {
   return {
     assetId: "video-1",
+    contextMode: "long",
     response: {
       source: { width: 1920, height: 1080, fps: 24, frames: 481, durationSeconds: 20 },
       resolutions: [
@@ -44,6 +46,26 @@ describe("selectFreshPreflight", () => {
 
   it("stays null without a selected video", () => {
     assert.equal(selectFreshPreflight(preflight(), null), null);
+  });
+
+  it("drops verdicts priced at another Extend context mode", () => {
+    const short = preflight({ contextMode: "short" });
+    assert.equal(selectFreshPreflight(short, "video-1", "long"), null);
+    assert.equal(selectFreshPreflight(short, "video-1", "short"), short);
+  });
+});
+
+describe("scopeToContextMode", () => {
+  it("keeps the context when its verdicts match the values", () => {
+    const context = { preflight: preflight({ contextMode: "short" }) };
+    assert.equal(scopeToContextMode({ contextMode: "short" }, context), context);
+  });
+
+  it("drops verdicts priced at another mode and keeps the rest of the context", () => {
+    const context = { preflight: preflight({ contextMode: "short" }), videoWidth: 1920 };
+    const scoped = scopeToContextMode({ contextMode: "long" }, context);
+    assert.equal(scoped.preflight, null);
+    assert.equal(scoped.videoWidth, 1920);
   });
 });
 

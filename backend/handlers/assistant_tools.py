@@ -412,6 +412,22 @@ def _recipe_guard(deps: AssistantDeps, *, video_only: bool = False) -> None:
     )
 
 
+_QUOTED_WORDS = re.compile(r'["“]([^"”]{2,})["”]')
+
+
+def _prompt_guard(deps: AssistantDeps, prompt: str) -> None:
+    # Small models leave an optional prompt empty, and the video model says only what the prompt quotes.
+    # Only when the user's message quotes words to be said, so every other empty prompt goes through as before.
+    # Once per request, so a job that needs no prompt goes through unchanged on the next call.
+    if prompt.strip() or deps.run.prompt_nudged or (quoted := _QUOTED_WORDS.search(deps.run.request.text)) is None:
+        return
+    deps.run.prompt_nudged = True
+    raise ModelRetry(
+        f'The user gave words to be said: "{quoted.group(1)}". The prompt is empty, so the new part will not say them. '
+        "Write the prompt, with those exact words in quotes. If this job needs no prompt, call this tool again unchanged."
+    )
+
+
 def _recipe_queued(deps: AssistantDeps) -> None:
     # In a mixed request ("one Cozy Felt clip and one plain clip") the recipe is already handled.
     deps.run.recipe_nudged = True
@@ -900,15 +916,17 @@ def run_ingredients(
     return result.model_copy(update={"note": note})
 
 
-@tools.tool(retries=RECIPE_GUARDED_RETRIES)
+@tools.tool(retries=RECIPE_GUARDED_RETRIES + 1)
 def extend_video(ctx: RunContext[AssistantDeps], params: ExtensionParams, job_number: JobNumber, generation_id: str | None = None, video_asset_id: str | None = None) -> AssistantGeneration:
     """Queue a local video extension; keeps the source size unless the user asks for a resolution, and inherits FPS.
 
     Pass exactly one of added_seconds ("add 3 seconds") or total_seconds ("extend it to
     10 seconds"). Supply either a succeeded generation_id or an existing video_asset_id.
-    For chained jobs use the intended source's returned ID. Returns immediately.
+    For chained jobs use the intended source's returned ID. Set contextMode "short" only
+    when the user asks for it. Returns immediately.
     """
     _recipe_guard(ctx.deps, video_only=True)
+    _prompt_guard(ctx.deps, params.prompt)
     _model(ctx.deps, params.model, "extend")
     if (params.added_seconds is None) == (params.total_seconds is None):
         raise ModelRetry("Pass exactly one of added_seconds or total_seconds.")
@@ -933,14 +951,16 @@ def extend_video(ctx: RunContext[AssistantDeps], params: ExtensionParams, job_nu
     return _submit(ctx.deps, job_number, ctx.deps.generations.create_extend, request)
 
 
-@tools.tool(retries=RECIPE_GUARDED_RETRIES)
+@tools.tool(retries=RECIPE_GUARDED_RETRIES + 1)
 def retake_video(ctx: RunContext[AssistantDeps], params: ReplacementParams, job_number: JobNumber, generation_id: str | None = None, video_asset_id: str | None = None) -> AssistantGeneration:
     """Replace a time range's audio/video locally. startTime and duration are seconds, at most 10.
 
     Supply either a succeeded generation_id or an existing video_asset_id. Preserve
-    the user's requested mode and time range. Returns immediately.
+    the user's requested mode and time range. Write the prompt, with any new speech in
+    quotes. Set contextMode "short" only when the user asks for it. Returns immediately.
     """
     _recipe_guard(ctx.deps, video_only=True)
+    _prompt_guard(ctx.deps, params.prompt)
     _model(ctx.deps, params.model, "retake")
     video = _video_input(ctx.deps, generation_id, video_asset_id)
     source = _source_seconds(ctx.deps, video)

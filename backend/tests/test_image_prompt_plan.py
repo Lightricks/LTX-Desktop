@@ -12,7 +12,7 @@ from typing import Iterator
 import pytest
 
 from handlers.image_prompt_plan import plan_fal_image_prompt
-from services.generation_interrupt import GenerationCancelledError
+from inference.interrupt import GenerationCancelledError
 
 
 def _cancelled() -> None:

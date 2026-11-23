@@ -22,7 +22,7 @@ from runtime_config.video_job_budget import (
     build_local_job_filter,
     resolve_pass_shape,
 )
-from services.ltx_pipeline_common import offload_mode_for_prefetch_count
+from inference.common import offload_mode_for_prefetch_count
 from state.app_settings import MAX_GENERATION_SEED, resolved_use_conv_vae
 from state.app_state_types import AppState
 

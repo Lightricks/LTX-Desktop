@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import type { components } from "../../../../generated/backend-openapi.ts";
 import { getIcLoraRecipe } from "../../../../lib/ic-lora-recipes.ts";
-import controls from "../../../../../shared/ic-lora-tiling-controls.json" with { type: "json" };
+import controls from "../../../../../backend/inference/ic-lora-tiling-controls.json" with { type: "json" };
 import { createIcLoraRecipeDefinition, type IcLoraRecipeContext } from "./icLoraRecipe.ts";
 import { tileSizeOptions } from "./icLoraTileOptions.ts";
 import { AUTO_TILE, TILE_CHOICES, TILE_PRESETS } from "./icLoraTilingControls.ts";

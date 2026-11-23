@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from api_types import GenerateVideoRequest
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 from server_utils.media_validation import normalize_optional_path
 
 

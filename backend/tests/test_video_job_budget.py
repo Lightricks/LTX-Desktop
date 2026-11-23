@@ -16,7 +16,7 @@ from api_types import (
     InstructionSection,
     PreprocessingStep,
 )
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 import pytest
 from pytest import approx
 from runtime_config.ic_lora_chunking import IC_LORA_CHUNK_PIXEL_FRAMES
@@ -54,7 +54,7 @@ from runtime_config.ic_lora_local_envelope import effective_denoise_stage1, ic_l
 from runtime_config.ltx_capabilities import local_caps, pixels_for
 from runtime_config.model_download_specs import get_ltx_model_spec
 from runtime_config.ic_lora_stage_mode import IcLoraStageMode
-from runtime_config.ic_lora_tiling import IcLoraTiling
+from inference.ic_lora_tiling import IcLoraTiling
 from runtime_config.video_job_budget import (
     LOCAL_GENERATION_RAM_SHORTFALL,
     LOCAL_GENERATION_RAM_SHORTFALL_MESSAGE,
@@ -82,7 +82,7 @@ from runtime_config.video_job_budget import (
     reject_message_and_code,
     video_tokens,
 )
-from services.retake_pipeline.window import (
+from inference.retake_pipeline.window import (
     duration_to_extend_frames,
     window_for_extend,
     window_for_retake,

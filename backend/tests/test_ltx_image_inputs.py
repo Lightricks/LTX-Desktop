@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from api_types import ImageConditioningInput
 from ltx_pipelines.utils.types import ImageGuide, ImageReplace
-from services.ltx_pipeline_common import to_ltx_images
+from inference.common import to_ltx_images
 
 
 def test_first_frame_replaces_and_later_frames_guide() -> None:
@@ -36,7 +36,7 @@ def test_fast_pipeline_passes_guide_all_to_the_ltx_bindings() -> None:
     """Multi-keyframe interpolation fell back to replace-at-0 when ``_run_inference`` ignored the flag."""
     from types import SimpleNamespace
 
-    from services.fast_video_pipeline.ltx_fast_video_pipeline import LTXFastVideoPipeline
+    from inference.fast_video_pipeline.ltx_fast_video_pipeline import LTXFastVideoPipeline
 
     seen: list[object] = []
 

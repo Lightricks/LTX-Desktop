@@ -14,7 +14,7 @@ from starlette.testclient import TestClient
 from api_types import RetakeParams, RetakeRequestParams
 from app_factory import create_app
 from app_handler import ServiceBundle, open_store
-from frame_math import compute_num_frames, num_frames_for_audio_duration
+from inference.frame_math import compute_num_frames, num_frames_for_audio_duration
 from handlers.queued_generation_handler import QueuedGenerationHandler
 from services.store import Store
 from services.media_probe import MAX_IMAGE_BYTES, MAX_VIDEO_BYTES

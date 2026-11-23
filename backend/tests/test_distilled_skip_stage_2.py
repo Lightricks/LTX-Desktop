@@ -10,7 +10,7 @@ from ltx_core.types import SpatioTemporalScaleFactors
 
 import ltx_pipelines.distilled as distilled
 from ltx_pipelines.utils.types import ImageConditioningInput, LoadedImageConditioning, PipelineOutput
-from services.fast_video_pipeline.distilled_skip_stage_2 import DistilledPipelineWithSkipStage2
+from inference.fast_video_pipeline.distilled_skip_stage_2 import DistilledPipelineWithSkipStage2
 
 
 class _Encoding:
@@ -52,12 +52,12 @@ def _pipeline(monkeypatch, *, real_latents: bool = False, decoder_scale: object 
         return video, audio
 
     monkeypatch.setattr(
-        "services.fast_video_pipeline.distilled_skip_stage_2.image_conditionings",
+        "inference.fast_video_pipeline.distilled_skip_stage_2.image_conditionings",
         fake_image_conditionings,
     )
     if not real_latents:
         monkeypatch.setattr(
-            "services.fast_video_pipeline.distilled_skip_stage_2.create_initial_av_latents",
+            "inference.fast_video_pipeline.distilled_skip_stage_2.create_initial_av_latents",
             fake_latents,
         )
     monkeypatch.setattr("ltx_pipelines.utils.helpers.tiling_scale_factors_for_vae", lambda _path: decoder_scale)
@@ -196,7 +196,7 @@ def test_skip_stage_2_snaps_frames_to_the_vae_grid(monkeypatch, requested: int, 
         return torch.zeros(1, 4, 1, pixel_shape.height, pixel_shape.width), torch.zeros(1, 8, 1, 16)
 
     monkeypatch.setattr(
-        "services.fast_video_pipeline.distilled_skip_stage_2.create_initial_av_latents",
+        "inference.fast_video_pipeline.distilled_skip_stage_2.create_initial_av_latents",
         recording_latents,
     )
 
