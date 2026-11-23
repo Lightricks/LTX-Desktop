@@ -119,4 +119,52 @@ export function registerExportHandlers(): void {
     stopExportProcess()
     return { success: true }
   })
+
+  handle('exportAudio', async ({ clips, outputPath, format, sampleRate, bitrate }) => {
+    const ffmpegPath = findFfmpegPath()
+    if (!ffmpegPath) return { success: false, error: 'FFmpeg not found' }
+
+    try {
+      validatePath(outputPath, getAllowedRoots())
+      for (const clip of clips) {
+        const fp = clip.path
+        if (fp) validatePath(fp, getAllowedRoots())
+      }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+
+    const totalDuration = clips.reduce((max, c) => Math.max(max, c.startTime + c.duration), 0)
+    if (totalDuration <= 0) return { success: false, error: 'No clips to export' }
+
+    const tmpDir = os.tmpdir()
+    const tmpRawPcm = path.join(tmpDir, `ltx-export-audio-${Date.now()}.raw`)
+    const cleanup = () => { try { fs.unlinkSync(tmpRawPcm) } catch {} }
+
+    try {
+      logger.info('[Export] Audio-only export: mixing down PCM')
+      const { pcmBuffer, sampleRate: pcmRate, channels } = await mixAudioToPcm(clips, totalDuration, ffmpegPath)
+      fs.writeFileSync(tmpRawPcm, pcmBuffer)
+
+      const codecArgs: Record<typeof format, string[]> = {
+        mp3: ['-c:a', 'libmp3lame', '-b:a', `${bitrate || 192}k`],
+        aac: ['-c:a', 'aac', '-b:a', `${bitrate || 192}k`],
+        wav: ['-c:a', 'pcm_s16le'],
+        flac: ['-c:a', 'flac'],
+      }
+      if (!codecArgs[format]) { cleanup(); return { success: false, error: `Unknown format: ${format}` } }
+
+      const r = await runFfmpeg(ffmpegPath, [
+        '-y', '-f', 's16le', '-ar', String(pcmRate), '-ac', String(channels), '-i', tmpRawPcm,
+        ...codecArgs[format], '-ar', String(sampleRate), outputPath,
+      ])
+      cleanup()
+      if (!r.success) return { success: false, error: r.error }
+      logger.info(`[Export] Audio export done: ${outputPath}`)
+      return { success: true }
+    } catch (err) {
+      cleanup()
+      return { success: false, error: String(err) }
+    }
+  })
 }
