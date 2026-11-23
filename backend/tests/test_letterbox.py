@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from handlers.video_resolution import generation_letterbox
-from services.retake_pipeline.letterbox import crop_letterbox, fit_and_pad
+from inference.retake_pipeline.letterbox import crop_letterbox, fit_and_pad
 
 
 def test_pad_then_crop_restores_the_1080p_picture() -> None:

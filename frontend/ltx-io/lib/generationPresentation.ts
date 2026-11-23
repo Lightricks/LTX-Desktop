@@ -4,6 +4,7 @@ import {
   CUSTOM_LORA_RUN_FALLBACK_LABEL,
 } from "../../lib/custom-lora.ts";
 import { HOME_FEATURES } from "../../lib/home-features.ts";
+import { editContextBadge, extendModeLabel } from "./extendLabels.ts";
 import { formatPipelineDisplayName } from "../../lib/video-generation-model-specs.ts";
 import { videoGenerationResolutionLabel } from "../../lib/video-resolution.ts";
 
@@ -27,7 +28,9 @@ type GenerationPresentationSource = Pick<Generation, "feature" | "spec"> & {
  * Retake and Extend keep the source picture size unless a smaller one is asked for, and the
  * run caps it. The spec holds the request, not the result, so the label comes from the output.
  */
-const OUTPUT_SIZED_FEATURES: ReadonlySet<string> = new Set(["retake", "extend"]);
+const EXTEND_FEATURE = "extend";
+const RETAKE_FEATURE = "retake";
+const OUTPUT_SIZED_FEATURES: ReadonlySet<string> = new Set([RETAKE_FEATURE, EXTEND_FEATURE]);
 
 function outputResolutionLabel(generation: GenerationPresentationSource): string | null {
   if (!OUTPUT_SIZED_FEATURES.has(generation.feature)) return null;
@@ -209,6 +212,14 @@ export function generationPresentation(
     params.fps > 0
   ) {
     badges.push(formatA2vDurationBadge(params.numFrames, params.fps));
+  }
+  if (generation.feature === EXTEND_FEATURE) {
+    const placement = extendModeLabel(params?.mode);
+    if (placement) badges.push(placement);
+  }
+  if (generation.feature === EXTEND_FEATURE || generation.feature === RETAKE_FEATURE) {
+    const context = editContextBadge(params?.contextMode);
+    if (context) badges.push(context);
   }
   if (typeof params?.fps === "number") badges.push(`${params.fps} fps`);
   if (

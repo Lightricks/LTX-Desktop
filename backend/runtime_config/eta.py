@@ -36,14 +36,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
-from runtime_config.fast_chunking import (
+from inference.fast_chunking import (
     CARRY_FRAMES,
     is_chunked_canvas,
     last_window_frames,
     window_candidates,
     window_count,
 )
-from runtime_config.ic_lora_tiling import IcLoraTiling
+from inference.ic_lora_tiling import IcLoraTiling
 
 if TYPE_CHECKING:
     from runtime_config.budget_evidence import JobShape

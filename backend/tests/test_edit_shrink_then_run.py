@@ -25,7 +25,7 @@ from services.features.video.extend import ExtendExecutor
 from services.features.video.retake import RetakeExecutor
 from services.generation_queue.types import OutputAllocation
 from tests.fakes.generation import FakeJobSession
-from services.records import CapabilityFailedError
+from inference.errors import CapabilityFailedError
 from services.sqlite_store import SqliteStore
 from tests.video_fixtures import write_mp4
 

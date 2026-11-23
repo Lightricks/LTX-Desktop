@@ -5,7 +5,7 @@ import numpy as np
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 from runtime_config.ic_lora_local_envelope import IC_LORA_SOURCE_TOO_LARGE, IC_LORA_V1_ENVELOPE_MESSAGE
 from runtime_config.video_job_budget import (
     LOCAL_GENERATION_UNSUPPORTED,
@@ -1154,7 +1154,7 @@ def test_outpaint_over_spatial_cap_unlinks_mask(
 def test_catalog_preprocess_runs_after_generation_started(
     client: TestClient, tmp_path: Path, create_fake_model_files, test_state, monkeypatch
 ):
-    from services.generation_interrupt import GenerationCancelledError
+    from inference.interrupt import GenerationCancelledError
 
     import handlers.ic_lora_handler as handler_mod
 

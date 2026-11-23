@@ -4,7 +4,10 @@ import {
   withDefaultOffering,
   type OfferingId,
 } from "../../../../lib/video-generation-model-specs.ts";
-import { preflightEstimatedTimeText } from "../../../lib/editPreflight.ts";
+import {
+  preflightEstimatedTimeText,
+  scopeToContextMode,
+} from "../../../lib/editPreflight.ts";
 import { roundDurationSeconds } from "../../../lib/roundDuration.ts";
 import { readGenerationParams } from "../../../lib/resultsFeedModel.ts";
 import {
@@ -17,6 +20,12 @@ import {
   type FieldOption,
   type ValidationIssue,
 } from "../types.ts";
+import {
+  DEFAULT_EDIT_CONTEXT_MODE,
+  isEditContextMode,
+  type EditContextMode,
+} from "../../../lib/editContextMode.ts";
+import { EDIT_CONTEXT_MODE_OPTIONS, contextModeTooltip } from "./editContextMode.ts";
 import { negativePromptField } from "./negativePrompt.ts";
 import {
   capabilityModelOptions,
@@ -48,6 +57,7 @@ export type RetakeSchema = {
   negativePrompt: { kind: "textarea" };
   model: { kind: "options"; value: OfferingId };
   resolution: { kind: "options"; value: EditResolutionKey };
+  contextMode: { kind: "options"; value: EditContextMode };
   startTime: { kind: "slider"; value: number };
   duration: { kind: "slider"; value: number };
 };
@@ -81,6 +91,7 @@ export const RETAKE_DEFAULTS: RetakeValues = {
   negativePrompt: RETAKE_EXAMPLE_NEGATIVE_PROMPT,
   model: "ltx-2.5-fast",
   resolution: "original",
+  contextMode: DEFAULT_EDIT_CONTEXT_MODE,
   startTime: RETAKE_EXAMPLE_START_SECONDS,
   duration: RETAKE_EXAMPLE_DURATION_SECONDS,
 };
@@ -154,6 +165,9 @@ export function fromGeneration(
     negativePrompt: readNegativePrompt(spec),
     model: restoreOfferingId(params.model, context.specs) ?? RETAKE_DEFAULTS.model,
     resolution: editResolutionKeyFromParams(params),
+    contextMode: isEditContextMode(params.contextMode)
+      ? params.contextMode
+      : RETAKE_DEFAULTS.contextMode,
     startTime:
       typeof params.startTime === "number" ? params.startTime : RETAKE_DEFAULTS.startTime,
     duration:
@@ -192,8 +206,9 @@ function videoLengthIssue(
 
 function preflightIssues(
   values: RetakeValues,
-  context: RetakeContext,
+  rawContext: RetakeContext,
 ): ValidationIssue[] {
+  const context = scopeToContextMode(values, rawContext);
   return editPreflightIssues({
     video: values.video,
     preflight: context.preflight,
@@ -247,6 +262,7 @@ export function toCreateBody(
       startTime: wire.startTime,
       duration: wire.duration,
       mode: RETAKE_CREATE_MODE,
+      contextMode: values.contextMode,
       promptProvenance: "typed",
       ...editResolutionParam(values, context),
     },
@@ -267,8 +283,9 @@ function editResolutionParam(
 
 export function buildRetakeForm(
   values: RetakeValues,
-  context: RetakeContext,
+  rawContext: RetakeContext,
 ): FeatureFormModel<RetakeSchema> {
+  const context = scopeToContextMode(values, rawContext);
   const resolutionOptions = editResolutionFieldOptions(
     context.videoWidth,
     context.videoHeight,
@@ -292,6 +309,14 @@ export function buildRetakeForm(
         placeholder: "Describe what should change in this region...",
       },
       negativePromptField<RetakeSchema>(),
+      {
+        kind: "options",
+        id: "contextMode",
+        label: "Context",
+        dataKey: "contextMode",
+        tooltip: contextModeTooltip("on each side of the selection"),
+        options: EDIT_CONTEXT_MODE_OPTIONS,
+      },
       ...(resolutionOptions.length > 0
         ? [
             {

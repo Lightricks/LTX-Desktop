@@ -24,7 +24,7 @@ from pathlib import Path
 
 from api_types import TargetResolution
 from runtime_config.grid_fit import fit_in_box, grows_into_box
-from runtime_config.ic_lora_tiling import IcLoraTiling
+from inference.ic_lora_tiling import IcLoraTiling
 
 IC_LORA_SOURCE_TOO_LARGE = "IC_LORA_SOURCE_TOO_LARGE"
 IC_LORA_V1_ENVELOPE_MESSAGE = (

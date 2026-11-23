@@ -10,7 +10,7 @@ import pytest
 
 from services.ffmpeg import run_ffmpeg
 from services.records import MediaError
-from services.retake_pipeline.stitch_silence import append_silence_input
+from inference.retake_pipeline.stitch_silence import append_silence_input
 
 
 def _silent_video(path: Path, *, frames: int, fps: int) -> str:

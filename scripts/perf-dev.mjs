@@ -45,7 +45,9 @@ function appDataDir() {
 }
 
 const HAS_UV = spawnSync('uv', ['--version'], { stdio: 'ignore' }).status === 0
-const runPy = (script) => (HAS_UV ? ['uv', ['run', 'python', script]] : ['python', [script]])
+// fastapi and uvicorn live in the desktop extra. A plain `uv run` does not install them.
+const runPy = (script) =>
+  HAS_UV ? ['uv', ['run', '--extra', 'desktop', 'python', script]] : ['python', [script]]
 
 function tee(child, tag) {
   const write = (buf) => {

@@ -9,8 +9,10 @@ import {
   blockedOptionFields,
   findPreflightCell,
   preflightEstimatedTimeText,
+  scopeToContextMode,
   preflightFallbackMessage,
 } from "../../../lib/editPreflight.ts";
+import { EXTEND_MODE_LABELS, isExtendMode } from "../../../lib/extendLabels.ts";
 import { roundDurationSeconds } from "../../../lib/roundDuration.ts";
 import { readGenerationParams } from "../../../lib/resultsFeedModel.ts";
 import {
@@ -23,6 +25,12 @@ import {
   type FieldOption,
   type ValidationIssue,
 } from "../types.ts";
+import {
+  DEFAULT_EDIT_CONTEXT_MODE,
+  isEditContextMode,
+  type EditContextMode,
+} from "../../../lib/editContextMode.ts";
+import { EDIT_CONTEXT_MODE_OPTIONS, contextModeTooltip } from "./editContextMode.ts";
 import { negativePromptField } from "./negativePrompt.ts";
 import {
   capabilityModelOptions,
@@ -57,6 +65,7 @@ export type ExtendSchema = {
   model: { kind: "options"; value: OfferingId };
   resolution: { kind: "options"; value: EditResolutionKey };
   mode: { kind: "options"; value: ExtendMode };
+  contextMode: { kind: "options"; value: EditContextMode };
   duration: { kind: "options"; value: ExtendDuration };
 };
 
@@ -69,8 +78,8 @@ export const EXTEND_EXAMPLE_NEGATIVE_PROMPT =
   "zoom in, push forward, frozen frame, abrupt cut, seam jump, blurry background, flicker";
 
 const MODE_OPTIONS: FieldOption<ExtendMode>[] = [
-  { value: "start", label: "Before the clip" },
-  { value: "end", label: "After the clip" },
+  { value: "start", label: EXTEND_MODE_LABELS.start },
+  { value: "end", label: EXTEND_MODE_LABELS.end },
 ];
 
 const DURATION_OPTIONS: FieldOption<ExtendDuration>[] = EXTEND_DURATION_PRESETS.map(
@@ -84,12 +93,9 @@ export const EXTEND_DEFAULTS: ExtendValues = {
   model: "ltx-2.5-fast",
   resolution: "original",
   mode: "end",
+  contextMode: DEFAULT_EDIT_CONTEXT_MODE,
   duration: 4,
 };
-
-function isExtendMode(value: unknown): value is ExtendMode {
-  return value === "start" || value === "end";
-}
 
 function isExtendDuration(value: unknown): value is ExtendDuration {
   return EXTEND_DURATION_PRESETS.some((preset) => preset === value);
@@ -134,6 +140,9 @@ export function fromGeneration(
     model: restoreOfferingId(params.model, context.specs) ?? EXTEND_DEFAULTS.model,
     resolution: editResolutionKeyFromParams(params),
     mode: isExtendMode(params.mode) ? params.mode : EXTEND_DEFAULTS.mode,
+    contextMode: isEditContextMode(params.contextMode)
+      ? params.contextMode
+      : EXTEND_DEFAULTS.contextMode,
     duration: isExtendDuration(params.duration)
       ? params.duration
       : EXTEND_DEFAULTS.duration,
@@ -154,8 +163,9 @@ function videoLengthIssue(
 
 function preflightIssues(
   values: ExtendValues,
-  context: ExtendContext,
+  rawContext: ExtendContext,
 ): ValidationIssue[] {
+  const context = scopeToContextMode(values, rawContext);
   return editPreflightIssues({
     video: values.video,
     preflight: context.preflight,
@@ -207,6 +217,7 @@ export function toCreateBody(
       model: values.model,
       duration: roundDurationSeconds(values.duration),
       mode: values.mode,
+      contextMode: values.contextMode,
       promptProvenance: "typed",
       ...editResolutionParam(values, context),
     },
@@ -227,8 +238,9 @@ function editResolutionParam(
 
 export function buildExtendForm(
   values: ExtendValues,
-  context: ExtendContext,
+  rawContext: ExtendContext,
 ): FeatureFormModel<ExtendSchema> {
+  const context = scopeToContextMode(values, rawContext);
   const resolutionOptions = editResolutionFieldOptions(
     context.videoWidth,
     context.videoHeight,
@@ -279,6 +291,14 @@ export function buildExtendForm(
         label: "Add frames",
         dataKey: "mode",
         options: MODE_OPTIONS,
+      },
+      {
+        kind: "options",
+        id: "contextMode",
+        label: "Context",
+        dataKey: "contextMode",
+        tooltip: contextModeTooltip("next to the new part"),
+        options: EDIT_CONTEXT_MODE_OPTIONS,
       },
       ...(resolutionOptions.length > 0
         ? [
@@ -340,8 +360,9 @@ function resolvePreflightDuration(
 
 export function normalizeExtend(
   values: ExtendValues,
-  context: ExtendContext,
+  rawContext: ExtendContext,
 ): ExtendValues {
+  const context = scopeToContextMode(values, rawContext);
   const model = resolveExtendModel(values.model, context);
   const resolution = resolvePreflightResolution(
     normalizeEditResolution(

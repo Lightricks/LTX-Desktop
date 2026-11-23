@@ -7,8 +7,8 @@ manually. Ctrl+C stops the server and, via its shutdown hook, terminates any
 still-running spawned perf runs.
 
 Run it with the backend env so fastapi/uvicorn/torch resolve, e.g.:
-    uv run python run_dashboard.py
-    uv run python run_dashboard.py --port 8750
+    uv run --extra desktop python run_dashboard.py
+    uv run --extra desktop python run_dashboard.py --port 8750
 
 Binds 127.0.0.1 only — never expose it.
 """

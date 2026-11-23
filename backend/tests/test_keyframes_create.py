@@ -1,4 +1,4 @@
-"""POST /api/generations/keyframes: the flag gate, what the row stores, and the refusals."""
+"""POST /api/generations/keyframes: what the row stores and the refusals."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from starlette.testclient import TestClient
 
 from remote.app import create_remote_app
 from services.sqlite_store import SqliteStore
-from tests.http_error_assertions import assert_http_error
 
 _AUTH = {"Authorization": "Bearer pair-token"}
 
@@ -45,31 +44,10 @@ def _body(
     }
 
 
-def _enable(client: TestClient) -> None:
-    flags = client.request("PATCH", "/api/feature-flags", json={"keyframes": True})
-    assert flags.status_code == 200, flags.text
-
-
-def test_create_refuses_while_the_flag_is_off_and_queues_nothing(
-    client, test_state, create_fake_model_files, tmp_path: Path
-) -> None:
-    create_fake_model_files()
-    asset_id, _ = _asset(client, tmp_path, "a.png")
-
-    refused = client.post(
-        "/api/generations/keyframes",
-        json=_body([{"assetId": asset_id, "frameIndex": 0, "strength": 1}]),
-    )
-
-    assert_http_error(refused, status_code=422, code="KEYFRAMES_NOT_ENABLED")
-    assert _rows(test_state) == []
-
-
 def test_create_stores_asset_ids_and_never_a_file_path(
     client, test_state, create_fake_model_files, tmp_path: Path
 ) -> None:
     create_fake_model_files()
-    _enable(client)
     first_id, first_path = _asset(client, tmp_path, "a.png")
     last_id, last_path = _asset(client, tmp_path, "b.png")
     keyframes: list[dict[str, JsonValue]] = [
@@ -86,6 +64,23 @@ def test_create_stores_asset_ids_and_never_a_file_path(
     assert first_path not in stored
     assert last_path not in stored
     assert len(_rows(test_state)) == 1
+
+
+def test_keyframes_job_shows_in_recent_features(
+    client, create_fake_model_files, tmp_path: Path
+) -> None:
+    create_fake_model_files()
+    asset_id, _ = _asset(client, tmp_path, "a.png")
+    created = client.post(
+        "/api/generations/keyframes",
+        json=_body([{"assetId": asset_id, "frameIndex": 0, "strength": 1}]),
+    )
+    assert created.status_code == 200, created.text
+
+    recent = client.get("/api/generations/recent-features")
+
+    assert recent.status_code == 200, recent.text
+    assert recent.json() == ["keyframes"]
 
 
 @pytest.mark.parametrize(
@@ -108,7 +103,6 @@ def test_create_refuses_bad_timelines_and_queues_nothing(
     duration: int | None,
 ) -> None:
     create_fake_model_files()
-    _enable(client)
     asset_id, _ = _asset(client, tmp_path, "a.png")
     keyframes: list[dict[str, JsonValue]] = [
         {"assetId": asset_id, "frameIndex": frame, "strength": 1} for frame in frames
@@ -120,7 +114,7 @@ def test_create_refuses_bad_timelines_and_queues_nothing(
     assert _rows(test_state) == []
 
 
-def test_remote_create_is_blocked_by_the_flag_and_then_hides_paths(
+def test_remote_create_hides_paths(
     test_state, create_fake_model_files, tmp_path: Path
 ) -> None:
     create_fake_model_files()
@@ -136,11 +130,8 @@ def test_remote_create_is_blocked_by_the_flag_and_then_hides_paths(
         asset_id = uploaded.json()["id"]
         body = _body([{"assetId": asset_id, "frameIndex": 0, "strength": 1}])
 
-        refused = remote.post("/api/generations/keyframes", headers=_AUTH, json=body)
-        remote.request("PATCH", "/api/feature-flags", headers=_AUTH, json={"keyframes": True})
         created = remote.post("/api/generations/keyframes", headers=_AUTH, json=body)
 
-    assert_http_error(refused, status_code=422, code="KEYFRAMES_NOT_ENABLED")
     assert created.status_code == 200, created.text
     assert created.json()["spec"]["inputs"] == {
         "keyframes": [{"assetId": asset_id, "frameIndex": 0, "strength": 1}]

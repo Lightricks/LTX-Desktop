@@ -221,7 +221,7 @@ describe("a2vDurationPolicy", () => {
     // (frame_math.num_frames_for_audio_duration / compute_num_frames) with no
     // shared code, so these vectors pin the agreement. Expected values from:
     //   cd backend && uv run python -c "
-    //   from frame_math import compute_num_frames, num_frames_for_audio_duration
+    //   from inference.frame_math import compute_num_frames, num_frames_for_audio_duration
     //   for d, m in [(10.563,481),(5.0,481),(5.0,113),(5.0,112),(5.04,481),(5.375,481),(2.0,481),(0.05,481),(30.0,481)]: print(d, m, num_frames_for_audio_duration(d, 24, max_frames=m))
     //   for s in [20,5,0]: print(s, compute_num_frames(s,24))"
     const audioVectors: Array<

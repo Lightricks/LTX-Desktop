@@ -207,9 +207,23 @@ describe("extend definition", () => {
         model: "ltx-2.5-fast",
         duration: 8,
         mode: "start",
+        contextMode: "long",
         promptProvenance: "typed",
       },
     });
+  });
+
+  it("sends and restores the Short context mode", () => {
+    const body = toCreateBody(values({ contextMode: "short" }));
+    assert.equal(body.params.contextMode, "short");
+    const restored = fromGeneration(
+      {
+        params: { prompt: "continue", model: "ltx-2.5-fast", duration: 6, mode: "end", contextMode: "short" },
+        inputs: { video: { assetId: "clip-9" } },
+      },
+      context(),
+    );
+    assert.equal(restored?.contextMode, "short");
   });
 
   it("rounds duration to one decimal on create", () => {
@@ -240,6 +254,7 @@ describe("extend definition", () => {
       model: "ltx-2.5-fast",
       resolution: "original",
       mode: "start",
+      contextMode: "long",
       duration: 6,
     });
   });
@@ -318,6 +333,7 @@ describe("extend preflight", () => {
   ): EditPreflightState {
     return {
       assetId: "video-1",
+      contextMode: "long",
       response: { source, resolutions: [], cells, budgetMode: "brave" },
     };
   }
@@ -435,5 +451,26 @@ describe("extend preflight", () => {
       context({ ...dims, preflight: state }),
     );
     assert.equal(snapped.duration, 8);
+  });
+
+  it("ignores verdicts priced at the other context mode", () => {
+    // Long tops out at 6s here; Short would allow the longer extension.
+    const longPriced = preflight([
+      cell("720p", 4, true),
+      cell("720p", 6, true),
+      cell("720p", 8, false, "too long"),
+      cell("720p", 10, false, "too long"),
+      cell("720p", 12, false, "too long"),
+    ]);
+    const short = extendDefinition.normalize(
+      values({ resolution: "720p", duration: 12, contextMode: "short" }),
+      context({ ...dims, preflight: longPriced }),
+    );
+    assert.equal(short.duration, 12);
+    const long = extendDefinition.normalize(
+      values({ resolution: "720p", duration: 12, contextMode: "long" }),
+      context({ ...dims, preflight: longPriced }),
+    );
+    assert.equal(long.duration, 6);
   });
 });

@@ -9,7 +9,7 @@ import av
 import imageio_ffmpeg
 import pytest
 
-from services.retake_pipeline.frame_rate import restamp_to_source_rate
+from inference.retake_pipeline.frame_rate import restamp_to_source_rate
 
 NTSC_FILM = 24000 / 1001
 FRAMES = 46

@@ -214,7 +214,7 @@ describe("retake definition", () => {
     const form = retakeDefinition.form(values(), context());
     assert.deepEqual(
       form.fields.map((field) => field.id),
-      ["video", "prompt", "negativePrompt", "model"],
+      ["video", "prompt", "negativePrompt", "contextMode", "model"],
     );
     const video = form.fields[0];
     assert.equal(video?.kind, "video-asset");
@@ -318,9 +318,23 @@ describe("retake definition", () => {
         startTime: 1,
         duration: 3,
         mode: "replace_audio_and_video",
+        contextMode: "long",
         promptProvenance: "typed",
       },
     });
+  });
+
+  it("sends the chosen context mode and restores it from a result", () => {
+    const body = toCreateBody(values({ startTime: 1, duration: 3, contextMode: "short" }));
+    assert.equal(body.params.contextMode, "short");
+    const restored = fromGeneration(
+      {
+        params: { prompt: "p", model: "ltx-2.5-fast", startTime: 1, duration: 3, contextMode: "short" },
+        inputs: { video: { assetId: "clip-9" } },
+      },
+      context(),
+    );
+    assert.equal(restored?.contextMode, "short");
   });
 
   it("rounds duration to one decimal on create", () => {
@@ -359,6 +373,7 @@ describe("retake definition", () => {
       negativePrompt: "abrupt cut",
       model: "ltx-2.5-fast",
       resolution: "original",
+      contextMode: "long",
       startTime: 0.5,
       duration: 2,
     });
@@ -541,6 +556,7 @@ describe("retake preflight", () => {
   ): EditPreflightState {
     return {
       assetId: "video-1",
+      contextMode: "long",
       response: { source, resolutions: [], cells },
     };
   }

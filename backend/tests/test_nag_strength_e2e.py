@@ -16,7 +16,7 @@ from pydantic import JsonValue
 from starlette.testclient import TestClient
 
 from app_factory import create_app
-from services.fast_video_pipeline.nag_config import NagConfig
+from inference.fast_video_pipeline.nag_config import NagConfig
 from services.sqlite_store import SqliteStore
 from state import build_initial_state, set_state_service_for_tests
 from state.app_state_types import HfAuthenticated

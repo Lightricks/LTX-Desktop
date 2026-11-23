@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
 
 import imageio.v2 as imageio
@@ -47,6 +48,35 @@ def write_pattern_clip(
         audio_codec = "aac" if path.suffix == ".mp4" else "libopus"
         args += ["-c:a", audio_codec, "-t", f"{frames / fps:.4f}"]
     run_ffmpeg([*args, str(path)])
+    return path
+
+
+def write_clip_with_tone_spans(
+    path: Path,
+    *,
+    frames: int,
+    spans: Sequence[tuple[float, float]],
+    fps: int = 24,
+    channels: int = 2,
+    amplitude: float = 0.5,
+    size: str = "64x64",
+) -> Path:
+    """A moving test pattern with a tone that plays only inside ``spans`` (seconds).
+
+    The tone stands in for speech: loud inside a span, silent outside. ``channels=1`` makes a
+    mono track, as phone clips have.
+    """
+    inside = "+".join(f"between(t,{start},{end})" for start, end in spans) or "0"
+    run_ffmpeg(
+        [
+            "-y", "-f", "lavfi", "-i", f"testsrc=size={size}:rate={fps}",
+            "-f", "lavfi", "-i", "sine=frequency=220:sample_rate=48000",
+            "-af", f"volume=eval=frame:volume='{amplitude}*({inside})'",
+            "-frames:v", str(frames), "-t", f"{frames / fps:.4f}",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-ac", str(channels), "-c:a", "aac", str(path),
+        ]
+    )
     return path
 
 

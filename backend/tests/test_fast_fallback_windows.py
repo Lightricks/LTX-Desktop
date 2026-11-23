@@ -11,7 +11,7 @@ import runtime_config.video_job_budget as budget
 from runtime_config.budget_admission import Admission, Admitted, Refused, RiskAllowance
 from runtime_config.budget_evidence import Extrapolated, Fitted
 from runtime_config.device_calibration import DeviceCalibration, FrontierPoint, envelope_for
-from runtime_config.fast_chunking import (
+from inference.fast_chunking import (
     CARRY_FRAMES,
     MIN_WINDOW_FRAMES,
     is_chunked_canvas,

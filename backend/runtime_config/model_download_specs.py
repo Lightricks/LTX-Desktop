@@ -20,16 +20,13 @@ from api_types import (
     LtxCatalogModelFamily,
     ModelCheckpointID,
 )
+from inference.layout import LTX_2_5_FAMILY_DIR, get_checkpoint_layout
 from runtime_config.ltx_api_text_encoder_ids import (
     LTX_2_5_API_PROMPT_EMBEDDING_MODEL,
     LtxApiPromptEmbeddingModel,
 )
 
 logger = logging.getLogger(__name__)
-
-# 2.5-native weights live under this family dir. 2.3 and shared tooling stay at models_root.
-# 2.5.1 patches use new filenames in the same dir — not a nested ltx-2.5.1/.
-LTX_2_5_FAMILY_DIR = Path("ltx-2.5")
 
 ALL_MODEL_CP_IDS = cast(tuple[ModelCheckpointID, ...], get_args(ModelCheckpointID))
 ALL_LTX_LOCAL_MODEL_IDS = cast(tuple[LTXLocalModelId, ...], get_args(LTXLocalModelId))
@@ -267,20 +264,21 @@ _DISTILLED_PIPELINES_2_5: tuple[tuple[LTXVideoGenPipeline, LTXVideoGenerationSpe
 
 
 def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
+    layout = get_checkpoint_layout(cp_id)
     match cp_id:
         case "ltx-2.3-22b-distilled":
             return ModelCheckpointSpec(
-                relative_path=Path("ltx-2.3-22b-distilled.safetensors"),
+                relative_path=layout.relative_path,
                 expected_size_bytes=43_000_000_000,
-                is_folder=False,
+                is_folder=layout.is_folder,
                 repo_id="Lightricks/LTX-2.3",
                 description="Main transformer model",
             )
         case "ltx-2.3-22b-distilled-1.1":
             return ModelCheckpointSpec(
-                relative_path=Path("ltx-2.3-22b-distilled-1.1.safetensors"),
+                relative_path=layout.relative_path,
                 expected_size_bytes=46_149_345_334,
-                is_folder=False,
+                is_folder=layout.is_folder,
                 repo_id="Lightricks/LTX-2.3",
                 description="Main transformer model",
             )
@@ -292,17 +290,17 @@ def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
             # 1.1 so downloads land on the live path; this spec only describes the
             # orphaned local file.
             return ModelCheckpointSpec(
-                relative_path=Path("ltx-2.3-spatial-upscaler-x2-1.0.safetensors"),
+                relative_path=layout.relative_path,
                 expected_size_bytes=995_743_504,
-                is_folder=False,
+                is_folder=layout.is_folder,
                 repo_id="Lightricks/LTX-2.3",
                 description="2x upscaler (legacy)",
             )
         case "ltx-2.3-spatial-upscaler-x2-1.1":
             return ModelCheckpointSpec(
-                relative_path=Path("ltx-2.3-spatial-upscaler-x2-1.1.safetensors"),
+                relative_path=layout.relative_path,
                 expected_size_bytes=995_743_560,
-                is_folder=False,
+                is_folder=layout.is_folder,
                 repo_id="Lightricks/LTX-2.3",
                 description="2x upscaler",
             )
@@ -313,17 +311,17 @@ def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
             # When GenSpace is removed: delete this spec and the GenSpace code that reads it.
             # The `video-guide` entry in `lora_catalog.json` is then the only definition.
             return ModelCheckpointSpec(
-                relative_path=Path("ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors"),
+                relative_path=layout.relative_path,
                 expected_size_bytes=654_465_352,
-                is_folder=False,
+                is_folder=layout.is_folder,
                 repo_id="Lightricks/LTX-2.3-22b-IC-LoRA-Union-Control",
                 description="Union IC-LoRA control model",
             )
         case "ltx-2.5-22b-distilled":
             return ModelCheckpointSpec(
-                relative_path=LTX_2_5_FAMILY_DIR / "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+                relative_path=layout.relative_path,
                 expected_size_bytes=42_000_000_000,
-                is_folder=False,
+                is_folder=layout.is_folder,
                 repo_id="Lightricks/LTX-2.5",
                 description="LTX 2.5 distilled transformer",
                 repo_filename="diffusion_models/ltx-2.5-22b-distilled-transformer-bf16.safetensors",
@@ -331,9 +329,9 @@ def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
             )
         case "ltx-2.5-spatial-upscaler-x2-1.0":
             return ModelCheckpointSpec(
-                relative_path=LTX_2_5_FAMILY_DIR / "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+                relative_path=layout.relative_path,
                 expected_size_bytes=995_000_000,
-                is_folder=False,
+                is_folder=layout.is_folder,
                 repo_id="Lightricks/LTX-2.5",
                 description="LTX 2.5 2x spatial upscaler",
                 repo_filename="latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
@@ -341,9 +339,9 @@ def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
             )
         case "ltx-2.5-video-vae":
             return ModelCheckpointSpec(
-                relative_path=LTX_2_5_FAMILY_DIR / "ltx-2.5-video-vae-bf16.safetensors",
+                relative_path=layout.relative_path,
                 expected_size_bytes=1_470_000_000,
-                is_folder=False,
+                is_folder=layout.is_folder,
                 repo_id="Lightricks/LTX-2.5",
                 description="LTX 2.5 video VAE",
                 repo_filename="vae/ltx-2.5-video-vae-bf16.safetensors",
@@ -351,9 +349,9 @@ def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
             )
         case "ltx-2.5-video-vae-conv":
             return ModelCheckpointSpec(
-                relative_path=LTX_2_5_FAMILY_DIR / "ltx-2.5-video-vae-conv-bf16.safetensors",
+                relative_path=layout.relative_path,
                 expected_size_bytes=1_200_000_000,
-                is_folder=False,
+                is_folder=layout.is_folder,
                 repo_id="Lightricks/LTX-2.5",
                 description="LTX 2.5 conv video VAE (fast decode)",
                 repo_filename="vae/ltx-2.5-video-vae-conv-bf16.safetensors",
@@ -361,9 +359,9 @@ def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
             )
         case "ltx-2.5-audio-vae":
             return ModelCheckpointSpec(
-                relative_path=LTX_2_5_FAMILY_DIR / "ltx-2.5-audio-vae-bf16.safetensors",
+                relative_path=layout.relative_path,
                 expected_size_bytes=365_000_000,
-                is_folder=False,
+                is_folder=layout.is_folder,
                 repo_id="Lightricks/LTX-2.5",
                 description="LTX 2.5 audio VAE",
                 repo_filename="vae/ltx-2.5-audio-vae-bf16.safetensors",
@@ -371,9 +369,9 @@ def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
             )
         case "ltx-2.5-duration-head":
             return ModelCheckpointSpec(
-                relative_path=LTX_2_5_FAMILY_DIR / "ltx-2.5-duration-head-bf16.safetensors",
+                relative_path=layout.relative_path,
                 expected_size_bytes=8_000_000,
-                is_folder=False,
+                is_folder=layout.is_folder,
                 repo_id="Lightricks/LTX-2.5",
                 description="LTX 2.5 duration head (auto duration)",
                 repo_filename="model_patches/ltx-2.5-duration-head-bf16.safetensors",
@@ -381,44 +379,44 @@ def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
             )
         case "dpt-hybrid-midas":
             return ModelCheckpointSpec(
-                relative_path=Path("dpt-hybrid-midas"),
+                relative_path=layout.relative_path,
                 expected_size_bytes=500_000_000,
-                is_folder=True,
+                is_folder=layout.is_folder,
                 repo_id="Intel/dpt-hybrid-midas",
                 revision="11eaf7a1cf4bd70740697dbc216f98980c0aeb03",
                 description="DPT-Hybrid MiDaS depth processor",
             )
         case "yolox-l-torchscript":
             return ModelCheckpointSpec(
-                relative_path=Path("yolox_l.torchscript.pt"),
+                relative_path=layout.relative_path,
                 expected_size_bytes=217_697_649,
-                is_folder=False,
+                is_folder=layout.is_folder,
                 repo_id="hr16/yolox-onnx",
                 revision="a124b32c3b7c5cebda1c7cd96178f0f9d2050125",
                 description="YOLOX person detector for pose preprocessing",
             )
         case "dw-ll-ucoco-384-bs5":
             return ModelCheckpointSpec(
-                relative_path=Path("dw-ll_ucoco_384_bs5.torchscript.pt"),
+                relative_path=layout.relative_path,
                 expected_size_bytes=135_059_124,
-                is_folder=False,
+                is_folder=layout.is_folder,
                 repo_id="hr16/DWPose-TorchScript-BatchSize5",
                 revision="359d662a9b33b73f6d0f21732baf8845f17bb4be",
                 description="DW Pose TorchScript processor",
             )
         case "gemma-3-12b-it-qat-q4_0-unquantized":
             return ModelCheckpointSpec(
-                relative_path=Path("gemma-3-12b-it-qat-q4_0-unquantized"),
+                relative_path=layout.relative_path,
                 expected_size_bytes=25_000_000_000,
-                is_folder=True,
+                is_folder=layout.is_folder,
                 repo_id="Lightricks/gemma-3-12b-it-qat-q4_0-unquantized",
                 description="Gemma 3 text encoder (folder)",
             )
         case "gemma4-12b-with-proj-ltx-2.5":
             return ModelCheckpointSpec(
-                relative_path=LTX_2_5_FAMILY_DIR / "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+                relative_path=layout.relative_path,
                 expected_size_bytes=26_300_000_000,
-                is_folder=False,
+                is_folder=layout.is_folder,
                 repo_id="Lightricks/LTX-2.5",
                 description="Gemma 4 text encoder with LTX 2.5 projections",
                 repo_filename="text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
@@ -426,17 +424,17 @@ def get_model_cp_spec(cp_id: ModelCheckpointID) -> ModelCheckpointSpec:
             )
         case "gemma-4-e2b-it":
             return ModelCheckpointSpec(
-                relative_path=Path("gemma-4-E2B-it"),
+                relative_path=layout.relative_path,
                 expected_size_bytes=10_278_849_571,
-                is_folder=True,
+                is_folder=layout.is_folder,
                 repo_id="google/gemma-4-E2B-it",
                 description="Gemma 4 E2B instruct prompt enhancer (folder)",
             )
         case "z-image-turbo":
             return ModelCheckpointSpec(
-                relative_path=Path("Z-Image-Turbo"),
+                relative_path=layout.relative_path,
                 expected_size_bytes=31_000_000_000,
-                is_folder=True,
+                is_folder=layout.is_folder,
                 repo_id="Tongyi-MAI/Z-Image-Turbo",
                 description="Z-Image-Turbo model for text-to-image generation",
             )

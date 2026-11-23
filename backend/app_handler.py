@@ -47,21 +47,21 @@ from services.llama_runtime import LlamaRuntime
 from handlers.base import resolve_models_dir
 from handlers.assistant_models_handler import AssistantModelsHandler
 from runtime_config.runtime_config import RuntimeConfig
+from inference.a2v_pipeline.a2v_pipeline import A2VPipeline
+from inference.fast_video_pipeline.fast_video_pipeline import FastVideoPipeline
+from inference.ic_lora_pipeline.ic_lora_pipeline import IcLoraPipeline
+from inference.retake_pipeline.retake_pipeline import RetakePipeline
 from services.interfaces import (
-    A2VPipeline,
     DepthProcessorPipeline,
-    FastVideoPipeline,
     ZitAPIClient,
     ImageGenerationPipeline,
     GpuCleaner,
     GpuInfo,
     HTTPClient,
-    IcLoraPipeline,
     LTXAPIClient,
     ModelDownloader,
     PoseProcessorPipeline,
     PromptEnhancerPipeline,
-    RetakePipeline,
     TaskRunner,
     TextEncoder,
     VideoProcessor,
@@ -553,9 +553,6 @@ class AppHandler:
     def _high_res_video_to_video_enabled(self) -> bool:
         return self.feature_flags.get_flags().highResVideoToVideo
 
-    def _keyframes_enabled(self) -> bool:
-        return self.feature_flags.get_flags().keyframes
-
     def _lane_runner(self, store: Store, lane: LaneSpec) -> QueueRunner:
         if lane.id == LOCAL_LANE:
             return QueueRunner(
@@ -618,7 +615,6 @@ class AppHandler:
             preflight_ic_lora_tile_sizes=self.ic_lora.preflight_recipe_tile_sizes,
             preflight_queued_synthesized_ic_lora=self.ic_lora.preflight_queued_synthesized_job,
             high_res_enabled=self._high_res_video_to_video_enabled,
-            keyframes_enabled=self._keyframes_enabled,
             should_use_local_encoding=self.text.should_use_local_encoding,
             image_generation_status=self.image_generation.get_status,
         )
@@ -669,18 +665,18 @@ class ServiceBundle:
 
 def build_default_service_bundle(config: RuntimeConfig) -> ServiceBundle:
     """Build real runtime services with lazy heavy imports isolated from tests."""
-    from services.fast_video_pipeline.ltx_fast_video_pipeline import LTXFastVideoPipeline
+    from inference.fast_video_pipeline.ltx_fast_video_pipeline import LTXFastVideoPipeline
     from services.zit_api_client.zit_api_client_impl import ZitAPIClientImpl
     from services.gpu_cleaner.torch_cleaner import TorchCleaner
     from services.gpu_info.gpu_info_impl import GpuInfoImpl
     from services.http_client.http_client_impl import HTTPClientImpl
-    from services.a2v_pipeline.ltx_a2v_pipeline import LTXa2vPipeline
+    from inference.a2v_pipeline.ltx_a2v_pipeline import LTXa2vPipeline
     from services.depth_processor_pipeline.midas_dpt_pipeline import MidasDPTPipeline
-    from services.ic_lora_pipeline.ltx_ic_lora_pipeline import LTXIcLoraPipeline
+    from inference.ic_lora_pipeline.ltx_ic_lora_pipeline import LTXIcLoraPipeline
     from services.image_generation_pipeline.zit_image_generation_pipeline import ZitImageGenerationPipeline
     from services.ltx_api_client.ltx_api_client_impl import LTXAPIClientImpl
     from services.model_downloader.hugging_face_downloader import HuggingFaceDownloader
-    from services.retake_pipeline.ltx_retake_pipeline import LTXRetakePipeline
+    from inference.retake_pipeline.ltx_retake_pipeline import LTXRetakePipeline
     from services.prompt_enhancer_pipeline.ltx_prompt_enhancer_pipeline import LtxPromptEnhancerPipeline
     from services.pose_processor_pipeline.dw_pose_pipeline import DWPosePipeline
     from services.task_runner.threading_runner import ThreadingRunner

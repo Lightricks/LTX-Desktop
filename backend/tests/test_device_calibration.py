@@ -27,7 +27,7 @@ from runtime_config.device_calibration import (
 )
 from runtime_config.eta import estimate_envelope_wall_time
 from runtime_config.video_job_budget import VIDEO_JOB_TOO_LARGE
-from services.gpu_info import run_peak
+from inference import run_peak
 from services.records import UnavailableError
 from services.sqlite_store import SqliteStore
 

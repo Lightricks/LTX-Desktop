@@ -21,7 +21,8 @@ from services.audio_trim import (
     extract_audio_file,
     trim_audio_file,
 )
-from services.ffmpeg import FFMPEG_TIMEOUT_SECONDS, run_ffmpeg
+from inference.ffmpeg import FFMPEG_TIMEOUT_SECONDS
+from services.ffmpeg import run_ffmpeg
 from services.media_probe import MAX_AUDIO_BYTES
 from services.records import MediaError
 from services.sqlite_store import SqliteStore

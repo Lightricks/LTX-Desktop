@@ -59,12 +59,12 @@ from api_types import (
     TargetResolution,
 )
 from _routes._errors import HTTPError
-from frame_math import compute_num_frames, snap_to_frame_grid, snap_up_to_frame_grid
+from inference.frame_math import compute_num_frames, snap_to_frame_grid, snap_up_to_frame_grid
 from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
 from handlers.prompt_enhancement_handler import PromptEnhancementHandler
-from services.fast_video_pipeline.nag_config import (
+from inference.fast_video_pipeline.nag_config import (
     NagConfig,
     NagDecision,
     decide_nag,
@@ -102,7 +102,7 @@ from runtime_config.ic_lora_local_envelope import (
     ic_lora_output_canvas,
 )
 from runtime_config.ic_lora_stage_mode import IcLoraStageMode, ic_lora_stage_mode
-from runtime_config.ic_lora_tiling import DEFAULT_CARRY_FRAMES, IcLoraTiling, with_tiling_overrides
+from inference.ic_lora_tiling import DEFAULT_CARRY_FRAMES, IcLoraTiling, with_tiling_overrides
 from runtime_config.evict_retry import evict_retry_filter
 from runtime_config.memory_meter import (
     job_filter_machine_factor,
@@ -144,7 +144,7 @@ from services.records import AssetRecord
 from services.services_utils import FrameArray
 from server_utils.heartbeat import log_heartbeat
 from server_utils.oriented_image import open_oriented_image
-from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
+from inference.interrupt import GenerationCancelledError, is_cancel_exception
 from state.app_state_types import AppState, ICLoraState
 
 logger = logging.getLogger(__name__)

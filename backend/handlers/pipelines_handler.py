@@ -16,6 +16,7 @@ from api_types import (
     EditPreflightResolution,
     EditPreflightResponse,
     EditPreflightSource,
+    EditContextMode,
     ExtendMode,
     ExtendParams,
     GenerationRisk,
@@ -31,7 +32,8 @@ from handlers.video_resolution import (
     resolve_home_edit_size,
     resolve_requested_home_edit_size,
 )
-from runtime_config.ic_lora_tiling import IcLoraTiling
+from inference.ic_lora_tiling import IcLoraTiling
+from inference.types import DEFAULT_EDIT_CONTEXT_MODE
 from runtime_config.model_download_specs import (
     IMG_GEN_MODEL_CP_ID,
     ltx_generation_bundle_on_disk,
@@ -53,26 +55,27 @@ from runtime_config.video_job_budget import (
     video_job_reject,
     vram_snapshot_suffix,
 )
-from services.retake_pipeline.window import (
+from inference.retake_pipeline.window import (
     MAX_INPUT_FRAMES,
     EditRefusal,
     prepare_extend_window,
     prepare_retake_window,
 )
+from inference.a2v_pipeline.a2v_pipeline import A2VPipeline
+from inference.fast_video_pipeline.fast_video_pipeline import FastVideoPipeline
+from inference.ic_lora_pipeline.ic_lora_pipeline import IcLoraPipeline
+from inference.retake_pipeline.retake_pipeline import RetakePipeline
 from services.interfaces import (
-    A2VPipeline,
     DepthProcessorPipeline,
-    FastVideoPipeline,
     ImageGenerationPipeline,
     GpuCleaner,
     GpuInfo,
-    IcLoraPipeline,
     PoseProcessorPipeline,
-    RetakePipeline,
     VideoPipelineModelType,
 )
+from services.features.video.window_estimates import fast_window_estimate_gib
 from server_utils.generation_liveness import liveness_hold
-from services.services_utils import device_supports_fp8, get_device_type
+from inference.device import device_supports_fp8, get_device_type
 from state.app_state_types import (
     A2VPipelineState,
     AppState,
@@ -180,7 +183,8 @@ class PipelinesHandler(StateHandlerBase):
         self._runtime_device = get_device_type(self.config.device)
 
     def _resolve_ltx_paths(self, model_id: LTXLocalModelId, gemma_root: str | None):
-        from runtime_config.ltx_runtime_paths import ResolvedLtxModelPaths, resolve_ltx_runtime_paths
+        from inference.layout import ResolvedLtxModelPaths
+        from runtime_config.ltx_runtime_paths import resolve_ltx_runtime_paths
         from state.app_settings import resolved_use_conv_vae
 
         paths: ResolvedLtxModelPaths = resolve_ltx_runtime_paths(
@@ -236,6 +240,14 @@ class PipelinesHandler(StateHandlerBase):
         if self._runtime_device == "mps":
             logger.info("Skipping torch.compile() for %s - not supported on MPS", state.pipeline.pipeline_kind)
             return state
+        if self.config.smart_app_control_on:
+            # Inductor builds Triton kernels as unsigned .pyd files at run time.
+            # Smart App Control blocks them, so the first forward would fail.
+            logger.info(
+                "Skipping torch.compile() for %s - Windows Smart App Control blocks Triton",
+                state.pipeline.pipeline_kind,
+            )
+            return state
         if self.config.use_sage_attention:
             # SageAttention's Python-level kernel forces a Dynamo graph break at every
             # attention call. The resume graph Dynamo builds for the code after each
@@ -281,6 +293,7 @@ class PipelinesHandler(StateHandlerBase):
             video_vae_path=paths.video_vae_path,
             audio_vae_path=paths.audio_vae_path,
             duration_head_path=paths.duration_head_path,
+            window_estimate_gib=fast_window_estimate_gib,
         )
 
         state = VideoPipelineState(
@@ -604,6 +617,7 @@ class PipelinesHandler(StateHandlerBase):
                     video_vae_path=paths.video_vae_path,
                     audio_vae_path=paths.audio_vae_path,
                     duration_head_path=paths.duration_head_path,
+                    window_estimate_gib=fast_window_estimate_gib,
                 )
                 return A2VPipelineState(
                     pipeline=pipeline,
@@ -818,6 +832,7 @@ class PipelinesHandler(StateHandlerBase):
         job_filter: LocalJobFilter,
         start_time: float,
         duration: float,
+        context_mode: EditContextMode = DEFAULT_EDIT_CONTEXT_MODE,
     ) -> _EditVerdict:
         """Retake window + budget verdict. Window math is shared with the executor."""
         prepared = prepare_retake_window(
@@ -828,6 +843,7 @@ class PipelinesHandler(StateHandlerBase):
             frame_cap=frame_cap,
             start_time=start_time,
             duration=duration,
+            context_mode=context_mode,
         )
         if isinstance(prepared, EditRefusal):
             return _EditVerdict(
@@ -861,6 +877,7 @@ class PipelinesHandler(StateHandlerBase):
         job_filter: LocalJobFilter,
         duration: float,
         mode: ExtendMode,
+        context_mode: EditContextMode = DEFAULT_EDIT_CONTEXT_MODE,
     ) -> _EditVerdict:
         """Extend window + budget verdict. Window math is shared with the executor."""
         prepared = prepare_extend_window(
@@ -871,6 +888,7 @@ class PipelinesHandler(StateHandlerBase):
             frame_cap=frame_cap,
             duration=duration,
             mode=mode,
+            context_mode=context_mode,
         )
         if isinstance(prepared, EditRefusal):
             return _EditVerdict(
@@ -938,6 +956,7 @@ class PipelinesHandler(StateHandlerBase):
                 job_filter=job_filter,
                 start_time=params.startTime,
                 duration=params.duration,
+                context_mode=params.contextMode,
             ),
         )
 
@@ -976,6 +995,7 @@ class PipelinesHandler(StateHandlerBase):
                 job_filter=job_filter,
                 duration=params.duration,
                 mode=params.mode,
+                context_mode=params.contextMode,
             ),
         )
 
@@ -1008,6 +1028,7 @@ class PipelinesHandler(StateHandlerBase):
         mode: ExtendMode,
         candidates: list[EditPreflightCandidate],
         durations: list[float],
+        context_mode: EditContextMode = DEFAULT_EDIT_CONTEXT_MODE,
     ) -> EditPreflightResponse:
         """Advisory per-cell verdicts for Home retake/extend pickers.
 
@@ -1015,6 +1036,10 @@ class PipelinesHandler(StateHandlerBase):
         window + budget verdicts the create path raises with, so a failing
         cell reads exactly like its create 422. Raises like create on
         unreadable/too-short sources; per-cell failures never raise.
+
+        ``context_mode`` is the edit's own, as create sends it: it sets the
+        context kept in the window, so a ``short`` edit is priced and capped
+        at a smaller window than a ``long`` one.
         """
         fps, source_width, source_height, source_frames = read_source_metadata(
             asset_path
@@ -1063,6 +1088,7 @@ class PipelinesHandler(StateHandlerBase):
                         job_filter=job_filter,
                         start_time=start_time,
                         duration=d,
+                        context_mode=context_mode,
                     )
 
             else:
@@ -1077,6 +1103,7 @@ class PipelinesHandler(StateHandlerBase):
                         job_filter=job_filter,
                         duration=d,
                         mode=mode,
+                        context_mode=context_mode,
                     )
 
             if not verdict_at(min_duration).ok or hi_cap <= 0:

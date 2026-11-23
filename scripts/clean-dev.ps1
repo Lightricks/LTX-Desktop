@@ -26,7 +26,7 @@ Ok "pnpm install complete"
 
 Write-Host "`nReinstalling Python backend venv..."
 Set-Location (Join-Path $ProjectDir "backend")
-uv sync --extra dev
+uv sync --extra desktop --extra dev
 if ($LASTEXITCODE -ne 0) { Write-Host "✗ uv sync failed" -ForegroundColor Red; exit 1 }
 Ok "uv sync complete"
 

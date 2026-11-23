@@ -30,7 +30,7 @@ from services.features.video.text_to_video import (
     require_video_output,
     require_supported_contract_version,
 )
-from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
+from inference.interrupt import GenerationCancelledError, is_cancel_exception
 from services.generation_queue.sessions import JobSession
 from services.generation_queue.types import ExecutionOutcome, OutputAllocation, OutputPlan
 from services.records import AssetRecord, GenerationRecord

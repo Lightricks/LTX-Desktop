@@ -13,7 +13,7 @@ from runtime_config.ic_lora_job_budget import (
     dropped_duration_message_and_code,
 )
 from runtime_config.ic_lora_stage_mode import IcLoraStageMode
-from runtime_config.ic_lora_tiling import IcLoraTiling, with_tiling_overrides
+from inference.ic_lora_tiling import IcLoraTiling, with_tiling_overrides
 from tests.test_video_job_budget import _windows_measured_filter
 
 _BASE = IcLoraTiling(long_side=1024, short_side=576, adaptive_window=True)

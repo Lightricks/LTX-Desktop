@@ -25,9 +25,9 @@ from ltx_pipelines.distilled import (
 from ltx_pipelines.utils.samplers import euler_ancestral_denoising_loop
 from safetensors.torch import save_file
 
-from services.denoising_progress import distilled_total_steps
-from services.retake_pipeline.ltx_retake_pipeline import LTXRetakePipeline
-from services.retake_pipeline.retake_sampler import resolve_sampler_plan
+from inference.progress import distilled_total_steps
+from inference.retake_pipeline.ltx_retake_pipeline import LTXRetakePipeline
+from inference.retake_pipeline.retake_sampler import resolve_sampler_plan
 
 
 def _checkpoint_with_version(tmp_path: Path, version: str) -> str:

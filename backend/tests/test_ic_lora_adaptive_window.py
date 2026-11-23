@@ -8,7 +8,7 @@ from runtime_config.ic_lora_adaptive_window import (
     adaptive_window_candidates,
     resolution_window_cap,
 )
-from runtime_config.ic_lora_tiling import ADAPTIVE_MAX_WINDOW_FRAMES, _CONTROLS  # pyright: ignore[reportPrivateUsage]
+from inference.ic_lora_tiling import ADAPTIVE_MAX_WINDOW_FRAMES, _CONTROLS  # pyright: ignore[reportPrivateUsage]
 
 
 @pytest.mark.parametrize(

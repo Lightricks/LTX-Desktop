@@ -334,7 +334,12 @@ up to about 5 s with the whole model on the GPU (**Full**).
 - **Extend counts your existing footage too.** A "10 second" extension on top of
   10 seconds of context is budgeted as ~15 seconds of processing. Extensions
   also always keep at least ~5 seconds of your clip as context, so the longest
-  single extension is about 16 seconds (less at 1080p on smaller cards).
+  single extension is about 16 seconds (less at 1080p on smaller cards). With
+  **Short** context, Extend keeps only about the last 2 seconds of your clip
+  (a "10 second" extension is then budgeted as ~12 seconds). It processes less
+  footage, so it runs faster and fits longer extensions, up to about 19 seconds.
+  Retake has the same **Long** / **Short** choice: **Short** keeps about 2 seconds
+  of context on each side of the part you select, instead of filling the window.
 - **Long clips shorten automatically.** You don't get an error — you get
   the longest window your card can run (the table above).
 - **8 GB cards sit out video editing entirely.** The smallest edit needs about
@@ -790,7 +795,9 @@ instead.
 Retake and Extend cost the same on Mac: what counts is **resolution × window
 length**. Extend counts your existing footage too — a "10 second" extension on
 top of 10 seconds of context is budgeted as ~15 seconds of processing, and
-extensions always keep at least ~5 seconds of your clip as context. A clip that
+extensions always keep at least ~5 seconds of your clip as context. With **Short**
+context only about the last 2 seconds are kept, so the same Mac fits a
+longer extension and runs it faster. A clip that
 needs more than the table is shortened to the longest window your Mac runs
 instead of being refused. Windows are at 24 fps, rounded down to the half second.
 

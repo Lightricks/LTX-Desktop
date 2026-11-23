@@ -21,7 +21,7 @@ from services.ffmpeg import (
     timeout_for_pixels,
     timeout_for_source_duration,
 )
-from services.generation_interrupt import GenerationCancelledError, is_requested
+from inference.interrupt import GenerationCancelledError, is_requested
 from services.generation_queue.types import OutputAllocation, OutputPlan
 from services.media_probe import probe_file, video_fps, video_frame_count
 from services.records import MediaError

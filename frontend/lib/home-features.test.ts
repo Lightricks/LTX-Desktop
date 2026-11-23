@@ -8,6 +8,7 @@ import {
   isHomeFeatureId,
   isHomeFeatureOffered,
   matchHomeFeature,
+  offeredHomeFeatureSections,
 } from './home-features.ts'
 import { IC_LORA_RECIPES } from './ic-lora-recipes.ts'
 import { LORA_RECIPE_HOME_FEATURES } from './lora-recipes.ts'
@@ -171,11 +172,11 @@ describe('home feature sections', () => {
   })
 })
 
-describe('Keyframes flag', () => {
-  it('lists Keyframes only with its own flag, not the high-res video flag', () => {
-    assert.equal(isHomeFeatureOffered('keyframes'), false)
-    assert.equal(isHomeFeatureOffered('keyframes', {}), false)
-    assert.equal(isHomeFeatureOffered('keyframes', { keyframes: true }), true)
-    assert.equal(isHomeFeatureOffered('image-to-video'), true)
+describe('offered Home features', () => {
+  it('lists Keyframes for everyone, and never lists Add custom LoRA', () => {
+    assert.equal(isHomeFeatureOffered('keyframes'), true)
+    assert.equal(isHomeFeatureOffered('custom-lora'), false)
+    const workflows = offeredHomeFeatureSections().find((section) => section.id === 'workflows')
+    assert.ok(workflows?.features.some((feature) => feature.id === 'keyframes'))
   })
 })

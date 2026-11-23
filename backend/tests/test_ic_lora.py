@@ -369,7 +369,7 @@ class TestIcLoraGenerate:
 def test_resolve_settings_keeps_a_tiled_entry_single_stage() -> None:
     from api_types import IcLoraGenerateRequest, IcLoraSettings
     from handlers.ic_lora_handler import _resolve_settings
-    from runtime_config.ic_lora_tiling import IcLoraTiling
+    from inference.ic_lora_tiling import IcLoraTiling
 
     tiled = IcLoraSettings(skip_stage_2=True, tiling=IcLoraTiling(long_side=960, short_side=544))
     for override in (None, True, False):

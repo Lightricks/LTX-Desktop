@@ -13,7 +13,7 @@ from runtime_config.video_job_budget import (
     LOCAL_GENERATION_UNSUPPORTED_MESSAGE,
     VIDEO_JOB_TOO_LARGE,
 )
-from services.retake_pipeline.window import retake_selection_too_long_message
+from inference.retake_pipeline.window import retake_selection_too_long_message
 from services.sqlite_store import SqliteStore
 from tests.conftest import TEST_ADMIN_TOKEN
 from tests.http_error_assertions import assert_http_error

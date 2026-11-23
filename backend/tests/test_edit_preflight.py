@@ -68,8 +68,9 @@ def _preflight_body(
     durations: list[float] | None = None,
     start_time: float = 0,
     mode: str = "end",
+    context_mode: str | None = None,
 ) -> dict:
-    return {
+    body = {
         "feature": feature,
         "assetId": asset_id,
         "startTime": start_time,
@@ -81,6 +82,9 @@ def _preflight_body(
         ),
         "durations": durations if durations is not None else [4],
     }
+    if context_mode is not None:
+        body["contextMode"] = context_mode
+    return body
 
 
 def _clip_1080p(test_state, tmp_path: Path) -> str:
@@ -122,6 +126,76 @@ def test_preflight_cell_mirrors_create_422(
         assert payload["code"] == VIDEO_JOB_TOO_LARGE
         assert cell["message"] == payload["message"]
         assert cell["code"] == payload["code"]
+
+
+def test_preflight_short_context_refusal_mirrors_create_422(
+    test_state, create_fake_model_files, tmp_path: Path
+) -> None:
+    create_fake_model_files()
+    _configure_windows_edit(test_state, vram_gib=12, total_ram_gib=64)
+    asset_id = _clip_1080p(test_state, tmp_path)
+    with _client(test_state) as client:
+        preflight = client.post(
+            "/api/generations/edit/preflight",
+            json=_preflight_body(asset_id, durations=[12], context_mode="short"),
+        )
+        assert preflight.status_code == 200
+        (cell,) = [c for c in preflight.json()["cells"] if c["duration"] == 12]
+        assert cell["ok"] is False
+
+        create = client.post(
+            "/api/generations/extend",
+            json={
+                "params": {
+                    "prompt": "the scene continues",
+                    "model": "ltx-2.5-fast",
+                    "duration": 12,
+                    "mode": "end",
+                    "contextMode": "short",
+                },
+                "inputs": {"video": {"assetId": asset_id}},
+            },
+        )
+        assert create.status_code == 422
+        payload = create.json()
+        assert cell["message"] == payload["message"]
+        assert cell["code"] == payload["code"]
+
+
+def test_preflight_short_context_allows_a_longer_extend_than_long(
+    test_state, create_fake_model_files, tmp_path: Path
+) -> None:
+    """A Short context extend keeps about 2 s of the clip as context, a Long one at least 5 s, so
+    the same card fits a longer extension. The picker must show what create would allow."""
+    create_fake_model_files()
+    _configure_windows_edit(test_state, vram_gib=24, total_ram_gib=64)
+    asset_id = _clip_1080p(test_state, tmp_path)
+
+    def max_seconds(client: TestClient, context_mode: str | None) -> float:
+        response = client.post(
+            "/api/generations/edit/preflight",
+            json=_preflight_body(asset_id, durations=[4], context_mode=context_mode),
+        )
+        assert response.status_code == 200
+        (row,) = response.json()["resolutions"]
+        return row["maxDurationSeconds"]
+
+    with _client(test_state) as client:
+        long = max_seconds(client, "long")
+        short = max_seconds(client, "short")
+        # Leaving the field out is a Long context extend, as create treats it.
+        assert max_seconds(client, None) == long
+        assert 0 < long < short
+
+        # A duration that Long refuses is admitted for Short, cell by cell.
+        longer = long + 0.5
+        probe = client.post(
+            "/api/generations/edit/preflight",
+            json=_preflight_body(asset_id, durations=[longer], context_mode="short"),
+        )
+        assert probe.status_code == 200
+        (cell,) = [c for c in probe.json()["cells"] if c["duration"] == longer]
+        assert cell["ok"] is True
 
 
 def test_preflight_max_shrinks_at_higher_tier(

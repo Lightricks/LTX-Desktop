@@ -17,7 +17,7 @@ from api_types import (
     LoraEntry,
     parse_lora_catalog,
 )
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 from handlers.base import resolve_models_dir
 from remote.dto import project_remote_spec
 from runtime_config.ltx_capabilities import budget_pixels, local_caps
@@ -26,7 +26,7 @@ from services.features.ic_lora_recipes import IC_LORA_RECIPES
 from services.features.video.ic_lora_sheet_recipe import IcLoraSheetRecipeExecutor
 from services.features.video.job_common import resolve_job_local_model_id
 from services.features.video.reference_sheet import build_reference_sheet, layout_panels
-from services.generation_interrupt import GenerationCancelledError
+from inference.interrupt import GenerationCancelledError
 from services.generation_queue.types import OutputAllocation, OutputPlan
 from tests.fakes.generation import FakeJobSession
 from services.records import AssetRecord, GenerationRecord

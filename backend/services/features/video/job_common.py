@@ -25,7 +25,8 @@ from runtime_config.ic_lora_high_res import high_res_cell
 from runtime_config.ltx_capabilities import LtxCapabilityFeature, budget_pixels, local_caps, supports
 from runtime_config.reject_reasons import PassShape
 from runtime_config.offerings import resolve_offering_local_model_id
-from services.records import AssetRecord, CapabilityFailedError
+from inference.errors import CapabilityFailedError
+from services.records import AssetRecord
 from state.app_settings import MAX_GENERATION_SEED
 
 INPUT_ASSET_NOT_FOUND = "INPUT_ASSET_NOT_FOUND"

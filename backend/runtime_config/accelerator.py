@@ -12,18 +12,11 @@ https://github.com/Lightricks/LTX-Desktop/pull/160
 
 from __future__ import annotations
 
-import logging
 from typing import Literal
 
 import torch
 
-logger = logging.getLogger(__name__)
-
 AcceleratorBackend = Literal["rocm", "cuda", "mps", "cpu"]
-
-# First compute capability with native fp8 (E4M3/E5M2): Ada Lovelace.
-# Ampere (8.x) and Turing (7.5) have no hardware fp8.
-_FP8_MIN_COMPUTE_CAPABILITY = (8, 9)
 
 
 def accelerator_backend() -> AcceleratorBackend:
@@ -56,8 +49,6 @@ def accelerator_supports_fp8(device_index: int = 0) -> bool:
     """
     if accelerator_backend() != "cuda":
         return False
-    try:
-        return torch.cuda.get_device_capability(device_index) >= _FP8_MIN_COMPUTE_CAPABILITY
-    except Exception:
-        logger.warning("fp8 capability probe failed; treating device as non-fp8", exc_info=True)
-        return False
+    from inference.device import device_supports_fp8
+
+    return device_supports_fp8(torch.device("cuda", device_index))

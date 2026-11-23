@@ -9,7 +9,7 @@ from runtime_config.accelerator import (
     accelerator_supports_fp8,
 )
 from services.gpu_info.gpu_info_impl import GpuInfoImpl
-from services.services_utils import device_supports_fp8
+from inference.device import device_supports_fp8
 
 
 def test_accelerator_backend_rocm_when_hip_is_set(monkeypatch) -> None:
@@ -62,16 +62,24 @@ def test_device_supports_fp8_false_on_cpu() -> None:
 
 
 def test_device_supports_fp8_true_on_cuda_not_rocm(monkeypatch) -> None:
+    import inference.device as device_mod
+
+    monkeypatch.setattr(device_mod.torch.version, "hip", None, raising=False)
+    monkeypatch.setattr(device_mod.torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(
-        "runtime_config.accelerator.accelerator_supports_fp8", lambda device_index=0: True
+        device_mod.torch.cuda, "get_device_capability", lambda device=0: (8, 9)
     )
     assert device_supports_fp8("cuda") is True
     assert device_supports_fp8(SimpleNamespace(type="cuda")) is True
 
 
 def test_device_supports_fp8_false_when_accelerator_lacks_fp8(monkeypatch) -> None:
+    import inference.device as device_mod
+
+    monkeypatch.setattr(device_mod.torch.version, "hip", None, raising=False)
+    monkeypatch.setattr(device_mod.torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(
-        "runtime_config.accelerator.accelerator_supports_fp8", lambda device_index=0: False
+        device_mod.torch.cuda, "get_device_capability", lambda device=0: (8, 6)
     )
     assert device_supports_fp8("cuda") is False
     assert device_supports_fp8(SimpleNamespace(type="cuda")) is False
@@ -156,14 +164,17 @@ def test_accelerator_supports_fp8_probes_given_index(monkeypatch) -> None:
 
 def test_device_supports_fp8_probes_the_passed_device_index(monkeypatch) -> None:
     import torch
+    import inference.device as device_mod
 
     seen: list[object] = []
 
-    def _capture(device_index: object = 0) -> bool:
-        seen.append(device_index)
-        return True
+    def _capture(device: object = 0) -> tuple[int, int]:
+        seen.append(device)
+        return (8, 9)
 
-    monkeypatch.setattr("runtime_config.accelerator.accelerator_supports_fp8", _capture)
+    monkeypatch.setattr(device_mod.torch.version, "hip", None, raising=False)
+    monkeypatch.setattr(device_mod.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(device_mod.torch.cuda, "get_device_capability", _capture)
     assert device_supports_fp8("cuda:1") is True
     assert device_supports_fp8(torch.device("cuda:2")) is True
     assert device_supports_fp8("cuda") is True

@@ -12,7 +12,7 @@ import inspect
 import torch
 from ltx_core.types import VIDEO_SCALE_FACTORS, VideoPixelShape
 
-from services.retake_pipeline.source_encode import (
+from inference.retake_pipeline.source_encode import (
     _freeze_pad_pixels,
     _match_latent_length,
     encode_source_video_latent,
@@ -67,7 +67,7 @@ def test_encode_source_video_latent_keeps_pixels_on_cpu(monkeypatch) -> None:
     encoder = _FakeEncoder()
     frames = [torch.zeros(1, 64, 64, 3, dtype=torch.uint8) for _ in range(9)]
     monkeypatch.setattr(
-        "services.retake_pipeline.source_encode.decode_video_from_file",
+        "inference.retake_pipeline.source_encode.decode_video_from_file",
         lambda **_kwargs: iter(frames),
     )
     shape = VideoPixelShape(batch=1, frames=9, height=64, width=64, fps=24.0)
@@ -85,7 +85,7 @@ def test_encode_source_video_latent_keeps_pixels_on_cpu(monkeypatch) -> None:
 
 def test_extend_and_generate_both_encode_source_from_cpu() -> None:
     """Home/GenSpace extend shares ``_run`` with retake; that is the CUDA hang path."""
-    from services.retake_pipeline.ltx_retake_pipeline import LTXRetakePipeline
+    from inference.retake_pipeline.ltx_retake_pipeline import LTXRetakePipeline
 
     run_src = inspect.getsource(LTXRetakePipeline._run)
     assert "encode_source_video_latent(" in run_src
@@ -130,7 +130,7 @@ def test_encode_source_video_latent_freeze_pads_pixels_before_vae(monkeypatch) -
         torch.full((1, 64, 64, 3), fill_value=i, dtype=torch.uint8) for i in range(9)
     ]
     monkeypatch.setattr(
-        "services.retake_pipeline.source_encode.decode_video_from_file",
+        "inference.retake_pipeline.source_encode.decode_video_from_file",
         lambda **_kwargs: iter(frames),
     )
     shape = VideoPixelShape(batch=1, frames=17, height=64, width=64, fps=24.0)
@@ -156,7 +156,7 @@ def test_encode_without_freeze_pad_repeats_the_latent_edge(monkeypatch) -> None:
         torch.full((1, 64, 64, 3), fill_value=i, dtype=torch.uint8) for i in range(9)
     ]
     monkeypatch.setattr(
-        "services.retake_pipeline.source_encode.decode_video_from_file",
+        "inference.retake_pipeline.source_encode.decode_video_from_file",
         lambda **_kwargs: iter(frames),
     )
     shape = VideoPixelShape(batch=1, frames=17, height=64, width=64, fps=24.0)

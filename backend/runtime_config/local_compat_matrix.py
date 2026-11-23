@@ -15,7 +15,7 @@ from api_types import (
     LTXVideoGenResolution,
     LTXVideoGenerationResolutionSpec,
 )
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 from runtime_config.budget_admission import Admitted
 from runtime_config.ic_lora_job_budget import (
     HOME_IC_LORA_PREVIEW_SETTINGS,

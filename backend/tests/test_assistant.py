@@ -476,6 +476,89 @@ def test_retake_past_the_source_end_is_refused_with_the_start_time_that_fits(cli
     assert "use startTime 2.0" in saved_history(test_state, body["request_id"])
 
 
+def test_extend_and_retake_default_to_long_context_and_queue_short_when_asked(client, test_state, tmp_path, setup_agent):
+    # Bug: the assistant had no way to ask for the short context, so a user who asked for it got long.
+    provider, _args = setup_agent
+    video = ingest(client, _mp4(tmp_path / "clip.mp4", duration_seconds=6))
+    extend_params = {"model": "ltx-2.5-fast", "prompt": "The wave continues rolling", "added_seconds": 2}
+    retake_params = {"model": "ltx-2.5-fast", "startTime": 1, "duration": 2}
+    cases = [
+        ("extend_video", extend_params, "long"),
+        ("extend_video", {**extend_params, "contextMode": "short"}, "short"),
+        ("retake_video", retake_params, "long"),
+        ("retake_video", {**retake_params, "contextMode": "short"}, "short"),
+    ]
+    for number, (tool, params, expected) in enumerate(cases, start=1):
+        provider.responses.extend([call(tool, {"video_asset_id": video["id"], "params": params, "job_number": number}), say("Queued.")])
+        response = client.post("/api/assistant/turn", json=request_body(f"{tool} {expected}"))
+        assert response.status_code == 200, response.text
+        queued = last_generation(response, client)
+        assert queued is not None
+        assert queued["spec"]["params"]["contextMode"] == expected, (tool, params)
+
+
+QUOTED_RETAKE = 'Retake seconds 1 to 3 so the speaker says "Because AI avoids risk."'
+
+
+def test_a_retake_with_quoted_words_and_no_prompt_is_nudged_once_to_write_them_in(client, test_state, tmp_path, setup_agent):
+    # Bug: a small model left the prompt empty, so the retake never said the words the user quoted.
+    provider, _args = setup_agent
+    video = ingest(client, _mp4(tmp_path / "clip.mp4", duration_seconds=6))
+    params = {"model": "ltx-2.5-fast", "startTime": 1, "duration": 2}
+    written = {**params, "prompt": 'The speaker says "Because AI avoids risk."'}
+    provider.responses.extend([
+        call("retake_video", {"video_asset_id": video["id"], "params": params}),
+        call("retake_video", {"video_asset_id": video["id"], "params": written}),
+        say("Queued."),
+    ])
+    body = request_body(QUOTED_RETAKE)
+    response = client.post("/api/assistant/turn", json=body)
+    assert response.status_code == 200, response.text
+    queued = last_generation(response, client)
+    assert queued is not None and queued["spec"]["params"]["prompt"] == written["prompt"]
+    history = saved_history(test_state, body["request_id"])
+    assert "The user gave words to be said" in history and "The prompt is empty" in history
+
+
+def test_the_empty_prompt_nudge_only_asks_once_and_lets_an_unchanged_call_through(client, tmp_path, setup_agent):
+    provider, _args = setup_agent
+    video = ingest(client, _mp4(tmp_path / "clip.mp4", duration_seconds=6))
+    params = {"model": "ltx-2.5-fast", "startTime": 1, "duration": 2}
+    provider.responses.extend([
+        call("retake_video", {"video_asset_id": video["id"], "params": params}),
+        call("retake_video", {"video_asset_id": video["id"], "params": params}),
+        say("Queued."),
+    ])
+    response = client.post("/api/assistant/turn", json=request_body(QUOTED_RETAKE))
+    assert response.status_code == 200, response.text
+    queued = last_generation(response, client)
+    assert queued is not None and queued["spec"]["params"]["prompt"] == ""
+
+
+def test_an_empty_prompt_is_not_nudged_when_the_user_quoted_nothing(client, tmp_path, setup_agent):
+    # An empty prompt goes through as before unless the user gave words to say.
+    provider, _args = setup_agent
+    video = ingest(client, _mp4(tmp_path / "clip.mp4", duration_seconds=6))
+    provider.responses.extend([
+        call("retake_video", {"video_asset_id": video["id"], "params": {"model": "ltx-2.5-fast", "startTime": 1, "duration": 2}}),
+        say("Queued."),
+    ])
+    response = client.post("/api/assistant/turn", json=request_body("Retake seconds 1 to 3"))
+    assert response.status_code == 200, response.text
+    queued = last_generation(response, client)
+    assert queued is not None and queued["spec"]["params"]["prompt"] == ""
+
+
+def test_the_context_mode_is_offered_to_the_model_and_explained_in_the_instructions(client, setup_agent):
+    provider, _args = setup_agent
+    provider.responses.append(say("Hi."))
+    assert client.post("/api/assistant/turn", json=request_body("Hello")).status_code == 200
+    instructions = provider.instructions[-1]
+    assert "contextMode" in instructions
+    assert '"short"' in instructions
+    assert "asks for short" in instructions
+
+
 def test_a_retake_cannot_resize_the_source_video(client, tmp_path, setup_agent):
     provider, _args = setup_agent
     video = ingest(client, _mp4(tmp_path / "clip.mp4", duration_seconds=4))

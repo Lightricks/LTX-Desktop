@@ -28,7 +28,7 @@ Ok "npm install complete"
 # ── uv sync ─────────────────────────────────────────────────────────
 Write-Host "`nSetting up Python backend venv..."
 Set-Location (Join-Path $ProjectDir "backend")
-uv sync --extra dev
+uv sync --extra desktop --extra dev
 if ($LASTEXITCODE -ne 0) { Fail "uv sync failed" }
 Ok "uv sync complete"
 

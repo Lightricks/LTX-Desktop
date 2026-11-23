@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from services.fast_video_pipeline.nag_config import decide_nag
+from inference.fast_video_pipeline.nag_config import decide_nag
 from services.features.ic_lora_recipes import IC_LORA_RECIPES
 from services.features.lora_recipes import queued_lora_recipes
 from services.features.video import (

@@ -22,7 +22,7 @@ from api_types import (
     ReplacedWindow,
     parse_lora_catalog,
 )
-from services.generation_interrupt import GenerationCancelledError
+from inference.interrupt import GenerationCancelledError
 from runtime_config.model_download_specs import resolve_ic_lora_path
 from services.prompt_enhancement import (
     build_video_user_prompt_text,

@@ -68,14 +68,15 @@ from services.features.video.text_to_video import (
     require_video_output,
 )
 from services.ffmpeg import FFMPEG_PROTOCOL_WHITELIST, run_ffmpeg, timeout_for_pixels
-from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
+from inference.interrupt import GenerationCancelledError, is_cancel_exception
 from services.generation_queue.sessions import JobSession
 from services.generation_queue.types import (
     ExecutionOutcome,
     OutputAllocation,
     OutputPlan,
 )
-from services.records import CapabilityFailedError, GenerationRecord, MediaError
+from inference.errors import CapabilityFailedError
+from services.records import GenerationRecord, MediaError
 
 logger = logging.getLogger(__name__)
 

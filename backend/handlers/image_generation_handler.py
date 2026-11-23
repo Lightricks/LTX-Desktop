@@ -27,7 +27,7 @@ from handlers.pipelines_handler import PipelinesHandler
 from runtime_config.model_download_specs import IMG_GEN_MODEL_CP_ID, is_cp_downloaded
 from services.features.image.grid import floor_to_image_grid
 from services.features.image.text_to_image import image_generation_status
-from services.generation_interrupt import is_cancel_exception
+from inference.interrupt import is_cancel_exception
 from services.interfaces import ImageGenerationPipeline, ZitAPIClient
 from server_utils.heartbeat import log_heartbeat
 from server_utils.media_validation import validate_image_file

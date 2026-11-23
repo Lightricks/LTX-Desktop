@@ -8,8 +8,16 @@ from __future__ import annotations
 
 import pytest
 
-from services.retake_pipeline.window import (
+from inference.retake_pipeline.window import (
+    CONTINUATION_CONTEXT_FRAMES,
+    VIDEO_JOB_TOO_LARGE,
+    EditRefusal,
     MAX_INPUT_FRAMES,
+    PreparedExtendWindow,
+    context_cap_frames,
+    continuation_context_frames,
+    extend_context_floor,
+    prepare_extend_window,
     MIN_EXTEND_CONTEXT_FRAMES,
     duration_to_extend_frames,
     extend_exceeds_cap,
@@ -134,3 +142,72 @@ def test_extend_too_long_at_shortened_cap_names_the_machine() -> None:
         frame_cap=300, fps=24.0,
     )
     assert message == "Extend of 10s is too long for 1920x1080 on this machine (at most 7s)."
+
+
+def _prepare(context_mode: str, *, frame_cap: int, source_frames: int = 144, mode: str = "end"):
+    return prepare_extend_window(
+        fps=24.0,
+        source_frames=source_frames,
+        target_width=1280,
+        target_height=720,
+        frame_cap=frame_cap,
+        duration=2.0,
+        mode=mode,  # type: ignore[arg-type]
+        context_mode=context_mode,  # type: ignore[arg-type]
+    )
+
+
+def test_short_context_is_admitted_where_long_context_is_refused() -> None:
+    # Bug: Short context keeps the 121 frame admission floor, so the shorter window it needs
+    # never gets a chance on a machine with a small frame cap.
+    refusal = _prepare("long", frame_cap=100)
+    assert isinstance(refusal, EditRefusal)
+    assert refusal.code == VIDEO_JOB_TOO_LARGE
+    prepared = _prepare("short", frame_cap=100)
+    assert isinstance(prepared, PreparedExtendWindow)
+
+
+@pytest.mark.parametrize("mode", ["end", "start"])
+def test_short_context_is_capped_and_long_context_is_not(mode: str) -> None:
+    short = _prepare("short", frame_cap=MAX_INPUT_FRAMES, mode=mode)
+    long = _prepare("long", frame_cap=MAX_INPUT_FRAMES, mode=mode)
+    assert isinstance(short, PreparedExtendWindow) and isinstance(long, PreparedExtendWindow)
+    assert short.window.context_frames == CONTINUATION_CONTEXT_FRAMES
+    # 144 source frames snap down to the 8k+1 length 137. Long mode keeps all of it.
+    assert long.window.context_frames == 137
+
+
+@pytest.mark.parametrize(
+    ("fps", "expected"), [(24.0, 49), (25.0, 49), (30.0, 57), (50.0, 97), (60.0, 121)]
+)
+def test_continuation_context_is_about_two_seconds_at_any_frame_rate(fps: float, expected: int) -> None:
+    # Bug: a fixed 49 frames is 1.6 s at 30 fps and 0.8 s at 60 fps, too short for the voice bridge.
+    frames = continuation_context_frames(fps)
+    assert frames == expected
+    assert (frames - 1) % 8 == 0
+    assert 1.85 <= frames / fps <= 2.3
+
+
+def test_short_context_window_follows_the_frame_rate() -> None:
+    prepared = prepare_extend_window(
+        fps=30.0,
+        source_frames=180,
+        target_width=1920,
+        target_height=1088,
+        frame_cap=MAX_INPUT_FRAMES,
+        duration=2.0,
+        mode="end",
+        context_mode="short",
+    )
+    assert isinstance(prepared, PreparedExtendWindow)
+    assert prepared.window.context_frames == continuation_context_frames(30.0) == 57
+
+
+def test_the_context_mode_sets_the_cap_and_the_admission_floor() -> None:
+    assert context_cap_frames("long", 24.0) is None
+    assert context_cap_frames("short", 24.0) == CONTINUATION_CONTEXT_FRAMES
+    assert extend_context_floor("long", 24.0) == MIN_EXTEND_CONTEXT_FRAMES
+    # Short keeps less than the Long floor, so its floor is lowered to what it keeps.
+    assert extend_context_floor("short", 24.0) == CONTINUATION_CONTEXT_FRAMES
+    # An explicit floor (the shrink retry passes 1) is never raised.
+    assert extend_context_floor("short", 24.0, 1) == 1

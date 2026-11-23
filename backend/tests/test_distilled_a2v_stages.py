@@ -18,7 +18,7 @@ from ltx_core.conditioning import VideoConditionByKeyframeIndex, VideoConditionB
 from ltx_pipelines.utils.constants import STAGE_2_DISTILLED_SIGMA_VALUES
 from ltx_pipelines.utils.types import ImageConditioningInput, LoadedImageConditioning
 
-from services.a2v_pipeline.distilled_a2v_pipeline import DistilledA2VPipeline
+from inference.a2v_pipeline.distilled_a2v_pipeline import DistilledA2VPipeline
 
 # The transformer latent geometry. Upstream sizes stills from the module default (8x32x32), not from the 2.5 DiffVAE decoder scale (2x8x8).
 _STAGE_SCALE = SpatioTemporalScaleFactors(time=8, height=32, width=32)

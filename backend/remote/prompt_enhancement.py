@@ -21,7 +21,7 @@ from api_types import (
     ReplacedWindow,
 )
 from app_handler import AppHandler
-from runtime_config.nag_limits import NEGATIVE_PROMPT_MAX_LENGTH
+from inference.nag_limits import NEGATIVE_PROMPT_MAX_LENGTH
 from services.prompt_enhancement.resolve_enhance_assets import resolve_enhance_media_assets
 from state import get_state_service
 

@@ -390,11 +390,6 @@ def first_audio_codec(path: Path) -> str | None:
     return None
 
 
-def media_has_audio(path: str) -> bool:
-    with av.open(path) as container:
-        return any(stream.type == "audio" for stream in container.streams)
-
-
 def _frame_timestamp(frame: object, time_base: object) -> float | None:
     timestamp = cast(float | None, getattr(frame, "time", None))
     if timestamp is None:

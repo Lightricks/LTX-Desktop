@@ -8,6 +8,7 @@ import type {
   EditPreflightFeature,
   EditPreflightState,
 } from "../lib/editPreflight";
+import type { EditContextMode } from "../lib/editContextMode";
 
 type EditPreflightCandidate =
   components["schemas"]["EditPreflightCandidate"];
@@ -17,6 +18,8 @@ export type EditPreflightRequestInput = {
   assetId: string | null;
   startTime: number;
   mode: "start" | "end";
+  /** How much of the clip the edit keeps as context. Sets the window it is priced at. */
+  contextMode: EditContextMode;
   candidates: EditPreflightCandidate[];
   durations: number[];
 };
@@ -40,6 +43,7 @@ export function useEditPreflight(
       deferred.assetId,
       deferred.startTime,
       deferred.mode,
+      deferred.contextMode,
       deferred.candidates
         .map((candidate) => `${candidate.key}:${candidate.width}x${candidate.height}`)
         .join(","),
@@ -61,11 +65,12 @@ export function useEditPreflight(
           assetId,
           startTime: deferred.startTime,
           mode: deferred.mode,
+          contextMode: deferred.contextMode,
           candidates: deferred.candidates,
           durations: deferred.durations,
         }),
       );
-      return { assetId, response };
+      return { assetId, contextMode: deferred.contextMode, response };
     },
     enabled,
     retry: false,

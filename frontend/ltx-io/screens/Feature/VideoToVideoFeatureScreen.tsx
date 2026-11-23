@@ -19,6 +19,7 @@ import {
   useFeatureFormStore,
 } from "../../stores/featureFormStore";
 import type { AssetRef, FeatureDefinition, FeatureValues } from "./types";
+import { DEFAULT_EDIT_CONTEXT_MODE, type EditContextMode } from "../../lib/editContextMode";
 import {
   editResolutionPreflightCandidates,
   type VideoInputContext,
@@ -39,6 +40,8 @@ type VideoToVideoSchema = FeatureSchemaMap[VideoFeatureId];
 export type VideoPreflightSelection = {
   startTime: number;
   mode: "start" | "end";
+  /** Extend and Retake. Omitted means the default mode. */
+  contextMode?: EditContextMode;
   durations: number[];
 };
 
@@ -196,6 +199,7 @@ export function useVideoToVideoFeature<
         : editResolutionPreflightCandidates(videoWidth, videoHeight, highResVideoToVideo),
     [videoWidth, videoHeight, highResVideoToVideo],
   );
+  const contextMode = preflightSelection?.contextMode ?? DEFAULT_EDIT_CONTEXT_MODE;
   const preflightResult = useEditPreflight({
     // Without a selector the request stays disabled (assetId null, no
     // durations), so the fallback feature value below never fires.
@@ -204,10 +208,11 @@ export function useVideoToVideoFeature<
     assetId: preflightSelection == null ? null : videoAssetId,
     startTime: preflightSelection?.startTime ?? 0,
     mode: preflightSelection?.mode ?? "end",
+    contextMode,
     candidates: preflightCandidates,
     durations: preflightSelection?.durations ?? [],
   });
-  const preflight = selectFreshPreflight(preflightResult, videoAssetId);
+  const preflight = selectFreshPreflight(preflightResult, videoAssetId, contextMode);
 
   const context = useMemo<VideoInputContext>(
     () => ({

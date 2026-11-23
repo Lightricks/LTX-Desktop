@@ -32,8 +32,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from frame_math import snap_to_frame_grid
-from runtime_config.fast_chunking import job_window_count
+from inference.frame_math import snap_to_frame_grid
+from inference.fast_chunking import job_window_count
 
 # Probed minimum decode budget: base + per_mpx * Mpx + per_mpx_frame * Mpx * frames.
 # 2160p 73f probes at 22.28 GiB (fit 22.54), 2160p 41f at 17.55 (17.77), 1080p 73f at 8.15 (8.25).

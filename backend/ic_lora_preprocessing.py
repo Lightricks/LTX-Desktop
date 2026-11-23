@@ -11,7 +11,7 @@ from typing import Literal
 import numpy as np
 
 from api_types import PreprocessingStep
-from frame_math import snap_to_frame_grid
+from inference.frame_math import snap_to_frame_grid
 from runtime_config.ic_lora_loop_fps import resolve_loop_fps
 from services.interfaces import VideoProcessor
 from services.services_utils import FrameArray

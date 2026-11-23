@@ -11,7 +11,7 @@ import threading
 from collections.abc import Callable
 
 from api_types import ApiActivityStatus
-from services.generation_interrupt import GenerationCancelledError
+from inference.interrupt import GenerationCancelledError
 from services.generation_queue.sessions import JobProgress
 
 logger = logging.getLogger(__name__)

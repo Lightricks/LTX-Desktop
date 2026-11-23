@@ -18,7 +18,7 @@ from api_types import (
     LoraEntry,
     parse_lora_catalog,
 )
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 from handlers.base import resolve_models_dir
 from runtime_config.ltx_capabilities import budget_pixels, local_caps
 from runtime_config.model_download_specs import resolve_ic_lora_path
@@ -26,10 +26,11 @@ from services.features.ic_lora_recipes import CAMERA_LOCK_PROMPT_TEMPLATE, IC_LO
 from services.features.video.ic_lora_track_recipe import IcLoraTrackRecipeExecutor
 from services.features.video.job_common import resolve_job_local_model_id
 from services.features.video.motion_path import positions, render_motion_track
-from services.generation_interrupt import GenerationCancelledError
+from inference.interrupt import GenerationCancelledError
 from services.generation_queue.types import OutputAllocation, OutputPlan
 from tests.fakes.generation import FakeJobSession
-from services.records import AssetRecord, CapabilityFailedError, GenerationRecord
+from inference.errors import CapabilityFailedError
+from services.records import AssetRecord, GenerationRecord
 from tests.lora_catalog_helpers import download_spec
 
 _WEIGHTS = "motion-track.safetensors"

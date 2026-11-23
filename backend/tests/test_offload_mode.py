@@ -5,7 +5,7 @@ from __future__ import annotations
 import torch
 from ltx_pipelines.utils.types import OffloadMode
 
-from services.ltx_pipeline_common import offload_mode_for_prefetch_count
+from inference.common import offload_mode_for_prefetch_count
 
 _GIB = 1024**3
 

@@ -97,11 +97,11 @@ from pathlib import Path
 
 import torch
 
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 from runtime_config.accelerator import accelerator_supports_fp8
 from runtime_config.budget_admission import Admitted
 from runtime_config.device_calibration import CALIBRATION_EPOCH
-from runtime_config.fast_chunking import CARRY_FRAMES, job_window_count, last_window_frames
+from inference.fast_chunking import CARRY_FRAMES, job_window_count, last_window_frames
 from runtime_config.ic_lora_chunking import ic_lora_carry_frames
 from runtime_config.ic_lora_high_res import high_res_tiling
 from runtime_config.ic_lora_job_budget import (
@@ -110,7 +110,7 @@ from runtime_config.ic_lora_job_budget import (
     decide_ic_lora_job,
 )
 from runtime_config.ic_lora_stage_mode import IcLoraStageMode
-from runtime_config.ic_lora_tiling import IcLoraTiling
+from inference.ic_lora_tiling import IcLoraTiling
 from runtime_config.local_runtime import resolve_local_runtime
 from runtime_config.ltx_capabilities import budget_pixels, local_caps, pixels_for
 from runtime_config.macos_version import detect_macos_major
@@ -130,7 +130,7 @@ from runtime_config.video_job_budget import (
     video_tokens,
 )
 from services.gpu_info.gpu_info_impl import GpuInfoImpl
-from services.retake_pipeline.window import MAX_INPUT_FRAMES
+from inference.retake_pipeline.window import MAX_INPUT_FRAMES
 from services.storage_info.storage_info import DriveType
 from services.storage_info.storage_info_impl import StorageInfoImpl
 

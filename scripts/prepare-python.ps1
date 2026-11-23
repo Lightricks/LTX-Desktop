@@ -60,6 +60,7 @@ $RequirementsFile = Join-Path $BackendDir "requirements-dist.txt"
 # Export pinned deps, excluding the project itself (--no-emit-project)
 & uv export --frozen --no-hashes --no-editable --no-emit-project `
     --no-header --no-annotate `
+    --extra desktop `
     --project $BackendDir `
     > $RequirementsFile
 

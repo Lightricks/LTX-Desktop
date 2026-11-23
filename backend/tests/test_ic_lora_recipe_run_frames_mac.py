@@ -13,7 +13,7 @@ import pytest
 from _routes._errors import HTTPError
 from api_types import IcLoraRecipeStoredParams, IcLoraSettings, LoraEntry
 from runtime_config.budget_admission import RiskAllowance
-from runtime_config.ic_lora_tiling import IcLoraTiling
+from inference.ic_lora_tiling import IcLoraTiling
 from tests.lora_catalog_helpers import add_ic_lora
 from tests.test_ic_lora_recipe_run_frames import Gate, Runner, _configure_windows
 

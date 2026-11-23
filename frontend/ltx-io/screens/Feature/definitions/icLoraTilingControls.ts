@@ -1,4 +1,4 @@
-import controls from "../../../../../shared/ic-lora-tiling-controls.json" with { type: "json" };
+import controls from "../../../../../backend/inference/ic-lora-tiling-controls.json" with { type: "json" };
 
 /**
  * The one stored value of Auto in a numeric Advanced control. Each control needs a number for

@@ -6,7 +6,7 @@ import pytest
 import torch
 from ltx_core.loader import buffers, registry, state_loader, streaming_builder
 
-import services.patches.pinned_pool_fix as patch
+import inference.patches.pinned_pool_fix as patch
 
 _PINNED_REQUEST_BYTES = 4 << 20
 

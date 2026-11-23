@@ -9,8 +9,6 @@ from server_utils.win_dll_search import remove_cwd_from_dll_search_path
 remove_cwd_from_dll_search_path()
 
 faulthandler.enable(file=sys.stderr, all_threads=True)
-from typing import Any, cast
-
 if os.environ.get("BACKEND_DEBUG") == "1":
     try:
         import debugpy  # type: ignore[reportMissingImports]
@@ -55,29 +53,12 @@ import torch
 import mps_prebuilt_ext as _mps_prebuilt_ext  # pyright: ignore[reportUnusedImport]
 _mps_prebuilt_ext.setup_prebuilt_mps_extension()
 
-# LLM: bumping ltx-core / ltx-pipelines (backend/pyproject.toml) MUST re-verify every
-# import below (and mps_sdpa_torch later in this file). These monkey-patch private
-# ltx-core / ltx-pipelines / safetensors symbols. Delete-first: drop a patch if
-# upstream now includes the fix (see that file's "Remove once ..." docstring).
-# Do not reorder this block relative to mps_prebuilt_ext / MPS_SDPA_SKIP_CALIBRATION.
-import services.patches.safetensors_metadata_fix as _safetensors_metadata_fix  # pyright: ignore[reportUnusedImport]  # Remove once safetensors supports read-only mmap or ltx-pipelines stops calling safe_open for metadata
-del _safetensors_metadata_fix
-import services.patches.pinned_pool_fix as _pinned_pool_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core host_bytes works on Windows and a failed pin cannot poison CUDA (LTX-Desktop#141)
-del _pinned_pool_fix
-import services.patches.diffusion_stage_cache as _diffusion_stage_cache  # pyright: ignore[reportUnusedImport]  # EXPERIMENTAL: remove once DiffusionStage caches/reuses identical builds upstream
-del _diffusion_stage_cache
+# Darwin transfer fence. Must run before apply_patches(), which imports
+# ltx-pipelines attention. CUDA patches are applied after logging is configured.
 import services.patches.mps_transfer_sync as _mps_transfer_sync  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core waits for queued MPS compute before a transfer and a 1080p stage 2 passes on a 48 GB Mac without it
 del _mps_transfer_sync
-import services.patches.diffvae_decode_vram as _diffvae_decode_vram  # pyright: ignore[reportUnusedImport]  # Remove once upstream decode tiling is confirmed sufficient (E1)
-del _diffvae_decode_vram
-import services.patches.natten_libnatten_gate as _natten_libnatten_gate  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core natten_available checks HAS_LIBNATTEN
-del _natten_libnatten_gate
-import services.patches.diffusion_interrupt as _diffusion_interrupt  # pyright: ignore[reportUnusedImport]  # Remove once ltx-pipelines denoiser/loop accepts an interrupt callback
-del _diffusion_interrupt
-import services.patches.nag_cross_attention as _nag_cross_attention  # pyright: ignore[reportUnusedImport]  # EXPERIMENTAL: remove once ltx-core supports a negative text context in the distilled path
-del _nag_cross_attention
-
-from state.app_settings import AppSettings
+import services.patches.mps_tiling_weights_sync as _mps_tiling_weights_sync  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core _device_weights uploads with non_blocking=allow_async_transfer(...) and Refine Details gives a real picture on a Mac without it (LTX-Desktop#199)
+del _mps_tiling_weights_sync
 
 # ============================================================
 # Logging Configuration
@@ -108,68 +89,29 @@ logger = logging.getLogger(__name__)
 # (the setup call at import time logs too early to be captured). No-op off Darwin.
 _mps_prebuilt_ext.log_mps_backend_status()
 
-# ============================================================
-# SageAttention Integration
-# ============================================================
-use_sage_attention = os.environ.get("USE_SAGE_ATTENTION", "1") == "1"
-_sageattention_runtime_fallback_logged = False
+# CUDA patches + SageAttention wrap (gated on USE_SAGE_ATTENTION, default on).
+# LLM: bumping ltx-core / ltx-pipelines MUST re-verify every import in
+# inference/apply_patches.py (and mps_sdpa_torch below). Delete-first.
+# Import the function from its module. Binding it on the inference package
+# would shadow the submodule of the same name.
+from inference.apply_patches import apply_patches
+from runtime_config.smart_app_control import (
+    detect_smart_app_control,
+    smart_app_control_blocks_unsigned_code,
+)
 
-if use_sage_attention:
-    try:
-        from sageattention import sageattn  # type: ignore[reportMissingImports]
-        import torch.nn.functional as F
+_smart_app_control_state = detect_smart_app_control()
+smart_app_control_on = smart_app_control_blocks_unsigned_code(_smart_app_control_state)
+logger.info("Windows Smart App Control state: %s", _smart_app_control_state)
+use_sage_attention = apply_patches(smart_app_control_on=smart_app_control_on)
 
-        _original_sdpa = F.scaled_dot_product_attention
+# state/__init__.py imports the queue runner, which imports CUDA patches.
+# Importing AppSettings earlier installs those patches before logging exists.
+from state.app_settings import AppSettings
 
-        _SAGE_SUPPORTED_HEADDIMS = {64, 96, 128}
-
-        @torch.compiler.disable(recursive=True)  # type: ignore[reportUntypedFunctionDecorator]
-        def _sageattn_call(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, is_causal: bool) -> torch.Tensor:
-            # torch.compile must not trace into sageattn's Python internals (quant.py,
-            # core.py): it bakes the current call's shapes into the compiled graph's
-            # guards, which then hard-fails (ConstraintViolationError) on any later call
-            # with different video/audio dimensions. Disabling keeps this call eager —
-            # a graph break here, not a recompile — while the surrounding transformer
-            # forward stays compiled.
-            return cast(torch.Tensor, sageattn(query, key, value, is_causal=is_causal, tensor_layout="HND"))  # type: ignore[reportUnnecessaryCast]
-
-        def patched_sdpa(
-            query: torch.Tensor,
-            key: torch.Tensor,
-            value: torch.Tensor,
-            attn_mask: torch.Tensor | None = None,
-            dropout_p: float = 0.0,
-            is_causal: bool = False,
-            scale: float | None = None,
-            **kwargs: Any,
-        ) -> torch.Tensor:
-            global _sageattention_runtime_fallback_logged
-            try:
-                if (
-                    query.dim() == 4
-                    and attn_mask is None
-                    and dropout_p == 0.0
-                    and query.shape[-1] in _SAGE_SUPPORTED_HEADDIMS
-                ):
-                    return _sageattn_call(query, key, value, is_causal)
-                else:
-                    return _original_sdpa(query, key, value, attn_mask=attn_mask,
-                                         dropout_p=dropout_p, is_causal=is_causal, scale=scale, **kwargs)
-            except Exception:
-                if not _sageattention_runtime_fallback_logged:
-                    logger.warning("SageAttention failed during runtime; falling back to default attention", exc_info=True)
-                    _sageattention_runtime_fallback_logged = True
-                return _original_sdpa(query, key, value, attn_mask=attn_mask,
-                                     dropout_p=dropout_p, is_causal=is_causal, scale=scale, **kwargs)
-
-        F.scaled_dot_product_attention = patched_sdpa
-        logger.info("SageAttention enabled - attention operations will be faster")
-    except ImportError:
-        logger.warning("SageAttention not installed - using default attention")
-        use_sage_attention = False
-    except Exception:
-        logger.warning("Failed to enable SageAttention", exc_info=True)
-        use_sage_attention = False
+# Desktop-only LTXTextEncoder hook (split from safetensors_metadata_fix patch 4).
+import services.patches.ltx_text_encoder_checkpoint_id as _ltx_text_encoder_checkpoint_id  # pyright: ignore[reportUnusedImport]  # Remove once safetensors supports read-only mmap
+del _ltx_text_encoder_checkpoint_id
 
 # Darwin: Diffusers/Z-Image call F.sdpa (stock MPS SDPA materializes S×S and can
 # freeze the machine). Video already uses mps-sdpa via ltx-core; this covers Z-Image.
@@ -334,6 +276,7 @@ runtime_config = RuntimeConfig(
     settings_file=SETTINGS_FILE,
     ltx_api_base_url=LTX_API_BASE_URL,
     use_sage_attention=use_sage_attention,
+    smart_app_control_on=smart_app_control_on,
     camera_motion_prompts=CAMERA_MOTION_PROMPTS,
     default_negative_prompt=DEFAULT_NEGATIVE_PROMPT,
     dev_mode=os.environ.get("LTX_DEV_MODE") == "1",

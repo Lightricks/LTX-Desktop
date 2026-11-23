@@ -1,7 +1,7 @@
 /**
  * Per-run strength of the negative prompt (NAG), behind the "Per-run strength controls" setting.
  *
- * NAG has three knobs (backend `runtime_config/nag_limits.py`):
+ * NAG has three knobs (backend `inference/nag_limits.py`):
  * - scale extrapolates away from the negative: Z⁺ + (scale − 1)(Z⁺ − Z⁻).
  * - τ caps that per token (‖Ẑ‖₁ / ‖Z⁺‖₁ ≤ τ), so past a point more scale is clipped away.
  * - α blends the capped result back toward the positive: α·Ẑ + (1 − α)·Z⁺.

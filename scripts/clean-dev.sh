@@ -24,7 +24,7 @@ ok "pnpm install complete"
 echo ""
 echo "Reinstalling Python backend venv..."
 cd "$PROJECT_DIR/backend"
-uv sync --extra dev
+uv sync --extra desktop --extra dev
 ok "uv sync complete"
 
 echo ""
