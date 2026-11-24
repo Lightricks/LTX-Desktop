@@ -1,0 +1,38 @@
+.controlsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.playbackGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.timeDisplay {
+  color: var(--semantic-fg-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.rangeLabels {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.timeMeta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--spacing-xxs, 4px);
+}
+
+.timeMetaLabel {
+  color: var(--semantic-fg-tertiary);
+}
+
+.timeMetaValue {
+  color: var(--semantic-fg-primary);
+  font-variant-numeric: tabular-nums;
+}

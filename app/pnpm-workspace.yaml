@@ -1,0 +1,10 @@
+allowBuilds:
+  electron: true
+  esbuild: true
+  electron-winstaller: true
+  iconv-corefoundation: true
+  koffi: true
+
+minimumReleaseAgeExclude:
+  - "vite-plugin-electron@0.29.1"
+  - "electron@41.0.2"

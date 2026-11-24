@@ -1,0 +1,80 @@
+# Changes for LTX Desktop - AMD 395 MAX
+
+Lightricks is the upstream author of the Desktop and inference sources. This downstream edition adapts them for Windows ROCm on the Radeon 8060S. The Git history includes the imported tag contents, so the downstream modifications can also be inspected as a diff.
+
+## 1.3.2-amd.8 local MiniMax H3 video
+
+Image to Video adds MiniMax H3 FL2VA Base, FL2VA 8-step Turbo, and Ref2VA. Text to Video offers both FL2VA options. H3 renders audio and video together on the selected ComfyUI worker. Model setup in the generation screen and Settings shows the required files and reuses shared weights across variants. Local use requires the applicable MiniMax rights, which the operator confirms during setup.
+
+## 1.3.2-amd.7 model setup readability
+
+The model setup card in Image to Video and Text to Video, and the renderer controls in Settings → Models, now use compact, theme-aware text for model names, labels, and status messages.
+
+## 1.3.2-amd.6 application rename
+
+The application is now named **LTX Desktop - AMD 395 MAX** in its window, Windows shortcuts, installer and Installed apps entry. The installer upgrades the existing per-user installation. Existing projects, settings and downloaded models continue to use their original locations.
+
+## 1.3.2-amd.5 self-contained local renderer
+
+The online installer carries ComfyUI core 0.38.0, Kandinsky nodes 1.0.2, and the Windows packages needed to run their video and audio workflows with the included AMD Python runtime. The native and Comfy processes load their respective PyAV versions independently.
+
+On a clean PC, the Model panel offers **Install engine & model**. LTX sets up the chosen model, checks availability and manages its own loopback server, including the restart needed to load Kandinsky. Its models and outputs live in the user's LTX data folder. Existing compatible ComfyUI installations are optional and can continue using their own model directories.
+
+## 1.3.2-amd.4 in-app model setup
+
+Image to Video and Text to Video open a setup panel for missing local models directly from the Model menu. Native LTX 2.3 and 2.5 offer a bundle download and activate the selected version after its required components are present. Independent native and Comfy downloads report their own progress.
+
+The Comfy setup panel can download the LTX INT8 files or the seven Kandinsky Lite SD files into the running server’s model folders. Kandinsky checks its custom nodes separately from its weights and offers installation through the local ComfyUI Manager. Restart is a separate action. When setup succeeds, the picker refreshes the available models and selects the requested renderer.
+
+## 1.3.2-amd.3 model selection and ComfyUI rendering
+
+Image to Video and Text to Video can submit local jobs to AMD ComfyUI Desktop, retrieve the finished MP4, and preserve the renderer in the queue and history. The new default on the AMD edition is LTX 2.5 Fast with the Comfy INT8 ConvRot transformer and matching INT8 text encoder. The native engine and its workflows remain available in the picker. Kandinsky 6 Lite Distill uses its own image/text and audio workflow, checkpoint, and optional Comfy extension.
+
+The LTX workflow is based on [Comfy’s LTX 2.5 image-to-video template](https://github.com/Comfy-Org/workflow_templates/blob/b0bcdb274878ea3c5cf46fed3819faa05b920707/templates/video_ltx2_5_i2v.json). The Kandinsky workflow uses the SD stage of the [Kandinsky Lab ComfyUI examples](https://github.com/kandinskylab/kandinsky-6/tree/73b892b730885e02ab58fbf7fc5cb10b78e1e3da/comfyui/example_workflows). Neither model weights nor the optional Comfy extension are redistributed with the installer.
+
+## 1.3.2-amd.2 startup repair
+
+On Windows, the previous build successfully ran BF16 matrix multiplication and attention on the Radeon 8060S, then stopped while loading the local model libraries. The pinned AMD PyTorch build omits the native c10d distributed backend. Model-library startup must check this capability before loading its optional multi-device features. The compatibility repair and runtime staging code for this release are in [runtimework/](runtimework/).
+
+## 1.3.2-amd.1 desktop source changes
+
+The Electron shell selects the private Python runtime and uses distinct AMD application data. The backend verifies HIP, BF16 matrix multiplication and scaled dot-product attention before it accepts local inference. The Hugging Face sign-in uses a loopback callback. The AMD edition disables the upstream binary updater.
+
+Paths below are relative to `app/`.
+
+- `electron/app-paths.ts`
+- `electron/app-state.ts`
+- `electron/gpu.ts`
+- `electron/hf-loopback.test.ts`
+- `electron/hf-loopback.ts`
+- `electron/ipc/file-handlers.ts`
+- `electron/main.ts`
+- `electron/python-backend.ts`
+- `electron/python-setup.ts`
+- `electron/updater.ts`
+- `frontend/components/settings/AboutSettingsSection.tsx`
+- `frontend/contexts/AppSettingsContext.tsx`
+- `frontend/hooks/use-hf-auth.ts`
+- `backend/handlers/hf_auth_handler.py`
+- `backend/ltx2_server.py`
+- `backend/runtime_config/accelerator.py`
+- `backend/services/gpu_info/gpu_info_impl.py`
+- `backend/tests/test_accelerator.py`
+- `backend/tests/test_hf_auth.py`
+
+## Inference source changes
+
+The core package adds a tiled PyTorch attention path on HIP and an eager neighborhood-attention implementation for the video decoder. The version of the custom wheel is `1.6.0+radeon1`. The pipelines wheel is built from the included upstream sources.
+
+Paths below are relative to `vendor/LTX-2/`.
+
+- `packages/ltx-core/pyproject.toml`
+- `packages/ltx-core/src/ltx_core/model/transformer/attention.py`
+- `packages/ltx-core/src/ltx_core/model/video_vae/transformer/apply.py`
+- `packages/ltx-core/src/ltx_core/model/video_vae/transformer/fallback_na/__init__.py`
+- `packages/ltx-core/src/ltx_core/model/video_vae/transformer/fallback_na/eager.py`
+- `packages/ltx-core/src/ltx_core/model/video_vae/transformer/fallback_na/joint_eager.py`
+
+## Packaging changes
+
+The Windows shell assembler, ROCm dependency manifest, installer and diagnostics are provided alongside the application. The `radeon/` folder in the inference source contains wheel rebuild and numerical verification scripts. Three upstream symbolic links are stored as ordinary copies of their targets to make extraction on Windows reliable. These are `app/CLAUDE.md`, `app/frontend/remote/public/favicon.png`, and `vendor/LTX-2/packages/ltx-trainer/CLAUDE.md`.

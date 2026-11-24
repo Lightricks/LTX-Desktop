@@ -1,0 +1,157 @@
+@import "@ds/styles/themes/mixins.module.scss";
+
+// One column of controls. With an image, the preview joins in a second column. The buttons sit in a
+// row below both columns. On a narrow screen the columns stack. The card width follows the screen
+// width, because the modal caps its own width at 95vw minus the close button room.
+.container {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-lg);
+  width: min(560px, calc(95vw - 70px));
+  // Room for the corner close button.
+  padding: calc(var(--spacing-lg) + 28px) var(--spacing-lg) var(--spacing-lg);
+}
+
+.withPreview {
+  @media (min-width: 761px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: min(1040px, calc(95vw - 70px));
+
+    .actions {
+      grid-column: 1 / -1;
+    }
+  }
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  min-width: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.label {
+  color: var(--semantic-fg-secondary);
+}
+
+.textarea {
+  @include text_style_body_lg;
+
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 160px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-primary);
+  color: var(--semantic-fg-primary);
+  outline: none;
+  padding: var(--spacing-md);
+  resize: vertical;
+
+  &:hover,
+  &:focus {
+    border-color: var(--semantic-bg-separator-primary);
+  }
+}
+
+.enhanceRow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+}
+
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-lg);
+}
+
+// A labeled picker. The two pickers share a row and wrap on a narrow screen.
+.sizeField {
+  display: flex;
+  flex: 1 1 120px;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+}
+
+.status {
+  color: var(--semantic-fg-tertiary);
+}
+
+.error {
+  @include text_style_body_md;
+
+  color: var(--semantic-fg-danger-primary-enabled);
+}
+
+// The frame has the shape of the chosen aspect ratio. A tall shape stops at the height limit.
+.previewFrame {
+  --preview-max-height: min(70vh, 560px);
+
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  width: min(100%, calc(var(--preview-max-height) * var(--image-ratio)));
+  aspect-ratio: var(--image-ratio);
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-tertiary);
+}
+
+// The provider switch is a little wider than the pickers, so both labels fit.
+.providerField {
+  flex: 1.3 1 160px;
+}
+
+// The provider switch has the height and the width of the pickers beside it.
+.sizeField .providerSegment {
+  --track-height: 40px;
+  --item-pad-y: 0;
+  --item-pad-x: var(--spacing-sm);
+  --label-size: 14px;
+  --label-line: 20px;
+}
+
+.previewEmpty {
+  color: var(--semantic-fg-tertiary);
+}
+
+// The progress sits over the frame, and over the last image while the next one is made.
+.previewStatus {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  background: color-mix(in srgb, var(--semantic-bg-primary) 70%, transparent);
+  color: var(--semantic-fg-secondary);
+}
+
+.preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}

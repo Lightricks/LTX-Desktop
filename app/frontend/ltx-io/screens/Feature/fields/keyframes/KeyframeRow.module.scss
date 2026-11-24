@@ -1,0 +1,122 @@
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+  min-width: 0;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--semantic-border-secondary);
+  border-radius: var(--radius-md);
+}
+
+.dragging {
+  // The row follows the pointer above the other rows.
+  position: relative;
+  z-index: 1;
+  opacity: 0.9;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--semantic-bg-primary) 60%, transparent);
+  background: var(--semantic-bg-primary);
+}
+
+// The dedicated surface for the drag. The row does not start a drag anywhere else.
+.dragHandle {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  width: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--semantic-fg-secondary);
+  cursor: grab;
+  // A finger on the grip drags. It does not scroll the list.
+  touch-action: none;
+
+  // A bigger target for a finger. The grip itself stays small.
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0 -6px;
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--semantic-border-focus);
+    outline-offset: 2px;
+  }
+}
+
+// The row of the still currently selected on the timeline.
+.selected {
+  border-color: var(--semantic-bg-brand-primary-enabled);
+}
+
+.thumb {
+  flex: 0 0 64px;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-tertiary);
+  cursor: zoom-in;
+}
+
+.thumb:disabled {
+  cursor: default;
+}
+
+.thumb:focus-visible {
+  outline: 2px solid var(--semantic-bg-brand-primary-enabled);
+  outline-offset: 2px;
+}
+
+.thumbImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.controls {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--spacing-xs);
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  min-width: 0;
+}
+
+.lineLabel {
+  flex: 0 0 56px;
+  color: var(--semantic-fg-tertiary);
+}
+
+.actions {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.time {
+  flex: 1 1 0;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}

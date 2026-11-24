@@ -1,0 +1,268 @@
+$catalog-row-height: 2.75rem;
+$catalog-control-height: 24px;
+
+.tableWrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--semantic-bg-separator-primary);
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-primary);
+  box-sizing: border-box;
+}
+
+.table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+
+  .colName {
+    width: 50%;
+  }
+
+  .colSize {
+    width: 12%;
+  }
+
+  .colActions {
+    width: 38%;
+  }
+}
+
+.leadingCell {
+  padding-left: var(--spacing-md);
+  padding-right: 0;
+}
+
+.radioWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.defaultRadio {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--semantic-bg-brand-primary-enabled);
+  cursor: pointer;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.35;
+  }
+}
+
+.dataRow td {
+  box-sizing: border-box;
+  height: $catalog-row-height;
+  max-height: $catalog-row-height;
+  padding: 0 var(--spacing-md);
+  vertical-align: middle;
+  border-top: 1px solid var(--semantic-bg-separator-primary);
+}
+
+.cellInner {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.cellInnerEnd {
+  composes: cellInner;
+  justify-content: flex-end;
+}
+
+.dataRow:first-of-type td {
+  border-top: none;
+}
+
+.rowClickable {
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover td {
+      background: var(--semantic-bg-secondary);
+    }
+  }
+}
+
+.nameCell {
+  min-width: 0;
+}
+
+.nameLine {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sizeCell {
+  white-space: nowrap;
+}
+
+.cellTextSize {
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+  font-weight: 400;
+  color: var(--semantic-fg-secondary);
+}
+
+.cellText {
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+  font-weight: 400;
+  color: var(--semantic-fg-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.installedCheckWrap {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.installedCheck {
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--semantic-fg-secondary);
+}
+
+.actionsCell {
+  white-space: nowrap;
+}
+
+// Single Download/Delete-wide control and Installed+Delete pairs share this width.
+$catalog-action-width: 8.5rem;
+
+.actionRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-xs);
+  width: 100%;
+  min-width: 0;
+  height: $catalog-control-height;
+  max-height: $catalog-control-height;
+}
+
+.actionRowSplit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  height: $catalog-control-height;
+  max-height: $catalog-control-height;
+  width: $catalog-action-width;
+  max-width: 100%;
+  margin-left: auto;
+  box-sizing: border-box;
+
+  .statusBadge,
+  .actionButton {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+  }
+}
+
+.actionButton {
+  min-width: 5.5rem;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  height: $catalog-control-height !important;
+  min-height: $catalog-control-height;
+  max-height: $catalog-control-height;
+  box-sizing: border-box;
+}
+
+.actionButtonWide {
+  composes: actionButton;
+  width: $catalog-action-width;
+  min-width: $catalog-action-width;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.actionButtonTooltipWrap {
+  display: flex;
+  align-items: center;
+  width: $catalog-action-width;
+  max-width: 100%;
+  margin-left: auto;
+  height: 100%;
+  max-height: $catalog-control-height;
+  box-sizing: border-box;
+
+  .actionButton {
+    width: 100%;
+    min-width: 0;
+    max-height: $catalog-control-height;
+  }
+}
+
+.detailRow td {
+  padding: 0 var(--spacing-md) var(--spacing-xs);
+  border-top: none;
+  vertical-align: top;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-xxs);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  height: $catalog-control-height;
+  min-height: $catalog-control-height;
+  max-height: $catalog-control-height;
+  padding: 0 var(--spacing-md);
+  border-radius: var(--md-radius);
+  background: var(--semantic-bg-action-primary-enabled);
+  color: var(--semantic-fg-action-secondary-enabled);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.statusBadge svg {
+  width: var(--sm-icon-size);
+  height: var(--sm-icon-size);
+  flex-shrink: 0;
+}
+
+.statusBadgeSolo {
+  width: $catalog-action-width;
+  min-width: $catalog-action-width;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.variantSelect {
+  max-width: 8.5rem;
+  height: $catalog-control-height;
+  box-sizing: border-box;
+  border-radius: var(--md-radius);
+  border: 1px solid var(--semantic-bg-separator-primary);
+  background: var(--semantic-bg-primary);
+  padding: 0 var(--spacing-xs);
+  font-size: 0.75rem;
+  line-height: 1;
+  color: var(--semantic-fg-primary);
+}
+
+.empty {
+  padding: var(--spacing-md);
+  color: var(--semantic-fg-tertiary);
+  font-size: 0.875rem;
+}

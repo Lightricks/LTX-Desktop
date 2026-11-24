@@ -1,0 +1,61 @@
+@use "@/ds/styles/themes/animationsValues.scss" as *;
+
+.themeRoot {
+  height: 100%;
+  min-height: 100vh;
+  background-color: var(--semantic-bg-primary);
+}
+
+.shell {
+  position: relative;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+}
+
+.beneathSplash {
+  height: 100%;
+  width: 100%;
+}
+
+// Hidden for the splash's whole life, exit fade included: revealing the app
+// while the lockup is still fading put both on screen at once, which read as a
+// double exposure rather than a handoff.
+.shell:has(.splashLayer) .beneathSplash {
+  visibility: hidden;
+}
+
+.bootSpinner {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  :global(html[data-platform="darwin"]) & {
+    background-color: transparent;
+  }
+}
+
+.splashLayer {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-modal);
+}
+
+.postSplashFade {
+  animation: fade-in $duration-moderate $easing-entrance-productive both;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}

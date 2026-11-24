@@ -1,0 +1,11 @@
+@import "@ds/styles/themes/mixins.module.scss";
+
+.title {
+  @include text_style_heading_sm;
+}
+
+.bottom_bar {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--gap-md);
+}

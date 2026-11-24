@@ -1,0 +1,22 @@
+LTX Desktop - AMD 395 MAX backend startup repair for the Windows Radeon 8060S build
+
+1. Close LTX Desktop - AMD 395 MAX. If its error dialog is still open, dismiss it and
+   quit the app. Leave the app closed until the repair finishes.
+2. In File Explorer, right-click LTX-Desktop-AMD-Backend-Repair.zip and select
+   Extract All. Open the extracted folder.
+3. Double-click Repair-LTX-Desktop-AMD.cmd from your usual Windows account.
+   The repair uses the Python included with LTX Desktop - AMD 395 MAX and works offline.
+   Leave the window open while it checks your installed packages, Radeon GPU
+   and backend. The first import can take a few minutes.
+4. When you see "PASS: Backend startup checked", open LTX Desktop - AMD 395 MAX from the
+   Start menu.
+
+The repair updates the pinned Python packages for single-GPU startup and the
+bundled Radeon diagnostic. It checks the expected package files before making
+changes. You can rerun the repair if it was interrupted. Your downloaded
+models, projects, and settings stay in their existing locations.
+
+If the repair stops, read the error in the window. If the app is still running,
+the message shows the process name and PID to look for in Task Manager.
+The complete log is available at %LOCALAPPDATA%\LTXDesktopAMD\logs\backend-repair.log.
+Paste that path into File Explorer's address bar to open it.

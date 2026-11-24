@@ -1,0 +1,14 @@
+.modal {
+  width: min(560px, calc(100vw - var(--spacing-3xl)));
+  height: calc(
+    100vh - 2 *
+      (var(--page-header-min-height, 60px) + var(--spacing-4xl) + var(--spacing-3xl))
+  );
+  max-height: calc(
+    100vh - 2 *
+      (var(--page-header-min-height, 60px) + var(--spacing-4xl) + var(--spacing-3xl))
+  );
+  align-items: stretch;
+  justify-content: flex-start;
+  overflow: hidden;
+}

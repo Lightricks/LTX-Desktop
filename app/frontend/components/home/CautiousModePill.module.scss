@@ -1,0 +1,30 @@
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 4px 10px 4px 8px;
+  border-radius: var(--radius-full, 999px);
+  background: color-mix(in srgb, var(--semantic-fg-warning-primary-enabled) 16%, transparent);
+  color: var(--semantic-fg-warning-primary-enabled);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.icon {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.action {
+  margin-left: 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+}

@@ -1,0 +1,365 @@
+"""Test infrastructure for backend integration-style endpoint tests."""
+
+from __future__ import annotations
+
+from io import BytesIO
+from pathlib import Path
+
+import pytest
+import torch
+
+from app_factory import create_app
+from app_handler import ServiceBundle
+from api_types import (
+    AudioToVideoParams,
+    GenerateVideoCompleteResponse,
+    GenerateVideoRequest,
+    TextToImageStoredParams,
+)
+from handlers.queued_image_handler import QueuedImageHandler
+import runtime_config.video_job_budget as video_job_budget
+from runtime_config.budget_admission import RiskAllowance
+from runtime_config.reject_reasons import PassShape
+from runtime_config.model_download_specs import (
+    DEPTH_PROCESSOR_CP_ID,
+    IMG_GEN_MODEL_CP_ID,
+    get_ic_loras_cp_ids,
+    get_latest_ltx_model_id,
+    get_ltx_model_spec,
+    resolve_model_path,
+)
+from runtime_config.port_constant import PORT
+from state import RuntimeConfig, build_initial_state, set_state_service_for_tests
+from state.app_settings import AppSettings
+from state.app_state_types import HfAuthenticated
+from services.features.ic_lora_recipes import queued_ic_lora_recipes
+from services.features.image.text_to_image import QueuedImageResult, TextToImageExecutor
+from services.features.lora_recipes import queued_lora_recipes
+from services.features.video import AudioToVideoExecutor, KeyframesExecutor
+from services.generation_queue.sessions import JobSession
+from services.gemini_text_client import clear_gemini_models_cache
+from services.sqlite_store import SqliteStore
+from tests.fake_camera_motion_prompts import FAKE_CAMERA_MOTION_PROMPTS
+from tests.fakes.generation import FakeGenerationExecutor
+from tests.fakes.services import FakeServices, fixture_weights
+
+DEFAULT_NEGATIVE_PROMPT = (
+    "blurry, out of focus, overexposed, underexposed, low contrast, washed out colors, "
+    "excessive noise, grainy texture"
+)
+
+# Cautious is the strict refusal surface most budget tests assert; Brave cases set it.
+DEFAULT_APP_SETTINGS = AppSettings(budget_mode="cautious")
+
+
+class _UnusedReservedVideoGenerator:
+    @property
+    def models_dir(self) -> Path:
+        return Path("/unused-reserved-video-generator")
+
+    def validate_local_a2v_request(
+        self,
+        params: AudioToVideoParams,
+        audio_duration_ms: int,
+        *,
+        pass_shape: PassShape,
+    ) -> None:
+        del params, audio_duration_ms, pass_shape
+
+    def generate_local_reserved(
+        self,
+        req: GenerateVideoRequest,
+        *,
+        generation_id: str,
+        output_path: Path | None = None,
+        prompt_wrap=None,
+        a2v_num_frames: int | None = None,
+        a2v_audio_duration_seconds: float | None = None,
+        local_model_id=None,
+        allowance: RiskAllowance | None = None,
+        pass_shape: PassShape | None = None,
+    ) -> GenerateVideoCompleteResponse:
+        del req, generation_id, prompt_wrap, a2v_num_frames, a2v_audio_duration_seconds, local_model_id, allowance
+        del pass_shape
+        return GenerateVideoCompleteResponse(
+            status="complete",
+            video_path=str(output_path) if output_path is not None else "",
+        )
+
+
+class _AppImageRenderer:
+    """Defers to the AppHandler's image handler, which is built after the executors."""
+
+    def __init__(self) -> None:
+        self.target: QueuedImageHandler | None = None
+
+    def generate_queued(
+        self,
+        params: TextToImageStoredParams,
+        *,
+        generation_id: str,
+        output_path: Path,
+        session: JobSession,
+    ) -> QueuedImageResult:
+        assert self.target is not None
+        return self.target.generate_queued(
+            params, generation_id=generation_id, output_path=output_path, session=session
+        )
+
+
+@pytest.fixture(autouse=True)
+def _reset_generation_interrupt() -> None:
+    from services.generation_interrupt import clear
+
+    clear()
+    yield
+    clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_denoising_progress() -> None:
+    from services.denoising_progress import reset
+
+    reset()
+    yield
+    reset()
+
+
+@pytest.fixture
+def fake_services() -> FakeServices:
+    return FakeServices()
+
+
+@pytest.fixture
+def parallel_lanes(request: pytest.FixtureRequest) -> bool:
+    """On by default. A test turns the kill switch on with indirect parametrization."""
+    return getattr(request, "param", True)
+
+
+@pytest.fixture(autouse=True)
+def test_state(tmp_path: Path, fake_services: FakeServices, parallel_lanes: bool):
+    """Provide a fresh AppHandler per test and register it in DI."""
+    clear_gemini_models_cache()
+    app_data = tmp_path / "app_data"
+    default_models_dir = app_data / "models"
+    outputs_dir = tmp_path / "outputs"
+
+    for directory in (default_models_dir, outputs_dir, app_data):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    config = RuntimeConfig(
+        device=torch.device("cpu"),
+        app_data_dir=app_data,
+        default_models_dir=default_models_dir,
+        outputs_dir=outputs_dir,
+        settings_file=app_data / "settings.json",
+        ltx_api_base_url="https://api.ltx.video",
+        local_generations_mode="full_models_loading",
+        parallel_queue_lanes=parallel_lanes,
+        vram_gb=31,
+        use_sage_attention=False,
+        camera_motion_prompts=FAKE_CAMERA_MOTION_PROMPTS,
+        default_negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+        dev_mode=False,
+        hf_oauth_client_id="test-client-id",
+        backend_port=PORT,
+    )
+
+    store = SqliteStore(config.app_data_dir)
+    image_renderer = _AppImageRenderer()
+    bundle = ServiceBundle(
+        assistant_provider=fake_services.assistant_provider,
+        assistant_models=fake_services.assistant_models,
+        http=fake_services.http,
+        gpu_cleaner=fake_services.gpu_cleaner,
+        model_downloader=fake_services.model_downloader,
+        lora_catalog_provider=fake_services.lora_catalog_provider,
+        gpu_info=fake_services.gpu_info,
+        video_processor=fake_services.video_processor,
+        text_encoder=fake_services.text_encoder,
+        task_runner=fake_services.task_runner,
+        url_downloader=fake_services.url_downloader,
+        ltx_api_client=fake_services.ltx_api_client,
+        zit_api_client=fake_services.zit_api_client,
+        fast_video_pipeline_class=type(fake_services.fast_video_pipeline),
+        image_generation_pipeline_class=type(fake_services.image_generation_pipeline),
+        ic_lora_pipeline_class=type(fake_services.ic_lora_pipeline),
+        depth_processor_pipeline_class=type(fake_services.depth_processor_pipeline),
+        pose_processor_pipeline_class=type(fake_services.pose_processor_pipeline),
+        a2v_pipeline_class=type(fake_services.a2v_pipeline),
+        retake_pipeline_class=type(fake_services.retake_pipeline),
+        prompt_enhancer_pipeline_class=type(fake_services.prompt_enhancer_pipeline),
+        store=store,
+        generation_executors={
+            "text-to-image": TextToImageExecutor(image_renderer),
+            "text-to-video": FakeGenerationExecutor(),
+            "image-to-video": FakeGenerationExecutor(),
+            "custom-lora": FakeGenerationExecutor(feature="custom-lora"),
+            # Injecting generation_executors skips AppHandler's real per-recipe
+            # registration loop, so mirror it from the recipe table — a new recipe
+            # then can't 422 at validate_params for a missing executor.
+            **{
+                recipe.recipe_id: FakeGenerationExecutor()
+                for recipe in queued_lora_recipes()
+            },
+            **{
+                recipe.recipe_id: FakeGenerationExecutor(feature=recipe.recipe_id)
+                for recipe in queued_ic_lora_recipes()
+            },
+            "audio-to-video": AudioToVideoExecutor(
+                _UnusedReservedVideoGenerator(), store
+            ),
+            # The real executor, so the queue refuses a bad timeline at create time.
+            "keyframes": KeyframesExecutor(_UnusedReservedVideoGenerator(), store),
+            "retake": FakeGenerationExecutor(feature="retake"),
+            "extend": FakeGenerationExecutor(feature="extend"),
+        },
+    )
+
+    handler = build_initial_state(
+        config,
+        DEFAULT_APP_SETTINGS.model_copy(deep=True),
+        service_bundle=bundle,
+    )
+    image_renderer.target = handler.queued_image
+    handler.state.hf_auth_state = HfAuthenticated(
+        access_token="fake-hf-token",
+        expires_at=1e18,
+    )
+    set_state_service_for_tests(handler)
+    yield handler
+
+
+TEST_ADMIN_TOKEN = "test-admin-token"
+
+
+@pytest.fixture
+def client(test_state):
+    from starlette.testclient import TestClient
+
+    app = create_app(handler=test_state, admin_token=TEST_ADMIN_TOKEN)
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def default_app_settings() -> AppSettings:
+    return DEFAULT_APP_SETTINGS.model_copy(deep=True)
+
+
+def _test_model_path(test_state, cp_id: str) -> Path:
+    return resolve_model_path(test_state.config.default_models_dir, cp_id)
+
+
+@pytest.fixture
+def create_fake_model_files(test_state):
+    def _create(
+        include_zit: bool = False,
+        model_id: str | None = None,
+        include_prompt_enhancer: bool = False,
+    ):
+        from runtime_config.model_download_specs import get_model_cp_spec
+
+        ltx_spec = get_ltx_model_spec(model_id or get_latest_ltx_model_id())
+
+        for cp_id in (
+            ltx_spec.model_cp,
+            ltx_spec.upscale_cp,
+            ltx_spec.video_vae_cp,
+            ltx_spec.video_vae_conv_cp,
+            ltx_spec.audio_vae_cp,
+            ltx_spec.duration_head_cp,
+        ):
+            if cp_id is None:
+                continue
+            path = _test_model_path(test_state, cp_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(fixture_weights())
+
+        def _write_cp(cp_id: str) -> None:
+            path = _test_model_path(test_state, cp_id)
+            if get_model_cp_spec(cp_id).is_folder:
+                path.mkdir(parents=True, exist_ok=True)
+                (path / "model.safetensors").write_bytes(b"\x00" * 1024)
+                (path / "tokenizer.model").write_bytes(b"\x00" * 1024)
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(fixture_weights())
+
+        _write_cp(ltx_spec.text_encoder_cp)
+
+        # Left out by default: it's an optional extra download, so tests opt in to the state
+        # where local Enhance is available for models that need it (2.5).
+        if include_prompt_enhancer and ltx_spec.prompt_enhancer_cp is not None:
+            _write_cp(ltx_spec.prompt_enhancer_cp)
+
+        if include_zit:
+            zit_dir = _test_model_path(test_state, IMG_GEN_MODEL_CP_ID)
+            zit_dir.mkdir(parents=True, exist_ok=True)
+            (zit_dir / "model.safetensors").write_bytes(b"\x00" * 1024)
+
+    return _create
+
+
+@pytest.fixture
+def create_fake_lora(test_state):
+    """Write a fake LoRA file under the models dir and return its resolved path.
+
+    Refs are now contained to models_dir + must exist (resolve_lora_ref), so tests
+    that forward LoRAs need a real on-disk file rather than an arbitrary path.
+    """
+    def _create(name: str = "style.safetensors") -> str:
+        loras_dir = test_state.config.default_models_dir / "loras"
+        loras_dir.mkdir(parents=True, exist_ok=True)
+        path = loras_dir / name
+        path.write_bytes(b"\x00" * 1024)
+        return str(path.resolve())
+
+    return _create
+
+
+# Union Control filenames come from the 2.3 spec; 2.5 reuses the same adapter on disk.
+_IC_LORA_MODEL_ID = "ltx-2.3-22b-distilled-1.1"
+
+
+@pytest.fixture
+def create_fake_ic_lora_files(test_state):
+    def _create(include_depth: bool = True):
+        ltx_spec = get_ltx_model_spec(_IC_LORA_MODEL_ID)
+        for cp_id in get_ic_loras_cp_ids(ltx_spec.ic_loras_spec):
+            path = _test_model_path(test_state, cp_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"\x00" * 1024)
+
+        if include_depth:
+            depth_path = _test_model_path(test_state, DEPTH_PROCESSOR_CP_ID)
+            depth_path.parent.mkdir(parents=True, exist_ok=True)
+            if depth_path.suffix:
+                depth_path.write_bytes(b"\x00" * 1024)
+            else:
+                depth_path.mkdir(parents=True, exist_ok=True)
+                (depth_path / "config.json").write_text("{}", encoding="utf-8")
+
+    return _create
+
+
+@pytest.fixture
+def make_test_image():
+    def _make(w: int = 64, h: int = 64, color: str = "red"):
+        from PIL import Image
+
+        img = Image.new("RGB", (w, h), color)
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        return buf
+
+    return _make
+
+
+@pytest.fixture
+def single_pass_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Price the single-pass envelope: the window fallback is off, so a pass that no card
+    can hold keeps its refusal. Tests of one-pass cell boundaries use this; the window
+    picker has its own tests."""
+    monkeypatch.setattr(video_job_budget, "_windows_help", lambda *_a, **_k: False)

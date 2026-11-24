@@ -1,0 +1,68 @@
+[
+  {
+    "id": "day-to-night",
+    "catalogId": "day-to-night",
+    "kind": "video"
+  },
+  {
+    "id": "alpha-gen",
+    "catalogId": "alpha-gen",
+    "kind": "video"
+  },
+  {
+    "id": "deblur",
+    "catalogId": "deblur",
+    "kind": "video"
+  },
+  {
+    "id": "colorization",
+    "catalogId": "colorization",
+    "kind": "video"
+  },
+  {
+    "id": "clean-plate",
+    "catalogId": "clean-plate",
+    "kind": "video"
+  },
+  {
+    "id": "decompression",
+    "catalogId": "decompression",
+    "kind": "video"
+  },
+  {
+    "id": "water-simulation",
+    "catalogId": "water-simulation",
+    "kind": "video"
+  },
+  {
+    "id": "layout-to-render",
+    "catalogId": "layout-to-render",
+    "kind": "video"
+  },
+  {
+    "id": "restore",
+    "catalogId": "restore",
+    "kind": "video"
+  },
+  {
+    "id": "ingredients",
+    "catalogId": "ingredients",
+    "kind": "sheet"
+  },
+  {
+    "id": "refine-details",
+    "catalogId": "refine-details",
+    "kind": "video",
+    "highResWithoutFlag": true
+  },
+  {
+    "id": "motion-track",
+    "catalogId": "motion-track",
+    "kind": "track"
+  },
+  {
+    "id": "video-guide",
+    "catalogId": "video-guide",
+    "kind": "video"
+  }
+]

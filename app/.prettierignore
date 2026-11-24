@@ -1,0 +1,12 @@
+node_modules
+dist
+dist-electron
+dist-remote
+.vite
+release
+coverage
+.vscode
+backend
+frontend/generated
+pnpm-lock.yaml
+*.min.js

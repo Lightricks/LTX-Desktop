@@ -1,0 +1,47 @@
+.root {
+  width: 100%;
+  min-width: 0;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 240px);
+  gap: var(--spacing-lg);
+  // The box is as tall as the draw step. Center the preview and the controls in it.
+  align-items: center;
+  min-width: 0;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  min-width: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.fieldLabel {
+  // Match Ltx.io form field titles (body/md + tertiary).
+  color: var(--semantic-fg-tertiary);
+}
+
+.picker {
+  width: 100%;
+}
+
+// A menu opened inside the modal must stack above the modal (--z-modal).
+.menu {
+  z-index: calc(var(--z-modal) + 1);
+}
+
+@media (width <= 720px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}

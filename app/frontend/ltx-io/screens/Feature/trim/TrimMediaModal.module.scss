@@ -1,0 +1,23 @@
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  width: min(640px, 100%);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs, 6px);
+}
+
+.saveError {
+  color: var(--semantic-fg-danger-primary-enabled);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-md);
+}

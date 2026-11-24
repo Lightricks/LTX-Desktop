@@ -1,0 +1,516 @@
+@import "@ds/styles/themes/mixins.module.scss";
+@import "@ds/styles/textInputStyles.scss";
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 400px;
+  flex: 0 0 400px;
+  min-width: 0;
+  min-height: 0;
+  background: var(--semantic-bg-secondary);
+  color: var(--semantic-fg-primary);
+  border-left: 1px solid var(--semantic-bg-separator-primary);
+  z-index: 20;
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-height: 60px;
+  flex-shrink: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--semantic-bg-separator-primary);
+
+  > .title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+
+    h2 {
+      flex-shrink: 0;
+    }
+
+    select {
+      width: 100%;
+      min-width: 0;
+      max-width: 280px;
+      text-overflow: ellipsis;
+    }
+  }
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 12px;
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  height: 100%;
+  flex: 1;
+  color: var(--semantic-fg-secondary);
+  text-align: center;
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+
+  &[data-role="user"] {
+    align-items: flex-end;
+
+    .messageText {
+      white-space: pre-wrap;
+      max-width: 88%;
+      padding: 10px 12px;
+      background: var(--semantic-bg-tertiary);
+      border-radius: var(--radius-md);
+      border-bottom-right-radius: 4px;
+    }
+  }
+}
+
+.messageText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  letter-spacing: 0;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  max-width: 100%;
+  > :first-child {
+    margin-top: 0;
+  }
+  > :last-child {
+    margin-bottom: 0;
+  }
+  p,
+  ul,
+  ol {
+    margin: 0 0 8px;
+  }
+  pre {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .tableScroll {
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 0 0 8px;
+  }
+  table {
+    border-collapse: collapse;
+    font-size: 14px;
+    overflow-wrap: normal;
+  }
+  th,
+  td {
+    padding: 4px 10px;
+    border: 1px solid var(--semantic-bg-separator-primary);
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    font-weight: 600;
+  }
+  ul,
+  ol {
+    padding-left: 24px;
+  }
+  ul {
+    list-style-type: disc;
+  }
+  ol {
+    list-style-type: decimal;
+  }
+  strong {
+    font-weight: 600;
+  }
+  h1,
+  h2,
+  h3 {
+    font-size: 18px;
+    margin: 12px 0 8px;
+  }
+  a {
+    color: var(--semantic-fg-primary);
+    text-decoration: underline;
+  }
+}
+
+.generation {
+  width: 100%;
+  min-width: 0;
+  container: assistant-result / inline-size;
+  overflow-wrap: normal;
+}
+
+.working {
+  @include text_style_body_md;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--semantic-fg-secondary);
+  min-height: 32px;
+  flex-shrink: 0;
+}
+
+.spinner {
+  flex-shrink: 0;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.actionArea {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: 8px 12px;
+}
+
+.scrollToEnd {
+  position: absolute;
+  z-index: 1;
+  bottom: calc(100% + var(--spacing-sm) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--semantic-bg-separator-primary);
+  border-radius: 50%;
+  background: var(--semantic-bg-primary);
+  color: var(--semantic-fg-secondary);
+  box-shadow: 0 1px 4px #00000014;
+  opacity: 0.85;
+  cursor: pointer;
+
+  &:hover {
+    opacity: 1;
+    color: var(--semantic-fg-primary);
+  }
+}
+
+.error {
+  @include text_style_body_md;
+  color: var(--semantic-fg-danger-primary-enabled);
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+
+.queue {
+  border: 1px solid var(--semantic-bg-separator-primary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.queueHeader,
+.queuedMessage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  min-width: 0;
+
+  > button {
+    flex-shrink: 0;
+  }
+}
+
+.queuedText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.queuedError {
+  @include text_style_body_sm;
+  color: var(--semantic-fg-danger-primary-enabled);
+  overflow-wrap: anywhere;
+}
+
+.queueHeader {
+  min-height: 20px;
+  color: var(--semantic-fg-secondary);
+}
+
+.queueList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.composer {
+  @include generic_text_input_styles;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: var(--semantic-bg-primary);
+
+  &:focus-within {
+    border-color: var(--semantic-border-focus);
+  }
+
+  &[data-dragging] {
+    border-color: var(--semantic-bg-brand-primary-enabled);
+    background: var(--semantic-bg-brand-secondary-hover);
+  }
+
+  textarea {
+    @include text_style_body_md;
+    font-size: 15px;
+    width: 100%;
+    box-sizing: border-box;
+    display: block;
+    min-width: 0;
+    min-height: 44px;
+    max-height: 144px;
+    field-sizing: content;
+    resize: none;
+    overflow-y: auto;
+    padding: 4px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--semantic-fg-primary);
+    outline: none;
+    letter-spacing: 0;
+
+    &:focus-visible {
+      outline: none;
+    }
+
+    &::placeholder {
+      color: var(--semantic-fg-tertiary);
+    }
+    &:disabled {
+      opacity: 0.5;
+    }
+  }
+}
+
+// iOS Safari zooms into focused fields under 16px and leaves the page zoomed.
+@media (pointer: coarse) {
+  .modelSelect select,
+  .composer textarea {
+    font-size: 16px;
+  }
+}
+
+.composerActions,
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+// Attach on the left, everything else grouped on the right.
+.composerActions {
+  > :first-child {
+    margin-right: auto;
+  }
+
+  > button {
+    flex-shrink: 0;
+  }
+}
+
+.footer {
+  color: var(--semantic-fg-tertiary);
+
+  > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  > button {
+    flex-shrink: 0;
+  }
+}
+
+.footerLink {
+  @include text_style_body_xs;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--semantic-fg-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.disabled {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+// A plain text button with a chevron. The native select keeps the system picker.
+.modelSelect {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 220px;
+  color: var(--semantic-fg-secondary);
+
+  select {
+    appearance: none;
+    field-sizing: content;
+    width: auto;
+    max-width: 100%;
+    min-width: 0;
+    padding: 6px 28px 6px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    text-overflow: ellipsis;
+    cursor: pointer;
+
+    &:focus,
+    &:focus-visible {
+      outline: none;
+    }
+
+    &:hover:not(:disabled),
+    &:focus-visible {
+      background: var(--semantic-bg-tertiary);
+      color: var(--semantic-fg-primary);
+    }
+  }
+
+  > svg {
+    position: absolute;
+    right: 10px;
+    pointer-events: none;
+  }
+}
+
+@media (max-width: 1100px) {
+  .panel {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: min(400px, 100%);
+    box-shadow: -8px 0 24px #0003;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
+.panel[data-full-page] {
+  position: static;
+  // The docked panel's z-index would cover the Support button.
+  z-index: auto;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  border-left: 0;
+  box-shadow: none;
+  // Same surface and header band as the other Home pages.
+  background: var(--semantic-bg-tertiary);
+
+  .header {
+    gap: var(--spacing-sm);
+    padding-inline: var(--assistant-header-inset-start, var(--shell-page-inset, var(--spacing-lg)))
+      var(--shell-page-inset, var(--spacing-lg));
+    border-bottom: 0;
+
+    :global(html[data-platform="darwin"]) & {
+      -webkit-app-region: drag;
+
+      button,
+      select {
+        -webkit-app-region: no-drag;
+      }
+    }
+  }
+  // One centred reading column. The messages scroll the full width so the
+  // scrollbar sits at the window edge.
+  --assistant-column-inset: max(var(--shell-page-inset, var(--spacing-lg)), calc((100% - 768px) / 2));
+
+  .messages {
+    padding: 24px var(--assistant-column-inset);
+    gap: 24px;
+  }
+  .message[data-role="user"] .messageText {
+    max-width: 70%;
+    padding: 10px 16px;
+    background: var(--semantic-bg-primary);
+    border-radius: 20px;
+  }
+  .actionArea {
+    padding: 0 var(--assistant-column-inset) 12px;
+
+    // Messages fade out just above the composer.
+    &::before {
+      content: "";
+      position: absolute;
+      bottom: 100%;
+      left: 0;
+      right: 0;
+      height: 24px;
+      background: linear-gradient(transparent, var(--semantic-bg-tertiary));
+      pointer-events: none;
+    }
+  }
+  .composer {
+    gap: 6px;
+    padding: 16px 10px 10px 16px;
+    border-radius: 24px;
+    box-shadow: 0 2px 12px #0000000f;
+
+    &:not(:hover, :focus-within, [data-dragging]) {
+      border-color: color-mix(in srgb, var(--semantic-bg-separator-primary) 50%, transparent);
+    }
+
+    textarea {
+      min-height: 40px;
+      max-height: 240px;
+      padding: 0;
+    }
+  }
+  .footer {
+    justify-content: center;
+  }
+}

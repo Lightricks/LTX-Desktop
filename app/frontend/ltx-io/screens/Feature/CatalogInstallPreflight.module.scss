@@ -1,0 +1,61 @@
+@use "@ds/styles/themes/mixins.module.scss" as *;
+
+.locked {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.workflow {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  isolation: isolate;
+  pointer-events: none;
+  user-select: none;
+}
+
+.preflight {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+  width: 100%;
+  height: 100%;
+  padding: var(--spacing-xl);
+  text-align: center;
+  background-color: var(--semantic-bg-transparent);
+  @include effect_style_overlay_tertiary;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  max-width: 420px;
+  padding: var(--spacing-xl);
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-secondary);
+  @include effect_style_shadow_elevation_medium;
+}
+
+.title,
+.description,
+.error {
+  width: 100%;
+}
+
+.description {
+  color: var(--semantic-fg-tertiary);
+}
+
+.error {
+  color: var(--semantic-fg-danger-primary-enabled);
+}

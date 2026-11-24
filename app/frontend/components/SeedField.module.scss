@@ -1,0 +1,88 @@
+@import "@ds/styles/themes/mixins.module.scss";
+
+.control {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  min-height: 40px;
+  box-sizing: border-box;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background-color: var(--semantic-bg-primary);
+  color: var(--semantic-fg-primary);
+  transition: border-color 150ms ease;
+
+  &:hover,
+  &:focus-within {
+    border-color: var(--semantic-bg-separator-primary);
+  }
+}
+
+.input {
+  @include text_style_body_lg;
+
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0 var(--spacing-md);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+
+  &:focus-visible {
+    outline: 2px solid var(--semantic-border-focus);
+    outline-offset: -2px;
+  }
+}
+
+.iconButton {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--semantic-fg-tertiary);
+  cursor: pointer;
+
+  svg {
+    display: block;
+  }
+
+  &:hover {
+    color: var(--semantic-fg-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--semantic-border-focus);
+    outline-offset: -2px;
+  }
+}
+
+.input:disabled,
+.iconButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.iconButton:disabled:hover {
+  color: var(--semantic-fg-tertiary);
+}
+
+.iconButtonSelected {
+  color: var(--semantic-fg-primary);
+
+  &:hover {
+    color: var(--semantic-fg-primary);
+  }
+}

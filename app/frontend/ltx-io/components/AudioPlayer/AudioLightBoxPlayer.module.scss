@@ -1,0 +1,32 @@
+.outerWrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: 1920px;
+  max-width: 100%;
+  max-height: calc(100dvh - 12rem);
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-md);
+  background-color: var(--semantic-bg-primary);
+}
+
+.waveformArea {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-height: 0;
+  width: 100%;
+  padding: var(--spacing-xxl) 0 56px;
+  border-radius: var(--radius-md);
+  background-color: var(--semantic-bg-overlay-tertiary-inverse);
+  cursor: pointer;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}

@@ -1,0 +1,183 @@
+@use "@ds/styles/themes/animationsValues.scss" as *;
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  width: min(960px, calc(95vw - 48px));
+  max-height: calc(95vh - 48px);
+
+  @media (width < 768px) {
+    width: 100%;
+    max-width: 100%;
+    max-height: var(--modal-max-height);
+  }
+}
+
+// Phone: 8px inset from the screen edges (shared Modal defaults to 24px).
+.backdrop {
+  @media (width < 768px) {
+    --modal-safe-inset-top: max(var(--spacing-md), env(safe-area-inset-top, 0px));
+    --modal-safe-inset-right: max(var(--spacing-md), env(safe-area-inset-right, 0px));
+    --modal-safe-inset-bottom: max(var(--spacing-md), env(safe-area-inset-bottom, 0px));
+    --modal-safe-inset-left: max(var(--spacing-md), env(safe-area-inset-left, 0px));
+
+    box-sizing: border-box;
+    padding: var(--modal-safe-inset-top) var(--modal-safe-inset-right)
+      var(--modal-safe-inset-bottom) var(--modal-safe-inset-left);
+
+    > * {
+      --modal-max-height: calc(
+        100dvh - var(--modal-safe-inset-top) - var(--modal-safe-inset-bottom)
+      );
+
+      width: 100%;
+      max-width: 100%;
+      max-height: var(--modal-max-height);
+    }
+  }
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  width: 100%;
+  min-width: 0;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--semantic-fg-secondary);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  flex: 1;
+}
+
+.editor {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+
+  @media (width < 768px) {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-lg);
+  }
+}
+
+.toolbarOverlay {
+  position: absolute;
+  bottom: var(--spacing-md);
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  pointer-events: none;
+
+  > * {
+    pointer-events: auto;
+  }
+
+  @media (width < 768px) {
+    position: static;
+    left: auto;
+    bottom: auto;
+    z-index: auto;
+    transform: none;
+    pointer-events: auto;
+    width: 100%;
+
+    > * {
+      width: 100%;
+      box-sizing: border-box;
+      justify-content: space-between;
+    }
+  }
+}
+
+// The track row floats over the canvas, so the draw step keeps the height of the pace step.
+.tracksOverlay {
+  position: absolute;
+  top: var(--spacing-md);
+  left: var(--spacing-md);
+  right: var(--spacing-md);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xxs);
+  width: fit-content;
+  max-width: calc(100% - 2 * var(--spacing-md));
+  padding: var(--gap-xs);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(40px);
+  background: var(--semantic-bg-overlay-secondary);
+  border: 1px solid var(--semantic-bg-separator-primary);
+  box-sizing: border-box;
+
+  @media (width < 768px) {
+    position: static;
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+.tracksRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-xs);
+}
+
+// A second row in the track panel, so the draw step keeps its height.
+.tracksWarning {
+  margin: 0;
+  padding: 0 var(--gap-xs) var(--gap-xxs);
+  color: var(--semantic-fg-warning-primary-enabled);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+// Only mounts when invalid — grows the modal instead of leaving an empty gap.
+.error {
+  flex-shrink: 0;
+  margin: 8px 0 0;
+  color: var(--semantic-fg-danger-primary-enabled);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  text-align: left;
+  animation: motion-path-error-in $duration-slow $easing-entrance-productive;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  margin-top: 16px;
+}
+
+// Warning sits 8px above the button row when present.
+.error + .footer {
+  margin-top: 8px;
+}
+
+@keyframes motion-path-error-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

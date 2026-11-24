@@ -1,0 +1,11 @@
+.wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  pointer-events: none;
+}

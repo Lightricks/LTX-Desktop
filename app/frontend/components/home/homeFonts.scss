@@ -1,0 +1,35 @@
+// Inter ships with the app for text overlays that still name it as a face.
+// Source: vl-web-client infinity/src/assets/fonts at e6bce69136d2ef74c4bc076d3ab55d6632f16e2c
+// UI type uses Aeonik via --app-font-family on .ltx-io.
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../../assets/fonts/Inter-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../../assets/fonts/Inter-Medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../../assets/fonts/Inter-SemiBold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../../assets/fonts/Inter-Bold.woff2") format("woff2");
+}

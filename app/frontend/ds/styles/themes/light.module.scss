@@ -1,0 +1,15 @@
+@import "./themeVariables.scss";
+
+.ltx-io[data-theme="light"] {
+  color-scheme: light;
+  @include light-theme-variables;
+
+  .inverted-theme-style,
+  .dark-only-theme-style {
+    @include dark-theme-variables;
+  }
+
+  .light-only-theme-style {
+    @include light-theme-variables;
+  }
+}

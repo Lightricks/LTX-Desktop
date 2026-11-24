@@ -1,0 +1,47 @@
+@import "@ds/styles/common.module.scss";
+
+.strip {
+  position: absolute;
+  top: var(--spacing-md);
+  left: var(--spacing-md);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs);
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-black-secondary);
+}
+
+/* Block, not inline-block: an inline button sits on the text baseline of its
+   wrapper and pushes the swatches out of the row. */
+.swatch {
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+
+  &:focus-visible,
+  &.selected {
+    border-color: var(--semantic-border-focus);
+  }
+}
+
+.checkerboard {
+  @extend .checkerboardBackground;
+
+  --checkerboard-size: 8px;
+}
+
+.slot {
+  position: relative;
+  display: block;
+  width: 24px;
+  height: 24px;
+}

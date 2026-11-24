@@ -1,0 +1,38 @@
+# Large secondary project - not needed for AI context
+ltxv-api
+
+# Dependencies
+node_modules
+.venv
+
+# Build outputs
+dist
+build
+__pycache__
+
+# Binary/media files
+*.log
+*.mp4
+*.zip
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.woff
+*.woff2
+*.ttf
+*.eot
+*.ico
+
+# Generated/output files
+backend/outputs
+
+# Package lock files (huge, not useful for AI)
+package-lock.json
+
+# Git internals
+.git
+
+# Electron build resources
+resources

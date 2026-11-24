@@ -1,0 +1,17 @@
+.icon {
+  display: block;
+  flex-shrink: 0;
+  border-radius: var(--radius-xs, 4px);
+  background: var(--semantic-bg-secondary, #f5f5f5);
+}
+
+.dot {
+  fill: var(--semantic-fg-disabled-primary, #c4c4c4);
+}
+
+.curve {
+  stroke: var(--semantic-fg-primary, #1a1a1a);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

@@ -1,0 +1,32 @@
+.badge,
+.plain {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: baseline;
+  gap: 3px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.plain {
+  color: var(--semantic-fg-warning-primary-enabled);
+}
+
+.label {
+  color: var(--semantic-fg-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.need {
+  color: var(--semantic-fg-warning-primary-enabled);
+}
+
+.slash,
+.have {
+  color: var(--semantic-fg-tertiary);
+  font-weight: 500;
+}

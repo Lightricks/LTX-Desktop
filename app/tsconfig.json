@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "paths": {
+      "@ds/*": ["frontend/ds/*"],
+      "@/*": ["frontend/*"],
+      "@optional/app-wrap": ["frontend/lib/optional-app-wrap.tsx"]
+    }
+  },
+  "include": ["frontend", "shared", "frontend/**/*.type-test.ts", "internal"],
+  "exclude": ["**/*.test.ts", "internal/**/main", "internal/tsconfig.json"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}

@@ -1,0 +1,1213 @@
+import React, {
+  forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
+} from 'react'
+import {
+  FolderPlus, Folder, Upload, ChevronLeft, ChevronDown, ChevronRight, ChevronUp,
+  X, RefreshCw, Loader2, Trash2, Music, Layers, Video, Image,
+  LayoutGrid, List, ArrowUpDown, Pencil,
+} from 'lucide-react'
+import { shallow } from 'zustand/vanilla/shallow'
+import { createAssetBinId, type Asset } from '../../types/project-model'
+import { VideoThumbnailCard } from './VideoThumbnailCard'
+import { getColorLabel } from './video-editor-utils'
+import { Tooltip } from '../../components/ui/tooltip'
+import { Text } from '@ds/Text/Text'
+import { AssetContextMenu } from './AssetContextMenu'
+import { TakeContextMenu } from './TakeContextMenu'
+import { pathToFileUrl } from '../../lib/file-url'
+import type { AssetListFilters } from './editor-state'
+import { equalAssetBins, selectAssetBins, selectAssets, selectVisibleAssets } from './editor-selectors'
+import { useEditorActions, useEditorStore } from './editor-store'
+
+export interface VideoEditorAssetsPanelHandle {
+  revealAsset: (assetId: string) => void
+  deleteAsset: (target?: string | string[]) => void
+}
+
+export interface VideoEditorAssetsPanelProps {
+  openSourceAsset: (asset: Asset) => void
+  handleImportFile: (e: React.ChangeEvent<HTMLInputElement>) => void
+  handleRegenerate: (assetId: string) => void
+  handleCancelRegeneration: () => void
+  canCancelInFlight: boolean
+  isRegenerating: boolean
+  regeneratingAssetId: string | null
+  regenProgress: number
+  regenStatusMessage: string
+}
+
+export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, VideoEditorAssetsPanelProps>(function VideoEditorAssetsPanel(props, ref) {
+  const {
+    openSourceAsset,
+    handleImportFile,
+    handleRegenerate,
+    handleCancelRegeneration,
+    canCancelInFlight,
+    isRegenerating,
+    regeneratingAssetId,
+    regenProgress,
+    regenStatusMessage,
+  } = props
+  const actions = useEditorActions()
+  const assets = useEditorStore(selectAssets)
+
+  const [takesViewAssetId, setTakesViewAssetId] = useState<string | null>(null)
+  const [creatingBin, setCreatingBin] = useState(false)
+  const [renamingBinId, setRenamingBinId] = useState<string | null>(null)
+  const [newBinName, setNewBinName] = useState('')
+  const [selectedBinId, setSelectedBinId] = useState<string | null>(null)
+  const [assetFilter, setAssetFilter] = useState<'all' | 'video' | 'image' | 'audio'>('all')
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set())
+  const [assetLasso, setAssetLasso] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
+  const [assetContextMenu, setAssetContextMenu] = useState<{ assetId: string; x: number; y: number } | null>(null)
+  const [takeContextMenu, setTakeContextMenu] = useState<{ assetId: string; takeIndex: number; x: number; y: number } | null>(null)
+  const [binContextMenu, setBinContextMenu] = useState<{ binId: string; x: number; y: number } | null>(null)
+  const [assetViewMode, setAssetViewMode] = useState<'grid' | 'list'>('grid')
+  const [listSortCol, setListSortCol] = useState<'name' | 'type' | 'duration' | 'resolution' | 'date' | 'color'>('name')
+  const [listSortDir, setListSortDir] = useState<'asc' | 'desc'>('asc')
+  const assetLassoActive = assetLasso !== null
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const assetGridRef = useRef<HTMLDivElement>(null)
+  const newBinInputRef = useRef<HTMLInputElement>(null)
+  const assetContextMenuRef = useRef<HTMLDivElement>(null)
+  const takeContextMenuRef = useRef<HTMLDivElement>(null)
+  const binContextMenuRef = useRef<HTMLDivElement>(null)
+  const assetLassoRef = useRef(assetLasso)
+  assetLassoRef.current = assetLasso
+  const assetLassoPointerRef = useRef<{ clientX: number; clientY: number } | null>(null)
+  const assetLassoBaseSelectionRef = useRef<Set<string>>(new Set())
+  const assetLassoAutoScrollFrameRef = useRef<number | null>(null)
+  const bins = useEditorStore(selectAssetBins, equalAssetBins)
+  const binIdToName = useMemo(
+    () => new Map(bins.map(bin => [bin.id, bin.name])),
+    [bins],
+  )
+  const assetFilters: AssetListFilters = {
+    assetFilter,
+    selectedBinId,
+    assetViewMode,
+    listSortCol,
+    listSortDir,
+  }
+  const visibleAssets = useEditorStore(state => selectVisibleAssets(state, assetFilters), shallow)
+  const filteredAssets = assetViewMode === 'list'
+    ? assets.filter(asset => visibleAssets.some(visible => visible.id === asset.id))
+    : visibleAssets
+
+  const deleteAsset = useCallback((target?: string | string[]) => {
+    const rawIds = target === undefined
+      ? [...selectedAssetIds]
+      : typeof target === 'string'
+      ? [target]
+      : target
+    const ids = Array.from(new Set(rawIds.filter(Boolean)))
+    if (ids.length === 0) return
+
+    actions.deleteAssets(ids)
+    setSelectedAssetIds(prev => {
+      if (prev.size === 0) return prev
+      const next = new Set(prev)
+      ids.forEach(id => next.delete(id))
+      return next
+    })
+    if (takesViewAssetId && ids.includes(takesViewAssetId)) {
+      setTakesViewAssetId(null)
+    }
+  }, [actions, selectedAssetIds, takesViewAssetId])
+
+  const revealAsset = useCallback((assetId: string) => {
+    const asset = assets.find(a => a.id === assetId)
+    if (!asset) return
+    setAssetFilter('all')
+    setSelectedBinId(asset.binId ?? null)
+    setTakesViewAssetId(null)
+    setSelectedAssetIds(new Set([asset.id]))
+    setTimeout(() => {
+      const card = assetGridRef.current?.querySelector(`[data-asset-id="${asset.id}"]`)
+      card?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 100)
+  }, [assets])
+
+  useImperativeHandle(ref, () => ({
+    revealAsset,
+    deleteAsset,
+  }), [deleteAsset, revealAsset])
+
+  const setAssetActiveTake = useCallback((assetId: string, takeIndex: number) => {
+    actions.setAssetActiveTake(assetId, takeIndex)
+  }, [actions])
+
+  const addClipToTimeline = useCallback((asset: Asset, trackIndex = 0, startTime?: number) => {
+    actions.insertAssetsToTimeline({ assets: [asset], trackIndex, startTime })
+  }, [actions])
+
+  const createAssetFromTake = useCallback((asset: Asset, take: NonNullable<Asset['takes']>[number]): Asset => ({
+    id: `asset-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+    type: asset.type,
+    path: take.path,
+    bigThumbnailPath: take.bigThumbnailPath,
+    smallThumbnailPath: take.smallThumbnailPath,
+    width: take.width,
+    height: take.height,
+    prompt: asset.prompt,
+    resolution: asset.resolution,
+    duration: asset.duration,
+    binId: asset.binId,
+    generationParams: asset.generationParams,
+    takes: [{
+      path: take.path,
+      bigThumbnailPath: take.bigThumbnailPath,
+      smallThumbnailPath: take.smallThumbnailPath,
+      width: take.width,
+      height: take.height,
+      createdAt: take.createdAt,
+    }],
+    activeTakeIndex: 0,
+    createdAt: Date.now(),
+  }), [])
+
+  const openCreateBinEditor = useCallback((assetIds?: string[]) => {
+    if (assetIds) {
+      setSelectedAssetIds(new Set(assetIds))
+    }
+    setRenamingBinId(null)
+    setCreatingBin(true)
+    setNewBinName('')
+  }, [])
+
+  const commitBinEdit = useCallback(() => {
+    const trimmedName = newBinName.trim()
+    if (renamingBinId) {
+      const currentBinName = binIdToName.get(renamingBinId)
+      if (trimmedName && trimmedName !== currentBinName) {
+        actions.renameBin(renamingBinId, trimmedName)
+      }
+      setRenamingBinId(null)
+      setNewBinName('')
+      return
+    }
+
+    if (!trimmedName) {
+      setCreatingBin(false)
+      setNewBinName('')
+      return
+    }
+
+    const existingBin = bins.find(bin => bin.name === trimmedName)
+    const binId = existingBin?.id ?? createAssetBinId()
+
+    if (!existingBin) {
+      actions.createBin(binId, trimmedName)
+    }
+    if (selectedAssetIds.size > 0) {
+      actions.assignAssetsToBin([...selectedAssetIds], binId)
+      setSelectedAssetIds(new Set())
+    }
+
+    setSelectedBinId(binId)
+    setCreatingBin(false)
+    setNewBinName('')
+  }, [actions, binIdToName, bins, newBinName, renamingBinId, selectedAssetIds])
+
+  useEffect(() => {
+    if (!takesViewAssetId) return
+    const takesAsset = assets.find(a => a.id === takesViewAssetId)
+    if (!takesAsset || !takesAsset.takes || takesAsset.takes.length <= 1) {
+      setTakesViewAssetId(null)
+    }
+  }, [assets, takesViewAssetId])
+
+  useEffect(() => {
+    if (!creatingBin && !renamingBinId) return
+    setTimeout(() => newBinInputRef.current?.focus(), 0)
+  }, [creatingBin, renamingBinId])
+
+  useEffect(() => {
+    if (!assetContextMenu) return
+    const handler = () => setAssetContextMenu(null)
+    window.addEventListener('click', handler)
+    return () => window.removeEventListener('click', handler)
+  }, [assetContextMenu])
+
+  useEffect(() => {
+    if (!assetContextMenu || !assetContextMenuRef.current) return
+    const el = assetContextMenuRef.current
+    const rect = el.getBoundingClientRect()
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    let { x, y } = assetContextMenu
+    let adjusted = false
+    if (rect.right > vw - 8) { x = vw - rect.width - 8; adjusted = true }
+    if (rect.bottom > vh - 8) { y = vh - rect.height - 8; adjusted = true }
+    if (x < 8) { x = 8; adjusted = true }
+    if (y < 8) { y = 8; adjusted = true }
+    if (adjusted) {
+      el.style.left = `${x}px`
+      el.style.top = `${y}px`
+    }
+  }, [assetContextMenu])
+
+  useEffect(() => {
+    if (!takeContextMenu) return
+    const handler = () => setTakeContextMenu(null)
+    window.addEventListener('click', handler)
+    return () => window.removeEventListener('click', handler)
+  }, [takeContextMenu])
+
+  useEffect(() => {
+    if (!takeContextMenu || !takeContextMenuRef.current) return
+    const el = takeContextMenuRef.current
+    const rect = el.getBoundingClientRect()
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    let { x, y } = takeContextMenu
+    let adjusted = false
+    if (rect.right > vw - 8) { x = vw - rect.width - 8; adjusted = true }
+    if (rect.bottom > vh - 8) { y = vh - rect.height - 8; adjusted = true }
+    if (x < 8) { x = 8; adjusted = true }
+    if (y < 8) { y = 8; adjusted = true }
+    if (adjusted) {
+      el.style.left = `${x}px`
+      el.style.top = `${y}px`
+    }
+  }, [takeContextMenu])
+
+  useEffect(() => {
+    if (!binContextMenu) return
+    const handler = () => setBinContextMenu(null)
+    window.addEventListener('click', handler)
+    return () => window.removeEventListener('click', handler)
+  }, [binContextMenu])
+
+  useEffect(() => {
+    if (!binContextMenu || !binContextMenuRef.current) return
+    const el = binContextMenuRef.current
+    const rect = el.getBoundingClientRect()
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    let { x, y } = binContextMenu
+    let adjusted = false
+    if (rect.right > vw - 8) { x = vw - rect.width - 8; adjusted = true }
+    if (rect.bottom > vh - 8) { y = vh - rect.height - 8; adjusted = true }
+    if (x < 8) { x = 8; adjusted = true }
+    if (y < 8) { y = 8; adjusted = true }
+    if (adjusted) {
+      el.style.left = `${x}px`
+      el.style.top = `${y}px`
+    }
+  }, [binContextMenu])
+
+  const toggleSort = (col: typeof listSortCol) => {
+    if (listSortCol === col) {
+      setListSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setListSortCol(col)
+      setListSortDir('asc')
+    }
+  }
+
+  const updateAssetLassoSelection = useCallback((clientX: number, clientY: number) => {
+    const currentLasso = assetLassoRef.current
+    const container = assetGridRef.current
+    if (!currentLasso || !container) return
+
+    const rect = container.getBoundingClientRect()
+    const scrollTop = container.scrollTop
+    const x = clientX - rect.left
+    const y = clientY - rect.top + scrollTop
+
+    setAssetLasso({
+      ...currentLasso,
+      currentX: x,
+      currentY: y,
+    })
+
+    const lassoLeft = Math.min(currentLasso.startX, x)
+    const lassoRight = Math.max(currentLasso.startX, x)
+    const lassoTop = Math.min(currentLasso.startY, y)
+    const lassoBottom = Math.max(currentLasso.startY, y)
+    const nextSelected = new Set(assetLassoBaseSelectionRef.current)
+    const cards = container.querySelectorAll<HTMLElement>('[data-asset-card]')
+
+    cards.forEach(card => {
+      const cardRect = card.getBoundingClientRect()
+      const cardLeft = cardRect.left - rect.left
+      const cardRight = cardRect.right - rect.left
+      const cardTop = cardRect.top - rect.top + scrollTop
+      const cardBottom = cardRect.bottom - rect.top + scrollTop
+
+      if (cardLeft < lassoRight && cardRight > lassoLeft && cardTop < lassoBottom && cardBottom > lassoTop) {
+        const id = card.dataset.assetId
+        if (id) nextSelected.add(id)
+      }
+    })
+
+    setSelectedAssetIds(nextSelected)
+  }, [])
+
+  const tickAssetLassoAutoScroll = useCallback(() => {
+    assetLassoAutoScrollFrameRef.current = null
+
+    const currentLasso = assetLassoRef.current
+    const pointer = assetLassoPointerRef.current
+    const container = assetGridRef.current
+    if (!currentLasso || !pointer || !container) return
+
+    const rect = container.getBoundingClientRect()
+    const edgeThreshold = 28
+    const maxStep = 18
+    let scrollDelta = 0
+
+    if (pointer.clientY < rect.top + edgeThreshold) {
+      const distance = rect.top + edgeThreshold - pointer.clientY
+      scrollDelta = -Math.min(maxStep, Math.max(4, distance * 0.35))
+    } else if (pointer.clientY > rect.bottom - edgeThreshold) {
+      const distance = pointer.clientY - (rect.bottom - edgeThreshold)
+      scrollDelta = Math.min(maxStep, Math.max(4, distance * 0.35))
+    }
+
+    if (scrollDelta !== 0) {
+      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight)
+      const nextScrollTop = Math.max(0, Math.min(maxScrollTop, container.scrollTop + scrollDelta))
+      if (nextScrollTop !== container.scrollTop) {
+        container.scrollTop = nextScrollTop
+        updateAssetLassoSelection(pointer.clientX, pointer.clientY)
+      }
+    }
+
+    if (assetLassoRef.current) {
+      assetLassoAutoScrollFrameRef.current = requestAnimationFrame(tickAssetLassoAutoScroll)
+    }
+  }, [updateAssetLassoSelection])
+
+  useEffect(() => {
+    if (!assetLassoActive) return
+
+    const handleMouseMove = (event: MouseEvent) => {
+      assetLassoPointerRef.current = { clientX: event.clientX, clientY: event.clientY }
+      updateAssetLassoSelection(event.clientX, event.clientY)
+    }
+
+    const handleMouseUp = () => {
+      setAssetLasso(null)
+      assetLassoPointerRef.current = null
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    assetLassoAutoScrollFrameRef.current = requestAnimationFrame(tickAssetLassoAutoScroll)
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+      if (assetLassoAutoScrollFrameRef.current !== null) {
+        cancelAnimationFrame(assetLassoAutoScrollFrameRef.current)
+        assetLassoAutoScrollFrameRef.current = null
+      }
+    }
+  }, [assetLassoActive, tickAssetLassoAutoScroll, updateAssetLassoSelection])
+
+  return (
+    <div className="flex flex-col min-h-0 h-full border-r border-separator">
+      <div className="p-4 pb-2 space-y-2 flex-shrink-0">
+        {!takesViewAssetId ? (
+          <>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-fg-primary">Assets</h3>
+              <div className="flex items-center gap-1">
+                <Tooltip content="Create bin" side="right">
+                  <button
+                    onClick={() => openCreateBinEditor()}
+                    className="p-1.5 rounded-lg hover:bg-action text-fg-secondary hover:text-fg-primary transition-colors"
+                  >
+                    <FolderPlus className="h-4 w-4" />
+                  </button>
+                </Tooltip>
+                <Tooltip content="Import media" side="right">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-1.5 rounded-lg hover:bg-action text-fg-secondary hover:text-fg-primary transition-colors"
+                  >
+                    <Upload className="h-4 w-4" />
+                  </button>
+                </Tooltip>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <div className="flex gap-1 bg-surface-primary rounded-lg p-0.5 flex-1">
+                {(['all', 'video', 'image', 'audio'] as const).map(filter => (
+                  <button
+                    key={filter}
+                    onClick={() => setAssetFilter(filter)}
+                    className={`flex-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                      assetFilter === filter
+                        ? 'bg-action text-fg-primary'
+                        : 'text-fg-tertiary hover:text-fg-secondary'
+                    }`}
+                  >
+                    {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <div className="flex bg-surface-primary rounded-lg p-0.5">
+                <Tooltip content="Grid view" side="right">
+                  <button
+                    onClick={() => setAssetViewMode('grid')}
+                    className={`p-1 rounded transition-colors ${assetViewMode === 'grid' ? 'bg-action text-fg-primary' : 'text-fg-tertiary hover:text-fg-secondary'}`}
+                  >
+                    <LayoutGrid className="h-3 w-3" />
+                  </button>
+                </Tooltip>
+                <Tooltip content="List view" side="right">
+                  <button
+                    onClick={() => setAssetViewMode('list')}
+                    className={`p-1 rounded transition-colors ${assetViewMode === 'list' ? 'bg-action text-fg-primary' : 'text-fg-tertiary hover:text-fg-secondary'}`}
+                  >
+                    <List className="h-3 w-3" />
+                  </button>
+                </Tooltip>
+              </div>
+            </div>
+
+            {(bins.length > 0 || creatingBin) && (
+              <div className="flex flex-wrap gap-1">
+                <button
+                  onClick={() => setSelectedBinId(null)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors flex items-center gap-1 ${
+                    selectedBinId === null
+                      ? 'bg-blue-600/30 text-blue-300 border border-blue-500/40'
+                      : 'bg-action text-fg-tertiary hover:text-fg-secondary border border-transparent'
+                  }`}
+                >
+                  All
+                </button>
+                {bins.map(bin => (
+                  <button
+                    key={bin.id}
+                    onClick={() => setSelectedBinId(selectedBinId === bin.id ? null : bin.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setBinContextMenu({ binId: bin.id, x: e.clientX, y: e.clientY })
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      e.currentTarget.classList.add('ring-2', 'ring-blue-400')
+                    }}
+                    onDragLeave={(e) => {
+                      e.currentTarget.classList.remove('ring-2', 'ring-blue-400')
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      e.currentTarget.classList.remove('ring-2', 'ring-blue-400')
+                      const assetIdsJson = e.dataTransfer.getData('assetIds')
+                      if (assetIdsJson) {
+                        try {
+                          const ids: string[] = JSON.parse(assetIdsJson)
+                          actions.assignAssetsToBin(ids, bin.id)
+                          setSelectedAssetIds(new Set())
+                        } catch {
+                          // ignore parse errors
+                        }
+                      } else {
+                        const assetId = e.dataTransfer.getData('assetId')
+                        if (assetId) actions.assignAssetsToBin([assetId], bin.id)
+                      }
+                    }}
+                    className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors flex items-center gap-1 group/bin ${
+                      selectedBinId === bin.id
+                        ? 'bg-blue-600/30 text-blue-300 border border-blue-500/40'
+                        : 'bg-action text-fg-tertiary hover:text-fg-secondary border border-transparent'
+                    }`}
+                  >
+                    <Folder className="h-3 w-3" />
+                    {bin.name}
+                    <span className="text-fg-tertiary text-[9px]">
+                      {bin.count}
+                    </span>
+                  </button>
+                ))}
+                {(creatingBin || renamingBinId) && (
+                  <div className="flex items-center gap-1">
+                    <input
+                      ref={newBinInputRef}
+                      type="text"
+                      value={newBinName}
+                      onChange={(e) => setNewBinName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitBinEdit()
+                        if (e.key === 'Escape') {
+                          setCreatingBin(false)
+                          setRenamingBinId(null)
+                          setNewBinName('')
+                        }
+                      }}
+                      onBlur={commitBinEdit}
+                      placeholder="Bin name..."
+                      className="w-20 px-1.5 py-0.5 rounded text-[10px] bg-action border border-separator text-fg-primary placeholder-fg-tertiary focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*,audio/*,image/*"
+              multiple
+              onChange={handleImportFile}
+              className="hidden"
+            />
+          </>
+        ) : (
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-fg-primary">Takes</h3>
+          </div>
+        )}
+      </div>
+
+      {takesViewAssetId ? (
+        (() => {
+          const takesAsset = assets.find(asset => asset.id === takesViewAssetId)
+          if (!takesAsset?.takes || takesAsset.takes.length <= 1) return null
+          const takes = takesAsset.takes
+          return (
+            <div className="flex-1 overflow-auto p-3 pt-0">
+              <div className="flex items-center gap-2 mb-3">
+                <Tooltip content="Back to assets" side="right">
+                  <button
+                    onClick={() => setTakesViewAssetId(null)}
+                    className="p-1 rounded-lg hover:bg-action text-fg-secondary hover:text-fg-primary transition-colors"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                </Tooltip>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-fg-primary truncate">
+                    {takesAsset.prompt?.slice(0, 40) || 'Asset'}{(takesAsset.prompt?.length ?? 0) > 40 ? '...' : ''}
+                  </p>
+                  <p className="text-[10px] text-fg-tertiary">
+                    {takes.length} takes
+                  </p>
+                </div>
+                {takesAsset.generationParams && (
+                  isRegenerating && regeneratingAssetId === takesAsset.id && canCancelInFlight ? (
+                    <button
+                      onClick={() => handleCancelRegeneration()}
+                      className="px-2 py-1 rounded-lg bg-danger-soft text-fg-danger hover:bg-danger-soft transition-colors text-[10px] font-medium flex items-center gap-1 border border-danger/30"
+                    >
+                      <X className="h-3 w-3" />
+                      Cancel
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleRegenerate(takesAsset.id)}
+                      disabled={isRegenerating}
+                      className="px-2 py-1 rounded-lg bg-blue-600/20 text-blue-300 hover:bg-blue-600/40 transition-colors text-[10px] font-medium flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      New Take
+                    </button>
+                  )
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {takes.map((take, idx) => {
+                  const isActive = (takesAsset.activeTakeIndex ?? 0) === idx
+                  return (
+                    <div
+                      key={idx}
+                      className={`relative group rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                        isActive
+                          ? 'border-blue-500 ring-2 ring-blue-500/40 shadow-lg shadow-blue-500/20'
+                          : 'border-separator hover:border-separator'
+                      }`}
+                      onClick={() => {
+                        setAssetActiveTake(takesAsset.id, idx)
+                      }}
+                      onDoubleClick={() => {
+                        setAssetActiveTake(takesAsset.id, idx)
+                        openSourceAsset({
+                          ...takesAsset,
+                          path: take.path,
+                          bigThumbnailPath: take.bigThumbnailPath,
+                          smallThumbnailPath: take.smallThumbnailPath,
+                        })
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setTakeContextMenu({ assetId: takesAsset.id, takeIndex: idx, x: e.clientX, y: e.clientY })
+                      }}
+                    >
+                      {takesAsset.type === 'video' ? (
+                        <VideoThumbnailCard
+                          videoUrl={pathToFileUrl(take.path)}
+                          thumbnailUrl={take.smallThumbnailPath ? pathToFileUrl(take.smallThumbnailPath) : undefined}
+                        />
+                      ) : (
+                        take.smallThumbnailPath ? (
+                          <img src={pathToFileUrl(take.smallThumbnailPath)} alt="" className="w-full aspect-video object-cover" />
+                        ) : (
+                          <div className="w-full aspect-video bg-action" />
+                        )
+                      )}
+
+                      {isActive && <div className="absolute inset-0 bg-blue-600/15 pointer-events-none" />}
+
+                      <div className="absolute bottom-1 left-1 flex items-center gap-1.5">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          isActive ? 'bg-blue-500 text-fg-white' : 'bg-black/70 text-fg-white'
+                        }`}>
+                          Take {idx + 1}
+                        </span>
+                      </div>
+
+                      {isActive && (
+                        <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-blue-500 text-fg-white text-[9px] font-semibold">
+                          Active
+                        </div>
+                      )}
+
+                      <div className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/70 text-[9px] text-fg-white opacity-0 group-hover:opacity-100 transition-opacity">
+                        {new Date(take.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+
+                      {takes.length > 1 && (
+                      <Tooltip content="Delete take" side="right">
+                        <button
+                          className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/70 text-fg-white hover:text-fg-danger hover:bg-danger-soft opacity-0 group-hover:opacity-100 transition-all z-10"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (confirm(`Delete take ${idx + 1}?`)) {
+                              actions.deleteAssetTake(takesAsset.id, idx)
+                            }
+                          }}
+                        >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </Tooltip>
+                      )}
+
+                      {isRegenerating && regeneratingAssetId === takesAsset.id && idx === takes.length - 1 && (
+                        <div className="absolute inset-0 bg-blue-900/40 backdrop-blur-sm flex flex-col items-center justify-center z-20">
+                          <Loader2 className="h-5 w-5 text-blue-300 animate-spin mb-1" />
+                          <span className="text-[9px] text-blue-200 font-medium">{regenProgress}%</span>
+                          <span className="text-[8px] text-blue-300/70 mb-1.5">{regenStatusMessage}</span>
+                          {canCancelInFlight && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleCancelRegeneration() }}
+                            className="px-2 py-0.5 rounded bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_80%,transparent)] border border-separator-secondary text-[9px] text-fg-secondary hover:text-fg-danger hover:border-danger/50 hover:bg-danger-soft transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()
+      ) : (
+        <div
+          className="flex-1 overflow-auto p-3 pt-0 relative select-none"
+          ref={assetGridRef}
+          onMouseDown={(e) => {
+            if ((e.target as HTMLElement).closest('[data-asset-card]')) return
+            if (e.button !== 0) return
+            const container = assetGridRef.current
+            const rect = container?.getBoundingClientRect()
+            if (!rect) return
+            const additiveSelection = e.ctrlKey || e.metaKey || e.shiftKey
+            const scrollTop = container?.scrollTop || 0
+            const x = e.clientX - rect.left
+            const y = e.clientY - rect.top + scrollTop
+            setAssetLasso({ startX: x, startY: y, currentX: x, currentY: y })
+            assetLassoPointerRef.current = { clientX: e.clientX, clientY: e.clientY }
+            assetLassoBaseSelectionRef.current = additiveSelection ? new Set(selectedAssetIds) : new Set()
+            if (!additiveSelection) setSelectedAssetIds(new Set())
+          }}
+        >
+          {assetLasso && (() => {
+            const left = Math.min(assetLasso.startX, assetLasso.currentX)
+            const top = Math.min(assetLasso.startY, assetLasso.currentY)
+            const width = Math.abs(assetLasso.currentX - assetLasso.startX)
+            const height = Math.abs(assetLasso.currentY - assetLasso.startY)
+            if (width < 3 && height < 3) return null
+            return (
+              <div
+                className="absolute border border-blue-400 bg-blue-500/15 rounded-sm pointer-events-none z-30"
+                style={{ left, top, width, height }}
+              />
+            )
+          })()}
+
+          {filteredAssets.length === 0 ? (
+            <div className="text-center py-8">
+              <Text as="p" variant="body" size="lg" align="center" className="text-fg-tertiary">
+                No assets yet
+              </Text>
+              <Text as="p" variant="body" size="sm" align="center" className="mt-1 text-fg-tertiary">
+                Generate in Gen Space or import
+              </Text>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="mt-3 px-3 py-1.5 rounded-lg bg-action text-fg-secondary hover:bg-action-hover transition-colors"
+              >
+                <Text as="span" variant="label" size="sm">Import Media</Text>
+              </button>
+            </div>
+          ) : assetViewMode === 'grid' ? (
+            <div className="grid grid-cols-2 gap-2">
+              {filteredAssets.map(asset => {
+                const cl = getColorLabel(asset.colorLabel)
+                return (
+                  <div
+                    key={asset.id}
+                    data-asset-card
+                    data-asset-id={asset.id}
+                    className={`relative group cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
+                      selectedAssetIds.has(asset.id)
+                        ? 'border-blue-500 ring-2 ring-blue-500/40 shadow-lg shadow-blue-500/20'
+                        : 'border-separator hover:border-separator'
+                    }`}
+                    draggable
+                    onDragStart={(e) => {
+                      if (selectedAssetIds.size > 0 && selectedAssetIds.has(asset.id)) {
+                        e.dataTransfer.setData('assetIds', JSON.stringify([...selectedAssetIds]))
+                      } else {
+                        e.dataTransfer.setData('assetId', asset.id)
+                      }
+                      e.dataTransfer.setData('asset', JSON.stringify(asset))
+                      e.dataTransfer.effectAllowed = 'copy'
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (e.ctrlKey || e.metaKey) {
+                        setSelectedAssetIds(prev => {
+                          const next = new Set(prev)
+                          if (next.has(asset.id)) next.delete(asset.id)
+                          else next.add(asset.id)
+                          return next
+                        })
+                      } else if (e.shiftKey && selectedAssetIds.size > 0) {
+                        const lastId = [...selectedAssetIds].pop()
+                        const lastIdx = filteredAssets.findIndex(a => a.id === lastId)
+                        const thisIdx = filteredAssets.findIndex(a => a.id === asset.id)
+                        if (lastIdx >= 0 && thisIdx >= 0) {
+                          const start = Math.min(lastIdx, thisIdx)
+                          const end = Math.max(lastIdx, thisIdx)
+                          const next = new Set(selectedAssetIds)
+                          for (let i = start; i <= end; i++) next.add(filteredAssets[i].id)
+                          setSelectedAssetIds(next)
+                        }
+                      } else if (selectedAssetIds.has(asset.id) && selectedAssetIds.size === 1) {
+                        setSelectedAssetIds(new Set())
+                      } else {
+                        setSelectedAssetIds(new Set([asset.id]))
+                      }
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation()
+                      openSourceAsset(asset)
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      if (!selectedAssetIds.has(asset.id)) {
+                        setSelectedAssetIds(new Set([asset.id]))
+                      }
+                      setAssetContextMenu({ assetId: asset.id, x: e.clientX, y: e.clientY })
+                    }}
+                  >
+                    {cl && (
+                      <>
+                        <div className="absolute top-0 left-0 right-0 h-[3px] z-10" style={{ backgroundColor: cl.color }} />
+                        <div className="absolute top-0 left-0 bottom-0 w-[3px] z-10" style={{ backgroundColor: cl.color }} />
+                      </>
+                    )}
+                    {asset.type === 'video' ? (
+                      <VideoThumbnailCard
+                        videoUrl={pathToFileUrl(asset.path)}
+                        thumbnailUrl={asset.smallThumbnailPath ? pathToFileUrl(asset.smallThumbnailPath) : undefined}
+                      />
+                    ) : asset.type === 'audio' ? (
+                      <div className="w-full aspect-video bg-gradient-to-br from-success/60 to-surface-primary flex flex-col items-center justify-center gap-1.5">
+                        <Music className="h-6 w-6 text-fg-success" />
+                        <div className="flex items-center gap-0.5">
+                          {[3, 5, 8, 6, 9, 4, 7, 5, 3, 6, 8, 4].map((h, i) => (
+                            <div
+                              key={i}
+                              className="w-0.5 rounded-full bg-success-soft"
+                              style={{ height: `${h * 1.5}px` }}
+                            />
+                          ))}
+                        </div>
+                        <p className="text-[9px] text-fg-success truncate max-w-[90%] px-1">
+                          {asset.path || 'Audio'}
+                        </p>
+                      </div>
+                    ) : asset.type === 'adjustment' ? (
+                      <div className="w-full aspect-video bg-gradient-to-br from-blue-900/40 to-surface-primary flex flex-col items-center justify-center gap-1.5 border border-dashed border-blue-500/30">
+                        <Layers className="h-6 w-6 text-blue-400" />
+                        <p className="text-[9px] text-blue-300/70 font-medium">Adjustment Layer</p>
+                      </div>
+                    ) : (
+                      asset.smallThumbnailPath ? (
+                        <img src={pathToFileUrl(asset.smallThumbnailPath)} alt="" className="w-full aspect-video object-cover" />
+                      ) : (
+                        <div className="w-full aspect-video bg-action" />
+                      )
+                    )}
+                    {selectedAssetIds.has(asset.id) && <div className="absolute inset-0 bg-blue-600/25 pointer-events-none z-[1]" />}
+                    {!selectedAssetIds.has(asset.id) && (
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none" />
+                    )}
+                    <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all z-10">
+                      {asset.generationParams && (
+                        <Tooltip content="Regenerate" side="right">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleRegenerate(asset.id)
+                            }}
+                            disabled={isRegenerating}
+                            className={`p-1 rounded bg-black/70 transition-colors ${
+                              isRegenerating && regeneratingAssetId === asset.id
+                                ? 'text-blue-400 animate-spin'
+                                : 'text-fg-white hover:text-blue-400 hover:bg-blue-900/50'
+                            }`}
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                          </button>
+                        </Tooltip>
+                      )}
+                      <Tooltip content="Delete asset" side="right">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            deleteAsset(asset.id)
+                          }}
+                          className="p-1 rounded bg-black/70 text-fg-white hover:text-fg-danger hover:bg-danger-soft transition-colors"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Tooltip>
+                    </div>
+                    {isRegenerating && regeneratingAssetId === asset.id && (
+                      <div className="absolute inset-0 bg-blue-900/40 backdrop-blur-sm flex flex-col items-center justify-center z-20">
+                        <Loader2 className="h-5 w-5 text-blue-300 animate-spin mb-1" />
+                        <span className="text-[9px] text-blue-200 font-medium">{regenProgress}%</span>
+                        <span className="text-[8px] text-blue-300/70 mb-1.5">{regenStatusMessage}</span>
+                        {canCancelInFlight && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleCancelRegeneration() }}
+                          className="px-2 py-0.5 rounded bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_80%,transparent)] border border-separator-secondary text-[9px] text-fg-secondary hover:text-fg-danger hover:border-danger/50 hover:bg-danger-soft transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        )}
+                      </div>
+                    )}
+                    {asset.takes && asset.takes.length > 1 && (
+                      <div className="absolute bottom-1 right-1 flex items-center gap-0.5 rounded bg-black/80 z-10">
+                        <Tooltip content="Previous take" side="right">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              const idx = Math.max(0, (asset.activeTakeIndex ?? 0) - 1)
+                              setAssetActiveTake(asset.id, idx)
+                            }}
+                            disabled={(asset.activeTakeIndex ?? 0) === 0}
+                            className="p-0.5 text-blue-300 hover:text-fg-white disabled:opacity-40 transition-colors"
+                          >
+                            <ChevronLeft className="h-3 w-3" />
+                          </button>
+                        </Tooltip>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setTakesViewAssetId(asset.id)
+                            setSelectedAssetIds(new Set())
+                          }}
+                          className="px-0.5 cursor-pointer hover:text-fg-white transition-colors flex items-center gap-1"
+                          title="View all takes"
+                        >
+                          <Layers className="h-2.5 w-2.5 text-blue-400" />
+                          <span className="text-[9px] text-blue-300 font-medium">
+                            {(asset.activeTakeIndex ?? 0) + 1}/{asset.takes.length}
+                          </span>
+                        </button>
+                        <Tooltip content="Next take" side="right">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (asset.takes) {
+                                const idx = Math.min(asset.takes.length - 1, (asset.activeTakeIndex ?? 0) + 1)
+                                setAssetActiveTake(asset.id, idx)
+                              }
+                            }}
+                            disabled={asset.takes && (asset.activeTakeIndex ?? 0) >= asset.takes.length - 1}
+                            className="p-0.5 text-blue-300 hover:text-fg-white disabled:opacity-40 transition-colors"
+                          >
+                            <ChevronRight className="h-3 w-3" />
+                          </button>
+                        </Tooltip>
+                      </div>
+                    )}
+                    {asset.binId && binIdToName.get(asset.binId) && (
+                      <div className="absolute top-1.5 left-8 flex items-center gap-0.5 px-1 py-0.5 rounded bg-black/70 text-[9px] text-blue-300 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        <Folder className="h-2.5 w-2.5" />
+                        {binIdToName.get(asset.binId)}
+                      </div>
+                    )}
+                    <div className="absolute bottom-1 left-1 flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/70 text-[10px] text-fg-white">
+                      {asset.type === 'video' ? <Video className="h-3 w-3" /> : asset.type === 'audio' ? <Music className="h-3 w-3" /> : asset.type === 'adjustment' ? <Layers className="h-3 w-3" /> : <Image className="h-3 w-3" />}
+                      {asset.type === 'adjustment' ? 'Adj' : asset.duration ? `${asset.duration.toFixed(1)}s` : ''}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1 px-2 py-1 border-b border-separator bg-[color-mix(in_srgb,var(--semantic-bg-primary)_80%,transparent)] sticky top-0 z-10">
+                <div className="w-2 flex-shrink-0" />
+                <div className="w-8 flex-shrink-0" />
+                {([
+                  { col: 'name' as const, label: 'Name', flex: 'flex-1 min-w-0' },
+                  { col: 'type' as const, label: 'Type', flex: 'w-14 flex-shrink-0 text-center' },
+                  { col: 'duration' as const, label: 'Duration', flex: 'w-16 flex-shrink-0 text-right' },
+                  { col: 'resolution' as const, label: 'Res', flex: 'w-14 flex-shrink-0 text-right' },
+                  { col: 'date' as const, label: 'Date', flex: 'w-16 flex-shrink-0 text-right' },
+                  { col: 'color' as const, label: 'Color', flex: 'w-10 flex-shrink-0 text-center' },
+                ]).map(({ col, label, flex }) => (
+                  <button
+                    key={col}
+                    onClick={() => toggleSort(col)}
+                    className={`${flex} flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wider transition-colors cursor-pointer select-none ${
+                      listSortCol === col ? 'text-blue-400' : 'text-fg-tertiary hover:text-fg-secondary'
+                    }`}
+                  >
+                    <span className="truncate">{label}</span>
+                    {listSortCol === col ? (
+                      listSortDir === 'asc' ? <ChevronUp className="h-2.5 w-2.5 flex-shrink-0" /> : <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" />
+                    ) : (
+                      <ArrowUpDown className="h-2.5 w-2.5 flex-shrink-0 opacity-0 group-hover:opacity-50" />
+                    )}
+                  </button>
+                ))}
+                <div className="w-6 flex-shrink-0" />
+              </div>
+              {visibleAssets.map(asset => {
+                const cl = getColorLabel(asset.colorLabel)
+                const name = asset.path ? asset.path.split(/[/\\]/).pop() || asset.path : asset.type === 'adjustment' ? 'Adjustment Layer' : asset.type.charAt(0).toUpperCase() + asset.type.slice(1)
+                const dateStr = new Date(asset.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                return (
+                  <div
+                    key={asset.id}
+                    data-asset-card
+                    data-asset-id={asset.id}
+                    className={`group flex items-center gap-1 px-2 py-1 cursor-pointer transition-all ${
+                      selectedAssetIds.has(asset.id)
+                        ? 'bg-blue-600/20 ring-1 ring-blue-500/50'
+                        : 'hover:bg-[color-mix(in_srgb,var(--semantic-bg-action-secondary-enabled)_60%,transparent)]'
+                    }`}
+                    draggable
+                    onDragStart={(e) => {
+                      if (selectedAssetIds.size > 0 && selectedAssetIds.has(asset.id)) {
+                        e.dataTransfer.setData('assetIds', JSON.stringify([...selectedAssetIds]))
+                      } else {
+                        e.dataTransfer.setData('assetId', asset.id)
+                      }
+                      e.dataTransfer.setData('asset', JSON.stringify(asset))
+                      e.dataTransfer.effectAllowed = 'copy'
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (e.ctrlKey || e.metaKey) {
+                        setSelectedAssetIds(prev => {
+                          const next = new Set(prev)
+                          if (next.has(asset.id)) next.delete(asset.id)
+                          else next.add(asset.id)
+                          return next
+                        })
+                      } else if (e.shiftKey && selectedAssetIds.size > 0) {
+                        const lastId = [...selectedAssetIds].pop()
+                        const lastIdx = filteredAssets.findIndex(a => a.id === lastId)
+                        const thisIdx = filteredAssets.findIndex(a => a.id === asset.id)
+                        if (lastIdx >= 0 && thisIdx >= 0) {
+                          const start = Math.min(lastIdx, thisIdx)
+                          const end = Math.max(lastIdx, thisIdx)
+                          const next = new Set(selectedAssetIds)
+                          for (let i = start; i <= end; i++) next.add(filteredAssets[i].id)
+                          setSelectedAssetIds(next)
+                        }
+                      } else if (selectedAssetIds.has(asset.id) && selectedAssetIds.size === 1) {
+                        setSelectedAssetIds(new Set())
+                      } else {
+                        setSelectedAssetIds(new Set([asset.id]))
+                      }
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation()
+                      openSourceAsset(asset)
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      if (!selectedAssetIds.has(asset.id)) {
+                        setSelectedAssetIds(new Set([asset.id]))
+                      }
+                      setAssetContextMenu({ assetId: asset.id, x: e.clientX, y: e.clientY })
+                    }}
+                  >
+                    {cl ? (
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cl.color }} />
+                    ) : (
+                      <div className="w-2 flex-shrink-0" />
+                    )}
+                    <div className="w-8 h-6 flex-shrink-0 rounded overflow-hidden bg-action">
+                      {asset.type === 'video' ? (
+                        asset.smallThumbnailPath ? (
+                          <img src={pathToFileUrl(asset.smallThumbnailPath)} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-action" />
+                        )
+                      ) : asset.type === 'audio' ? (
+                        <div className="w-full h-full flex items-center justify-center bg-success-soft"><Music className="h-2.5 w-2.5 text-fg-success" /></div>
+                      ) : asset.type === 'adjustment' ? (
+                        <div className="w-full h-full flex items-center justify-center bg-blue-900/30"><Layers className="h-2.5 w-2.5 text-blue-400" /></div>
+                      ) : (
+                        asset.smallThumbnailPath ? (
+                          <img src={pathToFileUrl(asset.smallThumbnailPath)} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-action" />
+                        )
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] text-fg-primary truncate leading-tight">{name}</p>
+                      {asset.takes && asset.takes.length > 1 && (
+                        <span className="text-[8px] text-blue-400">{asset.takes.length} takes</span>
+                      )}
+                    </div>
+                    <span className="w-14 flex-shrink-0 text-center text-[9px] text-fg-tertiary uppercase font-medium">{asset.type}</span>
+                    <span className="w-16 flex-shrink-0 text-right text-[9px] text-fg-tertiary tabular-nums">
+                      {asset.duration != null ? `${asset.duration.toFixed(1)}s` : '—'}
+                    </span>
+                    <span className="w-14 flex-shrink-0 text-right text-[9px] text-fg-tertiary">
+                      {asset.resolution || '—'}
+                    </span>
+                    <span className="w-16 flex-shrink-0 text-right text-[9px] text-fg-tertiary">{dateStr}</span>
+                    <div className="w-10 flex-shrink-0 flex items-center justify-center">
+                      {cl ? (
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: cl.color }} title={cl.label} />
+                      ) : (
+                        <span className="text-[9px] text-fg-tertiary">—</span>
+                      )}
+                    </div>
+                    <Tooltip content="Delete asset" side="right">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          deleteAsset(asset.id)
+                        }}
+                        className="w-6 flex-shrink-0 flex items-center justify-center p-0.5 rounded text-fg-tertiary hover:text-fg-danger opacity-0 group-hover:opacity-100 transition-all"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Tooltip>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {assetContextMenu && (() => {
+        const asset = assets.find(a => a.id === assetContextMenu.assetId)
+        if (!asset) return null
+        const targetIds = selectedAssetIds.size > 0 && selectedAssetIds.has(asset.id) ? [...selectedAssetIds] : [asset.id]
+        return (
+          <AssetContextMenu
+            asset={asset}
+            targetIds={targetIds}
+            assetContextMenu={assetContextMenu}
+            assetContextMenuRef={assetContextMenuRef}
+            addClipToTimeline={addClipToTimeline}
+            handleRegenerate={handleRegenerate}
+            handleCancelRegeneration={handleCancelRegeneration}
+            canCancelInFlight={canCancelInFlight}
+            setTakesViewAssetId={setTakesViewAssetId}
+            setSelectedAssetIds={setSelectedAssetIds}
+            setAssetContextMenu={setAssetContextMenu}
+            createAssetFromTake={createAssetFromTake}
+            openCreateBinEditor={openCreateBinEditor}
+          />
+        )
+      })()}
+
+      {takeContextMenu && (() => {
+        const tcAsset = assets.find(a => a.id === takeContextMenu.assetId)
+        if (!tcAsset?.takes) return null
+        const take = tcAsset.takes[takeContextMenu.takeIndex]
+        if (!take) return null
+        return (
+          <TakeContextMenu
+            tcAsset={tcAsset}
+            take={take}
+            takeIndex={takeContextMenu.takeIndex}
+            takeContextMenu={takeContextMenu}
+            takeContextMenuRef={takeContextMenuRef}
+            addClipToTimeline={addClipToTimeline}
+            createAssetFromTake={createAssetFromTake}
+            setTakeContextMenu={setTakeContextMenu}
+          />
+        )
+      })()}
+
+      {binContextMenu && (
+        <div
+          ref={binContextMenuRef}
+          className="fixed bg-action border border-separator rounded-xl shadow-2xl py-1.5 z-[60] min-w-[160px] text-xs"
+          style={{ left: binContextMenu.x, top: binContextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              setCreatingBin(false)
+              setRenamingBinId(binContextMenu.binId)
+              setNewBinName(binIdToName.get(binContextMenu.binId) ?? '')
+              setSelectedBinId(binContextMenu.binId)
+              setBinContextMenu(null)
+            }}
+            className="w-full text-left px-3 py-1.5 text-fg-secondary hover:bg-action-hover flex items-center gap-3"
+          >
+            <Pencil className="h-3.5 w-3.5 text-fg-tertiary" />
+            <span>Rename Bin</span>
+          </button>
+          <button
+            onClick={() => {
+              actions.clearBin(binContextMenu.binId)
+              if (selectedBinId === binContextMenu.binId) setSelectedBinId(null)
+              setBinContextMenu(null)
+            }}
+            className="w-full text-left px-3 py-1.5 text-fg-danger hover:bg-action-hover flex items-center gap-3"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>Delete Bin</span>
+          </button>
+        </div>
+      )}
+    </div>
+  )
+})

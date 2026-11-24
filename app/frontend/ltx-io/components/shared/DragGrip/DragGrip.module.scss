@@ -1,0 +1,13 @@
+.grip {
+  display: block;
+  flex-shrink: 0;
+  // Two columns × three rows at 3px — needs 6×9px or the right column clips.
+  width: 6px;
+  height: 9px;
+  background-image: radial-gradient(
+    circle,
+    currentcolor 0.8px,
+    transparent 0.8px
+  );
+  background-size: 3px 3px;
+}

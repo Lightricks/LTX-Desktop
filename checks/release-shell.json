@@ -1,0 +1,17 @@
+{
+  "app_asar_sha256": "28e2dc44bd9a391e464a787b25e2a5b2ca8334161077e4918a87983608617939",
+  "desktop_sources": {
+    "app/electron/app-paths.ts": "766efe9bc6ed23ef9b40a238447c1e4bdaf53a156f5ac24631bb97616bdf4747",
+    "app/electron/app-state.ts": "d65fd7bf2372729b1cd0fb4708aa9706ef5382581f4280d684035d731e1325f3",
+    "app/electron/gpu.ts": "5ccbe5932e6a1752d2a0cd88778cbf64bd90a8c38b119d095ec718ac30937613",
+    "app/electron/hf-loopback.ts": "f116116c18fe6bf24f1df8a67882fdf104ba94a01a97922d6a5dec9293a256a6",
+    "app/electron/ipc/file-handlers.ts": "222d86115452fe039c5316fcb2d95c995566584ef1c81b1fb7de11e36d7b5880",
+    "app/electron/main.ts": "702cbd993d4e1bcec27e6aa12a83333599d36771b36d294c4371131464165f7f",
+    "app/electron/python-backend.ts": "518f6b56c75fe8f7d35d87d18548cf1e8a7b7a06a33275b0caf7248677f7e127",
+    "app/electron/python-setup.ts": "0932dcb68915a97c450e7ac8802a4e34971baa47a75822ffb097fbabf808ffc8",
+    "app/electron/updater.ts": "7ed033f87bc8f64b37911c51613de88d60f42e07c2cf3131f4a549b21c65f38c",
+    "app/frontend/components/settings/AboutSettingsSection.tsx": "30c51a29bedf865c24695203d2c2da9bc2a482ee4a08fb9eddc5403851fa558f",
+    "app/frontend/contexts/AppSettingsContext.tsx": "debe1206b1d3055f6918e068505e9dd668b61ac6ab6ad8ff54543ae7ea8c95ef",
+    "app/frontend/hooks/use-hf-auth.ts": "3a6a804a0c516a532eb4c81e574551357d9d8f020272a9639fd0d85ea2d6355d"
+  }
+}

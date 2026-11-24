@@ -1,0 +1,21 @@
+[project]
+name = "ltx-pipelines"
+version = "1.6.0"
+description = "Pipelines implementation for Lightricks' LTX-2 model"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+dependencies = ["ltx-core", "av", "tqdm", "pillow", "openimageio", "cloudpickle>=3.1"]
+
+[project.optional-dependencies]
+# Videoseal 1.0.1 on PyPI predates PixelSeal; pin a commit that includes pixelseal.yaml.
+videoseal = [
+    "videoseal @ git+https://github.com/facebookresearch/videoseal.git@870ca7fb33578b90f14c602016b6c2788096226e",
+]
+audioseal = [
+    "audioseal>=0.2,<1",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.8,<0.10.0"]
+build-backend = "uv_build"

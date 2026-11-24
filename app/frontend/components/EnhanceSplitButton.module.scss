@@ -1,0 +1,172 @@
+@import "@ds/styles/themes/mixins.module.scss";
+
+.formGroup {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  max-width: 100%;
+  height: 32px;
+  min-height: 32px;
+  box-sizing: border-box;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background-color: var(--semantic-bg-primary);
+  transition: border-color 150ms ease;
+
+  &:hover:not(.disabled) {
+    border-color: var(--semantic-bg-separator-primary);
+  }
+
+  &:focus-within:not(.disabled) {
+    border-color: var(--semantic-bg-separator-primary);
+  }
+
+  &.disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+}
+
+.formMain {
+  @include text_style_body_md;
+
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  min-width: 0;
+  margin: 0;
+  padding: 0 var(--spacing-sm);
+  border: 0;
+  background: transparent;
+  color: var(--semantic-fg-primary);
+  cursor: pointer;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  white-space: nowrap;
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--semantic-fg-primary) 4%, transparent);
+    }
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+
+  &.error:not(:disabled) {
+    color: var(--semantic-fg-danger-primary-enabled);
+  }
+}
+
+.formMenuWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-left: 1px solid var(--semantic-bg-separator-primary);
+
+  button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 0;
+  }
+}
+
+.formMenuTrigger {
+  width: 28px;
+  min-width: 28px;
+  height: 32px;
+  padding: 0 !important;
+  gap: 0;
+  border: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background-color: transparent;
+  box-shadow: none;
+  justify-content: center;
+  align-items: center;
+
+  /* PickerBox arrow defaults to margin-left: auto for full-width pickers. */
+  > * {
+    margin-left: 0 !important;
+  }
+
+  &:hover:not([data-state="disabled"], [data-state="readOnly"]) {
+    border-color: transparent;
+    background-color: color-mix(in srgb, var(--semantic-fg-primary) 4%, transparent);
+  }
+
+  &[data-state="active"]:not([data-state="disabled"], [data-state="readOnly"]) {
+    border-color: transparent;
+    background-color: color-mix(in srgb, var(--semantic-fg-primary) 6%, transparent);
+  }
+}
+
+.promptBarGroup {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  max-width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: background-color 150ms ease;
+
+  @media (hover: hover) {
+    &:hover {
+      background: rgb(39 39 42);
+    }
+  }
+
+  &.menuOpen {
+    background: rgb(63 63 70);
+  }
+}
+
+.promptBarMain {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.375rem 0.5rem;
+  border: 0;
+  background: transparent;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  color: rgb(212 212 216);
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+
+  &:disabled {
+    color: rgb(82 82 91);
+    cursor: not-allowed;
+  }
+
+  &.error:not(:disabled) {
+    color: rgb(248 113 113);
+  }
+}
+
+.promptBarDivider {
+  width: 1px;
+  align-self: stretch;
+  margin-block: 6px;
+  background: rgb(63 63 70);
+  flex-shrink: 0;
+}
+
+.promptBarMenu {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 0;
+}
+
+.promptBarChevron {
+  transition: transform 200ms cubic-bezier(0.2, 0, 0, 1);
+
+  &.open {
+    transform: rotate(180deg);
+  }
+}

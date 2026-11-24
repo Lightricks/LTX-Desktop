@@ -1,0 +1,10 @@
+.gate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.message {
+  margin: 0;
+  color: var(--semantic-fg-secondary);
+}

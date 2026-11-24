@@ -1,0 +1,27 @@
+{
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "strict",
+  "stubPath": "typings",
+  "venvPath": ".",
+  "venv": ".venv",
+  "exclude": [
+    "tests",
+    "services/depth_processor_pipeline/depth_anything_v2",
+    ".venv",
+    "node_modules",
+    "dist",
+    "tmp",
+    "scripts",
+    "performance_runner",
+    "profile_results",
+    "services/patches"
+  ],
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": false,
+  "reportUnknownMemberType": true,
+  "reportUnknownVariableType": true,
+  "reportUnknownArgumentType": true,
+  "reportUnknownParameterType": true,
+  "reportUnusedImport": "warning",
+  "reportUnusedVariable": "warning"
+}

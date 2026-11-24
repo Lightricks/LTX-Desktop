@@ -1,0 +1,132 @@
+@use "@ds/styles/themes/animationsValues.scss" as *;
+@use "@ds/styles/themes/mixins.module.scss" as *;
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background-color: var(--semantic-bg-primary);
+  transition: border-color $duration-fast $easing-standard-productive;
+
+  &:hover {
+    border-color: var(--semantic-bg-separator-primary);
+  }
+
+  &[data-disabled="true"] {
+    opacity: 0.6;
+  }
+}
+
+.previewShell {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.previewFrame {
+  position: relative;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: inherit;
+
+  // Before natural size is known (and for empty), keep a stable landscape frame.
+  &:not([data-sized]) {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+  }
+}
+
+.preview {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  background: var(--semantic-bg-tertiary);
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+.referenceImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: var(--semantic-bg-tertiary);
+  pointer-events: none;
+}
+
+.pathOverlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.emptyState {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: var(--spacing-md);
+  text-align: center;
+  color: var(--semantic-fg-primary);
+}
+
+.emptyIcon {
+  width: var(--scale-24);
+  height: var(--scale-24);
+  margin-bottom: var(--spacing-xs);
+  color: var(--semantic-fg-primary);
+  fill: currentcolor;
+}
+
+.emptyTitle {
+  color: var(--semantic-fg-primary);
+  font-weight: 500;
+}
+
+.card[data-empty="true"] {
+  border-color: transparent;
+
+  &:hover {
+    border-color: var(--semantic-bg-separator-primary);
+  }
+
+  .preview {
+    background: var(--semantic-bg-primary);
+  }
+}
+
+.overlayActions {
+  position: absolute;
+  top: var(--spacing-md);
+  right: var(--spacing-md);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  opacity: 0;
+  transition: opacity $duration-fast $easing-standard-productive;
+}
+
+.card:hover .overlayActions,
+.card:focus-within .overlayActions {
+  opacity: 1;
+}

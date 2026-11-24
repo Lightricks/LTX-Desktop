@@ -1,0 +1,60 @@
+name: Build compact Windows AMD installer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - name: Restore pinned source files
+        run: python3 restore_sources.py --cache-dir build/.cache/source-archives
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends 7zip xz-utils
+          corepack --version
+      - name: Run repository checks
+        run: |
+          python3 -B -m unittest discover -s checks
+          python3 -B setupwork/test_media.py
+          python3 -B repair/test_repair.py
+          python3 -B runtimework/test_comfy_deps.py
+      - name: Build the Windows desktop and stage the AMD bootstrap
+        run: |
+          bash shellwork/build-shell.sh
+          python3 runtimework/prepare_runtime.py --mode web --out build/runtime
+      - name: Build the compact online installer
+        run: |
+          python3 setupwork/compact/build.py \
+            --source build/.cache/source-archives/ltx-desktop-upstream-d23b8b3de2ab258459f1c1524d4ce1e49c6783f5.zip
+      - name: Check installer contents and generate checksum
+        working-directory: build/release
+        run: |
+          installer=LTX-AMD-395-MAX-Compact-Setup.exe
+          7zz l -tNsis -slt "$installer" > "$RUNNER_TEMP/ltx-compact-installer.txt"
+          for name in asset-payload.zip vendor-lock.json shell-inventory.json compact_setup.py; do
+            grep -F -- "$name" "$RUNNER_TEMP/ltx-compact-installer.txt" > /dev/null
+          done
+          sha256sum "$installer" > "$installer.sha256"
+      - name: Save compact installer and checksum
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: LTX-AMD-395-MAX-Compact-Windows-x64
+          path: |
+            build/release/LTX-AMD-395-MAX-Compact-Setup.exe
+            build/release/LTX-AMD-395-MAX-Compact-Setup.exe.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

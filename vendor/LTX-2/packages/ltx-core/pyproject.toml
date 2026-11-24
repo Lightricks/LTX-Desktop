@@ -1,0 +1,73 @@
+[project]
+name = "ltx-core"
+version = "1.6.0+radeon1"
+description = "Core implementation of Lightricks' LTX-2 model"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+dependencies = [
+    "torch~=2.7",
+    "torchaudio",
+    # Gemma 4's processor imports torchvision; without this, `uv sync --package
+    # ltx-pipelines` (no trainer) fails with Could not import Gemma4UnifiedProcessor.
+    "torchvision",
+    "einops",
+    "numpy",
+    "colour-science",
+    # Upper bound: transformers 5.15.0 routes config attribute access through the
+    # heterogeneity layer, which raises AmbiguousGlobalPerLayerAttributeError on global
+    # `config.head_dim` -- but its own gemma4_unified model code still reads it that way
+    # (modeling_gemma4_unified.py, compute_default_rope_parameters), so the Gemma 4 text
+    # encoder cannot be built at all. 5.14.1 is the newest release verified working.
+    "transformers>=5.8.0,<5.15",
+    "safetensors",
+    "accelerate",
+    "scipy>=1.14",
+    # Apple Silicon only: Apple's fused MPSGraph SDPA, the AUTOMATIC attention
+    # backend on MPS. The marker installs it on Apple Silicon and prunes it
+    # everywhere else (Linux/CUDA), so it is a hard requirement exactly where it
+    # is the only viable attention kernel. Requires torch>=2.11 (within the
+    # torch~=2.7 floor); the resolver forks torch to >=2.11 on macOS.
+    "mps-sdpa>=0.2.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
+
+[project.optional-dependencies]
+natten = [
+    # Pinned wheel + matching torch so DiffVAE does not hit TokPerm IMA on older
+    # PyTorch/NVIDIA stacks. Keep in sync with install hints in attention.py /
+    # diffusion_video_decoder.py and packages/ltx-pipelines/docs/optimization.md.
+    "natten==0.21.7+torch2130cu132; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
+    "torch==2.13.0; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
+]
+
+[tool.uv.sources]
+# macOS: the cu132 indexes ship no darwin wheels, so fall back to PyPI there.
+torch = [{ index = "torch", marker = "sys_platform != 'darwin'" }]
+torchaudio = [{ index = "torch-test", marker = "sys_platform != 'darwin'" }]
+torchvision = [{ index = "torch", marker = "sys_platform != 'darwin'" }]
+natten = { index = "natten" }
+
+[[tool.uv.index]]
+name = "torch"
+url = "https://download.pytorch.org/whl/cu132"
+explicit = true
+
+[[tool.uv.index]]
+name = "torch-test"
+url = "https://download.pytorch.org/whl/test/cu132/"
+explicit = true
+
+[[tool.uv.index]]
+name = "natten"
+url = "https://whl.natten.org"
+format = "flat"
+explicit = true
+
+[build-system]
+requires = ["uv_build>=0.9.8,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "scikit-image>=0.25.2",
+]

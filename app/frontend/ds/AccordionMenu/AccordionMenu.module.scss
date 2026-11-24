@@ -1,0 +1,50 @@
+@import "@ds/styles/themes/mixins.module.scss";
+@import "@ds/styles/themes/animationsValues.scss";
+
+.expand_menu {
+  &.appearance_title {
+    background-color: var(--semantic-bg-primary);
+    border-radius: var(--radius-md);
+    @include effect_style_shadow_elevation_low;
+  }
+}
+
+.arrow {
+  transition: transform $duration-fast $easing-entrance-productive;
+
+  [data-state="open"] & {
+    transform: rotate(-180deg);
+  }
+}
+
+.content {
+  overflow: hidden;
+
+  &[data-state="open"] {
+    animation: slide-down $duration-fast $easing-entrance-productive;
+  }
+
+  &[data-state="closed"] {
+    animation: slide-up $duration-fast $easing-entrance-productive;
+  }
+}
+
+@keyframes slide-down {
+  from {
+    height: 0;
+  }
+
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+
+  to {
+    height: 0;
+  }
+}

@@ -1,0 +1,64 @@
+@import "@ds/styles/themes/animationsValues.scss";
+
+@mixin highlighted_styles {
+  transition: none;
+  outline: 2px solid var(--focus-user-color, var(--semantic-bg-brand-secondary-selected));
+}
+
+@mixin highlighted_input_styles {
+  @include highlighted_styles;
+
+  background-color: var(--semantic-bg-brand-secondary-enabled);
+}
+
+@mixin highlighted_text_styles {
+  color: var(--semantic-fg-brand-primary-enabled);
+}
+
+@mixin highlight_transition {
+  transition:
+    outline $duration-moderate $easing-standard-productive,
+    background-color $duration-moderate $easing-standard-productive,
+    color $duration-moderate $easing-standard-productive;
+}
+
+@keyframes outline-pulse {
+  0% {
+    outline-color: transparent;
+  }
+
+  33% {
+    outline-color: var(--focus-user-color, var(--semantic-bg-brand-secondary-active));
+  }
+
+  66% {
+    outline-color: var(--focus-user-color, var(--semantic-bg-brand-secondary-active));
+  }
+
+  100% {
+    outline-color: transparent;
+  }
+}
+
+@mixin highlighted_outline_animation {
+  @include highlight_transition;
+
+  outline: 2px solid transparent;
+  animation: outline-pulse 2.25s infinite;
+}
+
+// Mixin to apply focus user color based on data-highlight-color attribute
+@mixin user_color_data_attributes {
+  $colors: "green", "orange", "purple", "teal", "pink", "lime", "indigo", "yellow", "magenta", "blue", "red";
+
+  @each $color in $colors {
+    &[data-highlight-color="#{$color}"] {
+      --focus-user-color: var(--semantic-extended-#{$color}-enabled);
+    }
+  }
+
+  // Primary is different, handle separately
+  &[data-highlight-color="primary"] {
+    --focus-user-color: var(--semantic-bg-brand-primary-enabled);
+  }
+}

@@ -1,0 +1,60 @@
+.container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  pointer-events: none;
+}
+
+.handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 13px;
+  margin-left: -6.5px;
+  cursor: grab;
+  pointer-events: none;
+  touch-action: none;
+}
+
+.handle:active {
+  cursor: grabbing;
+}
+
+.playing {
+  cursor: default;
+}
+
+/* The head sits above the track, clear of In/Out, so it always grabs. */
+.grip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: auto;
+}
+
+/* `placePlayhead` sets `auto` once the stem is clear of In/Out. */
+.stem {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
+.needle {
+  display: block;
+  flex: none;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.needleShape {
+  fill: var(--semantic-fg-primary);
+  stroke: var(--semantic-bg-primary);
+  stroke-width: 2px;
+}

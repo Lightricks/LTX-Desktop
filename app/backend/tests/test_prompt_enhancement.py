@@ -1,0 +1,1359 @@
+"""Integration tests for POST /api/enhance-prompt (Starlette TestClient + Fake pipeline)."""
+
+from __future__ import annotations
+
+import base64
+from contextlib import nullcontext
+import logging
+from io import BytesIO
+from pathlib import Path
+
+import ltx_pipelines.utils.gpu_model as ltx_gpu_model
+from PIL import Image
+from api_types import (
+    InstructionSection,
+    LOCAL_MULTI_KEYFRAME_MAX_COUNT,
+    PromptTemplatePlaceholder,
+    PromptTemplateSpec,
+)
+from runtime_config.model_download_specs import resolve_model_path
+from services import generation_interrupt
+from services.gemini_text_client import DEFAULT_GEMINI_MODEL
+from services.prompt_enhancement import build_audio_visual_caption_system_prompt
+from services.prompt_enhancer_pipeline import ltx_prompt_enhancer_pipeline as ltx_mod
+from services.prompt_enhancer_pipeline.ltx_prompt_enhancer_pipeline import LtxPromptEnhancerPipeline
+from tests.fakes import FakeResponse
+from tests.http_error_assertions import assert_http_error
+from tests.lora_catalog_helpers import add_ic_lora, add_lora
+
+
+# 2.3's gemma3 encoder doubles as the local enhancer, so its plain bundle is enough to make the
+# local provider usable (2.5 needs an extra opt-in download — see
+# LTXLocalModelSpec.prompt_enhancer_cp). Everything below tests plumbing that's independent of
+# the model generation, so pin it to that.
+_LOCAL_ENHANCER_MODEL_ID = "ltx-2.3-22b-distilled-1.1"
+
+
+def _gemini_ok(text: str = "enhanced via gemini") -> FakeResponse:
+    return FakeResponse(
+        status_code=200,
+        json_payload={"candidates": [{"content": {"parts": [{"text": text}]}}]},
+    )
+
+
+def _gemini_error(status: int = 429, body: str = "rate limited") -> FakeResponse:
+    return FakeResponse(status_code=status, text=body)
+
+
+# Captured production response from this app when Gemini rejects the configured key.
+_GEMINI_INVALID_API_KEY_BODY = {
+    "error": {
+        "code": 400,
+        "message": "API key not valid. Please pass a valid API key.",
+        "status": "INVALID_ARGUMENT",
+        "details": [
+            {
+                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                "reason": "API_KEY_INVALID",
+                "domain": "googleapis.com",
+                "metadata": {"service": "generativelanguage.googleapis.com"},
+            },
+            {
+                "@type": "type.googleapis.com/google.rpc.LocalizedMessage",
+                "locale": "en-US",
+                "message": "API key not valid. Please pass a valid API key.",
+            },
+        ],
+    }
+}
+
+
+class TestNoSelection:
+    def test_generic_fallback_uses_no_system_prompt(self, client, fake_services, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat"})
+        assert r.status_code == 200
+        assert r.json()["enhancedPrompt"] == fake_services.prompt_enhancer_pipeline.enhanced_prompt
+        call = fake_services.prompt_enhancer_pipeline.enhance_t2v_calls[0]
+        assert call["prompt"] == "a cat"
+        assert call["system_prompt"] is None
+
+    def test_image_path_routes_to_enhance_i2v(
+        self, client, fake_services, create_fake_model_files, make_test_image, tmp_path
+    ):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        image_path = tmp_path / "cat.png"
+        image_path.write_bytes(make_test_image().getvalue())
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "imagePath": str(image_path)})
+        assert r.status_code == 200
+        assert len(fake_services.prompt_enhancer_pipeline.enhance_i2v_calls) == 1
+        assert fake_services.prompt_enhancer_pipeline.enhance_i2v_calls[0]["image_path"] == str(image_path)
+        assert fake_services.prompt_enhancer_pipeline.enhance_i2v_calls[0]["last_image_path"] is None
+        assert len(fake_services.prompt_enhancer_pipeline.enhance_t2v_calls) == 0
+
+    def test_last_image_path_is_passed_to_enhance_i2v(
+        self, client, fake_services, create_fake_model_files, make_test_image, tmp_path
+    ):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        first = tmp_path / "first.png"
+        last = tmp_path / "last.png"
+        first.write_bytes(make_test_image().getvalue())
+        last.write_bytes(make_test_image().getvalue())
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "walk toward the door", "imagePath": str(first), "lastImagePath": str(last)},
+        )
+        assert r.status_code == 200
+        call = fake_services.prompt_enhancer_pipeline.enhance_i2v_calls[0]
+        assert call["image_path"] == str(first)
+        assert call["last_image_path"] == str(last)
+
+    def test_keyframes_are_passed_to_enhance_i2v(
+        self, client, fake_services, create_fake_model_files, make_test_image, tmp_path
+    ):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        opening = tmp_path / "opening.png"
+        middle = tmp_path / "middle.png"
+        closing = tmp_path / "closing.png"
+        for path in (opening, middle, closing):
+            path.write_bytes(make_test_image().getvalue())
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "walk the hall",
+                "duration": 5,
+                "fps": 24,
+                "keyframes": [
+                    {"imagePath": str(closing), "frameIndex": 80},
+                    {"imagePath": str(opening), "frameIndex": 0},
+                    {"imagePath": str(middle), "frameIndex": 40},
+                ],
+            },
+        )
+        assert r.status_code == 200
+        call = fake_services.prompt_enhancer_pipeline.enhance_i2v_calls[0]
+        assert call["keyframes"] == [
+            (str(opening), 0, 1.0),
+            (str(middle), 40, 1.0),
+            (str(closing), 80, 1.0),
+        ]
+        assert call["duration"] == 5
+        assert call["fps"] == 24
+        assert call["last_image_path"] is None
+        assert call["system_prompt"] is not None
+        assert "visual ground truth" in call["system_prompt"]
+        assert "extra user instructions" in call["system_prompt"].lower()
+        assert "diegetic soundscape" not in call["system_prompt"]
+        assert "REFERENCE IMAGE" not in call["system_prompt"]
+        assert len(fake_services.prompt_enhancer_pipeline.enhance_t2v_calls) == 0
+
+    def test_empty_prompt_with_keyframes_enhances(
+        self, client, fake_services, create_fake_model_files, make_test_image, tmp_path
+    ):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        opening = tmp_path / "opening.png"
+        opening.write_bytes(make_test_image().getvalue())
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "", "keyframes": [{"imagePath": str(opening), "frameIndex": 0}]},
+        )
+        assert r.status_code == 200
+        assert fake_services.prompt_enhancer_pipeline.enhance_i2v_calls[0]["keyframes"] == [
+            (str(opening), 0, 1.0)
+        ]
+
+    def test_keyframe_strength_is_forwarded_to_enhance_i2v(
+        self, client, fake_services, create_fake_model_files, make_test_image, tmp_path
+    ):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        opening = tmp_path / "opening.png"
+        opening.write_bytes(make_test_image().getvalue())
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "walk the hall",
+                "keyframes": [{"imagePath": str(opening), "frameIndex": 0, "strength": 0.7}],
+            },
+        )
+        assert r.status_code == 200
+        assert fake_services.prompt_enhancer_pipeline.enhance_i2v_calls[0]["keyframes"] == [
+            (str(opening), 0, 0.7)
+        ]
+
+    def test_keyframe_asset_ids_reach_enhance_i2v_as_paths_in_time_order(
+        self, client, fake_services, create_fake_model_files, make_test_image, tmp_path
+    ):
+        # Explore sends asset ids. A route that skipped them would enhance from text alone.
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        paths = [tmp_path / "late.png", tmp_path / "early.png"]
+        for path in paths:
+            path.write_bytes(make_test_image().getvalue())
+        late, early = (
+            client.post("/api/assets", json={"path": str(path)}).json()["id"] for path in paths
+        )
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "",
+                "duration": 5,
+                "fps": 24,
+                "keyframeAssets": [
+                    {"assetId": late, "frameIndex": 80, "strength": 0.5},
+                    {"assetId": early, "frameIndex": 0},
+                ],
+            },
+        )
+
+        assert r.status_code == 200, r.text
+        call = fake_services.prompt_enhancer_pipeline.enhance_i2v_calls[0]
+        # The asset store copies each file, so the paths are the stored copies.
+        sent = call["keyframes"]
+        assert [(frame, strength) for _, frame, strength in sent] == [(0, 1.0), (80, 0.5)]
+        assert len({path for path, _, _ in sent}) == 2
+        assert all(Path(path).is_file() for path, _, _ in sent)
+        assert call["duration"] == 5
+        assert call["fps"] == 24
+
+    def test_a_typed_prompt_and_the_keyframes_reach_one_rewrite_together(
+        self, client, fake_services, create_fake_model_files, make_test_image, tmp_path
+    ):
+        # The rewrite must use the typed text as its instruction, beside the stills.
+        # Dropping either one would turn it into a text-only or a stills-only rewrite.
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        paths = [tmp_path / "a.png", tmp_path / "b.png"]
+        for path in paths:
+            path.write_bytes(make_test_image().getvalue())
+        ids = [client.post("/api/assets", json={"path": str(path)}).json()["id"] for path in paths]
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "slow dolly in",
+                "duration": 5,
+                "fps": 24,
+                "keyframeAssets": [
+                    {"assetId": ids[0], "frameIndex": 0},
+                    {"assetId": ids[1], "frameIndex": 96},
+                ],
+            },
+        )
+
+        assert r.status_code == 200, r.text
+        calls = fake_services.prompt_enhancer_pipeline.enhance_i2v_calls
+        assert len(calls) == 1
+        assert calls[0]["prompt"] == "slow dolly in"
+        assert [frame[1] for frame in calls[0]["keyframes"]] == [0, 96]
+
+    def test_keyframes_and_keyframe_assets_cannot_both_be_sent(self, client):
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "a cat",
+                "keyframes": [{"imagePath": "/tmp/a.png", "frameIndex": 0}],
+                "keyframeAssets": [{"assetId": "asset-1", "frameIndex": 1}],
+            },
+        )
+        assert r.status_code == 422
+
+    def test_keyframes_cannot_mix_with_first_frame(
+        self, client, create_fake_model_files, make_test_image, tmp_path
+    ):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        opening = tmp_path / "opening.png"
+        opening.write_bytes(make_test_image().getvalue())
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "a cat",
+                "imagePath": str(opening),
+                "keyframes": [{"imagePath": str(opening), "frameIndex": 0}],
+            },
+        )
+        assert r.status_code == 422
+
+    def test_keyframes_cap_is_enforced_on_enhance(self, client):
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "walk the hall",
+                "keyframes": [
+                    {"imagePath": f"/tmp/kf-{index}.png", "frameIndex": index}
+                    for index in range(LOCAL_MULTI_KEYFRAME_MAX_COUNT + 1)
+                ],
+            },
+        )
+        assert r.status_code == 422
+
+    def test_duplicate_keyframe_indices_rejected_on_enhance(self, client):
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "walk the hall",
+                "keyframes": [
+                    {"imagePath": "/tmp/a.png", "frameIndex": 10},
+                    {"imagePath": "/tmp/b.png", "frameIndex": 10},
+                ],
+            },
+        )
+        assert r.status_code == 422
+
+    def test_keyframe_past_the_clip_rejected_on_enhance(self, client):
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "walk the hall",
+                "duration": 5,
+                "fps": 24,
+                "keyframes": [{"imagePath": "/tmp/a.png", "frameIndex": 121}],
+            },
+        )
+        assert r.status_code == 422
+
+    def test_non_positive_duration_rejected_on_enhance(self, client):
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "walk the hall",
+                "duration": -5,
+                "fps": 24,
+                "keyframes": [{"imagePath": "/tmp/a.png", "frameIndex": 0}],
+            },
+        )
+        assert r.status_code == 422
+
+    def test_non_positive_fps_rejected_on_enhance(self, client):
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "walk the hall",
+                "duration": 5,
+                "fps": 0,
+                "keyframes": [{"imagePath": "/tmp/a.png", "frameIndex": 0}],
+            },
+        )
+        assert r.status_code == 422
+
+    def test_last_without_first_rejected(self, client, create_fake_model_files, make_test_image, tmp_path):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        last = tmp_path / "last.png"
+        last.write_bytes(make_test_image().getvalue())
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "a cat", "lastImagePath": str(last)},
+        )
+        assert r.status_code == 422
+
+    def test_empty_prompt_with_image_enhances(
+        self, client, fake_services, create_fake_model_files, make_test_image, tmp_path
+    ):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        image_path = tmp_path / "cat.png"
+        image_path.write_bytes(make_test_image().getvalue())
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "", "imagePath": str(image_path)})
+        assert r.status_code == 200
+        call = fake_services.prompt_enhancer_pipeline.enhance_i2v_calls[0]
+        assert call["prompt"] == ""
+        assert call["image_path"] == str(image_path)
+
+    def test_empty_prompt_without_image_rejected(self, client, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        r = client.post("/api/enhance-prompt", json={"prompt": ""})
+        assert r.status_code == 422
+
+    def test_invalid_image_path_rejected(self, client, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "imagePath": "/tmp/does-not-exist.png"})
+        assert r.status_code == 400
+
+    def test_seed_is_independent_of_dev_mode_lock(self, client, test_state, fake_services, create_fake_model_files):
+        # Regression: enhance used StateHandlerBase._resolve_seed(), which returns a fixed
+        # constant (1000) whenever dev mode is on — every call, including a "redo", would then
+        # produce the exact same output. Two consecutive calls must not collapse to that.
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        test_state.config.dev_mode = True
+        client.post("/api/enhance-prompt", json={"prompt": "a cat"})
+        client.post("/api/enhance-prompt", json={"prompt": "a cat"})
+        calls = fake_services.prompt_enhancer_pipeline.enhance_t2v_calls
+        assert len(calls) == 2
+        assert calls[0]["seed"] != 1000
+        assert calls[0]["seed"] != calls[1]["seed"]
+
+
+class TestLoraSelection:
+    def test_single_lora_system_prompt_and_trigger_enforced(self, client, fake_services, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        add_lora(
+            fake_services, id="cozy-felt", name="Cozy Felt", trigger="F3ltCut0u7", trigger_placement="anywhere",
+            instructions=[InstructionSection(kind="summary", title="What it does", body="Felt look.")],
+        )
+        fake_services.prompt_enhancer_pipeline.enhanced_prompt = "a felt fox in a garden"
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a fox", "loraCatalogIds": ["cozy-felt"]})
+        assert r.status_code == 200
+        assert r.json()["enhancedPrompt"] == "a felt fox in a garden F3ltCut0u7"
+
+        call = fake_services.prompt_enhancer_pipeline.enhance_t2v_calls[0]
+        assert "Cozy Felt" in call["system_prompt"]
+        assert "Felt look." in call["system_prompt"]
+
+    def test_multi_lora_prompt_includes_both(self, client, fake_services, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        add_lora(fake_services, id="a", name="Alpha")
+        add_lora(fake_services, id="b", name="Beta")
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "loraCatalogIds": ["a", "b"]})
+        assert r.status_code == 200
+        call = fake_services.prompt_enhancer_pipeline.enhance_t2v_calls[0]
+        assert "Alpha" in call["system_prompt"] and "Beta" in call["system_prompt"]
+
+    def test_unknown_lora_id_rejected(self, client, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "loraCatalogIds": ["does-not-exist"]})
+        assert_http_error(r, status_code=404, code="LORA_CATALOG_ID_NOT_FOUND")
+
+
+class TestIcLoraSelection:
+    def test_ic_lora_without_template_free_rewrite_and_trigger_enforced(
+        self, client, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        add_ic_lora(
+            fake_services, id="day-to-night", name="Day to Night",
+            instructions=[InstructionSection(kind="summary", title="What it does", body="Relights to night.")],
+        )
+        r = client.post("/api/enhance-prompt", json={"prompt": "a street", "icLoraId": "day-to-night"})
+        assert r.status_code == 200
+        call = fake_services.prompt_enhancer_pipeline.enhance_t2v_calls[0]
+        assert "Day to Night" in call["system_prompt"]
+
+    def test_unknown_ic_lora_id_rejected(self, client, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "icLoraId": "does-not-exist"})
+        assert_http_error(r, status_code=404, code="LORA_CATALOG_ID_NOT_FOUND")
+
+    def test_free_text_template_fill_stitches_deterministically(self, client, fake_services, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        add_ic_lora(
+            fake_services, id="colorization", name="Colorization",
+            prompt_template=PromptTemplateSpec(
+                template="Reference shows {reference}. COLORIZE {result}.",
+                placeholders={"reference": PromptTemplatePlaceholder(), "result": PromptTemplatePlaceholder()},
+            ),
+        )
+        fake_services.prompt_enhancer_pipeline.enhanced_prompt = (
+            '{"reference": "a grey rabbit", "result": "a brown rabbit"}'
+        )
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "colorize the rabbit", "icLoraId": "colorization"})
+        assert r.status_code == 200
+        assert r.json()["enhancedPrompt"] == "Reference shows a grey rabbit. COLORIZE a brown rabbit."
+
+    def test_enum_template_fill_stitches_deterministically(self, client, fake_services, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        add_ic_lora(
+            fake_services, id="crossview-prompt", name="CrossView",
+            prompt_template=PromptTemplateSpec(
+                template="crossview. new camera angle: {azimuth}, {elevation}, {distance}.",
+                placeholders={
+                    "azimuth": PromptTemplatePlaceholder(choices=["to the left", "to the right"]),
+                    "elevation": PromptTemplatePlaceholder(choices=["lower", "higher"]),
+                    "distance": PromptTemplatePlaceholder(choices=["closer", "further"]),
+                },
+            ),
+        )
+        fake_services.prompt_enhancer_pipeline.enhanced_prompt = (
+            '{"azimuth": "to the right", "elevation": "lower", "distance": "closer"}'
+        )
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "move right and closer", "icLoraId": "crossview-prompt"})
+        assert r.status_code == 200
+        assert r.json()["enhancedPrompt"] == "crossview. new camera angle: to the right, lower, closer."
+
+    def test_template_fill_rejects_invalid_enum_choice(self, client, fake_services, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        add_ic_lora(
+            fake_services, id="crossview-prompt", name="CrossView",
+            prompt_template=PromptTemplateSpec(
+                template="crossview. new camera angle: {azimuth}.",
+                placeholders={"azimuth": PromptTemplatePlaceholder(choices=["to the left", "to the right"])},
+            ),
+        )
+        fake_services.prompt_enhancer_pipeline.enhanced_prompt = '{"azimuth": "sideways"}'
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "icLoraId": "crossview-prompt"})
+        assert r.status_code == 500
+
+    def test_template_fill_rejects_non_json_response(self, client, fake_services, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        add_ic_lora(
+            fake_services, id="upscale", name="Upscale",
+            prompt_template=PromptTemplateSpec(template="upscale", placeholders={}),
+        )
+        fake_services.prompt_enhancer_pipeline.enhanced_prompt = "not json"
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "icLoraId": "upscale"})
+        assert r.status_code == 500
+
+
+class TestConditioningType:
+    # canny/depth: the built-in "bring your own IC-LoRA" conditioning modes, no catalog entry.
+    def test_depth_uses_dedicated_system_prompt(self, client, fake_services, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "a fox riding a skateboard", "conditioningType": "depth"},
+        )
+        assert r.status_code == 200
+        call = fake_services.prompt_enhancer_pipeline.enhance_t2v_calls[0]
+        assert call["system_prompt"] is not None
+        assert "depth" in call["system_prompt"].lower()
+        assert "faithfully" in call["system_prompt"].lower()
+
+    def test_canny_uses_dedicated_system_prompt(self, client, fake_services, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "a fox riding a skateboard", "conditioningType": "canny"},
+        )
+        assert r.status_code == 200
+        call = fake_services.prompt_enhancer_pipeline.enhance_t2v_calls[0]
+        assert call["system_prompt"] is not None
+        assert "edge" in call["system_prompt"].lower()
+
+
+class TestRequestValidation:
+    def test_lora_ids_and_ic_lora_id_mutually_exclusive(self, client, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "x", "loraCatalogIds": ["a"], "icLoraId": "b"},
+        )
+        assert r.status_code == 422
+
+    def test_conditioning_type_and_ic_lora_id_mutually_exclusive(self, client, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "x", "conditioningType": "depth", "icLoraId": "b"},
+        )
+        assert r.status_code == 422
+
+
+class TestAudioVisualModels:
+    def test_generic_fallback_uses_the_audio_visual_caption_prompt(
+        self, client, test_state, create_fake_model_files
+    ):
+        # 2.5 was captioned as audio-visual: without its own caption instructions the enhancer
+        # writes a visual-only prompt, the soundscape is left unspecified, and the model fills it
+        # in — usually by having someone speak the prompt.
+        create_fake_model_files()
+        test_state.state.app_settings.gemini_api_key = "gemini-key"
+        test_state.http.queue("post", _gemini_ok())
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a puffin running", "provider": "api"})
+        assert r.status_code == 200
+        system_instruction = test_state.http.calls[-1].json_payload["systemInstruction"]["parts"][0]["text"]
+        assert "dialogue" in system_instruction.lower()
+        assert "soundscape" in system_instruction.lower()
+
+    def test_keyframes_keep_native_caption_style_and_add_keyframe_rules(
+        self, client, test_state, create_fake_model_files, make_test_image, tmp_path
+    ):
+        create_fake_model_files()
+        test_state.state.app_settings.gemini_api_key = "gemini-key"
+        test_state.http.queue("post", _gemini_ok())
+        opening = tmp_path / "opening.png"
+        opening.write_bytes(make_test_image().getvalue())
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "walk the hall",
+                "provider": "api",
+                "keyframes": [{"imagePath": str(opening), "frameIndex": 0}],
+            },
+        )
+        assert r.status_code == 200
+        system_instruction = test_state.http.calls[-1].json_payload["systemInstruction"]["parts"][0]["text"]
+        native = build_audio_visual_caption_system_prompt(t2v=False)
+        assert system_instruction.startswith(native)
+        assert "visual ground truth" in system_instruction
+        assert "at the start" in system_instruction.lower()
+        assert "blend" in system_instruction.lower() or "compromise" in system_instruction.lower()
+
+    def test_2_3_keeps_the_provider_default(self, client, fake_services, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat"})
+        assert r.status_code == 200
+        assert fake_services.prompt_enhancer_pipeline.enhance_t2v_calls[0]["system_prompt"] is None
+
+    def test_local_provider_rejected_without_the_separate_enhancer(self, client, create_fake_model_files):
+        # 2.5's downloaded text encoder is encode-only, so a full generation bundle is not on its
+        # own enough to enhance locally.
+        create_fake_model_files()
+        assert_http_error(
+            client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "local"}),
+            status_code=409,
+            code="LOCAL_TEXT_ENCODER_NOT_AVAILABLE",
+        )
+
+    def test_local_provider_runs_on_the_downloaded_enhancer(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files(include_prompt_enhancer=True)
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "local"})
+        assert r.status_code == 200
+        # The enhancer root, not the encoder that generation uses.
+        assert fake_services.prompt_enhancer_pipeline.created_with[-1]["gemma_root"] == str(
+            resolve_model_path(test_state.config.default_models_dir, "gemma-4-e2b-it")
+        )
+
+    def test_recommendation_tracks_the_enhancer_download(self, client, create_fake_model_files):
+        create_fake_model_files()
+        before = client.get("/api/models/text-encoder-recommendation").json()
+        assert before["local_enhancement_supported"] is False
+        assert before["local_enhancer_cp"] == "gemma-4-e2b-it"
+        assert before["active_local_enhancer_cp"] is None
+        assert before["local_enhancer_expected_size_gb"] == 9.6
+
+        create_fake_model_files(include_prompt_enhancer=True)
+        after = client.get("/api/models/text-encoder-recommendation").json()
+        assert after["local_enhancement_supported"] is True
+        assert after["active_local_enhancer_cp"] == "gemma-4-e2b-it"
+
+    def test_2_3_needs_no_separate_enhancer(self, client, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        payload = client.get("/api/models/text-encoder-recommendation").json()
+        assert payload["local_enhancer_cp"] is None
+        assert payload["local_enhancement_supported"] is True
+        assert payload["active_local_enhancer_cp"] == "gemma-3-12b-it-qat-q4_0-unquantized"
+
+
+    def test_2_5_falls_back_to_gemma3_without_e2b(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files()
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.5-22b-distilled"
+
+        rec = client.get("/api/models/text-encoder-recommendation").json()
+        assert rec["local_enhancement_supported"] is True
+        assert rec["local_enhancer_cp"] == "gemma-4-e2b-it"
+        assert rec["active_local_enhancer_cp"] == "gemma-3-12b-it-qat-q4_0-unquantized"
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "local"})
+        assert r.status_code == 200
+        assert fake_services.prompt_enhancer_pipeline.created_with[-1]["gemma_root"] == str(
+            resolve_model_path(test_state.config.default_models_dir, "gemma-3-12b-it-qat-q4_0-unquantized")
+        )
+
+    def test_2_5_prefers_e2b_when_gemma3_is_also_present(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files(include_prompt_enhancer=True)
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.5-22b-distilled"
+
+        rec = client.get("/api/models/text-encoder-recommendation").json()
+        assert rec["active_local_enhancer_cp"] == "gemma-4-e2b-it"
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "local"})
+        assert r.status_code == 200
+        assert fake_services.prompt_enhancer_pipeline.created_with[-1]["gemma_root"] == str(
+            resolve_model_path(test_state.config.default_models_dir, "gemma-4-e2b-it")
+        )
+
+
+class TestGating:
+    def test_local_enhance_works_even_when_generation_prefers_api_text_encoding(
+        self, client, test_state, create_fake_model_files
+    ):
+        # Regression: PromptEnhancementHandler used to call resolve_gemma_root(), which returns
+        # None whenever should_use_local_encoding()'s API-key tiebreaker picks API — a GENERATION
+        # policy question, unrelated to whether local Enhance can run. A user with both an LTX
+        # API key and the checkpoint downloaded (the tiebreaker defaults to API) could previously
+        # never use "Local" Enhance, even though the frontend's own checkpoint-presence check
+        # offered it.
+        # 2.3, since the tiebreaker only exists for versions the LTX API can encode.
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        test_state.state.app_settings.active_ltx_model_id = "ltx-2.3-22b-distilled-1.1"
+        test_state.state.app_settings.ltx_api_key = "ltx-key"
+        assert test_state.text.should_use_local_encoding() is False  # tiebreaker picks API
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "provider": "local"})
+        assert r.status_code == 200
+
+    def test_missing_local_gemma_rejected(self, client):
+        # create_fake_model_files() not called -> resolve_gemma_root_if_downloaded() is None.
+        r = client.post("/api/enhance-prompt", json={"prompt": "x"})
+        assert_http_error(r, status_code=409, code="LOCAL_TEXT_ENCODER_NOT_AVAILABLE")
+
+    def test_rejected_while_generation_running(self, client, test_state, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        test_state.pipelines.load_gpu_pipeline("fast")
+        test_state.generation.start_generation("gen-1")
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "x"})
+        assert r.status_code == 409
+
+    def test_enhance_failure_returns_500(self, client, fake_services, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        fake_services.prompt_enhancer_pipeline.raise_on_enhance = RuntimeError("boom")
+        r = client.post("/api/enhance-prompt", json={"prompt": "x"})
+        assert r.status_code == 500
+
+    def test_enhance_marks_itself_busy_then_frees_the_slot(self, client, test_state, create_fake_model_files):
+        # Regression: enhance() must participate in the same generation-mutex bookkeeping every
+        # other handler uses, so an orphaned enhance can't race a Generate click — and must
+        # release it again on success so a later call isn't blocked forever.
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        assert test_state.generation.is_generation_running() is False
+        r = client.post("/api/enhance-prompt", json={"prompt": "x"})
+        assert r.status_code == 200
+        assert test_state.generation.is_generation_running() is False
+
+    def test_enhance_frees_the_slot_after_failure(self, client, fake_services, test_state, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        fake_services.prompt_enhancer_pipeline.raise_on_enhance = RuntimeError("boom")
+        client.post("/api/enhance-prompt", json={"prompt": "x"})
+        assert test_state.generation.is_generation_running() is False
+
+        fake_services.prompt_enhancer_pipeline.raise_on_enhance = None
+        r = client.post("/api/enhance-prompt", json={"prompt": "x"})
+        assert r.status_code == 200
+
+
+class TestApiProvider:
+    # provider="api" never touches the local Gemma pipeline — no create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID) call
+    # anywhere in this class, proving the local-checkpoint requirement is fully bypassed.
+    def test_free_rewrite_calls_gemini_without_local_gemma(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_ok("a cat, enhanced"))
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        assert r.status_code == 200
+        assert r.json()["enhancedPrompt"] == "a cat, enhanced"
+        assert f"models/{DEFAULT_GEMINI_MODEL}:generateContent" in test_state.http.calls[-1].url
+
+    def test_posts_to_configured_gemini_model(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.state.app_settings.gemini_model = "gemini-2.0-flash"
+        test_state.http.queue("post", _gemini_ok("a cat, enhanced"))
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        assert r.status_code == 200
+        url = test_state.http.calls[-1].url
+        assert "models/gemini-2.0-flash:generateContent" in url
+        assert "gemini-2.5-flash:" not in url
+
+    def test_empty_gemini_model_uses_default_at_generate_time(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.state.app_settings.gemini_model = ""
+        test_state.http.queue("post", _gemini_ok("a cat, enhanced"))
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        assert r.status_code == 200
+        assert f"models/{DEFAULT_GEMINI_MODEL}:generateContent" in test_state.http.calls[-1].url
+
+    def test_stored_non_text_gemini_model_uses_default_at_generate_time(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        for stored in ("nano-banana-pro", "gemma-4-31b-it"):
+            test_state.state.app_settings.gemini_model = stored
+            test_state.http.queue("post", _gemini_ok("a cat, enhanced"))
+
+            r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+            assert r.status_code == 200
+            assert f"models/{DEFAULT_GEMINI_MODEL}:generateContent" in test_state.http.calls[-1].url
+            assert stored not in test_state.http.calls[-1].url
+
+    def test_thinking_budget_zero_is_sent_only_for_2_5_flash(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.state.app_settings.gemini_model = "gemini-2.5-flash-lite"
+        test_state.http.queue(
+            "post",
+            _gemini_ok("a cat, enhanced"),
+            _gemini_ok("a cat, enhanced"),
+            _gemini_ok("a cat, enhanced"),
+        )
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        assert r.status_code == 200
+        default_config = test_state.http.calls[-1].json_payload["generationConfig"]
+        assert default_config["thinkingConfig"] == {"thinkingBudget": 0}
+        assert default_config["maxOutputTokens"] == 512
+
+        test_state.state.app_settings.gemini_model = "gemini-2.0-flash"
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        assert r.status_code == 200
+        assert "thinkingConfig" not in test_state.http.calls[-1].json_payload["generationConfig"]
+        assert "models/gemini-2.0-flash:generateContent" in test_state.http.calls[-1].url
+
+        test_state.state.app_settings.gemini_model = "gemini-3.1-pro-preview"
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        assert r.status_code == 200
+        pro_config = test_state.http.calls[-1].json_payload["generationConfig"]
+        assert pro_config["thinkingConfig"] == {"thinkingLevel": "LOW"}
+        assert pro_config["maxOutputTokens"] == 2048
+        assert "models/gemini-3.1-pro-preview:generateContent" in test_state.http.calls[-1].url
+
+    def test_logs_resolved_gemini_model(self, client, test_state, caplog):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.state.app_settings.gemini_model = ""
+        test_state.http.queue("post", _gemini_ok("a cat, enhanced"))
+        caplog.set_level(logging.INFO, logger="handlers.prompt_enhancement_handler")
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        assert r.status_code == 200
+        assert any(
+            record.getMessage() == f"Enhancing prompt via Gemini API ({DEFAULT_GEMINI_MODEL})"
+            for record in caplog.records
+        )
+
+    def test_no_selection_still_gets_a_system_instruction(self, client, test_state):
+        # Regression: Gemini (unlike local Gemma) has no implicit default system prompt of its
+        # own — omitting systemInstruction entirely produced a chatty markdown essay instead of
+        # a rewritten prompt on real hardware.
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_ok())
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        assert r.status_code == 200
+        payload = test_state.http.calls[-1].json_payload
+        system_instruction = payload["systemInstruction"]["parts"][0]["text"]
+        assert "ONLY the rewritten prompt" in system_instruction
+
+    def test_image_path_sends_inline_image_data(self, client, test_state, make_test_image, tmp_path):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_ok())
+        image_path = tmp_path / "cat.png"
+        image_path.write_bytes(make_test_image().getvalue())
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "a cat", "provider": "api", "imagePath": str(image_path)},
+        )
+        assert r.status_code == 200
+        parts = test_state.http.calls[-1].json_payload["contents"][0]["parts"]
+        inline_parts = [p for p in parts if "inlineData" in p]
+        assert len(inline_parts) == 1
+        # Downscaled JPEG for the vision request — not the source PNG.
+        assert inline_parts[0]["inlineData"]["mimeType"] == "image/jpeg"
+
+    def test_first_and_last_send_two_inline_images(self, client, test_state, make_test_image, tmp_path):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_ok())
+        first = tmp_path / "first.png"
+        last = tmp_path / "last.png"
+        first.write_bytes(make_test_image().getvalue())
+        last.write_bytes(make_test_image().getvalue())
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "walk toward the door",
+                "provider": "api",
+                "imagePath": str(first),
+                "lastImagePath": str(last),
+            },
+        )
+        assert r.status_code == 200
+        parts = test_state.http.calls[-1].json_payload["contents"][0]["parts"]
+        inline_parts = [p for p in parts if "inlineData" in p]
+        assert len(inline_parts) == 2
+        assert inline_parts[0]["inlineData"]["mimeType"] == "image/jpeg"
+        assert inline_parts[1]["inlineData"]["mimeType"] == "image/jpeg"
+        text_parts = [p["text"] for p in parts if "text" in p]
+        assert "First frame:" in text_parts
+        assert "Last frame:" in text_parts
+
+    def test_keyframes_send_every_inline_image(self, client, test_state, make_test_image, tmp_path):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_ok())
+        opening = tmp_path / "opening.png"
+        middle = tmp_path / "middle.png"
+        closing = tmp_path / "closing.png"
+        for path in (opening, middle, closing):
+            path.write_bytes(make_test_image().getvalue())
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "walk the hall",
+                "provider": "api",
+                "keyframes": [
+                    {"imagePath": str(opening), "frameIndex": 0},
+                    {"imagePath": str(middle), "frameIndex": 40},
+                    {"imagePath": str(closing), "frameIndex": 80},
+                ],
+            },
+        )
+        assert r.status_code == 200
+        parts = test_state.http.calls[-1].json_payload["contents"][0]["parts"]
+        inline_parts = [p for p in parts if "inlineData" in p]
+        assert len(inline_parts) == 3
+        text_parts = [p["text"] for p in parts if "text" in p]
+        assert "Keyframe 1: frame 0, strength 1." in text_parts
+        assert "Keyframe 2: frame 40, strength 1." in text_parts
+        assert "Keyframe 3: frame 80, strength 1." in text_parts
+        assert "Extra user instructions: walk the hall" in text_parts
+        system_instruction = test_state.http.calls[-1].json_payload["systemInstruction"]["parts"][0]["text"]
+        assert "visual ground truth" in system_instruction
+        assert "extra user instructions" in system_instruction.lower()
+
+    def test_keyframes_include_clip_clock_on_the_user_turn(
+        self, client, test_state, make_test_image, tmp_path
+    ):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_ok())
+        opening = tmp_path / "opening.png"
+        middle = tmp_path / "middle.png"
+        for path in (opening, middle):
+            path.write_bytes(make_test_image().getvalue())
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "walk the hall",
+                "provider": "api",
+                "duration": 5,
+                "fps": 24,
+                "keyframes": [
+                    {"imagePath": str(opening), "frameIndex": 0},
+                    {"imagePath": str(middle), "frameIndex": 40},
+                ],
+            },
+        )
+        assert r.status_code == 200
+        parts = test_state.http.calls[-1].json_payload["contents"][0]["parts"]
+        text_parts = [p["text"] for p in parts if "text" in p]
+        assert "Keyframe 1: frame 0 (0.00s), strength 1." in text_parts
+        assert "Keyframe 2: frame 40 (1.67s), strength 1." in text_parts
+        assert any(text.startswith("Clip: 5 seconds at 24 fps.") for text in text_parts)
+        assert any("Extra user instructions: walk the hall" in text for text in text_parts)
+
+    def test_large_image_is_downscaled_before_gemini(self, client, test_state, tmp_path):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_ok())
+        image_path = tmp_path / "wide.png"
+        Image.new("RGB", (2000, 1200), "red").save(image_path, format="PNG")
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "a cat", "provider": "api", "imagePath": str(image_path)},
+        )
+        assert r.status_code == 200
+        parts = test_state.http.calls[-1].json_payload["contents"][0]["parts"]
+        inline = next(p["inlineData"] for p in parts if "inlineData" in p)
+        assert inline["mimeType"] == "image/jpeg"
+        with Image.open(BytesIO(base64.b64decode(inline["data"]))) as sent:
+            assert sent.format == "JPEG"
+            assert max(sent.size) == 896
+            assert sent.size == (896, 538)
+
+    def test_empty_prompt_with_image_sends_caption_instruction(
+        self, client, test_state, make_test_image, tmp_path
+    ):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_ok())
+        image_path = tmp_path / "cat.png"
+        image_path.write_bytes(make_test_image().getvalue())
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "", "provider": "api", "imagePath": str(image_path)},
+        )
+        assert r.status_code == 200
+        parts = test_state.http.calls[-1].json_payload["contents"][0]["parts"]
+        text_parts = [p["text"] for p in parts if "text" in p]
+        assert any("No user prompt" in text for text in text_parts)
+        assert any("inlineData" in p for p in parts)
+
+    def test_gif_rejected_before_reaching_gemini(self, client, test_state, tmp_path):
+        # Our own validate_image_file() allows GIF (for the local provider's benefit), but
+        # Gemini's inlineData doesn't support it — this should fail fast with a clear message
+        # rather than bouncing off Gemini as an opaque upstream error.
+        from PIL import Image
+
+        test_state.state.app_settings.gemini_api_key = "key"
+        image_path = tmp_path / "cat.gif"
+        Image.new("RGB", (8, 8), "red").save(image_path, format="GIF")
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "a cat", "provider": "api", "imagePath": str(image_path)},
+        )
+        assert_http_error(
+            r, status_code=400, code="GEMINI_UNSUPPORTED_IMAGE_FORMAT",
+            message="Image format GIF isn't supported by the Gemini API provider "
+                    "(use Local, or convert the image to PNG/JPEG/WEBP)",
+        )
+        assert len(test_state.http.calls) == 0
+
+    def test_catalog_lora_system_prompt_reused_for_api_provider(self, client, fake_services, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        add_lora(
+            fake_services, id="cozy-felt", name="Cozy Felt", trigger="F3ltCut0u7", trigger_placement="anywhere",
+        )
+        test_state.http.queue("post", _gemini_ok("a felt fox"))
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "a fox", "provider": "api", "loraCatalogIds": ["cozy-felt"]},
+        )
+        assert r.status_code == 200
+        assert r.json()["enhancedPrompt"] == "a felt fox F3ltCut0u7"
+        system_instruction = test_state.http.calls[-1].json_payload["systemInstruction"]["parts"][0]["text"]
+        assert "Cozy Felt" in system_instruction
+
+    def test_missing_gemini_key_rejected(self, client):
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "provider": "api"})
+        assert_http_error(r, status_code=400, code="GEMINI_API_KEY_MISSING")
+
+    def test_whitespace_only_gemini_key_is_rejected(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "   "
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "provider": "api"})
+        assert_http_error(r, status_code=400, code="GEMINI_API_KEY_MISSING")
+
+    def test_invalid_gemini_key_returns_distinct_code(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue(
+            "post",
+            FakeResponse(status_code=400, json_payload=_GEMINI_INVALID_API_KEY_BODY),
+        )
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "provider": "api"})
+        assert_http_error(
+            r,
+            status_code=400,
+            code="GEMINI_INVALID_API_KEY",
+            message="Gemini rejected the configured API key",
+        )
+
+    def test_unrelated_invalid_argument_is_not_treated_as_invalid_key(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        body = {
+            "error": {
+                "code": 400,
+                "message": "Invalid JSON payload",
+                "status": "INVALID_ARGUMENT",
+                "details": [{"@type": "type.googleapis.com/google.rpc.BadRequest"}],
+            }
+        }
+        test_state.http.queue("post", FakeResponse(status_code=400, text="malformed", json_payload=body))
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "provider": "api"})
+        assert_http_error(r, status_code=400, code="HTTP_400", message="Gemini API error: malformed")
+
+    def test_non_json_gemini_error_is_not_treated_as_invalid_key(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue(
+            "post",
+            FakeResponse(status_code=400, text="not json", json_raises=True),
+        )
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "provider": "api"})
+        assert_http_error(r, status_code=400, code="HTTP_400", message="Gemini API error: not json")
+
+    def test_upstream_error_propagates(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_error(429, "rate limited"))
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "provider": "api"})
+        assert r.status_code == 429
+
+    def test_empty_response_rejected_instead_of_wiping_the_prompt(self, client, test_state):
+        # Regression: whitespace-only text passes the strict schema (it's a valid, non-blocked
+        # candidate) — but handing it back as enhancedPrompt would silently erase the user's
+        # prompt on what looks like a "success" response.
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_ok("   "))
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "provider": "api"})
+        assert_http_error(r, status_code=500, code="GEMINI_EMPTY_RESPONSE",
+                           message="Gemini returned an empty response")
+
+    def test_blocked_prompt_returns_422(self, client, test_state):
+        # A prompt rejected before any candidate is generated: HTTP 200, empty candidates,
+        # promptFeedback.blockReason set. Previously fell through to a strict-schema
+        # ValidationError and surfaced as an opaque 500.
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", FakeResponse(
+            status_code=200,
+            json_payload={"candidates": [], "promptFeedback": {"blockReason": "SAFETY"}},
+        ))
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "provider": "api"})
+        assert_http_error(r, status_code=422, code="GEMINI_CONTENT_BLOCKED",
+                           message="Prompt rejected by Gemini safety filters (SAFETY)")
+
+    def test_blocked_completion_returns_422(self, client, test_state):
+        # A candidate generated then withheld: finishReason set, no `content` key at all.
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", FakeResponse(
+            status_code=200,
+            json_payload={"candidates": [{"finishReason": "SAFETY", "safetyRatings": []}]},
+        ))
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "x", "provider": "api"})
+        assert_http_error(r, status_code=422, code="GEMINI_CONTENT_BLOCKED",
+                           message="Response withheld by Gemini safety filters (SAFETY)")
+
+    def test_local_provider_still_requires_gemma_even_with_gemini_key_set(self, client, test_state):
+        # provider defaults to "local" — a configured Gemini key must not bypass the local gate.
+        test_state.state.app_settings.gemini_api_key = "key"
+        r = client.post("/api/enhance-prompt", json={"prompt": "x"})
+        assert_http_error(r, status_code=409, code="LOCAL_TEXT_ENCODER_NOT_AVAILABLE")
+
+    def test_enhance_passes_negative_prompt_as_exclusion_constraint_on_positive_rewrite(
+        self, client, test_state
+    ):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_ok("a sharp fox in the snow"))
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "a fox", "negativePrompt": "blurry, watermark", "provider": "api"},
+        )
+        assert r.status_code == 200
+        assert r.json() == {"enhancedPrompt": "a sharp fox in the snow"}
+        payload = test_state.http.calls[-1].json_payload
+        assert (
+            "Excluded elements (do not include or mention in the prompt): blurry, watermark"
+            in payload["contents"][0]["parts"][0]["text"]
+        )
+        assert "Do NOT include, mention, describe, or imply" in payload["systemInstruction"]["parts"][0]["text"]
+
+        # Empty negativePrompt omits the exclusion constraint.
+        test_state.http.queue("post", _gemini_ok("a plain fox caption"))
+        r_empty = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "a fox", "negativePrompt": "", "provider": "api"},
+        )
+        assert r_empty.status_code == 200
+        assert r_empty.json() == {"enhancedPrompt": "a plain fox caption"}
+        empty_payload = test_state.http.calls[-1].json_payload
+        assert "Excluded elements" not in empty_payload["contents"][0]["parts"][0]["text"]
+        assert "Do NOT include, mention, describe, or imply" not in empty_payload["systemInstruction"]["parts"][0]["text"]
+
+    def test_template_fill_ic_lora_enhance_passes_negative_prompt_exclusion_to_enhancer(
+        self, client, test_state, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        test_state.state.app_settings.use_local_text_encoder = True
+        add_ic_lora(
+            fake_services,
+            id="deblur",
+            name="Deblur",
+            prompt_template=PromptTemplateSpec(
+                template="Reference shows {reference}. DEBLUR {result}.",
+                placeholders={
+                    "reference": PromptTemplatePlaceholder(),
+                    "result": PromptTemplatePlaceholder(),
+                },
+            ),
+        )
+        fake_services.prompt_enhancer_pipeline.enhanced_prompt = (
+            '{"reference": "a blurry butterfly", "result": "a sharp butterfly"}'
+        )
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "sharpen the butterfly",
+                "negativePrompt": "haloing, ringing",
+                "icLoraId": "deblur",
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["enhancedPrompt"] == "Reference shows a blurry butterfly. DEBLUR a sharp butterfly."
+        call = fake_services.prompt_enhancer_pipeline.enhance_t2v_calls[-1]
+        assert call["negative_prompt"] == "haloing, ringing"
+
+    def test_ltx_prompt_enhancer_pipeline_includes_negative_prompt_exclusion_in_system_and_user_messages(
+        self, monkeypatch
+    ):
+        captured_messages: list[list[dict[str, object]]] = []
+
+        monkeypatch.setattr(ltx_gpu_model, "gpu_model", lambda enc: nullcontext(enc))
+        monkeypatch.setattr(LtxPromptEnhancerPipeline, "_build_text_encoder", lambda self: object())
+        monkeypatch.setattr(ltx_mod, "_default_system_prompt", lambda _enc, *, t2v: "default system")
+
+        def fake_generate(_enc, messages, *, image, seed, max_new_tokens_floor=None):
+            del image, seed, max_new_tokens_floor
+            captured_messages.append(messages)
+            return "a sharp fox in the snow"
+
+        monkeypatch.setattr(ltx_mod, "_generate", fake_generate)
+
+        pipe = LtxPromptEnhancerPipeline(gemma_root="/fake/gemma", device="cpu")
+        out = pipe.enhance_t2v("a fox", None, 42, negative_prompt="blurry, watermark")
+        assert out == "a sharp fox in the snow"
+        assert len(captured_messages) == 1
+        sys_msg, user_msg = captured_messages[0]
+        assert "Do NOT include, mention, describe, or imply" in str(sys_msg["content"])
+        assert "Excluded elements (do not include or mention in the prompt): blurry, watermark" in str(
+            user_msg["content"]
+        )
+
+
+class TestImageMediaType:
+    def test_generation_uses_image_generation_system_prompt(
+        self, client, fake_services, create_fake_model_files
+    ):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        r = client.post("/api/enhance-prompt", json={"prompt": "a red car", "mediaType": "image"})
+        assert r.status_code == 200
+        call = fake_services.prompt_enhancer_pipeline.enhance_t2v_calls[0]
+        assert "Z-Image-Turbo" in call["system_prompt"]
+        assert "text-to-image" in call["system_prompt"]
+
+    def test_editing_uses_image_edit_system_prompt_and_routes_to_i2v(
+        self, client, fake_services, create_fake_model_files, make_test_image, tmp_path
+    ):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        image_path = tmp_path / "src.png"
+        image_path.write_bytes(make_test_image().getvalue())
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "make the sky purple", "mediaType": "image", "imagePath": str(image_path)},
+        )
+        assert r.status_code == 200
+        assert len(fake_services.prompt_enhancer_pipeline.enhance_i2v_calls) == 1
+        call = fake_services.prompt_enhancer_pipeline.enhance_i2v_calls[0]
+        assert "image-to-image editing" in call["system_prompt"]
+        assert "DESIRED RESULT" in call["system_prompt"]
+
+    def test_image_media_type_ignores_last_image(
+        self, client, fake_services, create_fake_model_files, make_test_image, tmp_path
+    ):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        first = tmp_path / "src.png"
+        last = tmp_path / "last.png"
+        first.write_bytes(make_test_image().getvalue())
+        last.write_bytes(make_test_image().getvalue())
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={
+                "prompt": "make the sky purple",
+                "mediaType": "image",
+                "imagePath": str(first),
+                "lastImagePath": str(last),
+            },
+        )
+        assert r.status_code == 200
+        call = fake_services.prompt_enhancer_pipeline.enhance_i2v_calls[0]
+        assert call["image_path"] == str(first)
+        assert call["last_image_path"] is None
+
+    def test_image_media_type_rejects_lora_selection(self, client, create_fake_model_files):
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "x", "mediaType": "image", "loraCatalogIds": ["a"]},
+        )
+        assert r.status_code == 422
+
+    def test_image_generation_works_via_api_provider_too(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_ok("a shiny red sedan"))
+
+        r = client.post(
+            "/api/enhance-prompt",
+            json={"prompt": "a red car", "mediaType": "image", "provider": "api"},
+        )
+        assert r.status_code == 200
+        assert r.json()["enhancedPrompt"] == "a shiny red sedan"
+        system_instruction = test_state.http.calls[-1].json_payload["systemInstruction"]["parts"][0]["text"]
+        assert "Z-Image-Turbo" in system_instruction
+
+
+class TestGeminiEnhanceBesideARunningGeneration:
+    """Gemini is an HTTP call, so it needs no GPU slot. Local Gemma keeps its 409 above."""
+
+    def _start_running_generation(self, test_state, create_fake_model_files) -> None:
+        create_fake_model_files(model_id=_LOCAL_ENHANCER_MODEL_ID)
+        test_state.pipelines.load_gpu_pipeline("fast")
+        test_state.generation.start_generation("gen-1")
+
+    def test_gemini_enhance_succeeds_while_a_generation_is_running(
+        self, client, test_state, create_fake_model_files
+    ):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_ok("a cat, enhanced"))
+        self._start_running_generation(test_state, create_fake_model_files)
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+
+        assert r.status_code == 200
+        assert r.json()["enhancedPrompt"] == "a cat, enhanced"
+
+    def test_gemini_enhance_leaves_the_running_generation_and_its_stop_request_alone(
+        self, client, test_state, create_fake_model_files
+    ):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_ok("a cat, enhanced"))
+        self._start_running_generation(test_state, create_fake_model_files)
+        generation_interrupt.request()
+        try:
+            r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+
+            progress = test_state.generation.get_generation_progress()
+            assert r.status_code == 200
+            assert (progress.status, progress.id) == ("running", "gen-1")
+            assert generation_interrupt.is_requested()
+        finally:
+            generation_interrupt.clear()
+
+    def test_gemini_enhance_without_a_key_is_still_a_400_while_a_generation_is_running(
+        self, client, test_state, create_fake_model_files
+    ):
+        self._start_running_generation(test_state, create_fake_model_files)
+
+        r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+
+        assert_http_error(r, status_code=400, code="GEMINI_API_KEY_MISSING")
+
+
+class TestGeminiOneAtATime:
+    def test_a_second_gemini_enhance_during_the_first_is_a_409(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        slot = test_state.prompt_enhancement._gemini_enhance_slot
+        slot.acquire()
+        try:
+            r = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        finally:
+            slot.release()
+
+        assert r.status_code == 409
+        assert test_state.http.calls == []
+
+    def test_a_gemini_enhance_after_a_finished_one_succeeds(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue("post", _gemini_ok("first"), _gemini_ok("second"))
+
+        first = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        second = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+
+        assert (first.status_code, second.status_code) == (200, 200)
+
+    def test_a_failed_gemini_enhance_frees_the_slot(self, client, test_state):
+        test_state.state.app_settings.gemini_api_key = "key"
+        test_state.http.queue(
+            "post", FakeResponse(status_code=500, text="down"), _gemini_ok("recovered")
+        )
+
+        failed = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+        after = client.post("/api/enhance-prompt", json={"prompt": "a cat", "provider": "api"})
+
+        assert failed.status_code != 200
+        assert after.status_code == 200

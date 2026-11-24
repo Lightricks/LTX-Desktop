@@ -1,0 +1,67 @@
+@use "@/components/home/shell-layout.scss" as shell;
+@import "@ds/styles/themes/mixins.module.scss";
+
+.crumbs {
+  white-space: nowrap;
+  // Chrome already insets inline. Block padding supplies the band when no PageHeader is mounted.
+  padding-block: var(--spacing-md) var(--spacing-sm);
+  padding-inline: 0;
+  box-sizing: border-box;
+}
+
+.crumbsInTopBar {
+  display: flex;
+  align-items: center;
+  padding: 0;
+}
+
+.crumbLink,
+.separator,
+.current,
+.crumbText {
+  display: inline;
+  vertical-align: middle;
+  @include text_style_heading_sm;
+  white-space: nowrap;
+}
+
+.crumbLink {
+  color: var(--semantic-fg-secondary);
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--semantic-fg-primary);
+  }
+}
+
+.separator,
+.crumbText {
+  color: var(--semantic-fg-secondary);
+}
+
+.current {
+  color: var(--semantic-fg-primary);
+}
+
+button.infoButton {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  vertical-align: middle;
+  padding-inline-start: 0;
+  color: var(--semantic-fg-secondary);
+
+  &:hover,
+  &:focus-visible {
+    color: var(--semantic-fg-primary);
+  }
+}
+
+@media (max-width: shell.$shell-compact-breakpoint) {
+  button.infoButton {
+    min-width: 44px;
+    min-height: 44px;
+    color: var(--semantic-fg-primary);
+  }
+}

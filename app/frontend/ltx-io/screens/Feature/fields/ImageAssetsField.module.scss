@@ -1,0 +1,75 @@
+.subtitle {
+  max-width: 280px;
+  text-align: center;
+  white-space: normal;
+}
+
+.labelGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+}
+
+.hint {
+  color: var(--semantic-fg-tertiary);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-md);
+}
+
+.addTile,
+.thumb {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+}
+
+.addTile {
+  border: 1px dashed var(--semantic-border-secondary);
+  background: var(--semantic-bg-primary);
+  color: var(--semantic-fg-primary);
+  font-size: 28px;
+  cursor: pointer;
+}
+
+.addTile:hover {
+  border-color: var(--semantic-bg-separator-primary);
+}
+
+.thumb {
+  background: var(--semantic-bg-tertiary);
+}
+
+.thumbImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  // A pre-made sheet is wide. Cropping it to the square tile would hide panels.
+  object-fit: contain;
+}
+
+// A touch screen has no hover, so the actions stay visible there.
+.thumbActions {
+  position: absolute;
+  top: var(--spacing-sm);
+  right: var(--spacing-sm);
+  display: flex;
+  gap: var(--spacing-xs);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.thumb:hover .thumbActions,
+.thumb:focus-within .thumbActions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .thumbActions {
+    opacity: 1;
+  }
+}

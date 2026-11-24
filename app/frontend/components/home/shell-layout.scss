@@ -1,0 +1,4 @@
+// Compact shell: the sidebar stacks and the header wraps.
+// @media cannot read var(), so queries use the Sass variable.
+// --shell-compact-breakpoint is the same value for other CSS.
+$shell-compact-breakpoint: 980px;

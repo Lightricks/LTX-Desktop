@@ -1,0 +1,262 @@
+{
+  "python": "3.13.12",
+  "target": "win_amd64",
+  "comfy_version": "0.38.0",
+  "base_override": [
+    "av"
+  ],
+  "wheels": [
+    {
+      "filename": "aiohappyeyeballs-2.7.1-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/71/43/1947f06babed6b3f1d7f38b0c767f52df66bfb2bc10b468c4a7de9eceff2/aiohappyeyeballs-2.7.1-py3-none-any.whl",
+      "sha256": "9243213661e29250eb41368e5daa826fc017156c3b8a11440826b2e3ed376472",
+      "size": 15038
+    },
+    {
+      "filename": "aiohttp-3.14.5-cp313-cp313-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/8d/d0/8eca2c65aa467320990d78fb2005f38ed3588944280c39ff9deb6423fef1/aiohttp-3.14.5-cp313-cp313-win_amd64.whl",
+      "sha256": "d05e94cdfe0d15d0206f970722d2554780ce562787b21b218b275447f8751319",
+      "size": 505985
+    },
+    {
+      "filename": "aiosignal-1.4.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/fb/76/641ae371508676492379f16e2fa48f4e2c11741bd63c48be4b12a6b09cba/aiosignal-1.4.0-py3-none-any.whl",
+      "sha256": "053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e",
+      "size": 7490
+    },
+    {
+      "filename": "alembic-1.20.1-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/11/3c/8740f5b4e1bd57333e4f84265b9b6363da4f7cf70f5622dd1e2fde7a0bd5/alembic-1.20.1-py3-none-any.whl",
+      "sha256": "9970712cfb81ea26c8658d378aaa5b8f6ff9146e5bb111d70497c164016cf598",
+      "size": 270355
+    },
+    {
+      "filename": "attrs-26.1.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl",
+      "sha256": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309",
+      "size": 67548
+    },
+    {
+      "filename": "av-19.0.2-cp312-abi3-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/32/5a/743a83666ded197df8b9957e2800bef9a39d52b23be2ca211bbd14b5fb22/av-19.0.2-cp312-abi3-win_amd64.whl",
+      "sha256": "3ce5a1d7b916d13c16ac58f1756f0fee4af2d53f02bc1403e18550b50d375a22",
+      "size": 28150949
+    },
+    {
+      "filename": "blake3-1.0.11-cp313-cp313-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/8d/4e/5887683437805ce26bbfd9bcc16c6dadcf4b31941779cb8e9f37b1b072f4/blake3-1.0.11-cp313-cp313-win_amd64.whl",
+      "sha256": "a7ff972740c02b3abc89048f27b90bc875412df04d7432d5e7ae64486ad43315",
+      "size": 217885
+    },
+    {
+      "filename": "comfy_aimdo-0.5.5-cp39-abi3-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/ca/c4/83483278fefcb56d76b21c3ceab92e63426ba4a9c49227685d8049524819/comfy_aimdo-0.5.5-cp39-abi3-win_amd64.whl",
+      "sha256": "a86906b230d067f7b7390afd7783742777d56df4ad52790c137d8a0236ab8524",
+      "size": 280848
+    },
+    {
+      "filename": "comfy_angle-0.1.1-py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/69/f2/6cab25faec61e3713bc6dde1edf00a00ae750d2e75561e4b3bfd38eafd6b/comfy_angle-0.1.1-py3-none-win_amd64.whl",
+      "sha256": "beddd2e3b9a67e55f5afaef4da73e3ac704fd88f0cbe6a6f67ce5718d7c7edeb",
+      "size": 5571203
+    },
+    {
+      "filename": "comfy_kitchen-0.2.36-cp312-abi3-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/4e/57/3dcb4b1a3993e884147dd2c28797c291c96998871028fb738a6c24b14aac/comfy_kitchen-0.2.36-cp312-abi3-win_amd64.whl",
+      "sha256": "c5710fb0bc62c320f78cb64ed7fd7027432e4a8f4131921169f5a99f3ed90119",
+      "size": 46146200
+    },
+    {
+      "filename": "comfyui_frontend_package-1.53.6-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/60/c6/aab12cefc5c3247d7d1bf3fdb9fb10f8478c21200b1e0b9c02bb89bca655/comfyui_frontend_package-1.53.6-py3-none-any.whl",
+      "sha256": "8b9616452c8bc693a4a77f63d05c8c690e9ef2b279f330d8d957541d69c6c452",
+      "size": 25152605
+    },
+    {
+      "filename": "decorator-5.3.2-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/c0/bb/03ad4489fe19a410fe0065bbfb5424d28455eac9115e9cee7a56b6b1ec37/decorator-5.3.2-py3-none-any.whl",
+      "sha256": "d3fb2a434ac31e231d14175ecbda823d83f26b7e45270cd7cd4d0350264b79e2",
+      "size": 11830
+    },
+    {
+      "filename": "frozenlist-1.8.0-cp313-cp313-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/d8/cf/174c91dbc9cc49bc7b7aab74d8b734e974d1faa8f191c74af9b7e80848e6/frozenlist-1.8.0-cp313-cp313-win_amd64.whl",
+      "sha256": "878be833caa6a3821caf85eb39c5ba92d28e85df26d57afb06b35b2efd937231",
+      "size": 43882
+    },
+    {
+      "filename": "joblib-1.6.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/18/53/84099323c2ec4be98d935f63c033ac4151ee83836ca1050ede3b3aadf155/joblib-1.6.0-py3-none-any.whl",
+      "sha256": "3dbbf9f6e4b592a2357b854608e980fe6390d131d7a82f011a377ef2ebef7aba",
+      "size": 306115
+    },
+    {
+      "filename": "kornia-0.9.2-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/b9/07/274fef1f0d8e230ef1049a1a1fe89651d090bf5de52a40e4d5e402738290/kornia-0.9.2-py3-none-any.whl",
+      "sha256": "3b0340c196106fbdd4cbcd2186abe02e4f16c76c2b5e1a3c5e219c849fdd18db",
+      "size": 2214099
+    },
+    {
+      "filename": "kornia_rs-0.2.0-cp313-cp313-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/ef/30/f97091dc19144e415aac6d3e2c44f803e72f247dc0aa2cf86450c77b04c3/kornia_rs-0.2.0-cp313-cp313-win_amd64.whl",
+      "sha256": "568dcbe7f4a352d73ed628383a085e772cd7576f6740eed0b75b15a815b19b73",
+      "size": 4341624
+    },
+    {
+      "filename": "lazy_loader-0.6-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/23/93/4e45e37f26c820216704b36b8e67cc55c490a7abd287a78a26a2c0e21386/lazy_loader-0.6-py3-none-any.whl",
+      "sha256": "77253be3391b06124a0e16105bd663b6c54470af1a9ca8e1cf026f38d58ed056",
+      "size": 8791
+    },
+    {
+      "filename": "librosa-1.0.1-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/4c/f6/947283574368245414b3143f329c3c15c298b2ffe185eb08febf0188a49f/librosa-1.0.1-py3-none-any.whl",
+      "sha256": "bc26f947ca08307c5ff116b219560372aa340213d7f3cc2cf1f3f02b4e251147",
+      "size": 301475
+    },
+    {
+      "filename": "llvmlite-0.50.0-cp313-cp313-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/d5/17/894321d44cf94fa5cf921eff4e7ff24c7732c3d702236d40d6055b68a693/llvmlite-0.50.0-cp313-cp313-win_amd64.whl",
+      "sha256": "266a6a29be71c3e3a22960ddcedf66b4e0388e5abb6cc4991cc093d6df402ad7",
+      "size": 41865552
+    },
+    {
+      "filename": "loguru-0.8.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/c8/00/9ee7c8da7342b1a5524bca9d036f89e7d1d1e5a6345c9623763eeeac941f/loguru-0.8.0-py3-none-any.whl",
+      "sha256": "e0fba09d6f76ba2d2f4bd1757122942f5a670c702e988b5efaeab99dacba0069",
+      "size": 69409
+    },
+    {
+      "filename": "mako-1.4.3-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/6d/a0/053d6af3e8f871e0073b4a36732d9e65be77a72e5434c31b94f6af78a6bb/mako-1.4.3-py3-none-any.whl",
+      "sha256": "723296007c870bfd6b3f0c3230dba7198096e5269297ebf5e4eff9e7ffa39d4f",
+      "size": 80164
+    },
+    {
+      "filename": "msgpack-1.2.4-cp313-cp313-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/02/4a/a7e2778ce09a943c17b6f91c7acb2f9488357657c01f2cccb278297621c4/msgpack-1.2.4-cp313-cp313-win_amd64.whl",
+      "sha256": "318d4e634d2b320be10decd9968ad1ae0be1d80cba23b5528c37b429eeb0e3e0",
+      "size": 77039
+    },
+    {
+      "filename": "multidict-7.2.1-cp313-cp313-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/74/6b/3f90a565e6eb94266d197d91cca5833b34ab89768a24f7f07b29bc186e09/multidict-7.2.1-cp313-cp313-win_amd64.whl",
+      "sha256": "ce0f884408938fbd72e764031d0e23a8f5e438a7bf73641089c7a6465cb84456",
+      "size": 95078
+    },
+    {
+      "filename": "narwhals-2.29.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/9e/2b/20b4b463c3795dc390db8fa6ec2b5c3e0aea90a760f813305da4c33dd814/narwhals-2.29.0-py3-none-any.whl",
+      "sha256": "1c69b3dc30240f6e848c5a673cafc86affa44184ecce721e25b7194663ad10dc",
+      "size": 501718
+    },
+    {
+      "filename": "numba-0.68.1-cp313-cp313-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/da/81/4eee3a003765c3116f3360f11b7d45e71bb6bfc09118b06bc34a3a5cb859/numba-0.68.1-cp313-cp313-win_amd64.whl",
+      "sha256": "dc3f29d540be5fc60699dbac53fc04f246cbf503a4e2e8315f04b70fcd9f1ec7",
+      "size": 2832621
+    },
+    {
+      "filename": "omegaconf-2.4.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/4f/bd/0d9f8247b0819385213d09564eda5c52d3673313c2414d51f72883ec24cd/omegaconf-2.4.0-py3-none-any.whl",
+      "sha256": "f141a664c777582405e3cc6e0545ecc79429e79f844995b1a6e71c35946a025c",
+      "size": 254152
+    },
+    {
+      "filename": "platformdirs-4.14.8-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/5b/be/373cc7341f53bfd3acba3e5db62433fd960a45fcf73ad64a5f4d27e74910/platformdirs-4.14.8-py3-none-any.whl",
+      "sha256": "1e34af590de4d978631b751eb2202f2fee4497537a17c1720b12fcf57b331392",
+      "size": 94267
+    },
+    {
+      "filename": "pooch-1.9.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/2a/2d/d4bf65e47cea8ff2c794a600c4fd1273a7902f268757c531e0ee9f18aa58/pooch-1.9.0-py3-none-any.whl",
+      "sha256": "f265597baa9f760d25ceb29d0beb8186c243d6607b0f60b83ecf14078dbc703b",
+      "size": 67175
+    },
+    {
+      "filename": "propcache-0.5.4-cp313-cp313-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/01/bc/e0a7b84af04ec02d73a48aa71f091e1e4a2107e3074b7ce12195b66901f4/propcache-0.5.4-cp313-cp313-win_amd64.whl",
+      "sha256": "0c889f6fa84957bc7e8b4eab71fd16a0455068d5045e3aa40c733071d2b2fd77",
+      "size": 45342
+    },
+    {
+      "filename": "pydantic_settings-2.14.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/01/dd/bebff3040138f00ae8a102d426b27349b9a49acc310fcae7f92112d867e3/pydantic_settings-2.14.0-py3-none-any.whl",
+      "sha256": "fc8d5d692eb7092e43c8647c1c35a3ecd00e040fcf02ed86f4cb5458ca62182e",
+      "size": 60940
+    },
+    {
+      "filename": "pyopengl-3.1.10-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/de/e4/1ba6f44e491c4eece978685230dde56b14d51a0365bc1b774ddaa94d14cd/pyopengl-3.1.10-py3-none-any.whl",
+      "sha256": "794a943daced39300879e4e47bd94525280685f42dbb5a998d336cfff151d74f",
+      "size": 3194996
+    },
+    {
+      "filename": "scikit_learn-1.9.1-cp313-cp313-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/96/45/a10add34c08184d373be9384660c75758128ca881ed27b503b6f6a742478/scikit_learn-1.9.1-cp313-cp313-win_amd64.whl",
+      "sha256": "2070f271e5375dc42c6bb93b461ab1c0aa5841d4009267e0cfd95a39dca94a43",
+      "size": 8237244
+    },
+    {
+      "filename": "simpleeval-1.0.8-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/12/33/d1ecd9f4f5f272b36ad7b268e307ba0a59c109d8ad134a231cda780baac9/simpleeval-1.0.8-py3-none-any.whl",
+      "sha256": "c9c4ff42879ebf0c05f6562cb81031869948916be343bcc950b81fcc081fe9ce",
+      "size": 18925
+    },
+    {
+      "filename": "soundfile-0.14.0-py2.py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/ed/97/b39c18ac1df45e755ca22b8b00e872929da5d107998a207a5e4ac831bfda/soundfile-0.14.0-py2.py3-none-win_amd64.whl",
+      "sha256": "299491d3499460fb1b74bb4bd78b57ffc2d243a5fafa7b6ec1b264875c78453e",
+      "size": 1021480
+    },
+    {
+      "filename": "soxr-1.1.0-cp312-abi3-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/b0/4d/621e4150e4815246ad552d215a8a294a90143fedd19ee442cf82d3b3abc8/soxr-1.1.0-cp312-abi3-win_amd64.whl",
+      "sha256": "6ae2a174bffea94e8ead857dad85999d3f49f091774dbad5b046c0417d7092f4",
+      "size": 174357
+    },
+    {
+      "filename": "spandrel-0.4.2-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/74/31/411ea965835534c43d4b98d451968354876e0e867ea1fd42669e4cca0732/spandrel-0.4.2-py3-none-any.whl",
+      "sha256": "6c93e3ecbeb0e548fd2df45a605472b34c1614287c56b51bb33cdef7ae5235b5",
+      "size": 320811
+    },
+    {
+      "filename": "sqlalchemy-2.1.9-cp313-cp313-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/41/1e/1b81e7d1ea49e099ac0881117ab411eab9bd3bb3d6202b54a82bd42e6e86/sqlalchemy-2.1.9-cp313-cp313-win_amd64.whl",
+      "sha256": "7fa9e073eaabcd9286fd60ec587a9e0d7a2ff10136056df954c50639815785c6",
+      "size": 2442705
+    },
+    {
+      "filename": "threadpoolctl-3.8.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/54/1b/831f2de4840a25db1dd7b1afea433ccafe6bb10aca07e13264f2079462d0/threadpoolctl-3.8.0-py3-none-any.whl",
+      "sha256": "f1b49c82704d50f13ffae019c727b0fa4f6791a58f48f06a09c45face1be66da",
+      "size": 32091
+    },
+    {
+      "filename": "torchsde-0.2.6-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/dd/1f/b67ebd7e19ffe259f05d3cf4547326725c3113d640c277030be3e9998d6f/torchsde-0.2.6-py3-none-any.whl",
+      "sha256": "19bf7ff02eec7e8e46ba1cdb4aa0f9db1c51d492524a16975234b467f7fc463b",
+      "size": 61232
+    },
+    {
+      "filename": "trampoline-0.1.2-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/73/54/d2805324fb746d8da86d3844bee4f55c0cfd6c136de61b713772d44c5bea/trampoline-0.1.2-py3-none-any.whl",
+      "sha256": "36cc9a4ff9811843d177fc0e0740efbd7da39eadfe6e50c9e2937cbc06d899d9",
+      "size": 5173
+    },
+    {
+      "filename": "win32_setctime-1.2.1-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/bd/df/5593480bc1e932eeae28e4fa182ab68174edd0d77409ced3b6491d02d1d5/win32_setctime-1.2.1-py3-none-any.whl",
+      "sha256": "a9edc685b35414bec69392c866ed82456ad125ac4a6a4b703ec1d8b462d4f477",
+      "size": 4215
+    },
+    {
+      "filename": "yarl-1.25.1-cp313-cp313-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/3a/8f/4db01cef62caff0d7a4593ed694fb8a41a27a11158cab80d290221f13e57/yarl-1.25.1-cp313-cp313-win_amd64.whl",
+      "sha256": "1f51020b2eb8a003c84925638ec63c21a750a4bddd3a22ec8eac6a742dadf1b9",
+      "size": 101945
+    }
+  ]
+}

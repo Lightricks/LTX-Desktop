@@ -1,0 +1,134 @@
+.checkbox {
+  // Containing block for the visually hidden input below. Without it the input
+  // resolves against a far ancestor, outside any scroll container the label sits
+  // in, so focusing it scrolls that ancestor and shifts the whole screen.
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  cursor: pointer;
+
+  &:has(input:disabled) {
+    cursor: default;
+  }
+
+  &:has(input:focus-visible) .checkbox_control {
+    // Mirror the app-wide `.ltx-io :focus-visible` treatment on the visible
+    // box: the real input is visually hidden (see below).
+    outline: 1px solid var(--semantic-border-focus);
+    outline-offset: 1px;
+  }
+
+  input {
+    // Visually hidden but still keyboard-focusable: `display: none` would
+    // drop the input from the tab order and lock keyboard users out.
+    // Absolute positioning keeps it out of flow (as before), so pointer
+    // visuals and spacing are unchanged.
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+    opacity: 0;
+
+    &:focus-visible {
+      // The ring renders on `.checkbox_control` above, not this 1px box.
+      outline: none;
+    }
+
+    &:checked + .checkbox_control {
+      &.neutral {
+        background: var(--checkbox-fill, var(--semantic-fg-primary));
+      }
+
+      &.danger {
+        background: var(--semantic-fg-danger-primary-enabled);
+      }
+
+      &.brand {
+        background: var(--semantic-fg-brand-primary-enabled);
+      }
+
+      svg {
+        opacity: 1;
+      }
+    }
+
+    &:indeterminate + .checkbox_control {
+      &.neutral {
+        background: var(--semantic-fg-primary);
+      }
+
+      &.danger {
+        background: var(--semantic-fg-danger-primary-enabled);
+      }
+
+      &.brand {
+        background: var(--semantic-fg-brand-primary-enabled);
+      }
+
+      svg {
+        opacity: 0;
+      }
+
+      .checkbox_dash {
+        opacity: 1;
+      }
+    }
+
+    &:disabled + .checkbox_control.neutral {
+      box-shadow: 0 0 0 1px var(--semantic-fg-disabled-primary) inset;
+    }
+
+    &:checked:disabled + .checkbox_control.neutral {
+      background: var(--semantic-fg-disabled-primary);
+      box-shadow: none;
+    }
+  }
+}
+
+.checkbox_control {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--scale-16);
+  height: var(--scale-16);
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  color: var(--checkbox-glyph, var(--semantic-bg-primary));
+
+  svg {
+    display: block;
+    width: var(--scale-12);
+    height: var(--scale-12);
+    opacity: 0;
+  }
+
+  &.neutral {
+    box-shadow: 0 0 0 1px var(--checkbox-stroke, var(--semantic-fg-primary)) inset;
+  }
+
+  &.danger {
+    box-shadow: 0 0 0 1px var(--semantic-fg-danger-primary-enabled) inset;
+  }
+
+  &.brand {
+    box-shadow: 0 0 0 1px var(--semantic-fg-brand-primary-enabled) inset;
+  }
+}
+
+.checkbox_dash {
+  position: absolute;
+  width: var(--scale-8);
+  height: var(--scale-2);
+  border-radius: var(--radius-xxs);
+  background: currentColor;
+  opacity: 0;
+}

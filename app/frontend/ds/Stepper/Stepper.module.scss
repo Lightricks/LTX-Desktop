@@ -1,0 +1,88 @@
+@use "@ds/styles/themes/animationsValues.scss" as *;
+
+.container {
+  display: flex;
+  margin: 0;
+  list-style: none;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs);
+  background: var(--semantic-bg-primary);
+  border: 1px solid var(--semantic-bg-separator-primary);
+  border-radius: var(--radius-md, 8px);
+}
+
+.stepItem {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.step {
+  cursor: pointer;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0 none;
+  background: none;
+  padding: var(--spacing-md) calc(var(--spacing-md) + var(--spacing-xs));
+  border-radius: var(--radius-lg);
+  transition:
+    background-color $duration-moderate $easing-standard-productive,
+    color $duration-moderate $easing-standard-productive;
+
+  > :first-child {
+    width: 100%;
+    min-width: 0;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--semantic-bg-focus);
+    outline-offset: 2px;
+  }
+
+  &:not(.disabled):hover {
+    background-color: var(--semantic-bg-action-secondary-hover);
+  }
+
+  &:not(.disabled):active {
+    background-color: var(--semantic-bg-action-secondary-active);
+  }
+}
+
+.title {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.description {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.selected {
+  background-color: var(--semantic-bg-action-secondary-enabled);
+
+  &.disabled {
+    background-color: var(--semantic-bg-disabled-secondary);
+  }
+}
+
+.disabled {
+  cursor: default;
+
+  .title,
+  .description {
+    color: var(--semantic-fg-disabled-primary);
+  }
+}

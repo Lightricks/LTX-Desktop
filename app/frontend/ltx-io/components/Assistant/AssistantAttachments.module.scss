@@ -1,0 +1,69 @@
+@import "@ds/styles/themes/mixins.module.scss";
+
+.attachments {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.attachment {
+  position: relative;
+  flex: 0 0 56px;
+  box-sizing: border-box;
+  height: 56px;
+  border: 1px solid var(--semantic-bg-separator-primary);
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-secondary);
+}
+.attachmentList {
+  display: flex;
+  gap: var(--spacing-md);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: var(--spacing-sm);
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+.thumbnail {
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+  background: var(--semantic-bg-tertiary);
+  color: var(--semantic-fg-secondary);
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+.remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+.kind {
+  position: absolute;
+  bottom: var(--spacing-sm);
+  left: var(--spacing-sm);
+  display: flex;
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--semantic-bg-primary);
+  color: var(--semantic-fg-primary);
+}
+.hiddenInput {
+  display: none;
+}

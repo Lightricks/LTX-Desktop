@@ -1,0 +1,40 @@
+.root {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+// Box aspect is set inline from the image's natural ratio so portrait
+// frames stay portrait inside the wide pace-step grid.
+.frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--semantic-bg-tertiary);
+  flex-shrink: 0;
+
+  &[data-empty] {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+  }
+}
+
+.image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  // Frame aspect matches the image, so fill == contain (no stretch).
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}

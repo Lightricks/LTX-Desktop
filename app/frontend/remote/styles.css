@@ -1,0 +1,19 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  min-height: 100dvh;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  background: #09090b;
+}

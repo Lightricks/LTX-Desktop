@@ -1,0 +1,10 @@
+[
+  "generation_id",
+  "attempt",
+  "outcome",
+  "runtime_ms",
+  "error_code",
+  "load_mode",
+  "offload_mode",
+  "prompt_rewrite"
+]

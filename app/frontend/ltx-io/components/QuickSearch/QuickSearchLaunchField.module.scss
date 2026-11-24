@@ -1,0 +1,125 @@
+@use "@ds/styles/themes/mixins.module.scss" as *;
+
+@property --search-lift {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@property --search-blur {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@property --search-dim {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+.field {
+  display: flex;
+  gap: var(--spacing-xs);
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 550px;
+  height: 50px;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: var(--semantic-bg-primary);
+  border: 0;
+  border-radius: var(--radius-lg);
+  cursor: text;
+  text-align: left;
+  box-shadow:
+    0 0 2px 0 rgba(0, 0, 0, 8%),
+    0 6px 12px 0 rgba(0, 0, 0, 4%),
+    0 var(--search-lift) var(--search-blur)
+      rgb(from var(--color-gray-1000) r g b / var(--search-dim));
+  /* stylelint-disable custom-property-no-missing-var-function -- registered channels */
+  transition:
+    --search-lift 120ms cubic-bezier(0.2, 0, 0, 1),
+    --search-blur 280ms ease-out,
+    --search-dim 200ms ease-out;
+  /* stylelint-enable custom-property-no-missing-var-function */
+
+  [data-theme="dark"] & {
+    box-shadow:
+      0 0 0 1px var(--dark-mode-shadow),
+      0 var(--search-lift) var(--search-blur)
+        rgb(from var(--color-gray-1000) r g b / var(--search-dim));
+  }
+
+  &:hover,
+  &:focus-visible {
+    --search-lift: 14px;
+    --search-blur: 30px;
+    --search-dim: 0.2;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--semantic-bg-focus);
+    outline-offset: 2px;
+  }
+
+  &:active {
+    transform: scale(0.995);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+
+    &:active {
+      transform: none;
+    }
+  }
+}
+
+.hidden {
+  visibility: hidden;
+}
+
+.fieldInner {
+  display: flex;
+  flex: 1;
+  gap: var(--spacing-md);
+  align-items: center;
+  min-width: 0;
+}
+
+.searchIcon {
+  flex-shrink: 0;
+  width: var(--dimensions-icon-md);
+  height: var(--dimensions-icon-md);
+  color: var(--semantic-fg-tertiary);
+}
+
+.placeholder {
+  flex: 1;
+  min-width: 0;
+  color: var(--semantic-fg-tertiary);
+  font-size: 16px;
+  line-height: 22px;
+  text-align: left;
+}
+
+.shortcut {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  margin-left: auto;
+}
+
+.shortcutKey {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--dimensions-icon-xl);
+  min-height: var(--dimensions-icon-xl);
+  padding: var(--spacing-xxs) var(--spacing-xs);
+  color: var(--semantic-fg-tertiary);
+  background: var(--semantic-bg-transparent);
+  border: var(--spacing-3xs) solid var(--semantic-bg-separator-primary);
+  border-radius: var(--radius-xs);
+}

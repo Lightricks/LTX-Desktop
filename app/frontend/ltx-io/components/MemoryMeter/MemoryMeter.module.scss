@@ -1,0 +1,75 @@
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+  min-width: 0;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.title {
+  color: var(--semantic-fg-tertiary);
+}
+
+.line {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--semantic-fg-secondary);
+}
+
+.lineOver {
+  color: var(--semantic-extended-orange-enabled);
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.pillFull {
+  background: var(--semantic-bg-tertiary);
+  color: var(--semantic-fg-primary);
+}
+
+.pillShort {
+  border: 1px dashed var(--semantic-bg-separator-primary);
+  color: var(--semantic-fg-secondary);
+}
+
+.pillNone {
+  color: var(--semantic-fg-disabled-primary);
+}
+
+.pillSelected {
+  border: 1px solid var(--semantic-fg-secondary);
+}
+
+.pillCheck {
+  width: 10px;
+  height: 10px;
+  color: var(--semantic-fg-secondary);
+}
+
+.pillNote {
+  color: var(--semantic-fg-tertiary);
+}

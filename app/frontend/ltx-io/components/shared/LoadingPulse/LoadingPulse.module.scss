@@ -1,0 +1,31 @@
+@use "@ds/styles/themes/animationsValues.scss" as *;
+
+.pulse {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-color: var(--semantic-fg-primary);
+  opacity: 0.1;
+  animation: heartbeat $bounce-duration $easing-standard-productive infinite;
+}
+
+@keyframes heartbeat {
+  0% {
+    opacity: 0.1;
+  }
+
+  50% {
+    opacity: 0.25;
+  }
+
+  100% {
+    opacity: 0.1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse {
+    animation: none;
+    opacity: 0.15;
+  }
+}

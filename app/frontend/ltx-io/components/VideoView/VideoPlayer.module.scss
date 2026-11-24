@@ -1,0 +1,16 @@
+.frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+
+  // Inset, so Space does not paint the app ring outside the frame.
+  :global(.ltx-io) &:focus-visible {
+    outline: 1px solid var(--semantic-border-focus);
+    outline-offset: -1px;
+  }
+
+  &:fullscreen {
+    background: var(--semantic-bg-black-primary);
+  }
+}

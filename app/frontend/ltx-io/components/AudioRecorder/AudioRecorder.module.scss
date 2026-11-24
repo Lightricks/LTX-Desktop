@@ -1,0 +1,132 @@
+.container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  width: 380px;
+  height: 400px;
+  padding: var(--spacing-lg) 0;
+}
+
+.closeButton {
+  position: absolute;
+  top: var(--spacing-md);
+  right: var(--spacing-md);
+  z-index: 1;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  text-align: center;
+}
+
+.subtitle,
+.permissionHint {
+  color: var(--semantic-fg-tertiary);
+}
+
+.recordingDisplay {
+  --visualizer-bar-color: var(--semantic-fg-tertiary);
+
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 70px;
+  overflow: hidden;
+  color: var(--visualizer-bar-color);
+}
+
+.visualizerContainer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.timerWrapper {
+  position: relative;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--semantic-bg-secondary);
+}
+
+.timer {
+  color: var(--semantic-fg-tertiary);
+}
+
+.timerMonospace {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -1.25px;
+}
+
+.controlsRow {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  gap: var(--spacing-sm);
+  padding: 0 var(--spacing-lg);
+}
+
+.stoppedControlsRow {
+  justify-content: space-between;
+}
+
+.recordingControls,
+.stoppedControls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+}
+
+.playbackControls {
+  flex: 1;
+  min-width: 0;
+  margin: 0 var(--spacing-sm);
+  max-width: 220px;
+}
+
+.seekContainer {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-width: 0;
+}
+
+.seekBar {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  margin: var(--spacing-sm) var(--spacing-md) var(--spacing-sm) var(--spacing-sm);
+  cursor: pointer;
+}
+
+.seekProgress {
+  position: absolute;
+  left: 0;
+  height: 4px;
+  background-color: var(--semantic-fg-action-primary-enabled);
+  border-radius: 8px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.seekTrack {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background-color: var(--semantic-bg-tertiary);
+  z-index: 1;
+  border-radius: 8px;
+}

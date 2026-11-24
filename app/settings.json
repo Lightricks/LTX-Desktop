@@ -1,0 +1,16 @@
+{
+  "keep_models_loaded": true,
+  "use_torch_compile": false,
+  "load_on_startup": false,
+  "ltx_api_key": "",
+  "fal_api_key": "",
+  "fast_model": {
+    "steps": 8,
+    "use_upscaler": true
+  },
+  "pro_model": {
+    "steps": 20,
+    "use_upscaler": true
+  },
+  "prompt_cache_size": 100
+}

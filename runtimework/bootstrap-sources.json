@@ -1,0 +1,14 @@
+{
+  "python": {
+    "filename": "python-3.13.12-embed-amd64.zip",
+    "url": "https://www.python.org/ftp/python/3.13.12/python-3.13.12-embed-amd64.zip",
+    "size": 10941233,
+    "sha256": "76f238f606250c87c6beac75dccd35ee99070a13490555936abb6cb64ecce3d0"
+  },
+  "visual_cpp": {
+    "filename": "VC_redist.x64.exe",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/78d061c5-9ef3-42ab-98ed-3309d1095dc4/9C02C9ED120F671B900E6B9471D890E3B2414117A7E53F4AE2E855466FA2B7C9/VC_redist.x64.exe",
+    "size": 18863624,
+    "sha256": "9c02c9ed120f671b900e6b9471d890e3b2414117a7e53f4ae2e855466fa2b7c9"
+  }
+}

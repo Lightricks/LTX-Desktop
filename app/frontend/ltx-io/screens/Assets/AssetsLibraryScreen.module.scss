@@ -1,0 +1,189 @@
+@use "@/components/home/shell-layout.scss" as shell;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100%;
+  padding-bottom: var(--spacing-3xl);
+  gap: 0;
+  color: var(--semantic-fg-primary);
+  box-sizing: border-box;
+}
+
+.chrome {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  background: transparent;
+
+  &:empty {
+    display: none;
+  }
+}
+
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-lg);
+  min-height: 32px;
+  background-color: var(--semantic-bg-tertiary);
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-lg);
+  flex-shrink: 0;
+}
+
+.tooltipAnchor {
+  display: inline-flex;
+  align-items: center;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.searchFieldContainer {
+  display: flex;
+  align-items: center;
+  flex: 0 0 240px;
+  width: 240px;
+  // Match DS Button md height (24px) in PageHeader trailing actions.
+  height: 24px;
+  box-sizing: border-box;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background-color: var(--semantic-bg-secondary);
+
+  &:focus-within {
+    border-color: transparent;
+    outline: 1px solid var(--semantic-fg-primary);
+    outline-offset: 1px;
+  }
+
+  // Beat `.ltx-io :focus-visible` without !important. The pill outline on
+  // :focus-within stays, so keyboard focus is still visible.
+  :global(.ltx-io) & :is(input, button):focus,
+  :global(.ltx-io) & :is(input, button):focus-visible {
+    outline: none;
+    outline-offset: 0;
+    box-shadow: none;
+  }
+}
+
+.searchIcon {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  color: var(--semantic-fg-tertiary);
+}
+
+.searchField {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  appearance: none;
+  background: transparent;
+  color: var(--semantic-fg-action-primary-enabled);
+  font-family: var(--app-font-family);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 14px;
+
+  &::placeholder {
+    color: var(--semantic-fg-tertiary);
+  }
+}
+
+.searchClearButton {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+@media (max-width: shell.$shell-compact-breakpoint) {
+  .toolbar {
+    flex-wrap: wrap;
+    row-gap: var(--spacing-sm);
+  }
+
+  .filters {
+    flex-shrink: 1;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .searchFieldContainer {
+    flex: 1 1 140px;
+    width: auto;
+    min-width: 120px;
+    max-width: 240px;
+  }
+}
+
+.status {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 40vh;
+}
+
+.inlineError {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.inlineErrorCopy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.grid {
+  position: relative;
+  width: 100%;
+}
+
+.row {
+  display: grid;
+  column-gap: var(--spacing-xl);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.tile {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--semantic-bg-tertiary);
+}

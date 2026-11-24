@@ -1,0 +1,42 @@
+.container {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  cursor: default;
+  color: var(--semantic-fg-secondary);
+}
+
+.iconWrapper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon {
+  color: inherit;
+
+  &.xs {
+    width: 12px;
+    height: 12px;
+  }
+
+  &.sm {
+    width: 14px;
+    height: 14px;
+  }
+
+  &.md {
+    width: 16px;
+    height: 16px;
+  }
+
+  &.lg {
+    width: 18px;
+    height: 18px;
+  }
+
+  &.xl {
+    width: 20px;
+    height: 20px;
+  }
+}

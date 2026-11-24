@@ -1,0 +1,23 @@
+.trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--spacing-sm) 0;
+  border: 0;
+  background: none;
+  color: var(--semantic-fg-tertiary);
+  cursor: pointer;
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  padding-top: var(--spacing-md);
+}
+
+.reset {
+  display: flex;
+  justify-content: flex-start;
+}

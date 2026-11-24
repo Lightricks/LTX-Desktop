@@ -1,0 +1,56 @@
+/*
+  Design-system stylesheet — single entry.
+
+  The one place to load the design system's styles: base tokens, light/dark themes, fonts,
+  and the typography ramp.
+
+  Scoping: Desktop is a single-document app that ships its own global reset (Tailwind preflight)
+  and styling. To avoid touching it, everything that *applies* styling is scoped under `.ltx-io`.
+  `ThemeProvider` renders that `.ltx-io` root and sets `data-theme` on it (not on `document.body`).
+  Design tokens (`reference.module.scss` `:root`) and semantic themes (`[data-theme]`) stay
+  top-level but are inert until consumed inside `.ltx-io`, and their names don't collide with
+  Desktop's own CSS variables. `@font-face` rules are also top-level (they cannot be nested).
+*/
+
+/* Design tokens + semantic light/dark themes */
+@import "./themes/reference.module.scss";
+@import "./themes/light.module.scss";
+@import "./themes/dark.module.scss";
+
+/* Aeonik @font-face + scoped --app-font-family */
+@import "./fonts.scss";
+
+/* Typography ramp (scoped .ltx-io [data-variant]) */
+@import "./typography.scss";
+
+/* Scrollbar styling (scoped to .ltx-io in the source file) */
+@import "./scrollBarStyle.scss";
+
+/* Base applied ONLY inside the `.ltx-io` subtree. */
+.ltx-io {
+  height: 100%;
+  background-color: var(--semantic-bg-transparent);
+  color: var(--semantic-fg-primary);
+  font-family: var(--app-font-family);
+  font-size: 40px;
+  accent-color: var(--semantic-fg-primary);
+  /* Window glass follows this root. Nested scheme overrides (setup is light)
+     must not repaint chrome text that sits on the glass. */
+  --window-fg: var(--semantic-fg-primary);
+
+  .ltx-io {
+    --window-fg: inherit;
+  }
+
+  /* Token override: Modal/confirmation shells use 8px corners. */
+  --modal-border-radius: var(--radius-md);
+
+  :focus {
+    outline: none;
+  }
+
+  :focus-visible {
+    outline: 1px solid var(--semantic-border-focus);
+    outline-offset: 1px;
+  }
+}

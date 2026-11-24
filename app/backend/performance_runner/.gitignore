@@ -1,0 +1,4 @@
+# Run artifacts (logs, soak CSVs, sanity results) — all under dashboard_runs/
+dashboard_runs/
+__pycache__/
+.DS_Store

@@ -1,0 +1,50 @@
+@use "@ds/styles/themes/animationsValues.scss" as *;
+
+.toast_container {
+  position: fixed;
+  top: calc(
+    var(--window-chrome-top, 0px) + var(--app-layout-typical-toolbar-height, 56px) +
+      var(--spacing-md)
+  );
+  right: var(--spacing-xl);
+  z-index: var(--z-toast);
+  max-width: 320px;
+  pointer-events: none;
+}
+
+.slideIn {
+  animation: slide-in-right $duration-fast $easing-entrance-productive both;
+}
+
+.slideOut {
+  animation: slide-out-right $duration-fast $easing-exit-productive both;
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translate3d(110%, 0, 0);
+    visibility: visible;
+  }
+
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes slide-out-right {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+
+  to {
+    visibility: hidden;
+    transform: translate3d(110%, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slideIn,
+  .slideOut {
+    animation: none;
+  }
+}

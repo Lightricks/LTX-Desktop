@@ -1,0 +1,121 @@
+.segment {
+  --track-radius: var(--radius-md);
+  --track-inset: 2px;
+  --item-gap: 0;
+  --item-pad-y: var(--spacing-xs);
+  --item-pad-x: var(--spacing-lg);
+  --label-size: 12px;
+  --label-line: 16px;
+  --segment-label-color: var(--semantic-fg-secondary);
+  --segment-label-weight: 400;
+  --track-height: auto;
+
+  position: relative;
+  display: inline-flex;
+  gap: var(--item-gap);
+  max-width: 100%;
+  height: var(--track-height);
+  min-height: var(--track-height);
+  box-sizing: border-box;
+  padding: var(--track-inset);
+  border-radius: var(--track-radius);
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  &:where(.sm) {
+    --track-inset: 2px;
+    --item-gap: 0;
+    --label-size: 12px;
+    --label-line: 16px;
+  }
+
+  &:where(.md) {
+    --track-inset: 4px;
+    --item-gap: 2px;
+    --label-size: 14px;
+    --label-line: 20px;
+  }
+
+  &.fullWidth {
+    display: flex;
+    width: 100%;
+
+    > :not(.segmentThumb) {
+      flex: 1 1 0;
+      min-width: 0;
+      display: flex;
+      align-self: stretch;
+    }
+
+    .segmentItem {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      justify-content: center;
+      text-align: center;
+    }
+  }
+}
+
+:where(.segment) {
+  background: rgb(255 255 255 / 10%);
+}
+
+:where(:global([data-theme="light"]) .segment) {
+  background: rgb(0 0 0 / 6%);
+}
+
+.segmentItem {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: var(--item-pad-y) var(--item-pad-x);
+  border: 0;
+  border-radius: calc(var(--track-radius) - var(--track-inset));
+  white-space: nowrap;
+  background: transparent;
+  cursor: pointer;
+
+  &:hover:not([aria-disabled="true"], [aria-selected="true"]) .segmentLabel {
+    color: var(--semantic-fg-primary, #f3f4f5);
+  }
+
+  &[aria-disabled="true"] {
+    cursor: default;
+  }
+
+  &[aria-selected="true"] .segmentLabel {
+    color: var(--semantic-bg-black-primary, #0a0a0a);
+  }
+
+  &[aria-disabled="true"] .segmentLabel {
+    color: var(--semantic-fg-disabled-primary);
+  }
+
+  &[aria-selected="true"][aria-disabled="true"] .segmentLabel {
+    color: var(--semantic-bg-black-primary, #0a0a0a);
+    opacity: 0.55;
+  }
+}
+
+.segmentThumb {
+  position: absolute;
+  inset: var(--track-inset) auto var(--track-inset) 0;
+  z-index: 0;
+  border-radius: calc(var(--track-radius) - var(--track-inset));
+  background: var(--semantic-fg-white-enabled);
+}
+
+.segmentLabel {
+  position: relative;
+  z-index: 1;
+  font-size: var(--label-size);
+  line-height: var(--label-line);
+  font-weight: var(--segment-label-weight);
+  color: var(--segment-label-color);
+  transition: color 0.2s ease;
+}

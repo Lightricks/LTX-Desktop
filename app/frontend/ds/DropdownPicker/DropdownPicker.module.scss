@@ -1,0 +1,45 @@
+@use "@ds/styles/themes/mixins.module" as *;
+@use "@ds/styles/themes/animationsValues.scss" as *;
+@use "@ds/styles/themes/animationsMixins.scss" as *;
+
+.pickerContent {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 160px;
+  border-radius: var(--radius-md);
+  background-color: var(--semantic-bg-primary);
+  color: var(--semantic-fg-primary);
+  overflow: hidden;
+  padding: var(--spacing-xxs) 0;
+
+  @include effect_style_shadow_elevation_medium;
+
+  &[data-state="open"] {
+    animation: menu-fade-in $duration-moderate $easing-standard-productive;
+  }
+
+  &[data-state="closed"] {
+    animation: menu-fade-out $duration-moderate $easing-standard-productive;
+  }
+}
+
+.viewport {
+  overflow-y: auto;
+  max-height: inherit;
+
+  &[data-radix-select-viewport] {
+    scrollbar-width: thin;
+  }
+}
+
+.pickerItem {
+  width: 100%;
+  outline: none;
+}
+
+.pickerItemLoading {
+  position: relative;
+  width: 100%;
+  height: 30px;
+}

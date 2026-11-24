@@ -1,0 +1,62 @@
+@import "@ds/styles/themes/mixins.module.scss";
+
+.sectionLabel {
+  color: var(--semantic-fg-tertiary);
+}
+
+.menuItems {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+// This is a workaround to increase CSS specificity and override the Button size
+.menuItemButton.menuItemButton {
+  justify-content: flex-start;
+  width: 100%;
+  height: 32px;
+
+  // Make the label grow to push rightIcon (badge) to the right end
+  > span {
+    flex-grow: 1;
+    text-align: left;
+  }
+}
+
+.separator {
+  min-height: 1px;
+  width: 100%;
+  background-color: var(--semantic-bg-separator-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.menuItemButton.accordionTrigger {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  height: 32px;
+
+  // Remove focus highlight (but keep hover)
+  &:focus:not(:hover) {
+    background: inherit;
+    color: inherit;
+  }
+}
+
+.accordionHeader {
+  width: 100%;
+  padding: 0;
+  overflow: visible;
+}
+
+.accordionItem {
+  padding: var(--spacing-md) 0 0 var(--spacing-lg);
+}
+
+.accordionContent {
+  padding: 0 var(--spacing-xs) var(--spacing-xs) 0;
+}

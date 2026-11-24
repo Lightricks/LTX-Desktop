@@ -1,0 +1,62 @@
+// Aeonik web fonts.
+//
+// @font-face rules are inherently top-level/global CSS (they cannot be nested under a
+// class), but they stay inert until the family is applied — which happens only on the
+// `.ltx-io` subtree below, so Desktop's own styling is unaffected in this single-document app.
+//
+// Only woff2 is shipped (universally supported in the Electron/Chromium runtime); a woff
+// fallback would just double the payload. font-display: swap avoids a flash of invisible
+// text — the fallback renders immediately and swaps when the face loads.
+
+@font-face {
+  font-family: "Aeonik";
+  src: url("../assets/fonts/aeonik-light.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Aeonik";
+  src: url("../assets/fonts/aeonik-lightitalic.woff2") format("woff2");
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Aeonik";
+  src: url("../assets/fonts/aeonik-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Aeonik";
+  src: url("../assets/fonts/aeonik-regularitalic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Aeonik";
+  src: url("../assets/fonts/aeonik-semibold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Aeonik";
+  src: url("../assets/fonts/aeonik-semibolditalic.woff2") format("woff2");
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
+
+// Scoped application: only elements inside the `.ltx-io` root use Aeonik.
+.ltx-io {
+  --app-font-family: "Aeonik", sans-serif;
+}

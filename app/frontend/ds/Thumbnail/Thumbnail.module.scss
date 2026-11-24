@@ -1,0 +1,111 @@
+@import "@ds/styles/themes/animationsValues.scss";
+
+.thumbnailContainer {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  transition: border-radius $duration-moderate $easing-standard-productive;
+
+  // Define base sizes with fallback to inherited --border-radius
+  &[data-size="xs"] {
+    --thumb-base: 16px;
+    --thumb-radius: var(--border-radius, var(--radius-xxs));
+  }
+  &[data-size="sm"] {
+    --thumb-base: 24px;
+    --thumb-radius: var(--border-radius, var(--radius-xs));
+  }
+  &[data-size="md"] {
+    --thumb-base: 32px;
+    --thumb-radius: var(--border-radius, var(--radius-md));
+  }
+  &[data-size="lg"] {
+    --thumb-base: 44px;
+    --thumb-radius: var(--border-radius, var(--radius-md));
+  }
+  &[data-size="xl"] {
+    --thumb-base: 56px;
+    --thumb-radius: var(--border-radius, var(--radius-md));
+  }
+  &[data-size="xxl"] {
+    --thumb-base: 64px;
+    --thumb-radius: var(--border-radius, var(--radius-md));
+  }
+
+  border-radius: var(--thumb-radius);
+  height: var(--thumb-height);
+  width: var(--thumb-width);
+  flex-shrink: 0;
+
+  // Set dimensions based on ratio
+  &[data-ratio="1:1"] {
+    --thumb-width: var(--thumb-base);
+    --thumb-height: var(--thumb-base);
+  }
+
+  &[data-ratio="16:9"] {
+    --thumb-width: calc(var(--thumb-base) * 16 / 9);
+    --thumb-height: var(--thumb-base);
+  }
+
+  &[data-ratio="9:16"] {
+    --thumb-width: var(--thumb-base);
+    --thumb-height: calc(var(--thumb-base) * 16 / 9);
+  }
+
+  &[data-ratio="4:3"] {
+    --thumb-width: calc(var(--thumb-base) * 4 / 3);
+    --thumb-height: var(--thumb-base);
+  }
+
+  &[data-ratio="3:4"] {
+    --thumb-width: var(--thumb-base);
+    --thumb-height: calc(var(--thumb-base) * 4 / 3);
+  }
+}
+
+.skeleton {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.thumbnail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  z-index: 0;
+  border-radius: inherit;
+
+  &.disabled {
+    opacity: 0.32;
+  }
+}
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--semantic-bg-disabled-primary);
+}
+
+.video {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  display: none;
+}
+
+.videoPlaying {
+  display: block;
+  z-index: 2;
+}

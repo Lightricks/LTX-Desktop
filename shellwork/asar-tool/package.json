@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "@electron/asar": "4.2.0",
+    "resedit": "3.1.1"
+  },
+  "private": true
+}

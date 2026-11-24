@@ -1,0 +1,48 @@
+@mixin actionStyles {
+  color: var(--semantic-fg-primary);
+  cursor: pointer;
+  user-select: none;
+
+  &:not(.disabled) {
+    &:hover,
+    [data-highlighted] &,
+    [data-state="checked"] > &,
+    [data-state="open"] > & {
+      background-color: var(--semantic-bg-action-secondary-hover);
+    }
+
+    &.active,
+    &:active,
+    [data-state="open"] > & {
+      background-color: var(--semantic-bg-brand-secondary-enabled);
+
+      &:hover,
+      &:focus {
+        background-color: var(--semantic-bg-brand-secondary-hover);
+      }
+
+      &.disabled {
+        background-color: var(--semantic-bg-transparent);
+        opacity: 0.5;
+
+        * {
+          color: var(--semantic-fg-disabled-primary);
+        }
+      }
+    }
+  }
+
+  &.disabled,
+  &:disabled {
+    cursor: initial;
+    color: var(--semantic-fg-disabled-primary);
+
+    .right {
+      color: var(--semantic-fg-disabled-primary);
+    }
+  }
+}
+
+.actionStyles {
+  @include actionStyles;
+}

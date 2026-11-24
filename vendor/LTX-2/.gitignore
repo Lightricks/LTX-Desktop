@@ -1,0 +1,92 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+checkpoints/
+*.egg-info
+
+# Virtual environments
+.venv
+.python-version
+
+# IDE settings
+.idea/
+.vscode/
+
+# Other files
+.DS_Store
+.wandb
+projects/
+tmp
+wandb/
+
+# Model checkpoints
+*.ckpt
+*.pt
+*.safetensors
+*.sft
+
+# Media files
+*.exr
+*.gif
+*.heic
+*.heif
+*.jpg
+*.jpeg
+*.json
+*.m4a
+*.mov
+*.mp3
+*.mp4
+*.png
+*.wav
+*.webp
+
+# Full-params expected results for the --full-e2e quality lane (checked in via Git LFS)
+!packages/ltx-pipelines/tests/assets/full_e2e/
+!packages/ltx-pipelines/tests/assets/full_e2e/*.mp4
+!packages/ltx-pipelines/tests/assets/full_e2e/*.wav
+!packages/ltx-pipelines/tests/assets/full_e2e/expected_hdr_ic_lora_acescct_*_exr/
+!packages/ltx-pipelines/tests/assets/full_e2e/expected_hdr_ic_lora_acescct_*_exr/frame_*.exr
+!packages/ltx-pipelines/tests/assets/full_e2e/expected_native_hdr_*_exr/
+!packages/ltx-pipelines/tests/assets/full_e2e/expected_native_hdr_*_exr/frame_*.exr
+!packages/ltx-pipelines/tests/assets/full_e2e/native_hdr_cow_rain_retake_source_exr/
+!packages/ltx-pipelines/tests/assets/full_e2e/native_hdr_cow_rain_retake_source_exr/frame_*.exr
+
+# Native HDR EXR e2e inputs (checked in via Git LFS)
+!packages/ltx-pipelines/tests/assets/cow_pasture.exr
+!packages/ltx-pipelines/tests/assets/native_hdr_cow_rain_exr_small/
+!packages/ltx-pipelines/tests/assets/native_hdr_cow_rain_exr_small/frame_*.exr
+
+# HDR IC-LoRA e2e inputs (checked in via Git LFS): 17-frame 8k+1 native, 9-frame 128² integration.
+!packages/ltx-pipelines/tests/assets/hdr_ic_lora_test_input.mp4
+!packages/ltx-pipelines/tests/assets/hdr_ic_lora_test_input_small.mp4
+
+# DurationHead e2e test input (real connector-token output; checked in via Git LFS)
+!packages/ltx-core/tests/assets/duration_head_input.safetensors
+
+# Fast integration-profile goldens (bit-exact decoded video/audio; checked in via Git LFS)
+!packages/ltx-pipelines/tests/assets/integration/
+!packages/ltx-pipelines/tests/assets/integration/*.safetensors
+
+# ltx-bench Grafana dashboards (source of truth in the repo)
+!packages/ltx-bench/grafana/*.json
+
+# ltx-trainer E2E test dataset (committed via Git LFS).
+# The target_audio/ and reference_audio/ subdirectories are populated lazily at test runtime
+# (high-bitrate MP3 extracted from target_videos, plus a low-bitrate MP3 reference); their
+# contents stay gitignored via the root *.mp3 rule above.
+!packages/ltx-trainer/tests/assets/test_dataset/dataset.json
+!packages/ltx-trainer/tests/assets/test_dataset/target_videos/*.mp4
+!packages/ltx-trainer/tests/assets/test_dataset/reference_videos/*.mp4
+!packages/ltx-trainer/tests/assets/test_dataset/conditioning/first_frame.jpg
+!packages/ltx-trainer/tests/assets/test_dataset/conditioning/video_mask.png
+!packages/ltx-trainer/tests/assets/test_dataset/conditioning/audio_mask.pt
+
+# Binary files
+*.o
+*.so
+gpu-queue-output/
+.gpu-queue-download-*/

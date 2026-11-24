@@ -1,0 +1,32 @@
+@use "../commonStyles.scss" as *;
+
+.itemAction {
+  @extend .actionStyles;
+  min-height: 40px;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.right {
+  color: var(--semantic-fg-secondary);
+  flex: 0 0 auto;
+}
+
+.checkIconWrapper {
+  width: 16px;
+  height: 16px;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.leftSection {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}

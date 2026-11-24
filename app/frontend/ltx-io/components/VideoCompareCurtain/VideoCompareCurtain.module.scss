@@ -1,0 +1,99 @@
+.compareMedia {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--semantic-bg-black-primary);
+}
+
+.compareVideo {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.compareAfterLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.compareBeforeLabel,
+.compareAfterLabel {
+  position: absolute;
+  bottom: var(--spacing-md);
+  z-index: 5;
+}
+
+.compareBeforeLabel {
+  left: var(--spacing-md);
+}
+
+.compareAfterLabel {
+  right: var(--spacing-md);
+}
+
+.compareDivider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 2px;
+  background: var(--semantic-fg-white-enabled);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.compareHandle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--spacing-xxl);
+  height: var(--spacing-xxl);
+  border: 1px solid var(--semantic-bg-separator-primary);
+  border-radius: var(--radius-round);
+  background: var(--semantic-bg-primary);
+  color: var(--semantic-fg-primary);
+  transform: translate(-50%, -50%);
+
+  &::before,
+  &::after {
+    position: absolute;
+    top: calc((var(--spacing-xxl) - var(--spacing-md)) / 2);
+    width: var(--spacing-md);
+    height: var(--spacing-md);
+    border-bottom: 2px solid currentcolor;
+    border-left: 2px solid currentcolor;
+    content: "";
+  }
+
+  &::before {
+    left: calc(var(--spacing-md) - var(--spacing-3xs));
+    transform: rotate(45deg);
+  }
+
+  &::after {
+    right: calc(var(--spacing-md) - var(--spacing-3xs));
+    transform: rotate(225deg);
+  }
+}
+
+.compareInput {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+}
+
+.compareMedia:has(.compareInput:focus-visible) .compareHandle {
+  outline: 2px solid var(--semantic-border-focus);
+  outline-offset: 2px;
+}

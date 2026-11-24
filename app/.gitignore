@@ -1,0 +1,98 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+dist-electron/
+dist-remote/
+.vite/
+release/
+*.tsbuildinfo
+
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+.eggs/
+
+# Claude Code
+.claude/*
+!.claude/
+!.claude/skills/
+!.claude/skills/video-editor-development/
+!.claude/skills/video-editor-development/SKILL.md
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+*.local
+.cache/
+
+# Models (too large for git - auto-downloaded on first run)
+# Keep the README but ignore all model files
+models/*
+!models/README.md
+backend/models/
+
+# Profiling scripts and results
+backend/scripts/
+backend/profile_results/
+
+# Temporary working directory
+backend/tmp/
+
+# Generated outputs (videos and images)
+backend/outputs/*.mp4
+backend/outputs/*.png
+backend/generated/
+
+# Build artifacts
+release/
+python-embed/
+
+# Downloaded during CI for Windows NSIS installer
+resources/vc_redist.x64.exe
+
+# Local-only measurement media (mp4s untracked from docs/measurements/)
+measurements-media/
+# Archived measurement evidence lives on the internal hw-measurements branch;
+# keep it out of the working tree (force-add + re-export per its README).
+docs/measurements/

@@ -1,0 +1,111 @@
+@use "@ds/styles/themes/mixins.module.scss" as *;
+@use "@ds/styles/themes/animationsValues.scss" as *;
+
+$close-button-size: 30px;
+
+.modal_backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--semantic-bg-overlay-universal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+  pointer-events: auto;
+
+  &_topmost {
+    z-index: calc(var(--z-modal) + 1);
+  }
+
+  @include effect_style_overlay_secondary;
+}
+
+.modal_content_wrapper {
+  // This wrapper provides an anchor for the close button, which positions outside of it,
+  // and for this reason we can't set overflow: auto on it
+  --modal-max-height: calc(100vh - 2 * var(--spacing-xl));
+
+  position: relative;
+  max-height: var(--modal-max-height);
+}
+
+.modal_scrollable_container {
+  // This container enables vertical scrolling in small viewports while clipping
+  // children to --modal-border-radius.
+  max-height: var(--modal-max-height);
+  overflow: clip auto;
+  border-radius: var(--modal-border-radius);
+}
+
+.modal_children_container {
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-height: fit-content;
+  max-width: calc(95vw - (2 * $close-button-size + var(--spacing-sm)));
+
+  [data-theme="dark"] & {
+    box-shadow: $dark-mode-shadow;
+  }
+
+  &_primary {
+    background-color: var(--semantic-bg-primary);
+  }
+
+  &_secondary {
+    background-color: var(--semantic-bg-secondary);
+  }
+
+  &_transparent {
+    background-color: transparent;
+
+    [data-theme="dark"] & {
+      box-shadow: none;
+    }
+  }
+
+  &.no_padding {
+    padding: 0;
+  }
+}
+
+.confirmation_children_container {
+  border-radius: var(--modal-border-radius);
+  border: 1px solid var(--semantic-bg-primary);
+}
+
+.close_button {
+  position: absolute;
+  top: 0;
+  right: calc(-1 * ($close-button-size + var(--spacing-sm)));
+  width: $close-button-size;
+  height: $close-button-size;
+  border-radius: var(--radius-round);
+  background: var(--semantic-bg-overlay-secondary-inverse);
+  color: var(--semantic-fg-inverse-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color $duration-moderate $easing-standard-productive;
+
+  &:focus-visible {
+    outline: 1px solid var(--semantic-border-focus);
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    cursor: initial;
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+}

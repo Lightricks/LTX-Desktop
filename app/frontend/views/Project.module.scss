@@ -1,0 +1,137 @@
+@use "@/ds/styles/themes/animationsValues.scss" as *;
+
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--semantic-bg-secondary);
+  color: var(--semantic-fg-primary);
+  /* .ltx-io is 40px so DS Text can use px. Unsized Tailwind in this tree
+     must not inherit that; 16px matches the pre-wrap body size. */
+  font-size: 16px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-md) var(--spacing-lg);
+  // Unpinned sidebar sets this on the feature outlet. It covers the traffic
+  // lights and the pin button; the pinned sidebar already offsets the column.
+  padding-inline-start: var(--page-header-unpinned-start, var(--spacing-lg));
+  // The column width and this inset change together when the sidebar pins.
+  // Snapping the inset first throws the title past the traffic lights, then
+  // the column animation drags it back.
+  transition: padding-inline-start $duration-moderate $easing-standard-productive;
+  border-bottom: 1px solid var(--semantic-bg-separator-primary);
+  background-color: var(--semantic-bg-primary);
+  box-sizing: border-box;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+.titleSlot {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+  min-width: 0;
+}
+
+.title {
+  color: var(--semantic-fg-primary);
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs);
+  border-radius: var(--radius-md);
+  background-color: var(--semantic-bg-secondary);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--semantic-fg-secondary);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--semantic-fg-primary);
+  }
+}
+
+.tabSelected {
+  background-color: var(--semantic-bg-action-secondary-enabled);
+  color: var(--semantic-fg-primary);
+}
+
+.tabIcon {
+  width: var(--dimensions-icon-md);
+  height: var(--dimensions-icon-md);
+  flex: none;
+}
+
+.deprecation {
+  margin: 0;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  text-align: center;
+  background-color: var(--semantic-bg-action-secondary-enabled);
+  color: var(--semantic-fg-primary);
+
+  a,
+  button {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+}
+
+.main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.migration {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background-color: var(--semantic-bg-secondary);
+}
+
+.migrationInner {
+  width: 360px;
+}
+
+.migrationCopy {
+  margin-bottom: var(--spacing-lg);
+  color: var(--semantic-fg-secondary);
+}
+
+.migrationTrack {
+  height: var(--spacing-sm);
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-round);
+  background-color: var(--semantic-bg-action-secondary-enabled);
+}
+
+.migrationFill {
+  height: 100%;
+  background-color: var(--semantic-bg-brand-primary-enabled);
+  transition: width 150ms ease;
+}

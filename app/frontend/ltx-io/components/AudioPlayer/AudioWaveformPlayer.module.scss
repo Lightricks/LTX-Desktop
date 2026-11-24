@@ -1,0 +1,124 @@
+@use "@ds/styles/themes/animationsValues.scss" as *;
+
+.container {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+  width: 100%;
+  padding-block: var(--spacing-xs);
+
+  &.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+}
+
+.playButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-round);
+  background: var(--semantic-bg-action-secondary-enabled);
+  color: var(--semantic-fg-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background-color $duration-moderate $easing-standard-productive,
+    transform $duration-fast $easing-entrance-productive;
+
+  svg {
+    width: var(--dimensions-icon-md);
+    height: var(--dimensions-icon-md);
+    fill: currentcolor;
+  }
+
+  &:hover:not(:disabled) {
+    background: var(--semantic-bg-action-secondary-hover);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+}
+
+.content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--gap-xs);
+  min-width: 0;
+}
+
+.waveformContainer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 36px;
+  cursor: grab;
+  touch-action: pan-y;
+  overflow: hidden;
+  user-select: none;
+
+  canvas {
+    width: 100%;
+    height: 36px;
+    display: block;
+    pointer-events: none;
+  }
+
+  &.scrubbing {
+    cursor: grabbing;
+  }
+}
+
+.waveformPlaceholder {
+  width: 100%;
+  height: 36px;
+  border-radius: var(--radius-xs);
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      transparent 4%,
+      var(--semantic-fg-secondary) 4%,
+      var(--semantic-fg-secondary) 6%,
+      transparent 6%,
+      transparent 10%
+    ),
+    var(--semantic-bg-action-secondary-enabled);
+  opacity: 0.3;
+}
+
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  transform: translateX(-50%);
+  border-radius: var(--radius-round);
+  background: var(--semantic-fg-brand-primary-enabled);
+  box-shadow: 0 0 0 1px var(--semantic-bg-primary);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.timeRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+.timeText {
+  color: var(--semantic-fg-secondary);
+  font-variant-numeric: tabular-nums;
+}

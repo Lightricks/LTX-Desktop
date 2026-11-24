@@ -1,0 +1,13 @@
+// Useful for when we need to use the "nth" value in CSS. See here:https://crinkles.dev/writing/a-nth-child-css-trick/
+
+$z-index-children: 32;
+
+@for $i from 1 through $z-index-children {
+  :nth-child(#{$i}) {
+    --index: #{$i};
+  }
+
+  :nth-last-child(#{$i}) {
+    --rev-index: #{$i};
+  }
+}

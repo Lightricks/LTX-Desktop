@@ -1,0 +1,9 @@
+node_modules
+python-embed
+dist
+dist-electron
+release
+backend/.venv
+backend/outputs
+backend/models
+.git

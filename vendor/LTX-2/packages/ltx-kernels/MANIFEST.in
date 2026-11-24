@@ -1,0 +1,2 @@
+recursive-include csrc *.h *.cuh *.hpp *.cpp *.cu
+recursive-include src/ltx_kernels/vae/_aot *.o

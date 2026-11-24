@@ -1,0 +1,124 @@
+@import "@ds/styles/themes/mixins.module.scss";
+@import "@ds/styles/highlightedStyles.scss";
+
+.avatar {
+  --avatar-size: 24px;
+
+  display: flex;
+  flex-wrap: wrap;
+  flex: 0 0 var(--avatar-size);
+  inline-size: var(--avatar-size);
+  block-size: var(--avatar-size);
+  box-sizing: border-box;
+  border-radius: var(--radius-xs);
+  justify-content: center;
+  align-items: center;
+  background-color: white;
+  color: var(--semantic-fg-white-enabled);
+
+  @include text_style_heading_md;
+  @include user_color_data_attributes;
+
+  .image {
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    object-fit: cover;
+  }
+
+  &.circle {
+    border-radius: var(--radius-round);
+  }
+
+  &.sm {
+    --avatar-size: 18px;
+
+    letter-spacing: 0;
+
+    &.square {
+      border-radius: var(--radius-xxs);
+    }
+
+    @include text_style_label_sm;
+  }
+
+  &.md {
+    --avatar-size: 24px;
+
+    &.square {
+      border-radius: var(--radius-xs);
+    }
+
+    @include text_style_label_md;
+  }
+
+  &.lg {
+    --avatar-size: 30px;
+
+    &.square {
+      border-radius: var(--radius-md);
+    }
+
+    @include text_style_label_lg;
+  }
+
+  &.xl {
+    --avatar-size: 40px;
+
+    &.square {
+      border-radius: var(--radius-md);
+    }
+
+    @include text_style_label_xl;
+  }
+
+  &.enabled {
+    background-color: var(--semantic-bg-brand-primary-enabled);
+  }
+
+  &.disabled,
+  &.disabled:hover,
+  &.disabled:active {
+    background-color: var(--semantic-bg-disabled-primary);
+    pointer-events: none;
+    cursor: unset;
+  }
+
+  &:hover {
+    background-color: var(--semantic-bg-brand-primary-hover);
+  }
+
+  &:active,
+  &.active {
+    background-color: var(--semantic-bg-brand-primary-active);
+  }
+
+  &.readonly {
+    pointer-events: none;
+    cursor: unset;
+    background-color: var(--semantic-bg-brand-primary-enabled);
+  }
+
+  &.backgroundColor {
+    background-color: var(--focus-user-color);
+  }
+
+  &.userBorderColor {
+    border: 1px solid var(--focus-user-color);
+  }
+
+  &:focus-visible {
+    outline: 1px solid var(--semantic-border-focus);
+    outline-offset: 1px;
+  }
+
+  &.fallback,
+  &.fallback:hover,
+  &.fallback:active {
+    background-color: var(--semantic-bg-disabled-primary);
+  }
+}
+
+button.avatar {
+  cursor: pointer;
+}

@@ -1,0 +1,53 @@
+@import "@ds/styles/themes/mixins.module.scss";
+
+// Useful for styling non-input elements to look like inputs
+@mixin generic_text_input_styles {
+  padding: var(--spacing-md);
+  border: 1px solid var(--semantic-bg-separator-primary);
+  border-radius: var(--radius-md);
+  color: var(--semantic-fg-action-primary-enabled);
+  background-color: var(--semantic-bg-secondary);
+
+  @include text_style_body_md;
+
+  &:hover {
+    border-color: var(--semantic-bg-brand-secondary-hover);
+  }
+}
+
+@mixin text_input_styles {
+  @include generic_text_input_styles;
+
+  &:hover {
+    border-color: var(--semantic-bg-brand-secondary-hover);
+  }
+
+  &:active,
+  &:focus,
+  &:focus-visible {
+    outline: none;
+    border-color: var(--semantic-border-focus);
+  }
+
+  &:disabled {
+    color: var(--semantic-fg-disabled-primary);
+    border-color: var(--semantic-bg-action-secondary-enabled);
+    background-color: var(--semantic-bg-disabled-secondary);
+    cursor: initial;
+  }
+
+  &:read-only {
+    color: var(--semantic-fg-secondary);
+    border-color: var(--semantic-bg-action-secondary-enabled);
+    background-color: unset;
+    cursor: initial;
+  }
+
+  &::selection {
+    background-color: var(--semantic-bg-text-selection);
+  }
+
+  &::placeholder {
+    color: var(--semantic-fg-tertiary);
+  }
+}

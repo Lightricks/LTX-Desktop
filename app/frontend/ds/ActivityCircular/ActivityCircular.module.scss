@@ -1,0 +1,43 @@
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.activityCircular {
+  display: block;
+
+  &.spinner {
+    animation: spin 0.7s linear infinite;
+  }
+}
+
+.activityCircularCircle {
+  stroke: var(--semantic-bg-separator-primary);
+}
+
+.activityCircularCircleLoadingPath {
+  stroke: var(--semantic-fg-brand-primary-enabled);
+  transition:
+    stroke-dashoffset 1s ease 0s,
+    stroke 1s ease;
+  will-change: stroke-dashoffset;
+
+  --track-color: var(--semantic-bg-primary);
+}
+
+.activityCircularOverBackground {
+  .activityCircularCircle {
+    stroke: rgba(255, 255, 255, 0.2);
+  }
+
+  .activityCircularCircleLoadingPath {
+    stroke: var(--semantic-fg-white-enabled);
+
+    --track-color: var(--semantic-bg-overlay-secondary);
+  }
+}

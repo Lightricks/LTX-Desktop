@@ -1,0 +1,19 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-width: 420px;
+}
+
+.icon {
+  width: 20px;
+  height: 20px;
+  color: var(--semantic-fg-warning-primary-enabled);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}

@@ -1,0 +1,70 @@
+@import "@ds/styles/themes/mixins.module.scss";
+
+.container {
+  border-radius: inherit;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+
+  &.overlayBackground {
+    background-color: var(--semantic-bg-overlay-secondary);
+
+    @include effect_style_overlay_tertiary;
+  }
+
+  &.sm {
+    gap: var(--gap-xs);
+  }
+
+  &.fullScreen {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    inset: 0;
+    z-index: 100;
+  }
+}
+
+.label {
+  color: var(--semantic-fg-primary);
+  text-align: center;
+
+  &.sm {
+    @include text_style_label_sm;
+  }
+
+  &.md {
+    @include text_style_label_md;
+  }
+
+  &.lg {
+    @include text_style_label_md;
+  }
+
+  &.xl {
+    @include text_style_label_md;
+  }
+}
+
+.icon {
+  width: 24px;
+  height: 24px;
+}
+
+.nsfwContainer {
+  text-align: center;
+  backdrop-filter: blur(1px);
+}
+
+.ctaButton {
+  margin-top: calc(var(--gap-lg) - var(--gap-sm));
+}
+
+.upgradeContainer {
+  color: var(--semantic-fg-primary);
+}

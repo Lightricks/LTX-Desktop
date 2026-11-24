@@ -1,0 +1,685 @@
+@use "@/ds/styles/themes/animationsValues.scss" as *;
+@use "@/ds/styles/themes/mixins.module.scss" as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-height: 100%;
+  max-width: 50rem;
+  margin: 0 auto;
+  padding-top: var(--spacing-3xl);
+  padding-bottom: var(--spacing-3xl);
+  gap: var(--spacing-xxl);
+  overflow-x: clip;
+  color: var(--semantic-fg-primary);
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: var(--spacing-xxl);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-lg);
+  text-align: center;
+}
+
+.titleBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.title {
+  text-align: center;
+}
+
+.lead {
+  max-width: 21.25rem;
+  color: var(--semantic-fg-secondary);
+  text-align: center;
+}
+
+.reason {
+  color: var(--semantic-fg-secondary);
+  text-align: center;
+}
+
+// Off / On segmented control — matches NavigationToggleBar in Figma.
+.toggleBar {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  width: max-content;
+  padding: var(--spacing-3xs);
+  border-radius: 999px;
+  background: var(--semantic-bg-primary);
+  transition: background-color 160ms $easing-standard-expressive;
+}
+
+.toggleBar:hover {
+  background: var(--semantic-bg-secondary);
+}
+
+.toggleThumb {
+  position: absolute;
+  top: var(--spacing-3xs);
+  bottom: var(--spacing-3xs);
+  left: var(--spacing-3xs);
+  z-index: 0;
+  width: calc((100% - 2 * var(--spacing-3xs)) / 2);
+  border-radius: 999px;
+  background: var(--semantic-bg-black-primary);
+  pointer-events: none;
+  transform: translateX(0);
+  transition: transform 320ms $easing-standard-expressive;
+}
+
+.toggleThumbOn {
+  transform: translateX(100%);
+}
+
+.toggleOption {
+  appearance: none;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 1.75rem;
+  padding: 0 var(--spacing-xl);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--semantic-fg-tertiary);
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 160ms $easing-standard-expressive;
+}
+
+.toggleLabel {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.toggleLabelGhost {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.toggleLabelText {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toggleOption:focus-visible {
+  outline: 2px solid var(--semantic-bg-focus);
+  outline-offset: 2px;
+}
+
+.toggleOption.toggleOptionActive {
+  color: var(--semantic-fg-white-enabled);
+}
+
+.toggleOption:hover:not(.toggleOptionActive) {
+  color: var(--semantic-fg-secondary);
+}
+
+// 3D laptop. Closed lid = Remote off. Open lid = Remote on.
+//
+// Geometry is shared between the open machine and the closed slab so the two
+// states occupy the same pixels — the base never moves, only the lid swings.
+$base-height: 0.85rem;
+$base-overhang: 0.35rem;
+$lid-slab-height: 0.95rem; // closed lid thickness, matches the lid shell below
+$lid-depth: 8px; // half-thickness: front face sits at +z, back face at -z
+$laptop-bottom: 1.25rem;
+
+// Opening decelerates into place; closing accelerates, the way a lid falls.
+//
+// The swing has to *finish* before the slab crossfade starts, not during it.
+// A shut lid and the slab are both a ~1rem silver band, so swapping them once
+// the lid has landed is invisible; swapping mid-swing reads as the lid
+// dissolving half-open. Close is therefore $lid-close-duration of rotation
+// followed by $slab-fade of pure crossfade.
+// The screen also goes dark *before* the lid moves, rather than alongside it:
+// the display sleeping and then the lid coming down are two beats, and running
+// them together is what made the close feel like one undifferentiated motion.
+// The lid picks up while the screen is still fading, so it reads as one gesture
+// rather than two separate events.
+$lid-open-duration: 900ms;
+$lid-open-ease: cubic-bezier(0.16, 1, 0.3, 1);
+$screen-off: 140ms;
+$lid-close-delay: 100ms;
+$lid-close-duration: 420ms;
+$lid-close-ease: cubic-bezier(0.3, 0.02, 0.8, 0.6);
+$slab-fade: 90ms;
+$lid-close-landed: $lid-close-delay + $lid-close-duration;
+// The crossfade overlaps the tail of the swing rather than waiting for it.
+// At -90° the lid is horizontal, so perspective projects it below the hinge and
+// over the base, while the slab sits above the hinge — the two never line up.
+// Starting the fade with ~70ms left (lid still around -65°) means the lid is
+// already gone by the time it reaches that pose, so the mismatch never renders.
+$lid-close-overlap: 70ms;
+$lid-crossfade-at: $lid-close-landed - $lid-close-overlap;
+
+.stage {
+  --laptop-width: 28rem;
+
+  position: relative;
+  width: min(100%, 33rem);
+  height: 23.25rem;
+  // A long lens. At 1800px the lid's top edge swings ~280px toward the camera
+  // as it shuts and flares ~18% wider than the base; here that's ~8%. The open
+  // state is unaffected — at rotateX(0) the lid is flat in its own plane.
+  perspective: 3600px;
+  perspective-origin: 50% 70%;
+}
+
+// Always mounted: a closed laptop still has a base. Only the lid hides.
+.laptop {
+  position: absolute;
+  left: 50%;
+  bottom: $laptop-bottom;
+  z-index: 1;
+  width: var(--laptop-width);
+  transform: translateX(-50%);
+  transform-style: preserve-3d;
+}
+
+.lid {
+  position: relative;
+  height: 17.5rem;
+  transform-origin: 50% 100%;
+  transform: rotateX(-90deg);
+  transform-style: preserve-3d;
+  opacity: 0;
+  visibility: hidden;
+  // Swings, and fades into the slab over the last stretch of that swing.
+  // `visibility` then takes it out of hit-testing and the tab order.
+  transition:
+    transform $lid-close-duration $lid-close-ease $lid-close-delay,
+    opacity $slab-fade linear $lid-crossfade-at,
+    visibility 0s linear ($lid-crossfade-at + $slab-fade);
+}
+
+.open .lid {
+  transform: rotateX(0deg);
+  opacity: 1;
+  visibility: visible;
+  transition:
+    transform $lid-open-duration $lid-open-ease,
+    opacity 0s linear 0s,
+    visibility 0s linear 0s;
+}
+
+.lidFront,
+.lidBack {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  border-radius: 0.7rem 0.7rem 0.2rem 0.2rem;
+}
+
+.lidFront {
+  display: flex;
+  padding: 0.55rem 0.55rem 0.4rem;
+  background: #3a3a3f;
+  transform: translateZ($lid-depth);
+}
+
+.lidBack {
+  background: linear-gradient(180deg, #8a8a90 0%, #5c5c62 100%);
+  transform: rotateX(180deg) translateZ($lid-depth);
+}
+
+// The lid's top edge, spanning the full front-to-back thickness. Without it the
+// lid is two faces with nothing between them, so the moment it tips toward the
+// camera on close it reads as a sheet of paper instead of a slab.
+// `backface-visibility` does the work of showing it only when it should be
+// seen: the camera sits below the open lid's top edge, so this face is turned
+// away until the lid folds past roughly 74°, then it eases in from zero height.
+.lidEdge {
+  position: absolute;
+  top: 0;
+  left: 0.5rem;
+  right: 0.5rem;
+  height: 2 * $lid-depth;
+  border-radius: 0.1rem;
+  background: linear-gradient(180deg, #8f8f95 0%, #6e6e74 100%);
+  backface-visibility: hidden;
+  transform-origin: 50% 0;
+  transform: translateZ(-$lid-depth) rotateX(90deg);
+}
+
+.bezel {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  border-radius: 0.35rem;
+  overflow: hidden;
+  background: #2a2a2e;
+}
+
+.notch {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 2;
+  width: 3.25rem;
+  height: 0.45rem;
+  border-radius: 0 0 0.4rem 0.4rem;
+  background: #3a3a3f;
+  transform: translateX(-50%);
+}
+
+.screen {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-lg);
+  min-width: 0;
+  padding: var(--spacing-xl) var(--spacing-lg) var(--spacing-lg);
+  background: #ffffff;
+  opacity: 0;
+  // Closing: the display sleeps first, so the lid never folds a live QR code.
+  transition: opacity $screen-off $easing-exit-expressive;
+}
+
+.open .screen {
+  opacity: 1;
+  transition: opacity 280ms $easing-entrance-expressive 380ms;
+}
+
+.screenIdle {
+  background: #111113;
+}
+
+.screenIdle .reason {
+  color: #c1c3c9;
+}
+
+.qrFrame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+}
+
+.pairingSkeleton {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  width: 100%;
+}
+
+.urlSkeleton {
+  width: min(100%, 20rem);
+}
+
+// Light screen: soft gray shimmer (DS skeleton tokens read too dark on #fff).
+.pairingSkeletonBlock {
+  border: 1px solid rgba(227, 228, 231, 0.55);
+  background: linear-gradient(
+    90deg,
+    #eceef2 25%,
+    #f6f7f9 50%,
+    #eceef2 75%
+  );
+  background-size: 400% 100%;
+  animation: pairingSkeletonShimmer 2.2s ease-in-out infinite;
+}
+
+@keyframes pairingSkeletonShimmer {
+  0% {
+    background-position: 100% 0;
+  }
+
+  100% {
+    background-position: 0% 0;
+  }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.urlChip {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3xs);
+  width: min(100%, 20rem);
+  min-width: 0;
+  padding: var(--spacing-xs);
+  border: 1px solid rgba(227, 228, 231, 0.64);
+  border-radius: var(--radius-md);
+  background: #fafafa;
+}
+
+.copyButtonWrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.urlText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  padding: 0 var(--spacing-3xs);
+  background: transparent;
+  color: #8d919d;
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.copyToast {
+  position: absolute;
+  bottom: calc(100% + var(--spacing-3xs));
+  left: 50%;
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-3xs) var(--spacing-sm);
+  border: 1px solid rgba(227, 228, 231, 0.85);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  color: #232424;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 8%);
+  transform: translateX(-50%);
+  animation: copyToastEnter 240ms $easing-entrance-expressive forwards,
+    copyToastExit 200ms $easing-exit-expressive 2.1s forwards;
+}
+
+.copyToastText {
+  margin: 0;
+  color: inherit;
+  white-space: nowrap;
+}
+
+@keyframes copyToastEnter {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(0.25rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes copyToastExit {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(0.2rem);
+  }
+}
+
+// Light laptop screen inside dark app — override DS button vars (white.plain fg would be invisible).
+.urlChip .urlChipButton {
+  flex: 0 0 auto;
+  --btn-bg: var(--semantic-bg-white-secondary-enabled) !important;
+  --btn-bg-hover: var(--semantic-bg-white-secondary-hover) !important;
+  --btn-bg-active: var(--semantic-bg-white-secondary-active) !important;
+  --btn-bg-disabled: var(--semantic-bg-disabled-secondary) !important;
+  --btn-fg: var(--semantic-fg-black-enabled) !important;
+  --btn-fg-hover: var(--semantic-fg-black-enabled) !important;
+  --btn-fg-active: var(--semantic-fg-black-enabled) !important;
+  --btn-fg-disabled: var(--semantic-fg-disabled-primary) !important;
+  color: #232424 !important;
+}
+
+.base {
+  position: relative;
+  height: $base-height;
+  margin: 0 (-$base-overhang);
+  border-radius: 0 0 0.55rem 0.55rem;
+  background: linear-gradient(180deg, #6a6a70 0%, #4e4e54 55%, #3a3a3f 100%);
+}
+
+.base::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0.12rem;
+  width: 4.5rem;
+  height: 0.22rem;
+  border-radius: 0.2rem;
+  background: #2a2a2e;
+  transform: translateX(-50%);
+}
+
+// The shut lid, resting on the real `.base`. Same width and hinge line as the
+// open machine, so the crossfade has nothing to jump between.
+.clamshell {
+  position: absolute;
+  left: 50%;
+  bottom: calc(#{$laptop-bottom} + #{$base-height});
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  width: calc(var(--laptop-width) + 2 * #{$base-overhang});
+  height: $lid-slab-height;
+  overflow: hidden;
+  border-radius: 0.7rem 0.7rem 0.1rem 0.1rem;
+  transform: translateX(-50%);
+  pointer-events: none;
+  opacity: 1;
+  // Comes up over the same window the lid fades out on, so there is never a
+  // frame with neither of them on screen.
+  transition: opacity $slab-fade linear $lid-crossfade-at;
+}
+
+.open .clamshell {
+  opacity: 0;
+  // Hold a beat so the rising lid is already tall enough to cover the slab.
+  transition: opacity $slab-fade linear 80ms;
+}
+
+.clamshellLid {
+  flex: 1 1 auto;
+  background: linear-gradient(180deg, #9a9aa0 0%, #7c7c82 55%, #68686e 100%);
+}
+
+.clamshellSeam {
+  flex: 0 0 1px;
+  background: #2c2c30;
+}
+
+.devicesMount {
+  width: 100%;
+  max-width: 37.5rem;
+}
+
+.devicesCard {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--semantic-bg-separator-primary);
+  border-radius: var(--radius-lg);
+  background: var(--semantic-bg-secondary);
+}
+
+.devicesHeader {
+  padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-sm);
+}
+
+.deviceList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.deviceRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+}
+
+.deviceRow:not(:first-child) {
+  border-top: 1px solid var(--semantic-bg-separator-primary);
+}
+
+.deviceMeta {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  min-width: 0;
+  flex: 1;
+}
+
+.deviceText {
+  min-width: 0;
+  flex: 1;
+}
+
+.deviceNameRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.liveDot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--semantic-fg-tertiary);
+}
+
+.liveDotOn {
+  background: var(--semantic-bg-success-primary-enabled);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--semantic-bg-success-primary-enabled) 28%, transparent);
+  animation: live-dot-pulse 1.8s ease-in-out infinite;
+}
+
+.deviceName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deviceIp {
+  flex: 0 0 auto;
+  color: var(--semantic-fg-tertiary);
+}
+
+.lastSeen {
+  margin-top: var(--spacing-3xs);
+  color: var(--semantic-fg-secondary);
+}
+
+@keyframes live-dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--semantic-bg-success-primary-enabled) 22%, transparent);
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--semantic-bg-success-primary-enabled) 8%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lid,
+  .open .lid,
+  .clamshell,
+  .open .clamshell,
+  .screen,
+  .open .screen {
+    transition: none;
+  }
+
+  .liveDotOn {
+    animation: none;
+  }
+
+  .pairingSkeletonBlock {
+    animation: none;
+    background: #f0f1f4;
+  }
+
+  .toggleBar {
+    transition: none;
+  }
+
+  .toggleThumb {
+    transition: none;
+  }
+
+  .toggleOption {
+    transition: none;
+  }
+
+  .copyToast {
+    animation: none;
+    opacity: 1;
+    transform: translateX(-50%);
+  }
+}
+
+@media (max-width: 640px) {
+  .stage {
+    --laptop-width: 22rem;
+
+    height: 19.5rem;
+  }
+
+  .lid {
+    height: 13.75rem;
+  }
+}

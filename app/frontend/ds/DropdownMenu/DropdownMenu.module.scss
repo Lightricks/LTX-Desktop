@@ -1,0 +1,27 @@
+@use "@ds/styles/common" as *;
+@use "@ds/styles/themes/animationsValues.scss" as *;
+@use "@ds/styles/themes/animationsMixins.scss" as *;
+
+.menuContent {
+  @include dropdown_menu_content_styles;
+
+  &[data-state="open"] {
+    animation: menu-fade-in $duration-moderate $easing-standard-productive;
+  }
+
+  &[data-state="closed"] {
+    animation: menu-fade-out $duration-moderate $easing-standard-productive;
+  }
+}
+
+.menuContentInner {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 160px;
+  padding: var(--spacing-xxs) 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-radius: inherit;
+  max-height: inherit;
+}

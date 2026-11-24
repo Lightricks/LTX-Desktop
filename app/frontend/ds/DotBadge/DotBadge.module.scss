@@ -1,0 +1,13 @@
+.dotBadge {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  max-width: 8px;
+  min-height: 8px;
+  max-height: 8px;
+  border-radius: var(--radius-round);
+  background-color: var(--semantic-bg-brand-primary-enabled);
+  flex-shrink: 0;
+  flex-grow: 0;
+}

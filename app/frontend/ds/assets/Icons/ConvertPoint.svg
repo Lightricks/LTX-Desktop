@@ -1,0 +1,24 @@
+<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle
+    cx="4.81155"
+    cy="22.9812"
+    r="2"
+    transform="rotate(0.542184 4.81155 22.9812)"
+    stroke="currentColor"
+    stroke-width="2"
+  />
+  <circle
+    cx="22.9811"
+    cy="5.15263"
+    r="2"
+    transform="rotate(0.542184 22.9811 5.15263)"
+    stroke="currentColor"
+    stroke-width="2"
+  />
+  <path
+    d="M4.91259 20.31C4.91266 10 11.149 5.00978 20.2132 5.0102"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+  />
+</svg>

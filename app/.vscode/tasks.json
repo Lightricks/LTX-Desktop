@@ -1,0 +1,36 @@
+{
+  "version": "2.0.0",
+  "windows": {
+    "options": {
+      "shell": {
+        "executable": "cmd.exe",
+        "args": ["/d", "/c"]
+      }
+    }
+  },
+  "tasks": [
+    {
+      "label": "dev:debug",
+      "type": "shell",
+      "command": "npm run dev:debug",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "electron-dev",
+        "severity": "info",
+        "pattern": {
+          "regexp": "^$NEVER_MATCH^"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "ready|VITE|localhost|electron"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    }
+  ]
+}
