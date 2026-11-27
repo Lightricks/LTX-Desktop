@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory(dir=release) as temp:
     output = tmp / launcher.name
     subprocess.run(['node', str(work / 'asar-tool/brand-launcher.mjs'), str(stock),
                     str(output), product_name,
-                    upstream_manifest['version']], check=True)
+                    upstream_manifest['version'], str(app / 'resources/icon.ico')], check=True)
     output.replace(launcher)
     stock.unlink()
 old_launcher.unlink(missing_ok=True)
