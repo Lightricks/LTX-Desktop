@@ -432,6 +432,8 @@ export async function startPythonBackend({ askUser = true }: { askUser?: boolean
         // it, mps-sdpa falls back to a Metal-memory-leaking backend). macOS-only so it
         // can't shadow PATH entries for backend subprocesses on Windows/Linux.
         ...(process.platform === 'darwin' ? {
+          // Keep the signed app bundle intact when Python imports packaged modules.
+          PYTHONDONTWRITEBYTECODE: '1',
           PATH: `${path.dirname(pythonPath)}${path.delimiter}${process.env.PATH ?? ''}`,
           // Skip mps-sdpa's import-time microbench: it can cache fused_min_bytes=None
           // ("always stock"), which routes video-length attention through stock MPS

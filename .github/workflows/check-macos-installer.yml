@@ -47,8 +47,9 @@ jobs:
             --no-launch --cache "$RUNNER_TEMP/mac-cache" --applications-dir "$RUNNER_TEMP/Applications"
           application="$RUNNER_TEMP/Applications/LTX Desktop - SpaceSpeak.app"
           python_bundle="$application/Contents/Resources/python"
-          PYTHONHOME="$python_bundle" "$python_bundle/bin/python3" checks/check_native_mps.py
+          PYTHONHOME="$python_bundle" "$python_bundle/bin/python3" -B checks/check_native_mps.py
           python3 checks/check_mac_app_launch.py "$application"
+          codesign --verify --deep --strict "$application"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: LTX-Desktop-Apple-Silicon-Online-Setup
