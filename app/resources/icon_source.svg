@@ -1,17 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1254 1254" width="1254" height="1254">
   <title>LTX Desktop community branch</title>
-  <rect width="1024" height="1024" fill="#075b60"/>
-  <path d="M811 134 C813 199 813 217 819 224 C825 231 842 232 876 234 C841 236 825 237 819 244 C813 251 813 270 811 334 C809 270 809 251 803 244 C797 237 781 236 746 234 C780 232 797 231 803 224 C809 217 809 199 811 134 Z" fill="#ffd36a"/>
-  <path d="M811 216 Q813 231 827 234 Q813 237 811 252 Q809 237 795 234 Q809 231 811 216 Z" fill="#fff7dd"/>
-  <g transform="translate(512 550)" stroke="#c8f6fb" stroke-width="14" fill="none">
-    <ellipse rx="94" ry="244"/>
-    <ellipse rx="94" ry="244" transform="rotate(60)"/>
-    <ellipse rx="94" ry="244" transform="rotate(-60)"/>
-  </g>
-  <g fill="#c8f6fb">
-    <circle cx="512" cy="554" r="30"/>
-    <circle cx="564" cy="349" r="24"/>
-    <circle cx="320" cy="520" r="24"/>
-    <circle cx="656" cy="697" r="24"/>
-  </g>
+  <!-- icon.png is the approved, opaque full-resolution artwork. -->
+  <image width="1254" height="1254" xlink:href="icon.png"/>
 </svg>
