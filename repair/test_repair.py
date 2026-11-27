@@ -108,7 +108,7 @@ class RepairTests(unittest.TestCase):
                     (directory / "__init__.py").touch()
                 (backend / module).write_text(source, encoding="utf-8")
             def run():
-                return subprocess.run([sys.executable, str(ROOT / "setupwork/src/diagnose.py"),
+                return subprocess.run([sys.executable, str(ROOT / "repair/diagnose.py"),
                                        "--application", str(application)], env=dict(os.environ, LOCALAPPDATA=str(base)),
                                       capture_output=True, text=True)
             ok = run()

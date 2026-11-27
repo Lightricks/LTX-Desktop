@@ -11,7 +11,7 @@ FILENAME = "LTX-Desktop-AMD-Backend-Repair.zip"
 
 def build(output):
     sources = [HERE / "Repair-LTX-Desktop-AMD.cmd", HERE / "Read-Me.txt", HERE / "repair_existing.py",
-               ROOT / "runtimework/repair_single_gpu.py", ROOT / "setupwork/src/diagnose.py"]
+               ROOT / "runtimework/repair_single_gpu.py", HERE / "diagnose.py"]
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=output) as tmp:
         package = Path(tmp) / FILENAME
