@@ -9,9 +9,9 @@ import av
 import imageio_ffmpeg
 import numpy as np
 
-from services.retake_pipeline.frame_rate import restamp_to_source_rate
-from services.retake_pipeline.retake_stitch import stitch_retake_output
-from services.retake_pipeline.window import window_for_retake
+from inference.retake_pipeline.frame_rate import restamp_to_source_rate
+from inference.retake_pipeline.retake_stitch import stitch_retake_output
+from inference.retake_pipeline.window import window_for_retake
 
 NTSC_FILM = 24000 / 1001
 SOURCE_FRAMES = 300

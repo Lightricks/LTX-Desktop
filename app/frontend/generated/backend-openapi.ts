@@ -3522,14 +3522,21 @@ export interface components {
          *     presets, retake minimum) so every candidate has an exact resolution-level
          *     verdict; callers add the durations they display (extend presets, retake
          *     current selection) for exact per-cell messages. ``startTime`` only affects
-         *     retake windowing, ``mode`` only extend stitching; both default so each
-         *     feature sends what it needs.
+         *     retake windowing, ``mode`` only extend stitching and ``contextMode`` only how
+         *     much of the clip an extend keeps as context (which sets the window it is
+         *     priced at); all default so each feature sends what it needs.
          */
         EditPreflightRequest: {
             /** Assetid */
             assetId: string;
             /** Candidates */
             candidates: components["schemas"]["EditPreflightCandidate"][];
+            /**
+             * Contextmode
+             * @default long
+             * @enum {string}
+             */
+            contextMode: "long" | "short";
             /** Durations */
             durations: number[];
             /**
@@ -3713,6 +3720,12 @@ export interface components {
          *     up to the next multiple of 32, and the stitch crops back to this picture.
          */
         ExtendParams: {
+            /**
+             * Contextmode
+             * @default long
+             * @enum {string}
+             */
+            contextMode: "long" | "short";
             /** Duration */
             duration: number;
             /**
@@ -3868,11 +3881,6 @@ export interface components {
              */
             highResVideoToVideo: boolean;
             /**
-             * Keyframes
-             * @default false
-             */
-            keyframes: boolean;
-            /**
              * Showgenerationnegativeprompt
              * @default false
              */
@@ -3891,8 +3899,6 @@ export interface components {
             customIcLora?: boolean | null;
             /** Highresvideotovideo */
             highResVideoToVideo?: boolean | null;
-            /** Keyframes */
-            keyframes?: boolean | null;
             /** Showgenerationnegativeprompt */
             showGenerationNegativePrompt?: boolean | null;
         };
@@ -6436,6 +6442,12 @@ export interface components {
          * @description New retakes only: specs queued before the cap still parse as ``RetakeParams``.
          */
         RetakeRequestParams: {
+            /**
+             * Contextmode
+             * @default long
+             * @enum {string}
+             */
+            contextMode: "long" | "short";
             /** Duration */
             duration: number;
             /**

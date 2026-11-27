@@ -14,7 +14,8 @@
     "scripts",
     "performance_runner",
     "profile_results",
-    "services/patches"
+    "services/patches",
+    "inference/patches"
   ],
   "reportMissingImports": "warning",
   "reportMissingTypeStubs": false,

@@ -15,7 +15,6 @@ DEFAULTS = {
     "highResVideoToVideo": False,
     "createWithAi": False,
     "showGenerationNegativePrompt": False,
-    "keyframes": False,
 }
 AUTH = {"Authorization": "Bearer pair-token"}
 
@@ -60,6 +59,20 @@ def test_unreadable_file_falls_back_to_defaults(client, test_state):
 def test_corrupt_file_falls_back_to_defaults(client, test_state):
     (test_state.config.app_data_dir / "feature_flags.json").write_text("{not json", encoding="utf-8")
     assert client.get("/api/feature-flags").json() == DEFAULTS
+
+
+def test_file_with_a_removed_flag_keeps_the_other_flags_and_drops_it_on_write(client, test_state):
+    saved = test_state.config.app_data_dir / "feature_flags.json"
+    saved.write_text(json.dumps({"customIcLora": True, "keyframes": True}), encoding="utf-8")
+
+    assert client.get("/api/feature-flags").json() == {**DEFAULTS, "customIcLora": True}
+
+    client.request("PATCH", "/api/feature-flags", json={"createWithAi": True})
+    assert json.loads(saved.read_text(encoding="utf-8")) == {
+        **DEFAULTS,
+        "customIcLora": True,
+        "createWithAi": True,
+    }
 
 
 def test_remote_serves_flags_with_bearer_only(test_state):

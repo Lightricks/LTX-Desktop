@@ -10,7 +10,7 @@ Use CPython 3.11 or later and 7-Zip with CAB support on the packaging host. You 
 |---|---|
 | Windows embedded Python | The versioned python.org ZIP in `bootstrap-sources.json` |
 | Four app-local Microsoft VC++ runtime DLLs | The immutable Microsoft VC++ 14.52.37029 x64 redistributable URL in `bootstrap-sources.json`. `visual_cpp.py` extracts the signed Cabinet payload and verifies each DLL's release digest |
-| LTX dependencies | The Windows CPython 3.13 wheel selections from the LTX Desktop v1.3.2 backend lock, with the CUDA packages replaced by AMD's gfx1151 PyTorch, ROCm core and target libraries |
+| LTX dependencies | The Windows CPython 3.13 wheel selections carried forward from the LTX Desktop v1.3.2 backend lock (upstream v1.3.3 keeps the resolved package versions and moves the web server packages to its desktop extra), with the CUDA packages replaced by AMD's gfx1151 PyTorch, ROCm core and target libraries |
 | LTX and ROCm metadata wheels | The three release wheels under `local-wheels`. Their source and rebuild commands are listed below |
 
 Run one of the following commands from the repository root. Generated directories should be reserved for build output.

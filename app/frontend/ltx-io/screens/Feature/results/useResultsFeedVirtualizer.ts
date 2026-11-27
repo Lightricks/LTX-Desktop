@@ -150,13 +150,21 @@ export function useResultsFeedVirtualizer({
   // A row that is off screen keeps its old cached height, so its offset would be wrong.
   // Drop the cache, then measure the mounted rows again. They do not report on their own,
   // because the layout change happened before the cache was cleared.
+  //
+  // `measure()` empties the cache, so the library treats each measure below as the first one
+  // for that row. For a row above the scroll position it then moves the scroll by the
+  // difference between its estimate and its size. Here the user did not move, so that move
+  // is wrong: leaving fullscreen (the window width changes twice) scrolled the feed down
+  // whenever it was not at the top. The scroll position stays as it is during this measure.
   const feedWidth = layout.width;
   useLayoutEffect(() => {
     if (!listElement || feedWidth === 0) return;
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => false;
     virtualizer.measure();
     for (const row of listElement.querySelectorAll<HTMLElement>("[data-index]")) {
       virtualizer.measureElement(row);
     }
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined;
   }, [virtualizer, listElement, feedWidth]);
 
   const virtualItems = virtualizer.getVirtualItems();

@@ -3,7 +3,6 @@ import {
   HOME_FEATURES,
   HOME_SIDEBAR_FEATURED_FEATURES,
   type HomeFeatureDefinition,
-  type HomeFeatureFlags,
   type HomeFeatureId,
   getHomeFeature,
   isHomeFeatureOffered,
@@ -203,13 +202,12 @@ function featureHaystack(feature: HomeFeatureDefinition): string {
 export function searchQuickSearchFeatures(
   query: string,
   limit = 24,
-  featureFlags: HomeFeatureFlags = {},
 ): HomeFeatureDefinition[] {
   const tokens = tokenizeQuickSearchQuery(query);
   if (tokens.length === 0) return [];
 
   return HOME_FEATURES.flatMap((feature) => {
-    if (!isHomeFeatureOffered(feature.id, featureFlags)) return [];
+    if (!isHomeFeatureOffered(feature.id)) return [];
     const listing = featureListingFields(feature);
     const aliases = featureSearchAliases(feature);
     const score = scoreQuickSearchMatch(tokens, {
@@ -261,7 +259,6 @@ export function searchQuickSearchPages(
 
 export function buildQuickSearchBrowseSections(
   recentFeatureIds: readonly HomeFeatureId[],
-  featureFlags: HomeFeatureFlags = {},
   customLoras: readonly QuickSearchCustomLora[] = [],
 ): QuickSearchBrowseSection[] {
   const recentIds = new Set(recentFeatureIds);
@@ -283,7 +280,7 @@ export function buildQuickSearchBrowseSections(
     sections.push({ id: "recent", label: "Recent workflows", features: recent });
   }
 
-  for (const section of offeredHomeFeatureSections(featureFlags)) {
+  for (const section of offeredHomeFeatureSections()) {
     sections.push({
       id: section.id,
       label: section.heading,
@@ -347,21 +344,18 @@ function searchQuickSearchCustomLoras(
 
 export function searchQuickSearchRows(
   query: string,
-  featureFlags: HomeFeatureFlags = {},
   customLoras: readonly QuickSearchCustomLora[] = [],
 ): QuickSearchRow[] {
   const trimmed = query.trim();
   if (!trimmed) return [];
-  const featureRows: QuickSearchFeatureRow[] = searchQuickSearchFeatures(
-    trimmed,
-    undefined,
-    featureFlags,
-  ).map((feature) => ({
-    kind: "feature",
-    id: feature.id,
-    feature,
-    section: "Tools",
-  }));
+  const featureRows: QuickSearchFeatureRow[] = searchQuickSearchFeatures(trimmed).map(
+    (feature) => ({
+      kind: "feature",
+      id: feature.id,
+      feature,
+      section: "Tools",
+    }),
+  );
   const pageRows: QuickSearchPageRow[] = searchQuickSearchPages(trimmed).map(
     (destination) => ({
       kind: "page",

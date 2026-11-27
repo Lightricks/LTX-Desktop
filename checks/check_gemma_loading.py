@@ -1,4 +1,4 @@
-r"""Exercise Hugging Face model import, local checkpoint loading and CPU inference without c10d.
+r"""Exercise Hugging Face model import, local checkpoint loading and CPU inference on either runtime.
 
 Windows PowerShell from the checkout:
   & "$env:LOCALAPPDATA\Programs\LTXDesktopAMD\application\resources\python\python.exe" .\checks\check_gemma_loading.py
@@ -9,8 +9,7 @@ import tempfile
 import torch
 from transformers import Gemma3TextConfig, Gemma3ForCausalLM
 
-if torch.distributed.is_available():
-    raise SystemExit("This regression check requires a single-process PyTorch build without native c10d.")
+print(f"Testing Gemma on PyTorch {torch.__version__}; native c10d available: {torch.distributed.is_available()}")
 config = Gemma3TextConfig(
     vocab_size=32, hidden_size=16, intermediate_size=32, num_hidden_layers=2,
     num_attention_heads=2, num_key_value_heads=1, head_dim=8, max_position_embeddings=64,

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from ltx_pipelines.utils.constants import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
 
-from services.denoising_progress import (
+from inference.progress import (
     DISTILLED_STAGE_1_STEPS,
     DISTILLED_STAGE_2_STEPS,
     DISTILLED_TOTAL_STEPS,
@@ -38,7 +38,7 @@ def test_stage_1_only_total_omits_stage_2() -> None:
 
 def test_note_step_reports_current_and_total_to_the_sink() -> None:
     seen: list[tuple[int, int]] = []
-    from services import denoising_progress
+    import inference.progress as denoising_progress
 
     denoising_progress.configure_sink(lambda current, total: seen.append((current, total)))
     total = distilled_total_steps()

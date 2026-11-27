@@ -19,11 +19,11 @@ OutFile "${OUT}"
 InstallDir "$LOCALAPPDATA\Programs\LTXDesktopAMD"
 Icon "${ICONFILE}"
 UninstallIcon "${ICONFILE}"
-VIProductVersion "1.3.2.8"
+VIProductVersion "1.3.3.1"
 VIAddVersionKey "ProductName" "${APP}"
-VIAddVersionKey "ProductVersion" "1.3.2.8"
+VIAddVersionKey "ProductVersion" "1.3.3.1"
 VIAddVersionKey "FileDescription" "${APP} Setup"
-VIAddVersionKey "FileVersion" "1.3.2.8"
+VIAddVersionKey "FileVersion" "1.3.3.1"
 VIAddVersionKey "LegalCopyright" "LTX Desktop contributors and component authors"
 ShowInstDetails show
 ShowUninstDetails show
@@ -33,9 +33,9 @@ ShowUninstDetails show
 !define MUI_WELCOMEPAGE_TEXT "Install the Windows x64 edition for Radeon 8060S. Setup includes the application and native ROCm runtime. LTX downloads video model weights separately on first use.$\r$\n$\r$\nClose any running copy of ${APP} before starting."
 !else
 !ifdef COMPACT
-!define MUI_WELCOMEPAGE_TEXT "Install LTX Desktop - AMD 395 MAX for Radeon 8060S. Setup downloads the desktop components and the AMD runtime. Model weights are available later from the app.$\r$\n$\r$\nClose LTX Desktop before starting."
+!define MUI_WELCOMEPAGE_TEXT "Setup detects a supported NVIDIA CUDA GPU or Radeon 8060S and downloads its matching runtime. Other PCs use API mode. Model weights are available later from the app.$\r$\n$\r$\nClose LTX Desktop before starting."
 !else
-!define MUI_WELCOMEPAGE_TEXT "Install the Windows x64 edition for Radeon 8060S. Setup includes an app-managed ComfyUI renderer and downloads the AMD runtime. LTX downloads video model weights separately on first use.$\r$\n$\r$\nClose any running copy of ${APP} before starting."
+!define MUI_WELCOMEPAGE_TEXT "Install the Windows x64 edition with automatic NVIDIA CUDA and Radeon 8060S detection. Setup includes an app-managed ComfyUI renderer and downloads the matching runtime. LTX downloads video model weights separately on first use.$\r$\n$\r$\nClose any running copy of ${APP} before starting."
 !endif
 !endif
 !insertmacro MUI_PAGE_WELCOME
@@ -82,6 +82,9 @@ Section "${APP}"
   InitPluginsDir
   SetOutPath "$PLUGINSDIR\bundle"
   File "${SRC}/setup_engine.py"
+  File "${SRC}/gpu_selection.py"
+  File "${SRC}/cuda_runtime.py"
+  File "${SRC}/cuda-runtime.json"
   File "${SRC}/diagnose.py"
   File "${SRC}/AMD-Diagnostics.cmd"
   File "${BUNDLE}/runtime-manifest.json"
@@ -109,7 +112,7 @@ Section "${APP}"
   SetOutPath "$PLUGINSDIR\bundle\vcredist"
   File /r "${BUNDLE}/vcredist/*.*"
   SetOutPath "$PLUGINSDIR\bundle"
-  DetailPrint "Installing ${APP} and the Radeon runtime..."
+  DetailPrint "Installing ${APP} and the selected GPU runtime..."
   nsExec::ExecToLog '"$PLUGINSDIR\bundle\python\python.exe" -u -X utf8 "$PLUGINSDIR\bundle\setup_engine.py" "$PLUGINSDIR\bundle" "$EXEDIR" "$EXEPATH"'
   Pop $0
   ${If} $0 != 0
@@ -131,7 +134,7 @@ Section "${APP}"
   CreateShortcut "$SMPROGRAMS\${APP}\${DIAGNOSTIC_LINK}.lnk" "$INSTDIR\application\AMD-Diagnostics.cmd"
   CreateShortcut "$DESKTOP\${APP}.lnk" "$INSTDIR\application\${APP}.exe"
   WriteRegStr HKCU "${KEY}" "DisplayName" "${APP}"
-  WriteRegStr HKCU "${KEY}" "DisplayVersion" "1.3.2-amd.8"
+  WriteRegStr HKCU "${KEY}" "DisplayVersion" "1.3.3-community.1"
   WriteRegStr HKCU "${KEY}" "DisplayIcon" "$INSTDIR\application\${APP}.exe"
   WriteRegStr HKCU "${KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
   WriteRegDWORD HKCU "${KEY}" "NoModify" 1

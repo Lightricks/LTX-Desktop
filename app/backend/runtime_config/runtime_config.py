@@ -64,6 +64,19 @@ class RuntimeConfig:
     parallel_queue_lanes: bool = True
     # User-chosen assets folder (LTX_ASSETS_DIR). None means <app_data_dir>/assets.
     assets_dir: Path | None = None
+    # Windows Smart App Control enforces. It blocks the unsigned .pyd files Triton
+    # compiles at run time, so torch.compile cannot run. Probed once at startup.
+    smart_app_control_on: bool = False
+
+    @property
+    def torch_compile_available(self) -> bool:
+        """Whether the torch.compile setting can take effect on this runtime.
+
+        SageAttention's graph breaks conflict with compile (see
+        ``PipelinesHandler._compile_if_enabled``). Smart App Control blocks the
+        Triton code that Inductor needs.
+        """
+        return not self.use_sage_attention and not self.smart_app_control_on
 
     @property
     def in_flight_dir(self) -> Path:

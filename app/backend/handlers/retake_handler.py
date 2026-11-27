@@ -34,8 +34,8 @@ from handlers.video_resolution import (
 from runtime_config.ltx_capabilities import local_caps, supports
 from runtime_config.model_download_specs import resolve_active_ltx_model_id
 from runtime_config.runtime_config import RuntimeConfig
-from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
-from services.retake_pipeline.retake_mode import (
+from inference.interrupt import GenerationCancelledError, is_cancel_exception
+from inference.retake_pipeline.retake_mode import (
     InvalidRetakeModeError,
     resolve_retake_mode,
 )

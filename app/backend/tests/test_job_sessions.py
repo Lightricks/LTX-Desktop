@@ -9,7 +9,7 @@ import threading
 import time
 
 from api_types import GenerationProgressResponse
-from services import generation_interrupt
+import inference.interrupt as generation_interrupt
 from services.generation_queue.lane_sessions import LaneJobSession
 from services.generation_queue.sessions import LocalJobSession
 from tests.fakes.generation import FakeJobSession

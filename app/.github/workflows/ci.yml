@@ -51,7 +51,7 @@ jobs:
 
       - name: Install Python dev dependencies
         working-directory: backend
-        run: uv sync --frozen --extra dev
+        run: uv sync --frozen --extra desktop --extra dev
 
       - name: Pyright type check
         working-directory: backend
@@ -96,7 +96,7 @@ jobs:
 
       - &install-backend
         name: Install dependencies
-        run: uv sync --frozen --extra test --extra dev
+        run: uv sync --frozen --extra desktop --extra test --extra dev
 
       # The full suite runs on Linux. Windows only runs tests that call the
       # real Win32 DLL APIs. `--` keeps `-m` from being read as a uv flag.

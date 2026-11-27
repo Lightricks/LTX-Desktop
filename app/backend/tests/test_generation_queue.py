@@ -25,7 +25,7 @@ from api_types import (
     GenerateVideoResponse,
     GenerationErrorCode,
 )
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 from runtime_config.budget_admission import RiskAllowance
 from runtime_config.reject_reasons import PassShape
 from runtime_config.ic_lora_local_envelope import IC_LORA_SOURCE_TOO_LARGE
@@ -46,7 +46,7 @@ from services.generation_queue.control import (
 )
 from services.generation_queue.registry import ExecutorRegistry
 from services.generation_queue.runner import QueueRunner
-from services.patches import diffusion_stage_cache
+from inference.patches import diffusion_stage_cache
 from services.generation_queue.sessions import JobSession
 from services.generation_queue.types import (
     ExecutionOutcome,
@@ -55,9 +55,10 @@ from services.generation_queue.types import (
     OutputPlan,
 )
 from services.media_probe import probe_file
-from services.records import AttemptError, CapabilityFailedError, GenerationRecord
+from inference.errors import CapabilityFailedError
+from services.records import AttemptError, GenerationRecord
 from services.sqlite_store import SqliteStore
-from services.generation_interrupt import (
+from inference.interrupt import (
     GenerationCancelledError,
     is_requested,
     request,

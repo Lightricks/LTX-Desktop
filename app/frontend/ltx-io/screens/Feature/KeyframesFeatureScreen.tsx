@@ -1,17 +1,12 @@
 import { useMemo } from "react";
-import { Navigate } from "react-router";
-
-import { paths } from "@/paths";
 
 import { KEYFRAMES_SEED_KINDS } from "../../../../shared/explore-seed-filenames";
 import { useImageAssetSize } from "../../hooks/useAsset";
 import { useCreateKeyframes } from "../../hooks/useCreateKeyframes";
-import { useFeatureFlags } from "../../hooks/useFeatureFlags";
 import { useGenerations } from "../../hooks/useGenerations";
 import { planPackagedSeed } from "../../hooks/packagedSeed.ts";
 import { usePackagedSeedAssets } from "../../hooks/usePackagedSeedAsset";
 import { useVideoGenerationModelSpecs } from "../../hooks/useVideoGenerationModelSpecs";
-import { useExploreRuntime } from "../../runtime/ExploreRuntime";
 import { useFeatureFormStore } from "../../stores/featureFormStore";
 import {
   earliestKeyframe,
@@ -26,8 +21,6 @@ import { KeyframesExampleEmpty } from "./results/KeyframesExampleEmpty";
 import { ResultFrame } from "./results/ResultFrame";
 
 export function KeyframesFeatureScreen() {
-  const { api } = useExploreRuntime();
-  const flagsQuery = useFeatureFlags(api);
   const specsQuery = useVideoGenerationModelSpecs();
   const createGeneration = useCreateKeyframes();
   // The earliest still sets the ratio that Auto runs at.
@@ -48,8 +41,7 @@ export function KeyframesFeatureScreen() {
   });
   const seedQuery = usePackagedSeedAssets(KEYFRAMES_SEED_KINDS, {
     media: "image",
-    // No ingest for a user who cannot open the page.
-    enabled: seedPlan === "ingest" && flagsQuery.data?.keyframes === true,
+    enabled: seedPlan === "ingest",
   });
   const seedAssets = seedQuery.data;
   const seed = useMemo<KeyframesExampleSeed | null>(
@@ -68,14 +60,8 @@ export function KeyframesFeatureScreen() {
   const seedReady = seedPlan === "skip" || (seedPlan === "ingest" && seedQuery.isSuccess);
   const resourceError =
     specsQuery.error ??
-    flagsQuery.error ??
     (seedPlan === "ingest" ? seedQuery.error : null) ??
     (hasStoredValues ? null : generationsQuery.error);
-
-  // The feature has no page without its flag. The backend refuses the request too.
-  if (flagsQuery.isSuccess && flagsQuery.data.keyframes !== true) {
-    return <Navigate to={paths.home} replace />;
-  }
 
   if (!seedReady && resourceError == null) return null;
 
@@ -83,7 +69,7 @@ export function KeyframesFeatureScreen() {
     <FeatureFormScreen
       definition={keyframesDefinition}
       context={context}
-      contextReady={specsQuery.isSuccess && flagsQuery.isSuccess && seedReady}
+      contextReady={specsQuery.isSuccess && seedReady}
       generateEnabled={specsQuery.budgetSettingsReady}
       resourceError={resourceError}
       createGeneration={createGeneration}

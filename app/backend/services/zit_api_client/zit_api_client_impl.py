@@ -11,7 +11,7 @@ from typing import Any, cast
 from urllib.parse import urlsplit
 
 from api_types import ApiActivityStatus
-from services.generation_interrupt import GenerationCancelledError
+from inference.interrupt import GenerationCancelledError
 from services.http_client.http_client import (
     HTTPClient,
     HttpBodyTooLargeError,

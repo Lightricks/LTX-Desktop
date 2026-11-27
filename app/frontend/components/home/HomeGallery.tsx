@@ -12,7 +12,6 @@ import {
 import { HOME_LORA_GALLERY_SECTIONS } from "../../lib/home-lora-gallery.ts";
 import { CUSTOM_LORA_LABEL } from "../../ltx-io/components/QuickSearch/quickSearchModel.ts";
 import { useCustomLoras } from "../../ltx-io/hooks/useCustomLoras.ts";
-import { useHomeFeatureFlags } from "../../ltx-io/hooks/useHomeFeatureFlags.ts";
 import { customLoraRunPath } from "../../paths.ts";
 
 import styles from "./HomeGallery.module.scss";
@@ -62,7 +61,6 @@ function gallerySectionHeadingId(heading: string): string {
 }
 
 export function HomeGallery({ onOpen }: HomeGalleryProps) {
-  const featureFlags = useHomeFeatureFlags();
   const savedLoras = useCustomLoras().data;
   // A chosen cover is a still image. No picture means a blank cover with the brush icon.
   const loraCards: GalleryCard[] = (savedLoras ?? []).map((lora) => {
@@ -77,7 +75,7 @@ export function HomeGallery({ onOpen }: HomeGalleryProps) {
   });
   return (
     <div className={styles.gallery}>
-      {offeredHomeFeatureSections(featureFlags).map((section) => (
+      {offeredHomeFeatureSections().map((section) => (
         <GallerySection
           key={section.id}
           heading={section.heading}

@@ -13,8 +13,8 @@ from api_types import (
     IcLoraControl,
     IcLoraSettings,
 )
-from frame_math import compute_num_frames
-from runtime_config.fast_chunking import job_window_count, last_window_frames
+from inference.frame_math import compute_num_frames
+from inference.fast_chunking import job_window_count, last_window_frames
 from runtime_config.ic_lora_adaptive_window import (
     HIGH_RES_CANVAS_PIXELS,
     AdaptiveRefusal,
@@ -38,7 +38,7 @@ from runtime_config.ic_lora_local_envelope import (
 )
 from runtime_config.ic_lora_loop_fps import DEFAULT_IC_LORA_FPS, resolve_loop_fps
 from runtime_config.ic_lora_stage_mode import IcLoraStageMode, heavy_pass_size
-from runtime_config.ic_lora_tiling import IcLoraTiling, transformer_pass_size
+from inference.ic_lora_tiling import IcLoraTiling, transformer_pass_size
 from runtime_config.eta import spatial_tile_count
 from runtime_config.budget_admission import (
     Admission,

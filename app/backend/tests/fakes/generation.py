@@ -28,7 +28,7 @@ from api_types import (
     TextToVideoParams,
 )
 from services.features.ic_lora_recipes import get_ic_lora_recipe
-from services.generation_interrupt import GenerationCancelledError, is_requested
+from inference.interrupt import GenerationCancelledError, is_requested
 from services.features.video import require_supported_contract_version
 from services.generation_queue.control import QueueLiveState
 from services.generation_queue.sessions import JobProgress, JobSession, LocalGenerationOps, LocalJobSession

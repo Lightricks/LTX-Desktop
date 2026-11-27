@@ -131,7 +131,7 @@ def test_every_queued_create_route_has_a_scenario() -> None:
 
 def test_last_keyframe_index_is_the_final_frame_of_a_two_second_clip() -> None:
     import regression_scenarios as reg
-    from frame_math import compute_num_frames
+    from inference.frame_math import compute_num_frames
 
     assert reg.KEYFRAME_LAST == compute_num_frames(2, 24) - 1
 

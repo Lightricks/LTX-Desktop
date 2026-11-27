@@ -47,11 +47,12 @@ from services.features.ic_lora_recipes import (
 )
 from services.features.video.ic_lora_recipe import ic_lora_video_filters
 from services.features.video.ic_lora_recipe import IcLoraRecipeExecutor
-from services.generation_interrupt import GenerationCancelledError
+from inference.interrupt import GenerationCancelledError
 from services.generation_queue.types import OutputAllocation, OutputPlan
 from tests.fakes.generation import FakeJobSession
 from services.media_probe import _stream_fps, probe_file
-from services.records import AssetRecord, CapabilityFailedError, GenerationRecord
+from inference.errors import CapabilityFailedError
+from services.records import AssetRecord, GenerationRecord
 from services.sqlite_store import SqliteStore
 from state import build_initial_state, set_state_service_for_tests
 from tests.conftest import TEST_ADMIN_TOKEN

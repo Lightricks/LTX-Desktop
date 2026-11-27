@@ -12,7 +12,7 @@ from starlette.testclient import TestClient
 from remote.app import create_remote_app
 from services import video_trim
 from services.encoded_media import derived_file_name
-from services.ffmpeg import FFMPEG_TIMEOUT_SECONDS
+from inference.ffmpeg import FFMPEG_TIMEOUT_SECONDS
 from services.media_probe import MAX_VIDEO_BYTES
 from services.video_trim import trim_video_file
 from tests.http_error_assertions import assert_http_error

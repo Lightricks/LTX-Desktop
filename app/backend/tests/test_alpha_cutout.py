@@ -366,7 +366,8 @@ def test_only_alpha_gen_is_a_cutout_recipe() -> None:
 
 def test_a_cancel_during_the_bake_stops_ffmpeg(tmp_path: Path) -> None:
     """The flag is polled while ffmpeg runs, so a cancel does not wait for the encode."""
-    from services.ffmpeg import FfmpegCancelledError, run_ffmpeg
+    from inference.ffmpeg import FfmpegCancelledError
+    from services.ffmpeg import run_ffmpeg
 
     started = time.monotonic()
     with pytest.raises(FfmpegCancelledError):
@@ -381,8 +382,8 @@ def test_a_cancelled_bake_is_a_generation_cancel(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The ffmpeg helper has its own cancel error. The bake maps it to the queue's."""
-    from services.ffmpeg import FfmpegCancelledError
-    from services.generation_interrupt import GenerationCancelledError
+    from inference.ffmpeg import FfmpegCancelledError
+    from inference.interrupt import GenerationCancelledError
 
     def cancelled(*_args: object, **_kwargs: object) -> None:
         raise FfmpegCancelledError()
@@ -404,8 +405,8 @@ def test_a_failed_bake_is_reported_as_a_bake_failure(tmp_path: Path) -> None:
 def test_a_cancelled_gif_bake_is_a_generation_cancel(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from services.ffmpeg import FfmpegCancelledError
-    from services.generation_interrupt import GenerationCancelledError
+    from inference.ffmpeg import FfmpegCancelledError
+    from inference.interrupt import GenerationCancelledError
 
     def cancelled(*_args: object, **_kwargs: object) -> None:
         raise FfmpegCancelledError()
@@ -449,8 +450,8 @@ def test_a_gif_that_ffmpeg_wrote_but_nothing_can_read_is_dropped(
 def test_a_cancel_during_the_gif_still_cancels_the_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from services.ffmpeg import FfmpegCancelledError
-    from services.generation_interrupt import GenerationCancelledError
+    from inference.ffmpeg import FfmpegCancelledError
+    from inference.interrupt import GenerationCancelledError
 
     def cancelled(*_args: object, **_kwargs: object) -> None:
         raise FfmpegCancelledError()

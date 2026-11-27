@@ -28,6 +28,7 @@ import { createWindow, getMainWindow } from './window'
 import { sendAnalyticsEvent } from './analytics'
 import { shouldSendLaunched, type LaunchedTrigger } from './launched-event'
 import type { DeepLinkIntent } from '../shared/deep-link.ts'
+import { forkCredit } from '../shared/fork-identity'
 
 function logAppVersion(): void {
   if (!app.isPackaged) {
@@ -141,6 +142,13 @@ if (!gotLock) {
   registerVideoProcessingHandlers()
 
   app.whenReady().then(async () => {
+    app.setAboutPanelOptions({
+      applicationName: app.getName(),
+      applicationVersion: app.getVersion(),
+      copyright: 'Copyright © 2026 Lightricks',
+      credits: forkCredit,
+      authors: ['Lightricks (original LTX Desktop)', 'Peter Beery on behalf of SpaceSpeak.com (community branch)'],
+    })
     setupCSP()
     installRemoteKeepAwake({
       power: {

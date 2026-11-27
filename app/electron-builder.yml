@@ -43,6 +43,8 @@ extraResources:
       - "**/*.sql"
       - pyproject.toml
       - runtime_config/lora_catalog.json
+      # inference/ic_lora_tiling.py reads this at import. The *.py filter does not ship it.
+      - inference/ic-lora-tiling-controls.json
       - "!**/__pycache__/**"
       - "!**/*.pyc"
       - "!.venv/**"
@@ -50,8 +52,7 @@ extraResources:
       - "!models/**"
       - "!tests/**"
   # The backend reads these files at import time (services/features/ic_lora_recipes.py,
-  # services/features/video/motion_path.py, runtime_config/ic_lora_local_envelope.py,
-  # runtime_config/ic_lora_tiling.py).
+  # services/features/video/motion_path.py, runtime_config/ic_lora_local_envelope.py).
   # Name each file. Do not use a glob.
   - from: shared
     to: shared
@@ -59,7 +60,6 @@ extraResources:
       - ic-lora-input-cap.json
       - motion-path.json
       - ic-lora-stage-2-upscale.json
-      - ic-lora-tiling-controls.json
   - from: python-deps-hash.txt
     to: python-deps-hash.txt
 

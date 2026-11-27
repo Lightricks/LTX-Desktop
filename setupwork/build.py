@@ -79,7 +79,8 @@ def stage_stub_files(stage, runtime, mode, media, manifest, runtime_size):
         size_path = stage / "runtime-size.json"
         write_json(size_path, {"unpacked_bytes": runtime_size})
         inputs[size_path.name] = size_path
-    for name in ("setup_engine.py", "diagnose.py", "AMD-Diagnostics.cmd"):
+    for name in ("setup_engine.py", "gpu_selection.py", "cuda_runtime.py", "cuda-runtime.json",
+                 "diagnose.py", "AMD-Diagnostics.cmd"):
         inputs[name] = SRC / name
     return inputs, index
 

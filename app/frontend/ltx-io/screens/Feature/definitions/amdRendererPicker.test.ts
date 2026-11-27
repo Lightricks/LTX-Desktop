@@ -185,3 +185,22 @@ test("Ref2VA sends the reference images in order and omits the draft's hidden en
   assert.deepEqual(body.inputs, { startFrame: { assetId: "start" }, endFrame: null, referenceImages: refs });
   assert.deepEqual(i2v.fromGeneration(body, ctx)?.referenceImages, refs);
 });
+
+test("reopening a Radeon job on NVIDIA keeps its prompt and offers installed native models", () => {
+  const radeon = context();
+  const saved = t2v.toCreateBody(t2v.initialValues!(radeon), radeon);
+  const nvidia = { specs: specFixture() };
+  const restored = t2v.fromGeneration(saved, nvidia);
+  assert.ok(restored);
+  assert.equal(restored.prompt, saved.params.prompt);
+  assert.equal(restored.model, "comfy");
+  assert.equal(t2v.isReady!(restored, nvidia), false);
+  const field = t2v.form(restored, nvidia).fields.find(field => field.id === "model");
+  assert.ok(field?.kind === "options");
+  assert.ok(field.options.some(option => option.value === "ltx-2.5-fast" && !option.disabledReason));
+  assert.ok(!field.options.some(option => option.value === "comfy"));
+  const selected = t2v.applyChange!(restored,
+    { kind: "options", fieldId: "model", dataKey: "model", value: "ltx-2.5-fast" }, nvidia);
+  assert.equal(t2v.isReady!(selected, nvidia), true);
+  assert.equal(t2v.toCreateBody(selected, nvidia).params.amdFastEngine, undefined);
+});

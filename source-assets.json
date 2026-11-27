@@ -1,11 +1,11 @@
 {
   "version": 1,
   "desktop": {
-    "filename": "ltx-desktop-upstream-d23b8b3de2ab258459f1c1524d4ce1e49c6783f5.zip",
-    "size": 198223711,
-    "sha256": "f36d789f2ba914544fbcb47e45629fc0a8e8a125fe10a40a48cc7ff9a38f7a69",
-    "url": "https://codeload.github.com/Lightricks/LTX-Desktop/zip/d23b8b3de2ab258459f1c1524d4ce1e49c6783f5",
-    "prefix": "LTX-Desktop-d23b8b3de2ab258459f1c1524d4ce1e49c6783f5/"
+    "filename": "ltx-desktop-upstream-2ab055b98f7590581c56f9e0b2ff55ac56d459b7.zip",
+    "size": 198280031,
+    "sha256": "d3c56288c3db59d8dd4202c377e27473364c82dcc61a7805ca1190e84e42349b",
+    "url": "https://codeload.github.com/Lightricks/LTX-Desktop/zip/2ab055b98f7590581c56f9e0b2ff55ac56d459b7",
+    "prefix": "LTX-Desktop-2ab055b98f7590581c56f9e0b2ff55ac56d459b7/"
   },
   "files": [
     {

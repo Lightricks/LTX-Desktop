@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from runtime_config.budget_admission import Admitted, RiskAllowance
-from runtime_config.fast_chunking import window_candidates
+from inference.fast_chunking import window_candidates
 from runtime_config.measured_cells import MEASURED_HIGH_RES_CELLS
 from runtime_config.video_job_budget import (
     NOMINAL_MPS_POOL_RATIO,

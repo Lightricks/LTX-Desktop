@@ -12,8 +12,8 @@ from ltx_pipelines.ic_lora import ICLoraPipeline
 from ltx_pipelines.utils.media_io import PlaybackSegment
 from ltx_pipelines.utils.types import ImageConditioningInput, LoadedImageConditioning
 
-from services.ic_lora_pipeline.ic_lora_inference import InferenceResult, encode_result
-from services.ic_lora_pipeline.tiled_ic_lora_pipeline import (
+from inference.ic_lora_pipeline.ic_lora_inference import InferenceResult, encode_result
+from inference.ic_lora_pipeline.tiled_ic_lora_pipeline import (
     TiledICLoraPipeline,
     encode_tiling_for_canvas,
     reference_encode_canvas,
@@ -168,7 +168,7 @@ def test_negative_frame_still_is_appended_after_the_reference_video(monkeypatch)
         "ltx_pipelines.chunks.conditionings.reference_video_conditionings_for_chunk", fake_reference
     )
     monkeypatch.setattr(
-        "services.ic_lora_pipeline.tiled_ic_lora_pipeline.image_conditionings", fake_stills
+        "inference.ic_lora_pipeline.tiled_ic_lora_pipeline.image_conditionings", fake_stills
     )
     first_frame = _loaded("first.png", 0)
     still = _loaded("look.png", -1)

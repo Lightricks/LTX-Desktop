@@ -55,6 +55,7 @@ export function RetakeFeatureScreen() {
             values?.startTime ?? RETAKE_DEFAULTS.startTime,
           ),
           mode: "end",
+          contextMode: values?.contextMode ?? RETAKE_DEFAULTS.contextMode,
           durations:
             duration === RETAKE_MIN_DURATION_SECONDS
               ? [RETAKE_MIN_DURATION_SECONDS]

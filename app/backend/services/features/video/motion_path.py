@@ -16,8 +16,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from api_motion_path import MotionPath, MotionPathEasing, MotionPathPoint, MotionPathVec2
-from frame_math import compute_num_frames
-from services.retake_pipeline.rgb_stitch import write_rgb_video
+from inference.frame_math import compute_num_frames
+from inference.retake_pipeline.rgb_stitch import write_rgb_video
 
 _C1 = 1.70158
 _C2 = _C1 * 1.525

@@ -7,7 +7,7 @@ from runtime_config.budget_decision import IcLoraJobLoad, IcLoraJobReject, Video
 from runtime_config.ic_lora_high_res import high_res_tiling
 from runtime_config.ic_lora_job_budget import decide_ic_lora_job
 from runtime_config.ic_lora_stage_mode import IcLoraStageMode
-from runtime_config.ic_lora_tiling import IcLoraTiling
+from inference.ic_lora_tiling import IcLoraTiling
 from runtime_config.measured_cells import MEASURED_HIGH_RES_CELLS
 from tests.test_video_job_budget import _windows_measured_filter
 

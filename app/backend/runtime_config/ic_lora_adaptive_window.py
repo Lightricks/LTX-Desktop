@@ -23,13 +23,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final, Literal
 
-from frame_math import snap_to_frame_grid
+from inference.frame_math import snap_to_frame_grid
 from runtime_config.ic_lora_decode_window import (
     DECODE_MAX_UNTILED_WINDOW,
     is_frame_fenced_canvas,
     shortest_window,
 )
-from runtime_config.ic_lora_tiling import ADAPTIVE_MAX_WINDOW_FRAMES, IcLoraTiling
+from inference.ic_lora_tiling import ADAPTIVE_MAX_WINDOW_FRAMES, IcLoraTiling
 
 # Canvas pixels of 720p (1280x704). Above it a window stays at ADAPTIVE_MAX_WINDOW_FRAMES, and a
 # tiled job cannot run unchunked past 97 frames (the decode floor).

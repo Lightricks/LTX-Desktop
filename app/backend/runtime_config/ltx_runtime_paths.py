@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 from api_types import LTXLocalModelId
+from inference.layout import ResolvedLtxModelPaths
 from runtime_config.model_download_specs import (
     get_existing_cp_path,
     get_ltx_model_spec,
@@ -13,17 +13,7 @@ from runtime_config.model_download_specs import (
     selected_video_vae_cp,
 )
 
-
-@dataclass(frozen=True, slots=True)
-class ResolvedLtxModelPaths:
-    """Filesystem paths for the active local LTX model bundle."""
-
-    checkpoint_path: str
-    upsampler_path: str
-    gemma_root: str | None
-    video_vae_path: str | None
-    audio_vae_path: str | None
-    duration_head_path: str | None
+__all__ = ["ResolvedLtxModelPaths", "resolve_ltx_runtime_paths"]
 
 
 def resolve_ltx_runtime_paths(

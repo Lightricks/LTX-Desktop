@@ -1,7 +1,7 @@
 """Check a staged or installed LTX Desktop - AMD 395 MAX build against this source tree.
 
 Run with Python 3.11+. On the Windows target, --gpu additionally runs the
-installed driver's device checks and the LTX attention regression on the Radeon.
+installed runtime's device checks. On Radeon it also checks the patched LTX operators.
 """
 import argparse
 import hashlib
@@ -15,6 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RECEIPT = Path(__file__).with_name("release-shell.json")
+sys.path.insert(0, str(ROOT / "setupwork/src"))
+from gpu_selection import child_environment, read_selection
 
 
 def sha256(path):
@@ -100,6 +102,22 @@ def check_manifest(runtime_manifest, marker_path, expected_manifest):
         raise ValueError("Target mismatch between runtime manifest and runtime marker")
 
 
+def check_installed_runtime(resources, source):
+    selection = read_selection(resources)
+    if selection["backend"] == "rocm":
+        check_manifest(resources / "runtime-manifest.json", resources / "python/ltx-amd-runtime.json",
+                       source / "runtimework/runtime-manifest.json")
+    else:
+        manifest = resources / "cuda-runtime.json"
+        expected = source / "setupwork/src/cuda-runtime.json"
+        # JSON equality tolerates a Git-for-Windows checkout with CRLF line endings.
+        if json.loads(manifest.read_bytes()) != json.loads(expected.read_bytes()):
+            raise ValueError("NVIDIA runtime manifest differs from the pinned release")
+        if (resources / "python/ltx-amd-runtime.json").exists():
+            raise ValueError("The NVIDIA runtime contains a Radeon installation marker")
+    return selection
+
+
 def verify(application, root, run_gpu, original_release):
     resources = application / "resources"
     embedded = resources / "python"
@@ -109,8 +127,8 @@ def verify(application, root, run_gpu, original_release):
         with path.open("rb") as stream:
             if stream.read(2) != b"MZ":
                 raise ValueError(f"Invalid Windows executable: {path}")
-    runtime_manifest = resources / "runtime-manifest.json"
-    check_manifest(runtime_manifest, embedded / "ltx-amd-runtime.json", root / "runtimework/runtime-manifest.json")
+    selection = check_installed_runtime(resources, root)
+    backend = selection["backend"]
     shell = resources / "app.asar"
     inspect_shell(shell, original_release)
     if not original_release:
@@ -135,26 +153,34 @@ def verify(application, root, run_gpu, original_release):
     packages = root / "vendor/LTX-2/packages"
     site = embedded / "Lib/site-packages"
     for package, module in (("ltx-core", "ltx_core"), ("ltx-pipelines", "ltx_pipelines")):
-        count += check_sources(packages / package / "src" / module, site / module, ("*.py",))
-    for name in ("AMD-Diagnostics.cmd", "diagnose.py"):
+        if backend == "rocm":
+            count += check_sources(packages / package / "src" / module, site / module, ("*.py",))
+        elif not (site / module / "__init__.py").is_file():
+            raise ValueError(f"Missing inference package in upstream Python runtime: {module}")
+    diagnostics = ["AMD-Diagnostics.cmd", "diagnose.py"]
+    if not original_release:
+        diagnostics.append("gpu_selection.py")
+    for name in diagnostics:
         if text_bytes(root / "setupwork/src" / name) != text_bytes(application / name):
             raise ValueError(f"Diagnostic differs from source: {name}")
-    print(f"PASS: gfx1151 manifest, compiled Electron and renderer entry points, diagnostics, "
+    print(f"PASS: {backend} runtime manifest, compiled Electron and renderer entry points, diagnostics, "
           f"and {count} backend, model and shared source files.", flush=True)
 
     if run_gpu:
         if os.name != "nt":
-            raise ValueError("--gpu requires Windows with a Radeon GPU and AMD driver")
-        commands = (application / "diagnose.py", root / "vendor/LTX-2/radeon/check_ops.py")
-        subprocess.run([str(executable), "-u", "-X", "utf8", str(commands[0])], check=True)
-        subprocess.run([str(executable), "-u", "-X", "utf8", str(commands[1]), "--device", "cuda"], check=True)
+            raise ValueError("--gpu requires the installed Windows runtime")
+        env = child_environment(selection)
+        subprocess.run([str(executable), "-u", "-X", "utf8", str(application / "diagnose.py")], env=env, check=True)
+        if backend == "rocm":
+            subprocess.run([str(executable), "-u", "-X", "utf8", str(root / "vendor/LTX-2/radeon/check_ops.py"),
+                            "--device", "cuda"], env=env, check=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--install", type=Path, help="Install directory or its application subdirectory")
     parser.add_argument("--source", type=Path, default=ROOT, help="Complete release source checkout")
-    parser.add_argument("--gpu", action="store_true", help="Also run live HIP and LTX model-operator probes")
+    parser.add_argument("--gpu", action="store_true", help="Run installed GPU diagnostics (API-only installs verify startup)")
     parser.add_argument("--original-release", action="store_true", help="Also require the original distributed desktop shell and AMD source hashes")
     args = parser.parse_args()
     base = args.install

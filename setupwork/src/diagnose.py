@@ -1,4 +1,4 @@
-"""Exercise the same AMD startup path as the desktop app, using temporary app data."""
+"""Exercise the installed GPU or API runtime using temporary app data."""
 import argparse
 from datetime import datetime
 import os
@@ -8,25 +8,49 @@ import sys
 import tempfile
 import traceback
 
+# The isolated Windows interpreter omits the script directory from sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gpu_selection import child_environment, read_selection
+
 
 def probe(application):
     backend = application / "resources/backend"
     sys.path.insert(0, str(backend))
     # Match the Electron launcher and let the backend perform its actual GPU checks.
-    print("Starting the backend's Radeon GPU check and importing the video pipeline...", flush=True)
+    selected = os.environ["LTX_GPU_RUNTIME"]
+    print(f"Starting the backend with the installed {selected} runtime...", flush=True)
     import ltx2_server
     from transformers import PreTrainedModel, ProcessorMixin
     from ltx_core.text_encoders.gemma import LTXGemmaTextEncoder
     import ltx_pipelines.ic_lora
-    import diffusers.hooks.context_parallel
-    import diffusers.models._modeling_parallel
+    if selected == "rocm":
+        # These modules exercise the AMD single-process torch compatibility patches.
+        import diffusers.hooks.context_parallel
+        import diffusers.models._modeling_parallel
     import av
     import torchaudio
     import torchvision
 
     if not callable(ltx2_server.app):
         raise RuntimeError("The backend did not create its FastAPI application.")
-    print("PASS: Radeon GPU checks, Transformers, Gemma, Diffusers, video pipeline and backend initialization.")
+    import torch
+    from runtime_config.accelerator import accelerator_backend
+
+    actual = accelerator_backend()
+    expected = "cpu" if selected == "api" else selected
+    if actual != expected:
+        raise RuntimeError(f"Selected {selected} runtime, but PyTorch reports {actual}.")
+    if selected == "cuda":
+        device = torch.device("cuda", 0)
+        with torch.inference_mode():
+            x = torch.ones((8, 8), device=device, dtype=torch.float16)
+            product = x @ x
+            if product.device != device or not bool((product == 8).all().item()):
+                raise RuntimeError("NVIDIA GPU matrix multiplication returned an incorrect result.")
+    if selected != "api":
+        props = torch.cuda.get_device_properties(0)
+        print(f"Active GPU: {props.name}, {props.total_memory / 2**30:.1f} GiB, PyTorch {torch.__version__}")
+    print(f"PASS: {selected} runtime, video pipeline imports and backend initialization.")
 
 
 def diagnose(application):
@@ -36,7 +60,7 @@ def diagnose(application):
     local = Path(os.environ["LOCALAPPDATA"])
     logs = local / "LTXDesktopAMD/logs"
     logs.mkdir(parents=True, exist_ok=True)
-    log = logs / "radeon-diagnostic.txt"
+    log = logs / "gpu-diagnostic.txt"
     print(f"Diagnostic log: {log}", flush=True)
     with log.open("w", encoding="utf-8", buffering=1) as stream:
         def output(message):
@@ -47,9 +71,11 @@ def diagnose(application):
             output(f"{datetime.now().isoformat(timespec='seconds')} | {sys.version} | {sys.executable}")
             # A fresh process both exercises real import order and releases SQLite/driver
             # handles before we remove the temporary data directory on Windows.
-            with tempfile.TemporaryDirectory(prefix="ltx-amd-check-") as scratch:
-                env = os.environ.copy()
-                env.update(LTX_REQUIRE_ROCM="1", LTX_APP_DATA_DIR=scratch, LTX_ASSETS_DIR="",
+            selection = read_selection(application / "resources")
+            output(f"Installed target: {selection['backend']} ({selection['deviceName']})")
+            with tempfile.TemporaryDirectory(prefix="ltx-gpu-check-") as scratch:
+                env = child_environment(selection)
+                env.update(LTX_APP_DATA_DIR=scratch, LTX_ASSETS_DIR="",
                            LTX_DEV_MODE="0", LTX_ANALYTICS_SINK_URL="", LTX_ANALYTICS_TOKEN="",
                            BACKEND_DEBUG="0", HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1",
                            HF_HUB_DISABLE_TELEMETRY="1", LTX_PORT="41956", LTX_REMOTE_PORT="41957")

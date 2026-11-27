@@ -11,7 +11,7 @@ import torch
 from diffusers.pipelines.auto_pipeline import ZImagePipeline  # type: ignore[reportUnknownVariableType]
 from PIL.Image import Image as PILImage
 
-from services.generation_interrupt import diffusers_step_callback
+from inference.interrupt import diffusers_step_callback
 from services.services_utils import (
     ImagePipelineOutputLike,
     PILImageType,

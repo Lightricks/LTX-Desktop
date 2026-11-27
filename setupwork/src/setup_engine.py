@@ -1,4 +1,4 @@
-"""Per-user installer for the native Windows LTX Desktop - AMD 395 MAX build."""
+"""Per-user installer for the Windows LTX Desktop community branch."""
 from __future__ import annotations
 
 import argparse
@@ -17,7 +17,7 @@ import urllib.request
 import zipfile
 
 MARKER = ".ltx-amd-managed-v1"
-RELEASE = "1.3.2-amd.8"
+RELEASE = "1.3.3-community.1"
 
 def digest(path):
     with path.open("rb") as stream:
@@ -131,7 +131,99 @@ def preserve_launcher_alias(current, stage):
             logging.warning("Could not retain the former launcher path for existing shortcuts: %s", exc)
 
 
+def require_free_space(root, required):
+    margin = 512 * 1024**2
+    if shutil.disk_usage(root).free < required + margin:
+        raise RuntimeError(f"Free at least {(required + margin) / 1024**3:.1f} GiB on the application drive.")
+
+
+def install_rocm(bundle, resources, cache, adjacent):
+    manifest = bundle / "runtime-manifest.json"
+    items = json.loads(manifest.read_text(encoding="utf-8"))["wheels"]
+    python_dir = resources / "python"
+    archive = bundle / "runtime.tar.xz"
+    logging.info("Installing the native gfx1151 runtime. Large DLLs may take several minutes.")
+    downloads = []
+    if archive.is_file():
+        info = json.loads((bundle / "runtime-size.json").read_text(encoding="utf-8"))
+        require_free_space(resources, info["unpacked_bytes"])
+        with tarfile.open(archive, "r|xz") as payload:
+            payload.extractall(python_dir, filter="data")
+    else:
+        packages = wheelhouse(items, bundle, adjacent, cache)
+        require_free_space(resources, sum(unpack_size(packages / w["filename"]) for w in items))
+        shutil.copytree(bundle / "python", python_dir)
+        exec_logged([sys.executable, "-u", "-X", "utf8", str(bundle / "install_runtime.py"),
+                     "--python-dir", str(python_dir), "--wheelhouse", str(packages), "--manifest", str(manifest)])
+        if packages == cache:
+            downloads = [cache / item["filename"] for item in items]
+    exec_logged([sys.executable, "-u", "-X", "utf8", str(bundle / "repair_single_gpu.py"),
+                 "--python-dir", str(python_dir)])
+    shutil.copyfile(bundle / "sitecustomize.py", python_dir / "Lib/site-packages/sitecustomize.py")
+    if (bundle / "vcredist").is_dir():
+        shutil.copytree(bundle / "vcredist", python_dir, dirs_exist_ok=True)
+    if not (python_dir / "ltx-amd-runtime.json").is_file():
+        raise RuntimeError("The Radeon runtime receipt is missing.")
+    shutil.copyfile(manifest, resources / manifest.name)
+    return downloads
+
+
+def install_runtime_for_hardware(bundle, resources, adjacent, cache, selection):
+    # setup_engine is an extracted script when bootstrapped by Windows embedded Python.
+    # The package form also allows repository tests to exercise this exact dispatch.
+    if __package__:
+        from . import cuda_runtime, gpu_selection
+    else:
+        import cuda_runtime, gpu_selection
+
+    python_dir = resources / "python"
+    downloads = []
+    if selection["backend"] in ("cuda", "api"):
+        source = bundle / "cuda-runtime.json"
+        manifest = json.loads(source.read_text(encoding="utf-8"))
+        part_cache = cache / ("cuda-" + manifest["release"])
+        # Download and install directories are on the same per-user volume. Already
+        # verified parts and resumable partials do not need a second allocation.
+        remaining = 0
+        for item in manifest["parts"]:
+            path = part_cache / item["filename"]
+            if not matches(path, item):
+                partial = path.with_suffix(path.suffix + ".partial")
+                saved = partial.stat().st_size if partial.is_file() else 0
+                remaining += max(0, item["size"] - saved)
+        require_free_space(resources, manifest["unpackedBytes"] + remaining)
+        downloads = cuda_runtime.install(manifest, part_cache, python_dir, fetch)
+        try:
+            cuda_runtime.check_python(python_dir, selection, gpu_selection.child_environment(selection))
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            if selection["backend"] != "cuda":
+                raise
+            fallback = gpu_selection.select_gpu(exclude_cuda=True)
+            if fallback["backend"] != "rocm":
+                raise RuntimeError("The installed NVIDIA driver could not run the pinned CUDA runtime. "
+                                   f"Update the NVIDIA driver and rerun setup. {exc}") from exc
+            logging.warning("The CUDA probe failed. Switching to the detected Radeon: %s", exc)
+            shutil.rmtree(python_dir)
+            selection = fallback
+        else:
+            shutil.copyfile(source, resources / source.name)
+
+    if selection["backend"] == "rocm":
+        downloads.extend(install_rocm(bundle, resources, cache, adjacent))
+        gpu_selection.bind_rocm_device(python_dir / "python.exe", selection)
+    elif selection["backend"] not in ("cuda", "api"):
+        raise ValueError(f"Unknown GPU target: {selection['backend']}")
+
+    (resources / "gpu-runtime.json").write_text(json.dumps(selection, indent=2) + "\n", encoding="utf-8")
+    return downloads
+
+
 def deploy(bundle, root, adjacent, cache, compact=None):
+    if __package__:
+        from .gpu_selection import select_gpu
+    else:
+        from gpu_selection import select_gpu
+
     if os.name == "nt":
         resolved = str(root.resolve())
         if not resolved.startswith("\\\\?\\"):
@@ -146,24 +238,20 @@ def deploy(bundle, root, adjacent, cache, compact=None):
         owned_remove(directory)
     if current.exists() and not (current / MARKER).is_file():
         raise RuntimeError(f"Cannot replace unmanaged directory {current}")
-    manifest = bundle / "runtime-manifest.json"
-    items = json.loads(manifest.read_text(encoding="utf-8"))["wheels"]
-    archive = bundle / "runtime.tar.xz"
-    packages = None
-    if archive.is_file():
-        info = json.loads((bundle / "runtime-size.json").read_text(encoding="utf-8"))
-        required = info["unpacked_bytes"]
-    else:
-        packages = wheelhouse(items, bundle, adjacent, cache)
-        required = sum(unpack_size(packages / w["filename"]) for w in items)
+    # Only historical offline media is specific to gfx1151. The shared online
+    # installer probes the host before fetching any vendor-specific runtime.
+    offline = (bundle / "runtime.tar.xz").is_file()
+    selection = select_gpu(exclude_cuda=offline)
+    if offline and selection["backend"] != "rocm":
+        raise RuntimeError("This offline media requires Radeon gfx1151. Use the community online installer.")
+    logging.info("Selected %s runtime for %s.", selection["backend"], selection["deviceName"])
     if compact is None:
-        required += unpack_size(bundle / "desktop.zip")
+        required = unpack_size(bundle / "desktop.zip")
         with zipfile.ZipFile(bundle / "desktop.zip") as z:
             required += sum(asset["size"] for asset in json.loads(z.read("amd-asset-offsets.json")))
     else:
-        required += compact.required_bytes(bundle / "compact")
-    if shutil.disk_usage(root).free < required + 512 * 1024**2:
-        raise RuntimeError(f"Free at least {required / 1024**3 + 0.5:.1f} GiB on the application drive.")
+        required = compact.required_bytes(bundle / "compact")
+    require_free_space(root, required)
     stage.mkdir()
     (stage / MARKER).write_text(RELEASE, encoding="utf-8")
     compact_downloads = ()
@@ -175,27 +263,10 @@ def deploy(bundle, root, adjacent, cache, compact=None):
             restore_assets(stage)
         else:
             compact_downloads = compact.hydrate(stage, bundle / "compact", cache / "compact", fetch)
-        python_dir = stage / "resources" / "python"
-        logging.info("Installing the native gfx1151 runtime. Large DLLs may take several minutes.")
-        if archive.is_file():
-            with tarfile.open(archive, "r|xz") as payload:
-                dest = str(python_dir.resolve())
-                if os.name == "nt" and not dest.startswith("\\\\?\\"):
-                    dest = "\\\\?\\" + dest
-                payload.extractall(dest, filter="data")
-        else:
-            shutil.copytree(bundle / "python", python_dir)
-            exec_logged([sys.executable, "-u", "-X", "utf8", str(bundle / "install_runtime.py"),
-                         "--python-dir", str(python_dir), "--wheelhouse", str(packages), "--manifest", str(manifest)])
-        # Validate either a freshly installed wheel set or a pre-expanded offline
-        # archive before replacing the current working application.
-        exec_logged([sys.executable, "-u", "-X", "utf8", str(bundle / "repair_single_gpu.py"),
-                     "--python-dir", str(python_dir)])
-        shutil.copyfile(bundle / "sitecustomize.py", python_dir / "Lib/site-packages/sitecustomize.py")
-        if (bundle / "vcredist").is_dir():
-            shutil.copytree(bundle / "vcredist", python_dir, dirs_exist_ok=True)
-        for path in (stage / "LTX Desktop - AMD 395 MAX.exe", python_dir / "python.exe",
-                     python_dir / "ltx-amd-runtime.json", stage / "resources/backend/ltx2_server.py",
+        resources = stage / "resources"
+        runtime_downloads = install_runtime_for_hardware(bundle, resources, adjacent, cache, selection)
+        for path in (stage / "LTX Desktop - AMD 395 MAX.exe", resources / "python/python.exe",
+                     resources / "gpu-runtime.json", resources / "backend/ltx2_server.py",
                      stage / "resources/comfy-engine/comfyui-v0.38.0.zip",
                      stage / "resources/comfy-engine/kandinsky6-1.0.2.zip",
                      stage / "resources/comfy-engine/site-packages/ltx-comfy-deps.json"):
@@ -203,7 +274,7 @@ def deploy(bundle, root, adjacent, cache, compact=None):
                 raise RuntimeError(f"Required installed file missing: {path.name}")
         shutil.copyfile(bundle / "AMD-Diagnostics.cmd", stage / "AMD-Diagnostics.cmd")
         shutil.copyfile(bundle / "diagnose.py", stage / "diagnose.py")
-        shutil.copyfile(manifest, stage / "resources" / manifest.name)
+        shutil.copyfile(bundle / "gpu_selection.py", stage / "gpu_selection.py")
         preserve_launcher_alias(current, stage)
         if current.exists():
             current.rename(prior)
@@ -221,12 +292,11 @@ def deploy(bundle, root, adjacent, cache, compact=None):
             owned_remove(path)
         except OSError as err:
             logging.warning("Previous version cleanup deferred: %s", err)
-    if packages == cache:
-        for item in items:
-            try:
-                (cache / item["filename"]).unlink(missing_ok=True)
-            except OSError:
-                pass
+    for path in runtime_downloads:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as err:
+            logging.warning("Keeping cached component %s: %s", path.name, err)
     if compact is not None:
         compact.clear_downloads(compact_downloads)
     logging.info("Installed %s", current)
@@ -267,6 +337,7 @@ def main():
     parser.add_argument("installer_dir", type=Path)
     parser.add_argument("setup_exe", type=Path)
     args = parser.parse_args()
+    sys.path.insert(0, str(args.bundle.resolve()))
     local = Path(os.environ["LOCALAPPDATA"])
     root = local / "Programs" / "LTXDesktopAMD"
     state = local / "LTXDesktopAMD" / "setup"

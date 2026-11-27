@@ -9,7 +9,7 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstr
 
 from api_types import LTXLocalModelId, LocalAssistantModel
 from runtime_config.reject_reasons import BudgetMode
-from services.fast_video_pipeline.nag_config import DEFAULT_SCALE as DEFAULT_NAG_SCALE, MAX_SCALE as MAX_NAG_SCALE
+from inference.fast_video_pipeline.nag_config import DEFAULT_SCALE as DEFAULT_NAG_SCALE, MAX_SCALE as MAX_NAG_SCALE
 
 RemoteExposure = Literal["off", "lan"]
 DashboardRange = Literal["7d", "30d", "all"]

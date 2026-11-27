@@ -1,4 +1,4 @@
-name: Build compact Windows AMD installer
+name: Build compact Windows GPU installer
 
 on:
   workflow_dispatch:
@@ -28,22 +28,25 @@ jobs:
       - name: Run repository checks
         run: |
           python3 -B -m unittest discover -s checks
+          node --experimental-strip-types --test app/electron/windows-runtime.test.ts
+          python3 -B setupwork/test_gpu_installer.py
           python3 -B setupwork/test_media.py
           python3 -B repair/test_repair.py
           python3 -B runtimework/test_comfy_deps.py
-      - name: Build the Windows desktop and stage the AMD bootstrap
+      - name: Build the Windows desktop and stage the online bootstrap
         run: |
           bash shellwork/build-shell.sh
           python3 runtimework/prepare_runtime.py --mode web --out build/runtime
       - name: Build the compact online installer
         run: |
           python3 setupwork/compact/build.py \
-            --source build/.cache/source-archives/ltx-desktop-upstream-d23b8b3de2ab258459f1c1524d4ce1e49c6783f5.zip
+            --source build/.cache/source-archives/ltx-desktop-upstream-2ab055b98f7590581c56f9e0b2ff55ac56d459b7.zip
       - name: Check installer contents and generate checksum
         working-directory: build/release
         run: |
           installer=LTX-AMD-395-MAX-Compact-Setup.exe
-          7zz l -tNsis -slt "$installer" > "$RUNNER_TEMP/ltx-compact-installer.txt"
+          sevenzip="$(command -v 7zz || command -v 7z)"
+          "$sevenzip" l -tNsis -slt "$installer" > "$RUNNER_TEMP/ltx-compact-installer.txt"
           for name in asset-payload.zip vendor-lock.json shell-inventory.json compact_setup.py; do
             grep -F -- "$name" "$RUNNER_TEMP/ltx-compact-installer.txt" > /dev/null
           done

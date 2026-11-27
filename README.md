@@ -1,11 +1,23 @@
-# LTX Desktop - AMD 395 MAX 1.3.2-amd.8
+# LTX Desktop - AMD 395 MAX 1.3.3-community.1
 
-Windows x64 edition of LTX Desktop for Ryzen AI Max+ 395 PCs with Radeon 8060S graphics. The compact online installer sets up a private ComfyUI engine, the optional Kandinsky nodes, Python and the pinned AMD runtime. Recipients need a compatible AMD graphics driver and an internet connection to install the runtime and download their chosen model. LTX handles local engine setup from the app.
+Peter Beery created this community branch of Lightricks’ LTX Desktop on behalf of SpaceSpeak.com. The Windows x64 installer supports the original NVIDIA CUDA renderer and the Radeon 8060S (gfx1151) in the Ryzen AI Max+ 395. Existing AMD installations keep their app name, installation location and user data.
+
+Version 1.3.3 includes upstream Keyframes, a shorter context option for faster Extend and Retake, and Windows fixes for Gemma loading and Smart App Control. [Lightricks 1.3.3 release notes](https://github.com/Lightricks/LTX-Desktop/releases/tag/v1.3.3)
+
+## How Windows setup selects a GPU
+
+| Hardware detected at setup | Rendering path |
+| --- | --- |
+| Supported NVIDIA GPU | The upstream CUDA runtime and native LTX workflows. On systems with both supported targets, setup selects NVIDIA. |
+| Radeon 8060S without a qualifying NVIDIA GPU | The existing ROCm runtime with native LTX, the managed ComfyUI engine, in-app model setup, and optional Kandinsky and MiniMax H3 workflows. |
+| Neither local target is available | The upstream API-only mode. Remote generation requires the appropriate service credentials. |
+
+Install the GPU vendor's driver before running setup. The installer selects the runtime automatically. Rerun setup after switching graphics hardware. The NVIDIA runtime download is approximately 3.30 GB before model weights. In the Windows Start menu, open **LTX Desktop - AMD 395 MAX Diagnostics** to see the selected GPU and run a compute check. Its log is saved at `%LOCALAPPDATA%\LTXDesktopAMD\logs\gpu-diagnostic.txt`. On the Radeon path, the app can set up its own ComfyUI engine on a fresh PC. Model weights download when selected.
 
 ## Render from LTX Desktop - AMD 395 MAX
 
 1. Extract the installer artifact on the target PC and run **LTX-AMD-395-MAX-Compact-Setup.exe**. For an upgrade, close the existing LTX app first. Setup recognizes the earlier **LTX Desktop AMD** installation and keeps your projects, settings, and downloaded models.
-2. Open **Image to Video** or **Text to Video**, then open **Model**. Select the local model you want. Choosing a model that needs setup preserves the current prompt and image.
+2. For NVIDIA, use the original native LTX model options. For Radeon, open **Image to Video** or **Text to Video**, then open **Model**. Select the local model you want. Choosing a model that needs setup preserves the current prompt and image.
 3. For **LTX 2.5 Fast · ComfyUI INT8** or **Kandinsky 6 Lite Distill · ComfyUI** on a new computer, click **Install engine & model**. LTX prepares the bundled engine, starts it locally and downloads the model. For Kandinsky it also installs the bundled node pack and restarts its own engine once idle. The panel shows progress. If LTX asks for access to a gated model, follow the Hugging Face sign-in and terms links, then click **Retry model setup**.
 4. For **LTX 2.3 Fast · Native** or **LTX 2.5 Fast · Native**, click **Download & select**. To switch to an installed inactive native model, choose **Activate**, then **Use this model**.
 5. Select **Use this model** if needed, then **Generate**. The first generation loads the selected weights. A five-second clip at 24 fps is a convenient first test.
@@ -30,13 +42,13 @@ FL2VA Base or Ref2VA needs **51.53 GB** from a fresh installation. After FL2VA B
 
 ## Publish this repository
 
-Extract the ZIP into a new folder. In GitHub Desktop, choose **File → Add local repository**, select the extracted `LTX-Desktop-AMD-395-MAX` folder, then choose **Publish repository**. In VS Code you can open the same folder and choose **Publish to GitHub**. The folder includes a clean, single-commit Git repository on `main`. Keep its hidden `.git` directory when extracting. You can publish the code before downloading any build dependencies.
+Extract the ZIP into a new folder. In GitHub Desktop, choose **File → Add local repository**, select the extracted `LTX-Desktop-AMD-395-MAX` folder, then choose **Publish repository**. In VS Code you can open the same folder and choose **Publish to GitHub**. The folder includes a Git repository on `main`. Keep its hidden `.git` directory when extracting. You can publish the code before downloading any build dependencies.
 
-This source snapshot contains the AMD app, all three MiniMax H3 integrations, license notices and compact online installer builder. Large upstream previews and two unmodified dependency archives are restored from URLs pinned in [source-assets.json](source-assets.json). The rest of the source is present and editable immediately. Each restored file is checked against its original SHA-256. The H3 weights are a separate, optional download handled by the application.
+This source snapshot contains the dual-GPU Windows app, all three MiniMax H3 integrations, license notices and compact online installer builder. Large upstream previews and two unmodified dependency archives are restored from URLs pinned in [source-assets.json](source-assets.json). The rest of the source is present and editable immediately. Each restored file is checked against its original SHA-256. The H3 weights are a separate, optional download handled by the application.
 
 ## Build the compact online installer
 
-On GitHub, open **Actions → Build compact Windows AMD installer → Run workflow**. Download the workflow artifact when the run succeeds. It contains `LTX-AMD-395-MAX-Compact-Setup.exe` and its SHA-256 checksum.
+On GitHub, open **Actions → Build compact Windows GPU installer → Run workflow**. Download the workflow artifact when the run succeeds. It contains `LTX-AMD-395-MAX-Compact-Setup.exe` and its SHA-256 checksum.
 
 For local development, restore the source assets once from the repository root using Python 3.11 or newer. On Windows use `py -3 restore_sources.py`. On Linux or WSL use `python3 restore_sources.py`. The first run requires internet access. Use `--verify-only` to check a restored checkout without downloading. The upstream downloads do not include any model weights.
 
@@ -46,10 +58,10 @@ To build on x86-64 Linux or WSL2, install Node.js 24 with npm and Corepack, Pyth
 python3 restore_sources.py
 bash shellwork/build-shell.sh
 python3 runtimework/prepare_runtime.py --mode web --out build/runtime
-python3 setupwork/compact/build.py --source build/.cache/source-archives/ltx-desktop-upstream-d23b8b3de2ab258459f1c1524d4ce1e49c6783f5.zip
+python3 setupwork/compact/build.py --source build/.cache/source-archives/ltx-desktop-upstream-2ab055b98f7590581c56f9e0b2ff55ac56d459b7.zip
 ```
 
-The unsigned Windows x64 installer is written under `build/release/`. End users run the installer on Windows. It retrieves and verifies the application components and Radeon runtime during setup. It provides its own ComfyUI engine.
+The unsigned Windows x64 installer is written under `build/release/`. End users run the installer on Windows. Setup retrieves and verifies the application components and the runtime for the selected GPU.
 
 ## Source and verification
 
@@ -66,12 +78,13 @@ The unsigned Windows x64 installer is written under `build/release/`. End users 
 
 ```bash
 python3 -B -m unittest discover -s checks
+python3 -B setupwork/test_gpu_installer.py
 python3 -B setupwork/test_media.py
 python3 -B repair/test_repair.py
 python3 -B runtimework/test_comfy_deps.py
 ```
 
-To verify an installed build on Windows and exercise the model's attention operators on the Radeon, open PowerShell in the source repository and use the application's own interpreter.
+To verify an installed build on Windows and exercise the selected GPU, open PowerShell in the source repository and use the application's own interpreter.
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\LTXDesktopAMD\application\resources\python\python.exe" .\checks\verify_install.py --gpu
@@ -89,6 +102,6 @@ The earlier Radeon build passed a HIP BF16 matrix multiplication and attention p
 
 ## Upstream and notices
 
-- Desktop source comes from Lightricks LTX Desktop v1.3.2, commit `d23b8b3de2ab258459f1c1524d4ce1e49c6783f5`. [Upstream Desktop](https://github.com/Lightricks/LTX-Desktop/tree/d23b8b3de2ab258459f1c1524d4ce1e49c6783f5)
+- Desktop source comes from Lightricks LTX Desktop v1.3.3, commit `2ab055b98f7590581c56f9e0b2ff55ac56d459b7`. [Upstream Desktop](https://github.com/Lightricks/LTX-Desktop/tree/2ab055b98f7590581c56f9e0b2ff55ac56d459b7)
 - Inference source comes from Lightricks LTX-2 v1.6.0, commit `c1b4675863c07c59c92e502446cccdaedbe5889c`. [Upstream LTX-2](https://github.com/Lightricks/LTX-2/tree/c1b4675863c07c59c92e502446cccdaedbe5889c)
 - The checkout includes upstream code licenses, model license texts, dependency notices and a list of the changes for this edition. [Project license](LICENSE) · [AMD changes](CHANGES-AMD.md) · [Desktop notices](app/NOTICES.md) · [LTX-2 license files](vendor/LTX-2/)

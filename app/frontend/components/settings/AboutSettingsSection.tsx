@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { productName } from "../../../package.json";
+import { forkCredit } from "../../../shared/fork-identity";
 
 import { Button as DsButton } from "@/ds/Button/Button";
 import { Text } from "@/ds/Text/Text";
@@ -109,7 +110,7 @@ export function AboutSettingsSection({
   onCheckForUpdates: () => void;
 }) {
   const isMac = window.electronAPI.platform === "darwin";
-  const isRadeonBuild = window.electronAPI.platform === "win32";
+  const usesForkInstaller = window.electronAPI.platform === "win32";
   const [appVersion, setAppVersion] = useState("");
   const [autoCheckUpdates, setAutoCheckUpdates] = useState(true);
   const [view, setView] = useState<AboutDocumentView>("main");
@@ -202,12 +203,12 @@ export function AboutSettingsSection({
         <Text as="p" variant="body" size="sm" className={contentStyles.textSecondary}>
           Version {appVersion || "…"}
         </Text>
-        <Text as="p" variant="body" size="sm" className={contentStyles.apiKeysDescriptionLine}>
-          AI-powered video generation on your machine.
+        <Text as="p" variant="body" size="lg" className={contentStyles.textSecondary}>
+          {forkCredit}
         </Text>
       </div>
 
-      {isRadeonBuild ? (
+      {usesForkInstaller ? (
         <SettingsSubsection
           showDivider
           title="Updates"

@@ -19,7 +19,7 @@ from runtime_config.video_job_budget import (
 )
 from services.features.image.grid import floor_to_image_grid
 from services.features.video.job_common import capability_failed_from_http, model_from_spec
-from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
+from inference.interrupt import GenerationCancelledError, is_cancel_exception
 from services.generation_queue.lanes import FAL_LANE
 from services.generation_queue.sessions import JobSession
 from services.generation_queue.types import (

@@ -2,8 +2,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { NtExecutable, NtExecutableResource, Resource } from "resedit";
 
 const [input, output, name, release] = process.argv.slice(2);
-const version = /^(\d+)\.(\d+)\.(\d+)-amd\.(\d+)$/.exec(release);
-if (!version || !name) throw new Error("Expected an AMD release version and a product name");
+const version = /^(\d+)\.(\d+)\.(\d+)-(?:amd|community)\.(\d+)$/.exec(release);
+if (!version || !name) throw new Error("Expected a branch release version and a product name");
 const numericVersion = version.slice(1).map(Number);
 if (numericVersion.some(n => n > 65535)) throw new Error("Version exceeds Windows VERSIONINFO limits");
 

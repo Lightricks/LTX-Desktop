@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from runtime_config.device_calibration import RunMemoryBaseline, RunMemoryEnd
-from services.gpu_info import run_peak
+import inference.run_peak as run_peak
 from services.interfaces import GpuTelemetryPayload
 
 

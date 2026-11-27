@@ -293,8 +293,8 @@ export function StartupLoader({
             </div>
           )}
         </div>
-        <Text as="p" variant="body" size="md" className={styles.copyright}>
-          LTX Desktop - AMD 395 MAX · © 2026 Lightricks
+        <Text as="p" variant="body" size="md" align="center" className={styles.copyright}>
+          LTX Desktop - AMD 395 MAX · Community branch · © 2026 Lightricks
         </Text>
       </div>
     </div>

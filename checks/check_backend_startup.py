@@ -4,7 +4,7 @@ From a source checkout in Windows PowerShell:
   & "$env:LOCALAPPDATA\Programs\LTXDesktopAMD\application\resources\python\python.exe" .\checks\check_backend_startup.py
 
 A build host with the backend dependencies may run: python checks/check_backend_startup.py --cpu-host
-The default checks real ROCm execution during startup. No model downloads or account are required.
+The default uses the GPU target selected by the installed desktop. No model downloads or account are required.
 """
 import argparse
 import json
@@ -19,6 +19,10 @@ import tempfile
 import time
 from urllib.error import URLError
 from urllib.request import ProxyHandler, Request, build_opener
+
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "setupwork/src"))
+from gpu_selection import child_environment, read_selection
 
 
 def run_server(path):
@@ -39,20 +43,24 @@ def check(backend, cpu_host, timeout):
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
             port = listener.getsockname()[1]
-        env = {
-            **os.environ,
+        if cpu_host:
+            target = "CPU host"
+            env = child_environment({"version": 1, "backend": "api", "deviceName": "CPU host"})
+            env.update(CUDA_VISIBLE_DEVICES="", HIP_VISIBLE_DEVICES="", ROCR_VISIBLE_DEVICES="")
+        else:
+            selection = read_selection(Path(sys.executable).resolve().parent.parent)
+            target = f"{selection['backend']} ({selection['deviceName']})"
+            env = child_environment(selection)
+        env.update({
             "LTX_APP_DATA_DIR": scratch,
             "LTX_ASSETS_DIR": "",
             "LTX_PORT": str(port),
             "LTX_REMOTE_PORT": "0",
             "LTX_AUTH_TOKEN": token,
             "LTX_ADMIN_TOKEN": secrets.token_urlsafe(32),
-            "LTX_REQUIRE_ROCM": "0" if cpu_host else "1",
             "LTX_DEV_MODE": "0",
             "HF_HUB_OFFLINE": "1",
-        }
-        if cpu_host:
-            env.update(CUDA_VISIBLE_DEVICES="", HIP_VISIBLE_DEVICES="", ROCR_VISIBLE_DEVICES="")
+        })
         url = f"http://127.0.0.1:{port}/health"
         request = Request(url, headers={"Authorization": f"Bearer {token}"})
         opener = build_opener(ProxyHandler({}))
@@ -67,7 +75,6 @@ def check(backend, cpu_host, timeout):
                     try:
                         with opener.open(request, timeout=2) as response:
                             if response.status == 200 and json.load(response).get("status") == "ok":
-                                target = "CPU host" if cpu_host else "ROCm"
                                 print(f"PASS: {target} backend started with a fresh profile and returned HTTP 200 ok.")
                                 return
                     except (URLError, TimeoutError):
@@ -88,7 +95,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serve", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--backend", type=Path, help="Backend directory to verify (defaults to packaged backend)")
-    parser.add_argument("--cpu-host", action="store_true", help="Run on a build host without requiring a Radeon")
+    parser.add_argument("--cpu-host", action="store_true", help="Run on a build host without a GPU")
     parser.add_argument("--timeout", type=int, default=240, help="Maximum seconds to wait for startup (default 240)")
     args = parser.parse_args()
     if args.serve:

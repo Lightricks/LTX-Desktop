@@ -13,9 +13,19 @@ import tempfile
 from pathlib import Path
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "setupwork/src"))
+from gpu_selection import child_environment, read_selection
+
+
 def check(resources: Path, data: Path) -> None:
-    os.environ["LTX_APP_DATA_DIR"] = str(data)
-    os.environ["LTX_REQUIRE_ROCM"] = "1"
+    selection = read_selection(resources)
+    if selection["backend"] != "rocm":
+        raise SystemExit("This check exercises the private Radeon worker. Use verify_install.py --gpu for the installed backend.")
+    # Apply the same visibility filters as Electron before importing the HIP libraries.
+    env = child_environment(selection)
+    for key in os.environ.keys() - env.keys():
+        del os.environ[key]
+    os.environ.update(env, LTX_APP_DATA_DIR=str(data))
     sys.path.insert(0, str(resources / "backend"))
     import av
     import torch

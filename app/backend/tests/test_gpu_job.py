@@ -6,7 +6,7 @@ import pytest
 
 from runtime_config.device_calibration import JobEnvelope
 from services.features.video.edit_executor import run_gpu_job
-from services.generation_interrupt import GenerationCancelledError
+from inference.interrupt import GenerationCancelledError
 
 
 class _Slot:

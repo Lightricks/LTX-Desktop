@@ -4206,7 +4206,7 @@
       },
       "EditPreflightRequest": {
         "additionalProperties": false,
-        "description": "Advisory per-cell verdicts for Home retake/extend pickers.\n\n``durations`` always includes the smallest selectable duration (extend\npresets, retake minimum) so every candidate has an exact resolution-level\nverdict; callers add the durations they display (extend presets, retake\ncurrent selection) for exact per-cell messages. ``startTime`` only affects\nretake windowing, ``mode`` only extend stitching; both default so each\nfeature sends what it needs.",
+        "description": "Advisory per-cell verdicts for Home retake/extend pickers.\n\n``durations`` always includes the smallest selectable duration (extend\npresets, retake minimum) so every candidate has an exact resolution-level\nverdict; callers add the durations they display (extend presets, retake\ncurrent selection) for exact per-cell messages. ``startTime`` only affects\nretake windowing, ``mode`` only extend stitching and ``contextMode`` only how\nmuch of the clip an extend keeps as context (which sets the window it is\npriced at); all default so each feature sends what it needs.",
         "properties": {
           "assetId": {
             "minLength": 1,
@@ -4221,6 +4221,15 @@
             "minItems": 1,
             "title": "Candidates",
             "type": "array"
+          },
+          "contextMode": {
+            "default": "long",
+            "enum": [
+              "long",
+              "short"
+            ],
+            "title": "Contextmode",
+            "type": "string"
           },
           "durations": {
             "items": {
@@ -4769,6 +4778,15 @@
         "additionalProperties": false,
         "description": "Queued Home/Remote extend.\n\n``resolution`` omitted keeps the source size. Either way the picture is\ncapped at the local 1080p cell. The model encodes a black-bar letterbox\nup to the next multiple of 32, and the stitch crops back to this picture.",
         "properties": {
+          "contextMode": {
+            "default": "long",
+            "enum": [
+              "long",
+              "short"
+            ],
+            "title": "Contextmode",
+            "type": "string"
+          },
           "duration": {
             "maximum": 20.0,
             "minimum": 2.0,
@@ -5117,11 +5135,6 @@
             "title": "Highresvideotovideo",
             "type": "boolean"
           },
-          "keyframes": {
-            "default": false,
-            "title": "Keyframes",
-            "type": "boolean"
-          },
           "showGenerationNegativePrompt": {
             "default": false,
             "title": "Showgenerationnegativeprompt",
@@ -5178,17 +5191,6 @@
               }
             ],
             "title": "Highresvideotovideo"
-          },
-          "keyframes": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Keyframes"
           },
           "showGenerationNegativePrompt": {
             "anyOf": [
@@ -12960,6 +12962,15 @@
         "additionalProperties": false,
         "description": "New retakes only: specs queued before the cap still parse as ``RetakeParams``.",
         "properties": {
+          "contextMode": {
+            "default": "long",
+            "enum": [
+              "long",
+              "short"
+            ],
+            "title": "Contextmode",
+            "type": "string"
+          },
           "duration": {
             "maximum": 10.0,
             "minimum": 2.0,

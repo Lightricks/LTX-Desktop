@@ -18,7 +18,7 @@ from services.displaced_provider_jobs import (
     DISPLACED_PROVIDER_JOBS_FILENAME,
     DisplacedProviderJobs,
 )
-from services.generation_interrupt import GenerationCancelledError
+from inference.interrupt import GenerationCancelledError
 from services.generation_queue.dispatcher import QueueDispatcher
 from services.generation_queue.lane_sessions import LaneJobSession
 from services.generation_queue.lane_slots import CountingLaneSlot

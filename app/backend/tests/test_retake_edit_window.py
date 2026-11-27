@@ -6,12 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from services.retake_pipeline.window import (
-    MASK_DELTA_SECONDS,
+from inference.retake_pipeline.window import (
+    PreparedRetakeWindow,
     MAX_INPUT_FRAMES,
     RETAKE_BLEND_SECONDS,
     SELECTION_OUT_OF_RANGE_MESSAGE,
-    feathered_mask_times,
+    continuation_context_frames,
+    prepare_retake_window,
+    retake_mask_times,
     window_for_retake,
 )
 
@@ -135,7 +137,9 @@ def test_min_blend_does_not_push_the_window_over_the_cap() -> None:
     assert window.mask_end_frame - window.mask_start_frame == 496
 
 
-def test_feather_pulls_the_denoise_mask_into_kept_context() -> None:
+def test_denoise_mask_is_exactly_the_selection() -> None:
+    """Mask == stitch edit span. A wider mask put the 16-frame lerp over
+    regenerated content, which ghosted at the seam."""
     window = window_for_retake(
         source_frames=241,
         mask_start_frame=96,
@@ -143,21 +147,86 @@ def test_feather_pulls_the_denoise_mask_into_kept_context() -> None:
         max_input_frames=MAX_INPUT_FRAMES,
     )
     fps = 24.0
-    start, end = feathered_mask_times(window, fps)
-    assert start == pytest.approx(96 / fps - MASK_DELTA_SECONDS)
-    assert end == pytest.approx(144 / fps + MASK_DELTA_SECONDS)
-    assert start >= 0
-    assert end <= window.encode_duration(fps)
+    start, end = retake_mask_times(window, fps)
+    assert start == pytest.approx(window.window_mask_start(fps))
+    assert end == pytest.approx(window.window_mask_end(fps))
+    assert end - start == pytest.approx(48 / fps)
 
 
-def test_feather_does_not_cross_a_missing_prefix() -> None:
+def test_denoise_mask_at_clip_start_begins_at_zero() -> None:
     window = window_for_retake(
         source_frames=241,
         mask_start_frame=0,
         mask_end_frame=48,
         max_input_frames=MAX_INPUT_FRAMES,
     )
-    start, end = feathered_mask_times(window, 24.0)
+    start, end = retake_mask_times(window, 24.0)
     assert start == 0.0
-    assert end > 48 / 24.0
+    assert end == pytest.approx(48 / 24.0)
     assert RETAKE_BLEND_SECONDS == 0.3
+
+
+@pytest.mark.parametrize("fps", [24.0, 30.0, 60.0])
+def test_short_context_keeps_about_two_seconds_on_each_side(fps: float) -> None:
+    mask = round(3 * fps)
+    cap_frames = continuation_context_frames(fps)
+    window = window_for_retake(
+        source_frames=int(60 * fps),
+        mask_start_frame=int(20 * fps),
+        mask_end_frame=int(20 * fps) + mask,
+        max_input_frames=MAX_INPUT_FRAMES,
+        fps=fps,
+        max_context_frames=cap_frames,
+    )
+    # Alignment to 8k + 1 may add a few frames to one side.
+    assert cap_frames - 8 <= window.context_before_frames <= cap_frames + 8
+    assert cap_frames - 8 <= window.context_after_frames <= cap_frames + 8
+    assert (window.encode_frames - 1) % 8 == 0
+    assert window.encode_frames < MAX_INPUT_FRAMES
+
+
+def test_long_context_still_fills_the_window_to_the_cap() -> None:
+    kwargs = dict(
+        source_frames=1440,
+        mask_start_frame=480,
+        mask_end_frame=552,
+        max_input_frames=MAX_INPUT_FRAMES,
+        fps=24.0,
+    )
+    long = window_for_retake(**kwargs)
+    short = window_for_retake(**kwargs, max_context_frames=continuation_context_frames(24.0))
+    assert long.encode_frames >= MAX_INPUT_FRAMES - 8
+    assert short.encode_frames < long.encode_frames // 2
+
+
+def test_short_context_is_clamped_by_the_source_edges() -> None:
+    window = window_for_retake(
+        source_frames=300,
+        mask_start_frame=10,
+        mask_end_frame=82,
+        max_input_frames=MAX_INPUT_FRAMES,
+        fps=24.0,
+        max_context_frames=continuation_context_frames(24.0),
+    )
+    assert window.context_before_frames <= 10
+    assert window.encode_start_frame >= 0
+
+
+def test_prepare_retake_window_short_mode_shrinks_the_window() -> None:
+    kwargs = dict(
+        fps=24.0,
+        target_frames=721,
+        target_width=1920,
+        target_height=1080,
+        frame_cap=MAX_INPUT_FRAMES,
+        start_time=12.0,
+        duration=3.0,
+    )
+    long = prepare_retake_window(**kwargs)
+    short = prepare_retake_window(**kwargs, context_mode="short")
+    assert isinstance(long, PreparedRetakeWindow) and isinstance(short, PreparedRetakeWindow)
+    assert short.window.encode_frames < long.window.encode_frames
+    assert (short.window.mask_start_frame, short.window.mask_end_frame) == (
+        long.window.mask_start_frame,
+        long.window.mask_end_frame,
+    )

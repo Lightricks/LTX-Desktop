@@ -6,7 +6,7 @@ import struct
 import tempfile
 import unittest
 
-from verify_install import check_manifest, inspect_shell
+from verify_install import ROOT, check_installed_runtime, check_manifest, inspect_shell
 
 
 def build_fixture(path, files):
@@ -38,6 +38,25 @@ class ReleaseVerifierTests(unittest.TestCase):
             marker.write_text(json.dumps({"target": "gfx1151", "manifest_sha256": hashlib.sha256(installed.read_bytes()).hexdigest()}))
             with self.assertRaisesRegex(ValueError, "differs from repository"):
                 check_manifest(installed, marker, expected)
+
+    def test_cuda_verifier_checks_upstream_pin_and_rejects_a_stale_amd_interpreter(self):
+        with tempfile.TemporaryDirectory() as d:
+            resources = Path(d)
+            (resources / "python").mkdir()
+            selection = {"version": 1, "backend": "cuda", "deviceName": "NVIDIA",
+                         "cudaUuid": "GPU-11111111-3333-5555-9999-aabbccddeeff"}
+            (resources / "gpu-runtime.json").write_text(json.dumps(selection))
+            manifest = resources / "cuda-runtime.json"
+            manifest.write_bytes((ROOT / "setupwork/src/cuda-runtime.json").read_bytes())
+            self.assertEqual(check_installed_runtime(resources, ROOT)["backend"], "cuda")
+            marker = resources / "python/ltx-amd-runtime.json"
+            marker.write_text("{}")
+            with self.assertRaisesRegex(ValueError, "Radeon installation marker"):
+                check_installed_runtime(resources, ROOT)
+            marker.unlink()
+            manifest.write_text('{"release":"unexpected"}')
+            with self.assertRaisesRegex(ValueError, "differs from the pinned release"):
+                check_installed_runtime(resources, ROOT)
 
     def test_fresh_shell_passes_but_missing_or_damaged_renderer_fails(self):
         with tempfile.TemporaryDirectory() as d:

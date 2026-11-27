@@ -7,8 +7,8 @@ import inspect
 import pytest
 from ltx_pipelines.utils.blocks import DiffusionStage
 
-import services.patches.diffusion_interrupt as diffusion_interrupt
-from services.generation_interrupt import GenerationCancelledError, request
+import inference.patches.diffusion_interrupt as diffusion_interrupt
+from inference.interrupt import GenerationCancelledError, request
 
 
 def test_patch_rebinds_diffusion_stage_call() -> None:
@@ -79,7 +79,7 @@ def test_loop_tqdm_iterations_count_as_one_step_even_when_denoiser_runs_twice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """res2s calls the denoiser twice per loop step; the bar must move once per step."""
-    from services.denoising_progress import configure_sink, reset, track_denoising
+    from inference.progress import configure_sink, reset, track_denoising
 
     seen: list[tuple[int, int]] = []
     configure_sink(lambda current, total: seen.append((current, total)))
@@ -142,7 +142,7 @@ def test_ancestral_terminal_break_still_counts_the_last_iteration(
     """euler_ancestral_denoising_loop breaks when the next sigma is 0, so the
     tqdm consumer never resumes after that yield. The completed iteration must
     still count when the loop returns normally."""
-    from services.denoising_progress import configure_sink, reset, track_denoising
+    from inference.progress import configure_sink, reset, track_denoising
 
     seen: list[tuple[int, int]] = []
     configure_sink(lambda current, total: seen.append((current, total)))
@@ -172,7 +172,7 @@ def test_ancestral_terminal_break_still_counts_the_last_iteration(
 def test_cancelled_loop_does_not_count_the_aborted_iteration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.denoising_progress import configure_sink, reset, track_denoising
+    from inference.progress import configure_sink, reset, track_denoising
 
     seen: list[tuple[int, int]] = []
     configure_sink(lambda current, total: seen.append((current, total)))

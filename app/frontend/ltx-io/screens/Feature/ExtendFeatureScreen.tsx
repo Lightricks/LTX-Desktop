@@ -43,6 +43,7 @@ export function ExtendFeatureScreen() {
       selectPreflightInput={(values: ExtendValues | undefined) => ({
         startTime: 0,
         mode: values?.mode ?? EXTEND_DEFAULTS.mode,
+        contextMode: values?.contextMode ?? EXTEND_DEFAULTS.contextMode,
         durations: [...EXTEND_DURATION_PRESETS],
       })}
     />

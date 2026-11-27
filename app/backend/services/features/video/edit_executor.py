@@ -33,8 +33,9 @@ from services.features.video.text_to_video import (
     require_supported_contract_version,
     require_video_output,
 )
-from services.generation_interrupt import GenerationCancelledError, is_cancel_exception
-from services.fast_video_pipeline.nag_config import (
+from inference.interrupt import GenerationCancelledError, is_cancel_exception
+from services.ffmpeg import FfmpegTimeoutError, FfmpegUnavailableError
+from inference.fast_video_pipeline.nag_config import (
     DEFAULT_SCALE as DEFAULT_NAG_SCALE,
     NagConfig,
     NagDecision,
@@ -44,9 +45,9 @@ from services.fast_video_pipeline.nag_config import (
 from services.generation_queue.sessions import JobSession
 from services.generation_queue.types import ExecutionOutcome, OutputAllocation, OutputPlan
 from services.prompt_enhancement.source_video import SourceVideo
+from inference.errors import CapabilityFailedError
 from services.records import (
     AssetRecord,
-    CapabilityFailedError,
     GenerationRecord,
     MediaError,
 )
@@ -431,6 +432,10 @@ class VideoEditExecutor(ABC, Generic[PParams, PInputs, PPrepared]):
                 raise capability_failed_from_http(exc) from exc
             if isinstance(exc, CapabilityFailedError):
                 raise
+            if isinstance(exc, FfmpegUnavailableError):
+                raise CapabilityFailedError("ffmpeg is not available") from exc
+            if isinstance(exc, FfmpegTimeoutError):
+                raise CapabilityFailedError("ffmpeg timed out") from exc
             if isinstance(exc, MediaError):
                 raise CapabilityFailedError(str(exc)) from exc
             raise

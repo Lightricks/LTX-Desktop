@@ -6,9 +6,10 @@ from pathlib import Path
 
 import pytest
 
+from inference.common import build_model_paths
+from inference.layout import ResolvedLtxModelPaths
 from runtime_config.ltx_runtime_paths import resolve_ltx_runtime_paths
 from runtime_config.model_download_specs import get_ltx_model_spec, resolve_model_path
-from services.ltx_pipeline_common import build_model_paths
 
 
 def _write_cp(models_dir: Path, cp_id: str) -> Path:
@@ -69,7 +70,7 @@ def test_monolith_duration_head_is_the_fat_checkpoint() -> None:
 def test_resolve_runtime_paths_includes_downloaded_duration_head(tmp_path: Path) -> None:
     spec = get_ltx_model_spec("ltx-2.5-22b-distilled")
     _write_2_5_bundle(tmp_path)
-    paths = resolve_ltx_runtime_paths(
+    paths: ResolvedLtxModelPaths = resolve_ltx_runtime_paths(
         tmp_path, "ltx-2.5-22b-distilled", gemma_root=None, use_conv_vae=False
     )
     assert paths.duration_head_path == str(resolve_model_path(tmp_path, spec.duration_head_cp))
@@ -78,7 +79,7 @@ def test_resolve_runtime_paths_includes_downloaded_duration_head(tmp_path: Path)
 def test_resolve_runtime_paths_omits_missing_duration_head(tmp_path: Path) -> None:
     spec = get_ltx_model_spec("ltx-2.5-22b-distilled")
     _write_2_5_bundle(tmp_path, include_duration_head=False)
-    paths = resolve_ltx_runtime_paths(
+    paths: ResolvedLtxModelPaths = resolve_ltx_runtime_paths(
         tmp_path, "ltx-2.5-22b-distilled", gemma_root=None, use_conv_vae=False
     )
     assert paths.duration_head_path is None
@@ -88,7 +89,7 @@ def test_resolve_runtime_paths_omits_missing_duration_head(tmp_path: Path) -> No
 def test_resolve_runtime_paths_picks_conv_vae(tmp_path: Path) -> None:
     spec = get_ltx_model_spec("ltx-2.5-22b-distilled")
     _write_2_5_bundle(tmp_path)
-    paths = resolve_ltx_runtime_paths(
+    paths: ResolvedLtxModelPaths = resolve_ltx_runtime_paths(
         tmp_path, "ltx-2.5-22b-distilled", gemma_root=None, use_conv_vae=True
     )
     assert paths.video_vae_path == str(resolve_model_path(tmp_path, spec.video_vae_conv_cp))
@@ -97,7 +98,7 @@ def test_resolve_runtime_paths_picks_conv_vae(tmp_path: Path) -> None:
 def test_resolve_runtime_paths_picks_diffvae(tmp_path: Path) -> None:
     spec = get_ltx_model_spec("ltx-2.5-22b-distilled")
     _write_2_5_bundle(tmp_path)
-    paths = resolve_ltx_runtime_paths(
+    paths: ResolvedLtxModelPaths = resolve_ltx_runtime_paths(
         tmp_path, "ltx-2.5-22b-distilled", gemma_root=None, use_conv_vae=False
     )
     assert paths.video_vae_path == str(resolve_model_path(tmp_path, spec.video_vae_cp))
@@ -108,7 +109,7 @@ def test_resolve_runtime_paths_2_3_ignores_conv_toggle(tmp_path: Path) -> None:
     for cp_id in (spec.model_cp, spec.upscale_cp):
         _write_cp(tmp_path, cp_id)
     for use_conv_vae in (True, False):
-        paths = resolve_ltx_runtime_paths(
+        paths: ResolvedLtxModelPaths = resolve_ltx_runtime_paths(
             tmp_path, "ltx-2.3-22b-distilled-1.1", gemma_root=None, use_conv_vae=use_conv_vae
         )
         assert paths.video_vae_path is None

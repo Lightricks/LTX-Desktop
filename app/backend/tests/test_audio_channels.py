@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from services.audio_channels import stereo_waveform
+from inference.audio_channels import stereo_waveform
 
 
 def test_stereo_waveform_upmixes_batched_mono() -> None:

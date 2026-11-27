@@ -16,22 +16,24 @@ from runtime_config.budget_admission import RiskAllowance
 from runtime_config.device_calibration import JobEnvelope
 from services.features.video.edit_executor import VideoEditExecutor
 from services.features.video.job_common import model_from_spec
-from services.fast_video_pipeline.windowed_run import measured_edit
+from inference.fast_video_pipeline.windowed_run import measured_edit
+from services.features.video.window_estimates import edit_window_estimate_gib
 from services.records import AssetRecord, GenerationRecord
-from services.retake_pipeline.window import (
-    MIN_EXTEND_CONTEXT_FRAMES,
+from inference.retake_pipeline.window import (
     EditRefusal,
     ExtendEncodeWindow,
+    extend_context_floor,
     prepare_extend_window,
 )
-from services.retake_pipeline.extend_stitch import stitch_extend_output
+from inference.retake_pipeline.extend_stitch import stitch_extend_output
+from inference.retake_pipeline.voice_context import VoiceBridge, find_voice_bridge, write_voice_bridge
 from state.app_state_types import RetakePipelineState
 
 FEATURE = "extend"
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
+@dataclass
 class _PreparedExtend:
     params: ExtendParams
     video: AssetRecord
@@ -47,6 +49,9 @@ class _PreparedExtend:
     dest_path: Path
     windowed_path: str
     ran: JobEnvelope | None
+    # Set when the Short context window has no speech: the model reads a bridge clip, not the
+    # source. ``generate`` writes the clip, and clears this when it cannot.
+    bridge: VoiceBridge | None = None
 
 
 class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExtend]):
@@ -105,6 +110,7 @@ class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExte
             frame_cap=frame_cap,
             duration=params.duration,
             mode=params.mode,
+            context_mode=params.contextMode,
         )
         if isinstance(prepared, EditRefusal):
             prepared.raise_capability_error()
@@ -136,6 +142,7 @@ class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExte
                 duration=params.duration,
                 mode=params.mode,
                 minimum_context_frames=1,
+                context_mode=params.contextMode,
             )
             # Unreachable while MAX_SHRINK_GAP_FRAMES < 120 (a passing first
             # gate leaves extend <= total - 121, which always fits a free cap
@@ -143,12 +150,13 @@ class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExte
             # with the max named instead of crashing on the refusal below.
             if isinstance(shrunk, EditRefusal):
                 shrunk.raise_capability_error()
-            if shrunk.window.context_frames < MIN_EXTEND_CONTEXT_FRAMES:
+            floor = extend_context_floor(params.contextMode, fps)
+            if shrunk.window.context_frames < floor:
                 logger.warning(
                     "Extend %s running with %d context frames, below the %d-frame coherence floor (unmeasured regime)",
                     generation.id,
                     shrunk.window.context_frames,
-                    MIN_EXTEND_CONTEXT_FRAMES,
+                    floor,
                 )
             logger.info(
                 "Extend %s free gate refused the total-fitting %d-frame window; shrinking to free-gated cap %d (encode %d)",
@@ -172,9 +180,10 @@ class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExte
             rewindow=rewindow,
         )
         logger.info(
-            "Extend %s started (%s, source %dx%d → %dx%d canvas %dx%d, %d source frames @ %g fps, %s +%d, encode %d, seed=%d)",
+            "Extend %s started (%s, %s context, source %dx%d → %dx%d canvas %dx%d, %d source frames @ %g fps, %s +%d, encode %d, seed=%d)",
             generation.id,
             local_model_id,
+            params.contextMode,
             source_width,
             source_height,
             content_width,
@@ -188,6 +197,7 @@ class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExte
             window.context_frames,
             seed,
         )
+        bridge = self._voice_bridge(params, video, window, fps, source_frames)
         return _PreparedExtend(
             params=params,
             video=video,
@@ -203,17 +213,62 @@ class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExte
             dest_path=dest,
             windowed_path=windowed_path,
             ran=ran,
+            bridge=bridge,
         )
+
+    @staticmethod
+    def _voice_bridge(
+        params: ExtendParams,
+        video: AssetRecord,
+        window: ExtendEncodeWindow,
+        fps: float,
+        source_frames: int,
+    ) -> VoiceBridge | None:
+        """Plan a bridge with speech, when the Short context window has none. See voice_context."""
+        if params.contextMode != "short":
+            return None
+        bridge = find_voice_bridge(
+            video.path, window=window, fps=fps, source_frames=source_frames, mode=params.mode
+        )
+        if bridge is not None:
+            logger.info(
+                "Extend voice bridge: %d speech frames from frame %d, %d seam frames from frame %d",
+                bridge.speech_frames,
+                bridge.speech_start_frame,
+                bridge.seam_frames,
+                bridge.seam_start_frame,
+            )
+        return bridge
 
     def generate(self, prepared: _PreparedExtend) -> None:
         frames = prepared.window.context_frames + prepared.extend_frames
-        with measured_edit(prepared.canvas_width, prepared.canvas_height, frames):
-            self._generate(prepared)
+        dest = prepared.dest_path
+        bridge_path = dest.with_name(f"{dest.stem}.voice{dest.suffix}")
+        try:
+            if prepared.bridge is not None and not write_voice_bridge(
+                prepared.video.path, str(bridge_path), prepared.bridge, prepared.fps
+            ):
+                prepared.bridge = None
+            with measured_edit(
+                prepared.canvas_width,
+                prepared.canvas_height,
+                frames,
+                estimate_gib=edit_window_estimate_gib,
+            ):
+                self._generate(prepared, bridge_path if prepared.bridge is not None else None)
+        finally:
+            bridge_path.unlink(missing_ok=True)
 
-    def _generate(self, prepared: _PreparedExtend) -> None:
+    def _generate(self, prepared: _PreparedExtend, bridge_path: Path | None) -> None:
         nag = self.resolve_nag(prepared.params, prepared.pipeline_state)
+        # The bridge replaces the source window, so it is read from its start.
+        video_path, encode_start_time = (
+            (str(bridge_path), 0.0)
+            if bridge_path
+            else (prepared.video.path, prepared.window.start_time(prepared.fps))
+        )
         prepared.pipeline_state.pipeline.extend(
-            video_path=prepared.video.path,
+            video_path=video_path,
             prompt=prepared.params.prompt,
             extend_frames=prepared.extend_frames,
             mode=prepared.params.mode,
@@ -228,7 +283,7 @@ class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExte
             content_width=prepared.content_width,
             content_height=prepared.content_height,
             target_frames=prepared.window.context_frames,
-            encode_start_time=prepared.window.start_time(prepared.fps),
+            encode_start_time=encode_start_time,
             encode_max_duration=prepared.window.max_duration(prepared.fps),
             nag=nag,
         )
@@ -244,4 +299,5 @@ class ExtendExecutor(VideoEditExecutor[ExtendParams, ExtendInputs, _PreparedExte
             extend_frames=prepared.extend_frames,
             target_width=prepared.content_width,
             target_height=prepared.content_height,
+            seam_frames=prepared.bridge.seam_frames if prepared.bridge else None,
         )

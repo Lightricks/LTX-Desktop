@@ -17,7 +17,7 @@ from api_types import (
     PromptTemplateSpec,
 )
 from runtime_config.model_download_specs import resolve_model_path
-from services import generation_interrupt
+import inference.interrupt as generation_interrupt
 from services.gemini_text_client import DEFAULT_GEMINI_MODEL
 from services.prompt_enhancement import build_audio_visual_caption_system_prompt
 from services.prompt_enhancer_pipeline import ltx_prompt_enhancer_pipeline as ltx_mod

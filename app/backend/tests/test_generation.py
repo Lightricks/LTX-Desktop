@@ -18,14 +18,14 @@ from api_types import (
     GenerateVideoCompleteResponse,
     GenerateVideoRequest,
 )
-from frame_math import AutoDurationSpec, compute_num_frames
+from inference.frame_math import AutoDurationSpec, compute_num_frames
 from runtime_config.budget_admission import unmeasured_refusal_message
 from runtime_config.budget_evidence import JobShape
 from runtime_config.device_calibration import envelope_for
 from runtime_config.eta import WallTimeEstimate
 from runtime_config.model_download_specs import delete_cp_path, get_ltx_model_spec, resolve_model_path
-from services import generation_interrupt
-from services.generation_interrupt import GenerationCancelledError
+import inference.interrupt as generation_interrupt
+from inference.interrupt import GenerationCancelledError
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError
 from services.generation_queue.sessions import LocalJobSession
 from state.app_state_types import GpuSlot, VideoPipelineState

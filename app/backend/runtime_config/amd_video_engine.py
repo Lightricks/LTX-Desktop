@@ -5,7 +5,7 @@ from typing import Literal, TypeGuard
 
 from _routes._errors import HTTPError
 from api_types import AmdVideoEngine, GenerateVideoRequest, ImageToVideoParams, LTXVideoGenAspectRatio, TextToVideoParams
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 
 H3Engine = Literal["h3-fl2va", "h3-fl2va-distill", "h3-ref2va"]
 ExternalEngine = Literal["comfy", "kandinsky"] | H3Engine

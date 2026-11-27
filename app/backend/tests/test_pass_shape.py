@@ -13,9 +13,9 @@ from pydantic import JsonValue
 from starlette.testclient import TestClient
 
 from app_factory import create_app
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 from remote.app import create_remote_app
-from runtime_config.fast_chunking import job_window_count
+from inference.fast_chunking import job_window_count
 from runtime_config.video_job_budget import (
     MPS_SEQUENCE_OVER_MESSAGE,
     ONE_PASS_UNAVAILABLE,

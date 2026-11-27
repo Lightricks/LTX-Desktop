@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -23,11 +24,11 @@ from runtime_config.video_job_budget import (
 )
 from services.features.video.extend import ExtendExecutor
 from services.features.video.retake import RetakeExecutor
-from services.records import CapabilityFailedError
+from inference.errors import CapabilityFailedError
 from state.app_settings import resolved_use_conv_vae
 from state.app_state_types import GpuSlot, RetakePipelineState
 from tests.http_error_assertions import assert_http_error
-from tests.video_fixtures import write_mp4
+from tests.video_fixtures import write_clip_with_tone_spans, write_mp4
 
 _LOCAL_2_3: LTXLocalModelId = "ltx-2.3-22b-distilled"
 _LOCAL_2_5: LTXLocalModelId = "ltx-2.5-22b-distilled"
@@ -312,21 +313,29 @@ def test_retake_on_2_5_rebuilds_pipeline_after_2_3(
     assert len(fake_services.retake_pipeline.create_calls) == 2
 
 
-def _prepare_extend(test_state, video_path: str, duration: float):
-    """Drive ExtendExecutor.prepare directly: records are namespaces because
-    prepare reads generation.id and video.path only (verified by reading)."""
-    executor = ExtendExecutor(
+def _extend_executor(test_state) -> ExtendExecutor:
+    """``prepare`` reads generation.id and video.path only, so the tests pass namespaces for them."""
+    return ExtendExecutor(
         pipelines=test_state.pipelines,
         assets=None,  # type: ignore[arg-type]
-        text=None,  # type: ignore[arg-type]
+        text=test_state.text,
         models_dir=lambda: test_state.config.default_models_dir,
         default_negative_prompt="",
-        generation=None,  # type: ignore[arg-type]
-        prompt_enhancement=None,  # type: ignore[arg-type]
+        generation=test_state.generation,
+        prompt_enhancement=test_state.prompt_enhancement,
     )
-    return executor.prepare(
+
+
+def _prepare_extend(test_state, video_path: str, duration: float, context_mode: str = "long"):
+    return _extend_executor(test_state).prepare(
         SimpleNamespace(id="gen-1"),
-        ExtendParams(prompt="x", model="ltx-2.3-fast", duration=duration, mode="end"),
+        ExtendParams(
+            prompt="x",
+            model="ltx-2.3-fast",
+            duration=duration,
+            mode="end",
+            contextMode=context_mode,  # type: ignore[arg-type]
+        ),
         SimpleNamespace(path=video_path),
         _LOCAL_2_3,
         42,
@@ -401,3 +410,84 @@ def test_queued_home_edit_loads_the_text_encoder_of_its_own_model(
     )
 
     assert fake_services.retake_pipeline.create_calls[-1]["gemma_root"] == expected_gemma_root
+
+
+def _speech_clip(test_state) -> str:
+    """6 s, 24 fps, with a voice from 0.2 s to 2.5 s and silence after it."""
+    return str(
+        write_clip_with_tone_spans(
+            test_state.config.outputs_dir / f"speech_{uuid.uuid4().hex[:6]}.mp4",
+            frames=144,
+            spans=[(0.2, 2.5)],
+        )
+    )
+
+
+def _bridge_files(test_state) -> list:
+    return list(test_state.config.outputs_dir.glob("*.voice.mp4"))
+
+
+def test_full_context_extend_makes_no_voice_bridge(
+    test_state, create_fake_model_files, fake_services
+) -> None:
+    # Bug: the bridge replaces the real clip in the default mode and changes a path that worked.
+    _install_local(test_state, create_fake_model_files, _LOCAL_2_3)
+    prepared = _prepare_extend(test_state, _speech_clip(test_state), duration=2.0, context_mode="long")
+    assert prepared.bridge is None
+    assert _bridge_files(test_state) == []
+
+
+def test_short_context_extend_plans_a_voice_bridge_when_the_window_has_no_speech(
+    test_state, create_fake_model_files, fake_services
+) -> None:
+    _install_local(test_state, create_fake_model_files, _LOCAL_2_3)
+    prepared = _prepare_extend(test_state, _speech_clip(test_state), duration=2.0, context_mode="short")
+    assert prepared.bridge is not None
+    assert prepared.bridge.total_frames == prepared.window.context_frames
+    # Bug: a job refused or cancelled before generate left its bridge clip behind. Prepare
+    # writes no file, so there is nothing to leave.
+    assert _bridge_files(test_state) == []
+
+
+def test_short_context_extend_without_earlier_speech_uses_the_source_clip(
+    test_state, create_fake_model_files, fake_services
+) -> None:
+    _install_local(test_state, create_fake_model_files, _LOCAL_2_3)
+    prepared = _prepare_extend(
+        test_state, _make_valid_video(test_state, frames=144), duration=2.0, context_mode="short"
+    )
+    assert prepared.bridge is None
+    assert _bridge_files(test_state) == []
+
+
+def test_extend_falls_back_to_the_source_clip_when_the_bridge_cannot_be_written(
+    test_state, create_fake_model_files, fake_services
+) -> None:
+    # Bug: the bridge is only an aid, so a clip that cannot be written must not fail the job, and
+    # the stitch must not assume a bridge the model never read.
+    _install_local(test_state, create_fake_model_files, _LOCAL_2_3)
+    source = _speech_clip(test_state)
+    prepared = _prepare_extend(test_state, source, duration=2.0, context_mode="short")
+    assert prepared.bridge is not None
+    Path(source).unlink()
+    _extend_executor(test_state).generate(prepared)
+    assert fake_services.retake_pipeline.extend_calls[-1]["video_path"] == source
+    assert prepared.bridge is None
+    assert _bridge_files(test_state) == []
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_extend_removes_the_voice_bridge_file_after_the_run(
+    test_state, create_fake_model_files, fake_services, fails: bool
+) -> None:
+    # Bug: every Short context extend leaves a bridge clip in the outputs folder.
+    _install_local(test_state, create_fake_model_files, _LOCAL_2_3)
+    prepared = _prepare_extend(test_state, _speech_clip(test_state), duration=2.0, context_mode="short")
+    if fails:
+        fake_services.retake_pipeline.raise_on_extend = RuntimeError("boom")
+        with pytest.raises(RuntimeError, match="boom"):
+            _extend_executor(test_state).generate(prepared)
+    else:
+        _extend_executor(test_state).generate(prepared)
+    assert str(fake_services.retake_pipeline.extend_calls[-1]["video_path"]).endswith(".voice.mp4")
+    assert _bridge_files(test_state) == []

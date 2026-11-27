@@ -12,6 +12,7 @@ import { clearHeartbeatFile, decideThresholdTick, readHeartbeatState } from './l
 import { logger, writeLog } from './logger'
 import { getCurrentLogFilename } from './logging-management'
 import { getPythonDir } from './python-setup'
+import { readWindowsRuntime, windowsRuntimeEnvironment } from './windows-runtime'
 import { getMainWindow } from './window'
 import { PY_REMOVE_CWD_FROM_DLL_SEARCH } from './win-dll-search'
 
@@ -281,7 +282,7 @@ export function getPythonPath(): string {
     const bundledPython = process.platform === 'win32'
       ? path.join(pythonDir, 'python.exe')
       : path.join(pythonDir, 'bin', 'python3')
-    // This edition ships its own ROCm interpreter; never fall back to stock or system Python.
+    // Windows setup stages the GPU-specific runtime inside this application.
     if (process.platform === 'win32') return bundledPython
     if (fs.existsSync(bundledPython)) {
       logger.info(`Using bundled Python: ${bundledPython}`)
@@ -399,6 +400,8 @@ export async function startPythonBackend({ askUser = true }: { askUser?: boolean
     const backendPath = getBackendPath()
     const mainPy = path.join(backendPath, 'ltx2_server.py')
 
+    const runtime = process.platform === 'win32' && !isDev ? readWindowsRuntime(process.resourcesPath) : null
+    if (runtime) logger.info(`Selected Windows runtime: ${runtime.backend} (${runtime.deviceName})`)
     logger.info(`Starting Python backend: ${pythonPath} ${mainPy}`)
 
     // Windows embedded Python's ._pth file suppresses normal sys.path setup —
@@ -436,7 +439,8 @@ export async function startPythonBackend({ askUser = true }: { askUser?: boolean
           MPS_SDPA_SKIP_CALIBRATION: process.env.MPS_SDPA_SKIP_CALIBRATION ?? '1',
         } : {}),
         ...(process.platform === 'win32' ? {
-          LTX_REQUIRE_ROCM: '1',
+          ...(runtime ? windowsRuntimeEnvironment(runtime) : {}),
+          LTX_HF_CALLBACK_PORT: '41954',
           LTX_PORT: process.env.LTX_PORT || '41956',
           LTX_REMOTE_PORT: process.env.LTX_REMOTE_PORT || '41957',
         } : {}),

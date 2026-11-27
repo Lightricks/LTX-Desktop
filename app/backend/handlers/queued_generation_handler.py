@@ -80,7 +80,7 @@ from services.features.video.job_common import (
 )
 from runtime_config.amd_video_engine import external_engine, require_h3_license
 from services.aspect_ratio import find_closest_aspect_ratio_option
-from services.fast_video_pipeline.nag_config import (
+from inference.fast_video_pipeline.nag_config import (
     DEFAULT_SCALE as DEFAULT_NAG_SCALE,
     decide_nag,
 )
@@ -100,10 +100,10 @@ from services.features.lora_recipes import RecipeCreateError, resolve_recipe_cre
 from services.lora_catalog import LoraCatalogProvider
 from services.store import Store
 from services.sqlite_store import collect_asset_ids
+from inference.errors import CapabilityFailedError
 from services.records import (
     AttemptError,
     AssetRecord,
-    CapabilityFailedError,
     GenerationRecord,
     MediaError,
     QueueGenerationRecord,
@@ -141,9 +141,6 @@ AnalyticsRequestedBy = Literal["assistant"]
 
 
 logger = logging.getLogger(__name__)
-
-# Error code of a Keyframes create while the `keyframes` feature flag is off.
-KEYFRAMES_NOT_ENABLED = "KEYFRAMES_NOT_ENABLED"
 
 
 def _generation_to_api(record: GenerationRecord) -> Generation:
@@ -237,7 +234,6 @@ class QueuedGenerationHandler:
         preflight_queued_synthesized_ic_lora: QueuedIcLoraRecipePreflight,
         preflight_ic_lora_tile_sizes: IcLoraTileSizePreflight,
         high_res_enabled: Callable[[], bool] | None = None,
-        keyframes_enabled: Callable[[], bool] | None = None,
         should_use_local_encoding: Callable[[], bool] | None = None,
         image_generation_status: Callable[[], ImageGenerationStatusResponse] | None = None,
     ) -> None:
@@ -263,7 +259,6 @@ class QueuedGenerationHandler:
         self._state = state
         self._lock = lock
         self._high_res_enabled = high_res_enabled or (lambda: False)
-        self._keyframes_enabled = keyframes_enabled or (lambda: False)
         self._should_use_local_encoding = should_use_local_encoding
         self._image_generation_status = image_generation_status
         self._finished = FinishedTray()
@@ -298,7 +293,8 @@ class QueuedGenerationHandler:
                     uses_torch_compile
                     and settings.use_torch_compile
                     and not (
-                        self._config is not None and self._config.use_sage_attention
+                        self._config is not None
+                        and not self._config.torch_compile_available
                     )
                 )
                 if self._should_use_local_encoding is not None:
@@ -430,9 +426,6 @@ class QueuedGenerationHandler:
         analytics_requested_by: AnalyticsRequestedBy | None = None,
         generation_id: str | None = None,
     ) -> Generation:
-        # The flag is the backend gate. Hiding the feature on Home does not stop a direct request.
-        if not self._keyframes_enabled():
-            raise HTTPError(422, KEYFRAMES_NOT_ENABLED, code=KEYFRAMES_NOT_ENABLED)
         stills = [
             (keyframe, self._require_image_asset(keyframe.assetId, slot="keyframe"))
             for keyframe in req.inputs.keyframes
@@ -981,6 +974,7 @@ class QueuedGenerationHandler:
             asset_path=video.path,
             start_time=req.startTime,
             mode=req.mode,
+            context_mode=req.contextMode,
             candidates=req.candidates,
             durations=req.durations,
         )
@@ -1409,10 +1403,6 @@ class QueuedGenerationHandler:
     def list_recent_features(
         self, *, limit: int, allowed: Collection[str] | None = None
     ) -> list[str]:
-        if allowed is not None and not self._keyframes_enabled():
-            # Drop the hidden feature before the store applies the limit, so it does
-            # not take a slot from an older feature that is offered.
-            allowed = [name for name in allowed if name != KEYFRAMES_FEATURE]
         try:
             return self._db.list_recent_features(limit=limit, allowed=allowed)
         except UnavailableError as exc:

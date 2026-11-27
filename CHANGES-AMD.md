@@ -1,6 +1,13 @@
 # Changes for LTX Desktop - AMD 395 MAX
 
-Lightricks is the upstream author of the Desktop and inference sources. This downstream edition adapts them for Windows ROCm on the Radeon 8060S. The Git history includes the imported tag contents, so the downstream modifications can also be inspected as a diff.
+Peter Beery created this community branch of Lightricks’ LTX Desktop on behalf of SpaceSpeak.com.
+
+## 1.3.3-community.1
+
+- Merged the published Lightricks Desktop v1.3.3 release, including Keyframes, the shorter Extend/Retake context and Windows generation fixes. The LTX-2 inference dependency remains at upstream v1.6.0.
+- Windows setup selects the upstream NVIDIA runtime or the Radeon gfx1151 runtime for the available hardware. Radeon installations retain the managed ComfyUI engine, model picker, downloads, license prompt, and ROCm compatibility changes.
+- The title screen identifies the community branch. Settings → About and the native About dialog identify the original project and credit Peter Beery and SpaceSpeak.com.
+- Uses the existing Windows application identity, installation path and user data directories for upgrades from the AMD edition.
 
 ## 1.3.2-amd.8 local MiniMax H3 video
 

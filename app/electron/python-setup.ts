@@ -7,6 +7,7 @@ import { load as loadYaml } from 'js-yaml'
 import path from 'path'
 import { isDev } from './config'
 import { logger } from './logger'
+import { windowsRuntimeReady } from './windows-runtime'
 
 export interface PythonSetupProgress {
   status: 'downloading' | 'extracting' | 'complete' | 'error'
@@ -85,10 +86,7 @@ export function getPythonDir(): string {
  */
 export function isPythonReady(): { ready: boolean } {
   if (process.platform === 'win32' && !isDev) {
-    const dir = getPythonDir()
-    return {
-      ready: fs.existsSync(path.join(dir, 'python.exe')) && fs.existsSync(path.join(dir, 'ltx-amd-runtime.json')),
-    }
+    return { ready: windowsRuntimeReady(process.resourcesPath) }
   }
   if (process.platform === 'darwin') {
     return { ready: true }
@@ -274,17 +272,24 @@ async function fetchRemoteDepsHash(base: string, tempFileName: string): Promise<
     if (base.endsWith('.tar.gz')) return null // can't inspect a single tar.gz without extracting
     return readHash(path.join(base, 'deps-hash.txt'))
   }
-  const hashUrl = `${base}/python-deps-hash.txt`
+  // Prefer the per-platform hash: the Windows hash can differ from the Linux hash.
+  // Releases built before the per-platform file existed only have the shared one.
+  const hashUrls = [
+    `${base}/${getPythonArchivePrefix()}.deps-hash.txt`,
+    `${base}/python-deps-hash.txt`,
+  ]
   const hashDest = path.join(app.getPath('userData'), tempFileName)
-  try {
-    await downloadFileRaw(hashUrl, hashDest)
-    return readHash(hashDest)
-  } catch (err) {
-    logger.warn( `[python-setup] Could not fetch deps hash from ${hashUrl}: ${err}`)
-    return null
-  } finally {
-    try { fs.unlinkSync(hashDest) } catch { /* ignore */ }
+  for (const hashUrl of hashUrls) {
+    try {
+      await downloadFileRaw(hashUrl, hashDest)
+      return readHash(hashDest)
+    } catch (err) {
+      logger.warn( `[python-setup] Could not fetch deps hash from ${hashUrl}: ${err}`)
+    } finally {
+      try { fs.unlinkSync(hashDest) } catch { /* ignore */ }
+    }
   }
+  return null
 }
 
 /**
@@ -339,7 +344,7 @@ export async function downloadPythonEmbed(
 ): Promise<void> {
   if (process.platform === 'win32') {
     if (!isPythonReady().ready) {
-      throw new Error('The bundled AMD runtime is missing or incomplete. Run the LTX Desktop - AMD 395 MAX installer again to repair it.')
+      throw new Error('The bundled GPU runtime is missing or incomplete. Run the SpaceSpeak Windows installer again to repair it.')
     }
     onProgress({ status: 'complete', percent: 100, downloadedBytes: 0, totalBytes: 0, speed: 0 })
     return

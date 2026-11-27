@@ -16,7 +16,7 @@ Every event includes the app version, a device timestamp, the installation ID, a
 
 - A random generation ID, and the attempt number when a job is retried
 - Where it ran: the desktop app or a remote client on the local network, whether it started from Home or Gen Space, and whether the assistant queued it. Your messages to the assistant are never included
-- What was requested: feature (for example text-to-video, image-to-video, audio-to-video, multi-keyframe, retake, extend, or a Home LoRA recipe), image or video, local or LTX API execution, model, resolution, frames per second, and requested duration
+- What was requested: feature (for example text-to-video, image-to-video, audio-to-video, keyframes, multi-keyframe, retake, extend, or a Home LoRA recipe; Home records `keyframes` and Gen Space records `multi-keyframe`), image or video, local or LTX API execution, model, resolution, frames per second, and requested duration
 - How many images were requested, for an image generation
 - LoRA catalog IDs for built-in adapters. A custom LoRA is recorded only as a boolean, never as a file name or path
 - How the prompt was passed: `raw` (sent as typed), `manually-enhanced` (the user ran Enhance), or `auto-enhanced` (the app rewrote it before generation). The prompt text is never included

@@ -93,7 +93,7 @@ If the desktop app is already running, just launch the dashboard:
 
 ```bash
 cd backend/performance_runner
-uv run python run_dashboard.py          # cross-platform; also run_dashboard.sh / .ps1
+uv run --extra desktop python run_dashboard.py  # cross-platform; also run_dashboard.sh / .ps1
 # -> http://127.0.0.1:8750
 ```
 

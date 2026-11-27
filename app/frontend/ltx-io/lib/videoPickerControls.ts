@@ -31,7 +31,7 @@ export function pickerSettingsFields<T extends PickerSchema>(
     : first;
   const optionsForModel: FieldOption<VideoPickerModel>[] = context.amd
     ? pickerOptions(native.options, context.specs, context.amd, options.includeAuto === true)
-    : first.options;
+    : native.options;
   const sizeLabel = (value: string) => model === "kandinsky" ? "480p SD" : value === "540p" ? "480p" : "768p";
   return [
     { ...first, options: optionsForModel,

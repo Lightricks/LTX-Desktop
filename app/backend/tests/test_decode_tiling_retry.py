@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from services.ltx_pipeline_common import is_decode_tile_shortage, stable_cuda_decode_budget_bytes
+from inference.common import is_decode_tile_shortage, stable_cuda_decode_budget_bytes
 
 _GIB = 1024**3
 

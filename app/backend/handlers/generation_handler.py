@@ -26,10 +26,11 @@ from runtime_config.eta import (
     estimate_envelope_wall_time,
     remaining_wall_time_s,
 )
-from services import generation_interrupt
-from services.generation_interrupt import GenerationCancelledError
+from inference.interrupt import GenerationCancelledError
+import inference.interrupt as interrupt
 from services.generation_queue.control import GenerationSlotWaitAborted
-from services.patches import diffusion_stage_cache, mps_conv3d_as_conv2d
+from inference.patches import diffusion_stage_cache
+from services.patches import mps_conv3d_as_conv2d
 from state.app_settings import resolved_use_conv_vae
 from state.app_state_types import (
     ApiGeneration,
@@ -68,12 +69,12 @@ class GenerationHandler(StateHandlerBase):
         self._calibration = calibration
         self._generation_slot = Condition(self._lock)
         self._queue_yields = 0
-        from services.denoising_progress import configure_sink
+        from inference.progress import configure_sink
 
         configure_sink(self._on_denoise_step)
 
     def _on_denoise_step(self, current: int, total: int) -> None:
-        from services.denoising_progress import inference_percent
+        from inference.progress import inference_percent
 
         self.update_progress("inference", inference_percent(current, total), current, total)
 
@@ -120,7 +121,7 @@ class GenerationHandler(StateHandlerBase):
     def release_generation_start_reservation(self) -> None:
         self.state.generation_in_flight = False
         self.state.generation_starting_since = None
-        generation_interrupt.clear()
+        interrupt.clear()
         self._generation_slot.notify_all()
 
     @contextmanager
@@ -229,7 +230,7 @@ class GenerationHandler(StateHandlerBase):
             raise RuntimeError("Generation already in progress")
         if self.state.gpu_slot is None:
             raise RuntimeError("No active GPU pipeline")
-        if generation_interrupt.is_requested():
+        if interrupt.is_requested():
             # Stop during reservation (enhance / pipeline load). Do not clear the Event
             # or launch Running — that would let this call proceed and a second Start
             # overlap on the GPU.
@@ -253,8 +254,8 @@ class GenerationHandler(StateHandlerBase):
         conv_vae = resolved_use_conv_vae(app_settings, system=self.config.system)
         mps_conv3d_as_conv2d.set_enabled(app_settings.mps_conv3d_as_conv2d_enabled and conv_vae)
         diffusion_stage_cache.evict()
-        generation_interrupt.clear()
-        from services.denoising_progress import configure_sink
+        interrupt.clear()
+        from inference.progress import configure_sink
 
         configure_sink(self._on_denoise_step)
 
@@ -296,7 +297,7 @@ class GenerationHandler(StateHandlerBase):
     def start_api_generation(self, generation_id: str, *, provider: str = "api") -> None:
         if self.is_generation_running():
             raise RuntimeError("Generation already in progress")
-        if generation_interrupt.is_requested():
+        if interrupt.is_requested():
             self.state.generation_starting_since = None
             self.state.active_generation = ApiGeneration(
                 state=GenerationCancelled(id=generation_id)
@@ -308,7 +309,7 @@ class GenerationHandler(StateHandlerBase):
         # local transformer itself, but evicting here still releases VRAM held by
         # a previous local generation's cached build.
         diffusion_stage_cache.evict()
-        generation_interrupt.clear()
+        interrupt.clear()
 
         self.state.active_generation = ApiGeneration(
             state=GenerationRunning(
@@ -411,7 +412,7 @@ class GenerationHandler(StateHandlerBase):
         Stop). The interrupt Event is cleared on release; it is the signal for this
         reservation.
         """
-        generation_interrupt.raise_if_requested()
+        interrupt.raise_if_requested()
 
     @with_state_lock
     def update_progress(
@@ -453,14 +454,14 @@ class GenerationHandler(StateHandlerBase):
     def cancel_generation(self) -> CancelResponse:
         running_generation = self._running_generation()
         if running_generation is not None:
-            generation_interrupt.request()
+            interrupt.request()
             slot, running = running_generation
             self._close_run_watch(running)
             self._set_generation_state(slot, GenerationCancelled(id=running.id))
             return CancelCancellingResponse(status="cancelling", id=running.id)
 
         if self.state.generation_in_flight:
-            generation_interrupt.request()
+            interrupt.request()
             # After start_generation(), starting_since is None and active_generation is this
             # job. During reservation it still holds the previous job's sticky terminal id.
             if self.state.generation_starting_since is None:

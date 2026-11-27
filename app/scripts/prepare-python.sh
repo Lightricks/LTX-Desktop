@@ -90,6 +90,7 @@ REQUIREMENTS_FILE="$BACKEND_DIR/requirements-dist.txt"
 # (e.g. triton-windows on Linux/macOS, triton on macOS/Windows).
 uv export --frozen --no-hashes --no-editable --no-emit-project \
     --no-header --no-annotate \
+    --extra desktop \
     --project "$BACKEND_DIR" \
     > "$REQUIREMENTS_FILE"
 

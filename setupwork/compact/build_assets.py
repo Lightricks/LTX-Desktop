@@ -11,12 +11,12 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 REPO = "Lightricks/LTX-Desktop"
-REV = "d23b8b3de2ab258459f1c1524d4ce1e49c6783f5"
+REV = "2ab055b98f7590581c56f9e0b2ff55ac56d459b7"
 PREFIX = "LTX-Desktop-" + REV + "/"
 UPSTREAM = {
     "filename": "ltx-desktop-upstream-" + REV + ".zip",
-    "size": 198_223_711,
-    "sha256": "f36d789f2ba914544fbcb47e45629fc0a8e8a125fe10a40a48cc7ff9a38f7a69",
+    "size": 198_280_031,
+    "sha256": "d3c56288c3db59d8dd4202c377e27473364c82dcc61a7805ca1190e84e42349b",
     "url": f"https://codeload.github.com/{REPO}/zip/{REV}",
 }
 LFS = re.compile(rb"version https://git-lfs.github.com/spec/v1\noid sha256:([a-f0-9]{64})\nsize ([0-9]+)\n?")

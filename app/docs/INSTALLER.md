@@ -114,6 +114,13 @@ Ensure you have internet access. The script downloads Python automatically.
 ### Build fails with CUDA errors
 The build doesn't require a GPU. CUDA packages are pre-built binaries.
 
+### Windows: Smart App Control blocks a file
+
+Smart App Control (SAC) blocks unsigned code that has no good reputation. Do not tell users to turn SAC off.
+
+- `electron-builder.yml` signs the installer and the Electron executables (Azure Trusted Signing). It does **not** sign `python-embed`. On Windows, the app downloads `python-embed` on first launch. The release pipeline that builds that archive is outside this repo. Every `.dll`, `.pyd` and `.exe` in it (for example `torch_python.dll`, `openjp2.dll`, the OpenEXR and OpenImageIO files) must be signed before the archive is created. Without this, SAC can block the backend at start (`WinError 4551`).
+- Triton builds `cuda_utils` and kernel launchers as unsigned `.pyd` files in `~/.triton/cache` at run time. Nobody can sign these in advance. The backend reads the SAC state (`backend/runtime_config/smart_app_control.py`). When SAC is on, it turns off SageAttention and torch.compile, and it hides Triton from the process (`block_triton_import`), because the ltx-core video VAE also launches Triton kernels and falls back to plain PyTorch when Triton is missing. Generation then uses the default attention and runs slower.
+
 ### macOS: "App is damaged" or Gatekeeper warning
 On unsigned builds, macOS Gatekeeper may block the app. Right-click the app and select "Open", or run:
 ```bash

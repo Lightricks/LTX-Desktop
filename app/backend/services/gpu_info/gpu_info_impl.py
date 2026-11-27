@@ -13,7 +13,7 @@ import psutil
 import torch
 
 from runtime_config.device_calibration import RunMemoryBaseline, RunMemoryEnd
-from services.gpu_info import run_peak
+import inference.run_peak as run_peak
 from services.gpu_info.gpu_info import GpuTelemetryPayload
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,10 @@ class GpuInfoImpl:
                 import pynvml  # type: ignore[reportMissingModuleSource]
 
                 pynvml.nvmlInit()
-                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+                handle = (pynvml.nvmlDeviceGetHandleByUUID(visible)
+                          if visible.startswith("GPU-") and "," not in visible
+                          else pynvml.nvmlDeviceGetHandleByIndex(0))
                 raw_name = pynvml.nvmlDeviceGetName(handle)
                 name = raw_name.decode("utf-8", errors="replace") if isinstance(raw_name, bytes) else str(raw_name)
                 memory = pynvml.nvmlDeviceGetMemoryInfo(handle)

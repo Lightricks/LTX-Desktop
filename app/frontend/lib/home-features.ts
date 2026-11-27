@@ -3,7 +3,6 @@ import { matchPath } from "react-router";
 import type { FetcherToolId } from "../../shared/deep-link.ts";
 import { paths } from "../paths.ts";
 
-import type { DevFlagKey } from "./dev-flags.ts";
 import { CUSTOM_LORA_HOME_FEATURE } from "./custom-lora.ts";
 import { IC_LORA_RECIPES } from "./ic-lora-recipes.ts";
 import { LORA_RECIPE_HOME_FEATURES } from "./lora-recipes.ts";
@@ -203,32 +202,19 @@ export const HOME_FEATURE_SECTIONS = HOME_FEATURE_SECTION_DEFINITIONS.map((secti
   features: section.featureIds.map(firstClassFeature),
 }));
 
-/** The dev flags that hide a Home feature while they are off. */
-export type HomeFeatureFlagKey = Extract<DevFlagKey, "keyframes">;
-/** A flag that is missing counts as off. */
-export type HomeFeatureFlags = Readonly<Partial<Record<HomeFeatureFlagKey, boolean>>>;
-
-/** The flag a feature needs. A feature that is not in the map needs none. */
-const FEATURE_REQUIRED_FLAG: ReadonlyMap<string, HomeFeatureFlagKey> = new Map([
-  ["keyframes", "keyframes"],
-]);
-
 /**
- * Whether Home lists the feature. Keyframes needs the `keyframes` flag. The backend
- * refuses it without the flag as well.
+ * Whether Home lists the feature.
  * "Add custom LoRA" is never listed: it is an entry of the sidebar, not a LoRA with a tile.
  */
-export function isHomeFeatureOffered(id: string, flags: HomeFeatureFlags = {}): boolean {
-  if (id === CUSTOM_LORA_HOME_FEATURE.id) return false;
-  const required = FEATURE_REQUIRED_FLAG.get(id);
-  return required === undefined || flags[required] === true;
+export function isHomeFeatureOffered(id: string): boolean {
+  return id !== CUSTOM_LORA_HOME_FEATURE.id;
 }
 
-/** The gallery sections with the features that need a flag removed when the flag is off. */
-export function offeredHomeFeatureSections(flags: HomeFeatureFlags = {}) {
+/** The gallery sections with the features that Home does not list removed. */
+export function offeredHomeFeatureSections() {
   return HOME_FEATURE_SECTIONS.map((section) => ({
     ...section,
-    features: section.features.filter((feature) => isHomeFeatureOffered(feature.id, flags)),
+    features: section.features.filter((feature) => isHomeFeatureOffered(feature.id)),
   }));
 }
 

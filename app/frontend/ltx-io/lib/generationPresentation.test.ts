@@ -124,6 +124,45 @@ describe("generationPresentation", () => {
     assert.deepEqual(presentation.badges, ["LTX 2.5 Fast", "4s"]);
   });
 
+  for (const [mode, contextMode, placement, context] of [
+    ["end", "long", "After the clip", "Long context"],
+    ["start", "short", "Before the clip", "Short context"],
+  ] as const) {
+    it(`names where the extension goes and how much it continues from (${mode}, ${contextMode})`, () => {
+      const presentation = generationPresentation({
+        feature: "extend",
+        spec: {
+          params: { prompt: "p", model: "ltx-2.5-fast", duration: 4, mode, contextMode, seed: 7 },
+        },
+      });
+      assert.deepEqual(presentation.badges, ["LTX 2.5 Fast", "4s", placement, context, "Seed 7"]);
+    });
+  }
+
+  it("shows no context badge for an old extend run that did not save one", () => {
+    const presentation = generationPresentation({
+      feature: "extend",
+      spec: { params: { prompt: "p", model: "ltx-2.5-fast", duration: 4, mode: "end" } },
+    });
+    assert.deepEqual(presentation.badges, ["LTX 2.5 Fast", "4s", "After the clip"]);
+  });
+
+  it("names the context on a retake but not the extend placement", () => {
+    const presentation = generationPresentation({
+      feature: "retake",
+      spec: { params: { prompt: "p", duration: 4, mode: "end", contextMode: "short" } },
+    });
+    assert.deepEqual(presentation.badges, ["4s", "Short context"]);
+  });
+
+  it("adds no context badge to a feature that has no context mode", () => {
+    const presentation = generationPresentation({
+      feature: "text-to-video",
+      spec: { params: { prompt: "p", duration: 4, contextMode: "short" } },
+    });
+    assert.deepEqual(presentation.badges, ["4s"]);
+  });
+
   it("appends a seed badge when params.seed is a number", () => {
     const presentation = generationPresentation({
       feature: "text-to-video",

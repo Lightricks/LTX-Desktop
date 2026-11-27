@@ -7,9 +7,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from services.retake_pipeline.window import MAX_FADE_FRAMES, MAX_INPUT_FRAMES, window_for_extend
-from services.retake_pipeline.extend_stitch import fade_window_for_extend, stitch_extend_output
-from services.retake_pipeline.rgb_stitch import FadeWindow, blend_rgb, generated_weight
+from inference.retake_pipeline.audio_level import speech_level_db
+from inference.retake_pipeline.window import MAX_FADE_FRAMES, MAX_INPUT_FRAMES, window_for_extend
+from inference.retake_pipeline.extend_stitch import fade_window_for_extend, stitch_extend_output
+from inference.retake_pipeline.rgb_stitch import FadeWindow, blend_rgb, generated_weight
+from inference.ffmpeg import run_ffmpeg
+from inference.retake_pipeline.stitch_audio import JOIN_FADE_SECONDS, AudioPiece, audio_cut_graph
+from inference.retake_pipeline.speech_analysis import ANALYSIS_SAMPLE_RATE, decode_mono
+from tests.video_fixtures import write_clip_with_tone_spans
 
 
 def test_generated_weight_matches_ltxv_api_full_fade_bands() -> None:
@@ -139,9 +144,9 @@ def test_stitch_extend_output_keeps_generated_audio_when_source_is_silent(
     def _capture(args: list[str], **_kwargs: object) -> None:
         captured.append(args)
 
-    monkeypatch.setattr("services.retake_pipeline.extend_stitch.run_ffmpeg", _capture)
+    monkeypatch.setattr("inference.retake_pipeline.extend_stitch.run_ffmpeg", _capture)
     monkeypatch.setattr(
-        "services.retake_pipeline.extend_stitch._has_audio",
+        "inference.retake_pipeline.extend_stitch._has_audio",
         lambda path: "generated" in path or "window" in path,
     )
     source = _solid_video(tmp_path / "source.mp4", rgb=(0, 0, 0), frames=25, fps=25)
@@ -172,3 +177,126 @@ def test_stitch_extend_output_keeps_generated_audio_when_source_is_silent(
     assert "[3:a]" in args[args.index("-filter_complex") + 1]
     assert "lutrgb=" not in args[args.index("-filter_complex") + 1]
     assert "xfade=" not in args[args.index("-filter_complex") + 1]
+
+
+def test_audio_cut_graph_adds_gain_and_limiter_only_for_a_nonzero_gain() -> None:
+    # Bug: a zero gain still runs the limiter, which changes untouched audio.
+    plain = audio_cut_graph([AudioPiece("[0:a]", end=1.0), AudioPiece("[1:a]", start=1.0)])
+    assert "volume=" not in plain
+    assert "alimiter" not in plain
+    boosted = audio_cut_graph([AudioPiece("[0:a]", end=1.0), AudioPiece("[1:a]", start=1.0, gain_db=3.0)])
+    first, second = boosted.split(";")[:2]
+    assert "volume" not in first
+    # ``level=0``: the limiter's auto level would add a gain of its own.
+    assert "volume=3.00dB,alimiter=limit=0.97:level=0," in second
+    # A cut cannot clip, so it gets no limiter.
+    cut = audio_cut_graph([AudioPiece("[0:a]", end=1.0), AudioPiece("[1:a]", start=1.0, gain_db=-6.0)])
+    cut_second = cut.split(";")[1]
+    assert "volume=-6.00dB," in cut_second
+    assert "alimiter" not in cut_second
+
+
+def test_audio_cut_graph_gives_an_empty_piece_no_fade() -> None:
+    # Bug: an empty piece asked for a zero-length fade, which ffmpeg rejects.
+    graph = audio_cut_graph([AudioPiece("[0:a]", end=0.0), AudioPiece("[1:a]", start=0.0)])
+    first = graph.split(";")[0]
+    assert "afade" not in first
+
+
+@pytest.mark.parametrize("mode", ["end", "start"])
+def test_voice_bridge_fade_stays_inside_the_real_seam_frames(mode: str) -> None:
+    # Bug: the lerp reaches into the speech piece of the bridge, a different moment of the source,
+    # and the picture jumps to it for a few frames (the "ghost jump").
+    window = window_for_extend(
+        source_frames=144,
+        extend_frames=48,
+        mode=mode,  # type: ignore[arg-type]
+        max_input_frames=MAX_INPUT_FRAMES,
+        max_context_frames=49,
+    )
+    seam_frames = 32
+    fade = fade_window_for_extend(
+        window, mode=mode, extend_frames=48, fps=24.0, seam_frames=seam_frames  # type: ignore[arg-type]
+    )
+    plain = fade_window_for_extend(window, mode=mode, extend_frames=48, fps=24.0)
+    if mode == "end":
+        assert fade.context_start == window.context_frames - seam_frames
+        assert (fade.edit_start, fade.edit_end) == (plain.edit_start, plain.edit_end)
+        assert min(MAX_FADE_FRAMES, fade.edit_start - fade.context_start) <= seam_frames
+    else:
+        assert fade.context_end == 48 + seam_frames
+        assert fade.context_end < plain.context_end
+
+
+def test_stitch_brings_loud_generated_speech_to_the_source_level(tmp_path: Path) -> None:
+    # Bug: the model returns speech much louder than the source, so the level jumps at the cut.
+    source = write_clip_with_tone_spans(
+        tmp_path / "source.mp4", frames=25, fps=25, spans=[(0.0, 1.0)], amplitude=0.1
+    )
+    generated = write_clip_with_tone_spans(
+        tmp_path / "generated.mp4", frames=41, fps=25, spans=[(0.0, 1.64)], amplitude=0.8
+    )
+    window = window_for_extend(
+        source_frames=25, extend_frames=16, mode="end", max_input_frames=MAX_INPUT_FRAMES
+    )
+    dest = tmp_path / "out.mp4"
+    stitch_extend_output(
+        source_path=str(source),
+        windowed_path=str(generated),
+        dest_path=str(dest),
+        window=window,
+        fps=25.0,
+        mode="end",
+        extend_frames=16,
+        target_width=64,
+        target_height=64,
+    )
+    duration = 41 / 25
+    out = decode_mono(str(dest), duration)
+    rate = ANALYSIS_SAMPLE_RATE
+    source_level = speech_level_db(decode_mono(str(source), 1.0))
+    new_part_level = speech_level_db(out[int(1.05 * rate) :])
+    assert source_level is not None and new_part_level is not None
+    assert new_part_level == pytest.approx(source_level, abs=2.0)
+
+
+def test_audio_cut_graph_fades_each_side_of_a_join_and_nowhere_else() -> None:
+    graph = audio_cut_graph(
+        [AudioPiece("[0:a]", end=1.0), AudioPiece("[1:a]", start=0.5, end=2.0), AudioPiece("[2:a]", start=3.0)]
+    )
+    first, middle, last = graph.split(";")[:3]
+    fade_in = f"afade=t=in:d={JOIN_FADE_SECONDS:.6f}"
+    assert "afade=t=in" not in first and "afade=t=out:st=0.985000" in first
+    assert fade_in in middle and "afade=t=out:st=1.485000" in middle
+    assert fade_in in last and "afade=t=out" not in last
+    # A single piece has no join, so it is not faded.
+    assert "afade" not in audio_cut_graph([AudioPiece("[0:a]", end=1.0)])
+
+
+def test_audio_cut_graph_keeps_the_length_of_the_pieces() -> None:
+    # Bug: a crossfade that overlaps the pieces shortens the audio, and sound and picture drift.
+    graph = audio_cut_graph([AudioPiece("[0:a]", end=0.5), AudioPiece("[1:a]", start=0.5)])
+    assert "acrossfade" not in graph
+    assert "concat=n=2:v=0:a=1[a]" in graph
+
+
+def test_a_join_between_two_tones_does_not_step_in_the_waveform(tmp_path: Path) -> None:
+    # Bug: a hard cut between two sounds is heard as a click.
+    out = tmp_path / "joined.wav"
+    run_ffmpeg(
+        [
+            "-y", "-f", "lavfi", "-i", "sine=f=220:d=1:r=48000",
+            "-f", "lavfi", "-i", "sine=f=331:d=1:r=48000",
+            "-filter_complex", audio_cut_graph([AudioPiece("[0:a]", end=0.5), AudioPiece("[1:a]", start=0.5)]),
+            "-map", "[a]", "-ar", "48000", str(out),
+        ]
+    )
+    import av
+
+    with av.open(str(out)) as container:
+        samples = np.concatenate([f.to_ndarray().reshape(-1) for f in container.decode(audio=0)]).astype(np.float32)
+    assert len(samples) == pytest.approx(48000, abs=2)
+    steps = np.abs(np.diff(samples))
+    join = int(0.5 * 48000)
+    steady = steps[: join - 2000].max()
+    assert steps[join - 240 : join + 240].max() <= 1.5 * steady

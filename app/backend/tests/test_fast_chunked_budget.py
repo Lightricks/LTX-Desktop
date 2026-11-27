@@ -11,11 +11,11 @@ from dataclasses import replace
 
 import pytest
 
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
 from api_model_specs import get_local_video_generation_model_specs
 from runtime_config.budget_admission import Admitted, RiskAllowance
 from runtime_config.budget_decision import VideoJobLoad, VideoJobReject
-from runtime_config.fast_chunking import is_chunked_canvas, last_window_frames, window_count
+from inference.fast_chunking import is_chunked_canvas, last_window_frames, window_count
 from runtime_config.ltx_capabilities import budget_shape, effective_local_caps
 from runtime_config.measured_cells import MEASURED_HIGH_RES_CELLS, MEASURED_MAX_DECODE_TOKENS
 from runtime_config.video_job_budget import (

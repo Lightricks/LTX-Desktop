@@ -123,8 +123,8 @@ class HuggingFaceAuthHandler(StateHandlerBase):
 
     def _redirect_uri(self) -> str:
         # The public LTX OAuth client registered the upstream loopback callback.
-        # Electron listens there during sign-in and relays back to the AMD server.
-        port = PORT if os.environ.get("LTX_REQUIRE_ROCM") == "1" else self.config.backend_port
+        # Electron relays this callback to the fork on its own port on either Windows GPU.
+        port = PORT if os.environ.get("LTX_HF_CALLBACK_PORT") == str(PORT) or os.environ.get("LTX_REQUIRE_ROCM") == "1" else self.config.backend_port
         return f"http://127.0.0.1:{port}/api/auth/huggingface/callback"
 
     @with_state_lock

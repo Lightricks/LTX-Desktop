@@ -103,7 +103,7 @@ function nativeIssue(state: AmdPickerContext["native"], model: OfferingId): stri
 
 export function rendererIssue(model: VideoPickerModel, amd?: AmdPickerContext): ValidationIssue | null {
   const message = isExternalModel(model)
-    ? (amd ? availability(model, amd) : "This saved model requires an AMD ComfyUI renderer.")
+    ? (amd ? availability(model, amd) : "This saved model uses the Radeon renderer. Select a model available on this PC to generate again.")
     : nativeIssue(amd?.native, model);
   return message ? { id: "renderer-unavailable", fieldId: "model", message, alwaysRevealed: true } : null;
 }

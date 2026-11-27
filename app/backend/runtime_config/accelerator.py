@@ -12,18 +12,11 @@ https://github.com/Lightricks/LTX-Desktop/pull/160
 
 from __future__ import annotations
 
-import logging
 from typing import Literal
 
 import torch
 
-logger = logging.getLogger(__name__)
-
 AcceleratorBackend = Literal["rocm", "cuda", "mps", "cpu"]
-
-# First compute capability with native fp8 (E4M3/E5M2): Ada Lovelace.
-# Ampere (8.x) and Turing (7.5) have no hardware fp8.
-_FP8_MIN_COMPUTE_CAPABILITY = (8, 9)
 
 
 def accelerator_backend() -> AcceleratorBackend:
@@ -36,7 +29,7 @@ def accelerator_backend() -> AcceleratorBackend:
     return "cpu"
 
 
-def verify_rocm_execution() -> str:
+def verify_rocm_execution(*, require_gfx1151: bool = False) -> str:
     """Execute two BF16 operations used by the model on the first HIP device."""
     if not getattr(torch.version, "hip", None):
         raise RuntimeError(
@@ -50,6 +43,11 @@ def verify_rocm_execution() -> str:
         )
     device = torch.device("cuda", 0)  # PyTorch exposes HIP devices through the CUDA interface.
     name = torch.cuda.get_device_name(device)
+    if require_gfx1151:
+        arch = getattr(torch.cuda.get_device_properties(device), "gcnArchName", "").split(":")[0]
+        if (arch and arch != "gfx1151") or (not arch and "8060s" not in name.lower()):
+            raise RuntimeError(f"The selected HIP adapter is {name} ({arch or 'unknown architecture'}). "
+                               "Rerun the Windows installer to select the gfx1151 device.")
     try:
         with torch.inference_mode():
             tensor = torch.ones((1, 2, 16, 64), device=device, dtype=torch.bfloat16)
@@ -85,8 +83,6 @@ def accelerator_supports_fp8(device_index: int = 0) -> bool:
     """
     if accelerator_backend() != "cuda":
         return False
-    try:
-        return torch.cuda.get_device_capability(device_index) >= _FP8_MIN_COMPUTE_CAPABILITY
-    except Exception:
-        logger.warning("fp8 capability probe failed; treating device as non-fp8", exc_info=True)
-        return False
+    from inference.device import device_supports_fp8
+
+    return device_supports_fp8(torch.device("cuda", device_index))

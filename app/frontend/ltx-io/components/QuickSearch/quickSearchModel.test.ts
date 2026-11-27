@@ -33,7 +33,7 @@ describe("quickSearchModel", () => {
   });
 
   it("includes workflows and LoRA gallery sections in browse", () => {
-    const sections = buildQuickSearchBrowseSections([], {});
+    const sections = buildQuickSearchBrowseSections([]);
     const ids = sections.map((section) => section.id);
     assert.ok(ids.includes("workflows"));
     assert.ok(ids.includes("styles"));
@@ -41,7 +41,7 @@ describe("quickSearchModel", () => {
     const workflows = sections.find((section) => section.id === "workflows");
     assert.deepEqual(
       workflows?.features.map((feature) => feature.id),
-      ["text-to-video", "image-to-video", "audio-to-video"],
+      ["text-to-video", "image-to-video", "keyframes", "audio-to-video"],
     );
     const postProduction = sections.find((section) => section.id === "post-production");
     assert.deepEqual(
@@ -66,7 +66,7 @@ describe("quickSearchModel", () => {
   });
 
   it("keeps a recent post-production tool in Post production and out of Featured", () => {
-    const sections = buildQuickSearchBrowseSections(["day-to-night", "extend"], {});
+    const sections = buildQuickSearchBrowseSections(["day-to-night", "extend"]);
     const idsOf = (id: string) =>
       sections.find((section) => section.id === id)?.features.map((f) => f.id);
     assert.deepEqual(idsOf("recent"), ["day-to-night", "extend"]);
@@ -92,10 +92,10 @@ describe("quickSearchModel", () => {
   });
 
   it("never lists the Add custom LoRA page in search or browse, even as a recent tool", () => {
-    const search = searchQuickSearchFeatures("custom lora add", undefined, {}).map(
+    const search = searchQuickSearchFeatures("custom lora add").map(
       (feature) => feature.id,
     );
-    const browse = buildQuickSearchBrowseSections(["custom-lora"], {}).flatMap(
+    const browse = buildQuickSearchBrowseSections(["custom-lora"]).flatMap(
       (section) => section.features.map((feature) => feature.id),
     );
 
@@ -104,7 +104,7 @@ describe("quickSearchModel", () => {
   });
 
   it("hides the My LoRAs section when the user has no saved LoRA", () => {
-    const sections = buildQuickSearchBrowseSections([], {}, []);
+    const sections = buildQuickSearchBrowseSections([], []);
 
     assert.ok(!sections.some((section) => section.id === "custom-lora"));
   });
@@ -121,9 +121,9 @@ describe("quickSearchModel", () => {
     } as const;
 
     const browse = browseSectionsToRows(
-      buildQuickSearchBrowseSections([], {}, [lora]),
+      buildQuickSearchBrowseSections([], [lora]),
     );
-    const search = searchQuickSearchRows("ink", {}, [lora]);
+    const search = searchQuickSearchRows("ink", [lora]);
 
     const listed = browse.filter((row) => row.kind === "custom-lora");
     assert.deepEqual(

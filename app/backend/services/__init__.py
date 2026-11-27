@@ -2,7 +2,6 @@
 
 from services.interfaces import (
     DepthProcessorPipeline,
-    FastVideoPipeline,
     ZitAPIClient,
     ImageGenerationPipeline,
     GpuCleaner,
@@ -10,7 +9,6 @@ from services.interfaces import (
     HTTPClient,
     HttpResponseLike,
     HttpTransportError,
-    IcLoraPipeline,
     LTXAPIClient,
     ModelDownloader,
     PoseProcessorPipeline,
@@ -33,9 +31,7 @@ __all__ = [
     "TaskRunner",
     "TextEncoder",
     "VideoPipelineModelType",
-    "FastVideoPipeline",
     "ZitAPIClient",
     "ImageGenerationPipeline",
-    "IcLoraPipeline",
     "LTXAPIClient",
 ]

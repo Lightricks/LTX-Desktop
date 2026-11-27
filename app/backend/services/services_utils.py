@@ -9,12 +9,12 @@ from typing import TYPE_CHECKING, BinaryIO, Protocol, TypeAlias
 import torch
 from PIL.Image import Image as PILImage
 
+from inference.device import device_supports_fp8 as device_supports_fp8
+from inference.device import get_device_type
+
 if TYPE_CHECKING:
     import numpy as np
     from numpy.typing import NDArray
-
-    from ltx_core.model.video_vae import TilingConfig
-    from ltx_core.tiling import PipelineTiling
 
 
 JSONScalar: TypeAlias = str | int | float | bool | None
@@ -27,39 +27,13 @@ TensorType: TypeAlias = torch.Tensor
 PILImageType: TypeAlias = PILImage
 
 if TYPE_CHECKING:
-    from ltx_core.types import Audio as AudioType
-
     FrameArray: TypeAlias = NDArray[np.uint8]
-    TilingConfigType: TypeAlias = TilingConfig
-    PipelineTilingType: TypeAlias = PipelineTiling
 else:
     FrameArray: TypeAlias = object
-    TilingConfigType: TypeAlias = object
-    PipelineTilingType: TypeAlias = object
-    AudioType: TypeAlias = object
 
 TensorOrNone: TypeAlias = TensorType | None
-AudioOrNone: TypeAlias = AudioType | None
 
 logger = logging.getLogger(__name__)
-
-
-def get_device_type(device: str | torch.device | object | None) -> str:
-    if device is None:
-        return "cpu"
-
-    device_type = getattr(device, "type", None)
-    if isinstance(device_type, str):
-        return device_type
-
-    if isinstance(device, str):
-        try:
-            return str(torch.device(device).type)
-        except Exception:
-            logger.warning("Could not parse device string '%s', using it as-is", device, exc_info=True)
-            return device
-
-    return "cpu"
 
 
 def compute_edit_dimensions(width: int, height: int) -> tuple[int, int]:
@@ -87,35 +61,6 @@ def effective_edit_steps(num_inference_steps: int, strength: float) -> int:
     init_timestep = min(num_inference_steps * strength, num_inference_steps)
     t_start = int(max(num_inference_steps - init_timestep, 0))
     return num_inference_steps - t_start
-
-
-def _device_index(device: str | torch.device | object | None) -> int:
-    """CUDA device ordinal for capability probes. Unindexed shapes mean 0."""
-    # NB: torch stubs type .index as int, but at runtime an unindexed device
-    # (torch.device("cuda")) carries None — hence `or 0`, not `is None`.
-    if isinstance(device, torch.device):
-        return device.index or 0
-    if isinstance(device, str):
-        try:
-            return torch.device(device).index or 0
-        except Exception:
-            return 0
-    index = getattr(device, "index", None)
-    return index if isinstance(index, int) else 0
-
-
-def device_supports_fp8(device: str | torch.device | object | None) -> bool:
-    # ROCm PyTorch also reports device.type == "cuda" (see runtime_config.accelerator),
-    # so this must not be a plain device-type check: ROCm has no fp8_cast kernel support
-    # here yet, and would otherwise be silently misidentified as CUDA/NVIDIA.
-    # Pre-Ada NVIDIA (compute capability < 8.9) has no hardware fp8 either.
-    # Originally contributed by boxwrench in https://github.com/Lightricks/LTX-Desktop/pull/160
-    if get_device_type(device) != "cuda":
-        return False
-
-    from runtime_config.accelerator import accelerator_supports_fp8
-
-    return accelerator_supports_fp8(_device_index(device))
 
 
 def sync_device(device: str | torch.device | object | None) -> None:

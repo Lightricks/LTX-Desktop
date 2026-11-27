@@ -68,7 +68,7 @@ for name in ['dist', 'dist-electron']:
 for name in ['LICENSE.txt', 'NOTICES.md']:
     shutil.copy2(app/name, container/name)
 manifest = {key: upstream_manifest[key] for key in ('version', 'type', 'main', 'license', 'homepage')}
-manifest.update(name='ltx-desktop-amd', productName=product_name, description='Unofficial AMD Windows build of LTX Desktop')
+manifest.update(name='ltx-desktop-amd', productName=product_name, description='Community branch of LTX Desktop for Windows NVIDIA and AMD GPUs')
 (container/'package.json').write_text(json.dumps(manifest,indent=2)+'\n')
 
 # Vite bundles the renderer dependencies into the UI. The main process uses

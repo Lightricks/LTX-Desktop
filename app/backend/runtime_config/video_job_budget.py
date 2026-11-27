@@ -35,7 +35,10 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Final, Literal, assert_never
 
 from api_types import LTXLocalModelId
-from frame_math import compute_num_frames
+from inference.frame_math import compute_num_frames
+from inference.device import windows_checkpoint_streams_from_disk
+from inference.errors import VIDEO_JOB_TOO_LARGE
+from inference.job_budget import video_tokens as video_tokens
 from runtime_config.budget_admission import (
     Admission,
     Admitted,
@@ -64,7 +67,7 @@ from runtime_config.device_calibration import (
     DeviceCalibration,
     envelope_for,
 )
-from runtime_config.fast_chunking import (
+from inference.fast_chunking import (
     MAX_WINDOW_TOKENS,
     PEAK_PLATEAU_WINDOWS,
     is_chunked_canvas,
@@ -91,7 +94,6 @@ from runtime_config.reject_reasons import (
 from runtime_config.runtime_policy import (
     CUDA_CPU_OFFLOAD_RAM_FLOOR_GB,
     LocalGenerationMode,
-    windows_checkpoint_streams_from_disk,
 )
 from services.storage_info.storage_info import DriveType
 
@@ -99,7 +101,6 @@ if TYPE_CHECKING:
     # Runtime import would cycle (local_runtime imports this module).
     from runtime_config.runtime_config import RuntimeConfig
 
-VIDEO_JOB_TOO_LARGE = "VIDEO_JOB_TOO_LARGE"
 VIDEO_JOB_TOO_LARGE_MESSAGE = (
     "This job is larger than this machine can run locally right now. "
     "Lower the resolution, duration, frame rate, or aspect width."
@@ -393,12 +394,6 @@ MAC_FAST_FLOOR_GIB = _MAC_FAST_STREAM.floor_gib
 # is SKU-dependent, so the min is the conservative display pick.
 # Display-only: the runtime gate probes the real pool per request.
 NOMINAL_MPS_POOL_RATIO = 0.78
-
-
-def video_tokens(height: int, width: int, frames: int) -> float:
-    """LTX-2 latent tokens: 8-frame temporal, 32 px spatial."""
-    temporal = (max(1, frames) - 1) / 8.0 + 1.0
-    return temporal * (height / 32.0) * (width / 32.0)
 
 
 def decode_tile_tokens(height: int, width: int, frames: int) -> float:

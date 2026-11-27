@@ -1,0 +1,19 @@
+{
+  "release": "v1.3.3",
+  "archiveRoot": "python-embed",
+  "parts": [
+    {
+      "filename": "python-embed-win32.tar.gz.part-aa",
+      "url": "https://github.com/Lightricks/LTX-Desktop/releases/download/v1.3.3/python-embed-win32.tar.gz.part-aa",
+      "size": 1992294400,
+      "sha256": "d0255e51210979a71fdcd5904a0b389eacfb6ffc4d767201d77c2c19350544b1"
+    },
+    {
+      "filename": "python-embed-win32.tar.gz.part-ab",
+      "url": "https://github.com/Lightricks/LTX-Desktop/releases/download/v1.3.3/python-embed-win32.tar.gz.part-ab",
+      "size": 1305326335,
+      "sha256": "38a0d366fb6a086f4ade57fedc8162b9cf623e43c44ecc3700df77b3f0055f1d"
+    }
+  ],
+  "unpackedBytes": 5776534872
+}

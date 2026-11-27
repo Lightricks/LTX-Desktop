@@ -9,6 +9,19 @@ from api_types import (
     LTXLocalA2VResolution, LTXQueuedAspectRatio, LTXVideoGenAspectRatio, LTXVideoGenFps,
     NonEmptyPrompt, OfferingId, PromptProvenance, RETAKE_MAX_DURATION_SECONDS, RetakeMode, TargetResolution, VideoCameraMotion,
 )
+from inference.types import DEFAULT_EDIT_CONTEXT_MODE, EditContextMode
+
+# Small models skip an optional field, and the video model says only what the prompt quotes.
+EDIT_PROMPT_DESCRIPTION = (
+    "Write it: how the new part looks and sounds, in one paragraph. "
+    "When the user says what someone should say, put those exact words in quotes here"
+)
+
+# Long is the default, so a request that does not name a context mode never sets one.
+CONTEXT_MODE_DESCRIPTION = (
+    '"long" (default) keeps as much of the clip as fits as context. "short" keeps about 2 seconds of it: '
+    "faster, but the result may drift from the rest of the clip. Set short only when the user asks for it"
+)
 
 # The model repeats its tool schema as capabilities, so offer only what local models run.
 # list_video_models still decides which combinations a model supports.
@@ -67,13 +80,14 @@ class AudioParams(AssistantParams):
 
 
 class ExtensionParams(AssistantParams):
-    prompt: str = ""
+    prompt: str = Field(default="", description=EDIT_PROMPT_DESCRIPTION)
     negativePrompt: str = ""
     model: OfferingId
     # Two names because "duration" means clip length in every other tool.
     added_seconds: float | None = Field(default=None, ge=2, le=20, allow_inf_nan=False, description='"Add 3 seconds"')
     total_seconds: float | None = Field(default=None, gt=0, allow_inf_nan=False, description='"Extend it to 10 seconds": the final length')
     mode: ExtendMode = "end"
+    contextMode: EditContextMode = Field(default=DEFAULT_EDIT_CONTEXT_MODE, description=CONTEXT_MODE_DESCRIPTION)
     resolution: TargetResolution | None = Field(default=None, description="Omit to keep the source size; set only when the user asks")
 
 
@@ -105,12 +119,13 @@ class IngredientsParams(AssistantParams):
 
 
 class ReplacementParams(AssistantParams):
-    prompt: str = ""
+    prompt: str = Field(default="", description=EDIT_PROMPT_DESCRIPTION)
     negativePrompt: str = ""
     model: OfferingId
     startTime: float = Field(ge=0, allow_inf_nan=False)
     duration: float = Field(ge=2, le=RETAKE_MAX_DURATION_SECONDS, allow_inf_nan=False)
     mode: RetakeMode = "replace_audio_and_video"
+    contextMode: EditContextMode = Field(default=DEFAULT_EDIT_CONTEXT_MODE, description=CONTEXT_MODE_DESCRIPTION)
     # No resolution: a retake keeps the source's frame size, and small models fill it in from earlier clips.
 
 
