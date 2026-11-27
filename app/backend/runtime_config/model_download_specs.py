@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
@@ -24,6 +23,7 @@ from api_types import (
     ModelCheckpointID,
 )
 from inference.layout import LTX_2_5_FAMILY_DIR, get_checkpoint_layout
+from runtime_config.community_runtime import local_video_renderer_available
 from runtime_config.ltx_api_text_encoder_ids import (
     LTX_2_5_API_PROMPT_EMBEDDING_MODEL,
     LtxApiPromptEmbeddingModel,
@@ -720,14 +720,14 @@ def _gemma3_snapshot_ready(path: Path) -> bool:
 
 def _cp_on_disk(path: Path, spec: ModelCheckpointSpec) -> bool:
     try:
-        radeon = os.environ.get("LTX_REQUIRE_ROCM") == "1"
+        verify_weights = local_video_renderer_available()
         if spec.is_folder:
             if not path.is_dir():
                 return False
-            if radeon and spec.repo_id == "Lightricks/gemma-3-12b-it-qat-q4_0-unquantized":
+            if verify_weights and spec.repo_id == "Lightricks/gemma-3-12b-it-qat-q4_0-unquantized":
                 return _gemma3_snapshot_ready(path)
             return any(path.iterdir())
-        if radeon and spec.repo_id in ("Lightricks/LTX-2.3", "Lightricks/LTX-2.5"):
+        if verify_weights and spec.repo_id in ("Lightricks/LTX-2.3", "Lightricks/LTX-2.5"):
             return _weight_complete(path)
         return _nonempty_file(path)
     except OSError:

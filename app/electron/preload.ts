@@ -6,6 +6,7 @@ import {
 } from '../shared/electron-api-schema'
 import type { DeepLinkIntent } from '../shared/deep-link'
 import { attachOptionalPreload } from '@optional/preload'
+import { listenForAboutMenu } from './windows-menu'
 
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
@@ -48,6 +49,8 @@ api.onDeepLink = (cb: (data: DeepLinkIntent) => void) => {
   ipcRenderer.on('deep-link', listener)
   return () => ipcRenderer.removeListener('deep-link', listener)
 }
+
+api.onShowAbout = listenForAboutMenu((channel, receive) => ipcRenderer.on(channel, receive))
 
 api.getPathForFile = (file: File) => webUtils.getPathForFile(file)
 

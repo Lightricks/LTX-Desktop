@@ -569,6 +569,7 @@ export type ElectronAPI = InvokeAPI & {
   onUpdateEvent: (cb: (data: UpdateStatePayload) => void) => () => void;
   onAssetsMoveProgress: (cb: (data: AssetsMoveState) => void) => () => void;
   onDeepLink: (cb: (data: DeepLinkIntent) => void) => () => void;
+  onShowAbout: (cb: () => void) => () => void;
   getPathForFile: (file: File) => string;
   platform: string;
 };

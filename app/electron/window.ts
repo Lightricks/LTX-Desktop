@@ -7,6 +7,7 @@ import { getViteDevServerUrl } from '../shared/vite-dev-server'
 import { isDev, getCurrentDir } from './config'
 import { getWindowTheme } from './app-state'
 import { logger } from './logger'
+import { OPEN_ABOUT_CHANNEL, windowsMenuTemplate } from './windows-menu'
 import {
   isTrustedAppOrigin,
   mediaRequestOrigin,
@@ -65,6 +66,13 @@ export function applyWindowAppearance(
 
 function applyNativeMenuBar(mode: 'install' | 'app', win: BrowserWindow): void {
   if (process.platform === 'darwin') return
+  if (process.platform === 'win32') {
+    const showAbout = () => win.webContents.send(OPEN_ABOUT_CHANNEL)
+    win.setMenu(mode === 'app' ? Menu.buildFromTemplate(windowsMenuTemplate(showAbout)) : null)
+    win.setAutoHideMenuBar(mode === 'install')
+    win.setMenuBarVisibility(mode === 'app')
+    return
+  }
   win.setMenu(mode === 'install' ? null : Menu.getApplicationMenu())
 }
 

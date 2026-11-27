@@ -8,7 +8,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.responses import Response as StarletteResponse
@@ -18,7 +18,7 @@ from _routes.generation import router as generation_router
 from _routes.generation import specs_router as generate_specs_router
 from _routes.hf_auth import router as hf_auth_router
 from _routes.amd_comfy_engine import router as comfy_engine_router
-from services.amd_comfy_engine import managed_comfy
+from services.amd_comfy_engine import ManagedComfyEngine, managed_comfy
 from _routes.amd_kandinsky_node import router as kandinsky_node_router
 from services.amd_kandinsky_node import KandinskyNodeSetup
 from _routes.health import router as health_router
@@ -28,7 +28,7 @@ from _routes.custom_lora import router as custom_lora_router
 from _routes.image_gen import router as image_gen_router
 from _routes.image_gen import status_router as image_status_router
 from _routes.prompt_enhancement import router as prompt_enhancement_router
-from _routes.models import router as models_router
+from _routes.models import require_managed_renderer, router as models_router
 from _routes.suggest_gap_prompt import router as suggest_gap_prompt_router
 from _routes.assistant import router as assistant_router
 from _routes.retake import router as retake_router
@@ -149,10 +149,10 @@ def create_app(
     install_http_exception_handlers(app)
     install_security_headers(app)
 
-    app.state.managed_comfy = managed_comfy()
+    app.state.managed_comfy = managed_comfy() if handler.config.managed_video_available else ManagedComfyEngine(None)
     app.include_router(comfy_engine_router)
     app.state.kandinsky_node_setup = KandinskyNodeSetup()
-    app.include_router(kandinsky_node_router)
+    app.include_router(kandinsky_node_router, dependencies=[Depends(require_managed_renderer)])
     app.include_router(health_router)
     app.include_router(generation_router)
     app.include_router(generate_specs_router)

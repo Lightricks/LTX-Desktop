@@ -9,6 +9,8 @@ from runtime_config.runtime_policy import decide_local_generation_mode
 from services.features.video.text_to_video import fast_job_model_id
 from api_types import GenerateVideoRequest
 
+pytestmark = pytest.mark.usefixtures("windows_video_host")
+
 MODEL_23 = "ltx-2.3-22b-distilled-1.1"
 MODEL_25 = "ltx-2.5-22b-distilled"
 GEMMA = "gemma-3-12b-it-qat-q4_0-unquantized"
@@ -159,8 +161,7 @@ def test_gfx1151_bf16_profiles_offer_real_native_cells_both_families(
     assert specs["local_unavailable_reason"] is None
 
 
-def test_partial_native_safetensors_rejected_and_rechecked_on_repair(client, test_state, monkeypatch, create_fake_model_files):
-    monkeypatch.setenv("LTX_REQUIRE_ROCM", "1")
+def test_partial_native_safetensors_rejected_and_rechecked_on_repair(client, test_state, windows_local_gpu, create_fake_model_files):
     create_fake_model_files(model_id=MODEL_25)
     path = resolve_model_path(test_state.config.default_models_dir, MODEL_25)
     payload = path.read_bytes()

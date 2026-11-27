@@ -51,8 +51,8 @@ export function restoreVideoPickerModel(
 export function defaultPickerModel(
   specs: VideoGenerationModelSpecsResponse | null | undefined, amd?: AmdPickerContext,
 ): VideoPickerModel {
-  if (amd?.preferred === "comfy") return "comfy";
-  return defaultOfferingId(specs) ?? (amd ? "comfy" : "ltx-2.5-fast");
+  if (amd?.preferred === "comfy" && specs?.comfy_local_model) return "comfy";
+  return defaultOfferingId(specs) ?? "ltx-2.5-fast";
 }
 
 function modelGrid(specs: VideoGenerationModelSpecsResponse, model: AmdExternalModel) {
@@ -63,6 +63,11 @@ function modelGrid(specs: VideoGenerationModelSpecsResponse, model: AmdExternalM
     case "h3-fl2va-distill": return specs.h3_fl2va_distill_local_model;
     case "h3-ref2va": return specs.h3_ref2va_local_model;
   }
+}
+
+export function hasManagedVideoModels(specs?: VideoGenerationModelSpecsResponse): boolean {
+  return !!(specs?.comfy_local_model || specs?.kandinsky_local_model ||
+    (specs && H3_VARIANTS.some(model => modelGrid(specs, model))));
 }
 
 export function pickerGrid(specs: VideoGenerationModelSpecsResponse | null | undefined, model: VideoPickerModel) {
@@ -103,7 +108,7 @@ function nativeIssue(state: AmdPickerContext["native"], model: OfferingId): stri
 
 export function rendererIssue(model: VideoPickerModel, amd?: AmdPickerContext): ValidationIssue | null {
   const message = isExternalModel(model)
-    ? (amd ? availability(model, amd) : "This saved model uses the Radeon renderer. Select a model available on this PC to generate again.")
+    ? (amd ? availability(model, amd) : "This saved model requires a local ComfyUI renderer. Select a model available on this PC to generate again.")
     : nativeIssue(amd?.native, model);
   return message ? { id: "renderer-unavailable", fieldId: "model", message, alwaysRevealed: true } : null;
 }
@@ -123,7 +128,7 @@ export function pickerOptions(
       amd.native?.[model] === "ready" && amd.activeNative != null && amd.activeNative !== model;
     return {
       ...existing, value: model, label: `LTX ${v25 ? "2.5" : "2.3"} Fast · Native`,
-      caption: "BF16 · Desktop PyTorch / ROCm",
+      caption: "Native LTX · Desktop PyTorch",
       disabledReason: fileIssue ?? (existing ? undefined : "This model has no compatible settings on this device."),
       ...(fileIssue && { setup: { kind: setupKind,
         label: !amd.desktop ? "Set up on PC" : amd.native?.[model] === "checking" || amd.native?.[model] === "error" ? "Check setup" : "Download & use" } }),
@@ -145,7 +150,12 @@ export function pickerOptions(
     };
   }
   const h3 = H3_VARIANTS.filter(id => specs && modelGrid(specs, id) && (id !== "h3-ref2va" || supportsImageInputs));
-  return [external("comfy"), ...native, external("kandinsky"), ...h3.map(external)];
+  return [
+    ...(specs?.comfy_local_model ? [external("comfy")] : []),
+    ...native,
+    ...(specs?.kandinsky_local_model ? [external("kandinsky")] : []),
+    ...h3.map(external),
+  ];
 }
 
 export function videoModelLabel(engine: unknown): string | undefined {

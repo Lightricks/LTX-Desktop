@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -247,14 +246,14 @@ def create_remote_app(
     def route_model_availability() -> _RemoteAmdModels:  # pyright: ignore[reportUnusedFunction]
         # The paired browser needs availability only. Model paths, download controls,
         # and arbitrary diagnostic messages stay on the desktop.
-        if os.environ.get("LTX_REQUIRE_ROCM") != "1":
+        if not handler.config.managed_video_available:
             raise HTTPError(404, "AMD_RENDERER_UNAVAILABLE")
         versions = handler.models.list_ltx_versions().versions
         installed = {row.model_id for row in versions if row.installed}
         comfy = handler.comfy_models.status()
         h3 = handler.h3_models.status()
         return _RemoteAmdModels(
-            preferred=handler.settings.get_settings_snapshot().amd_fast_engine,
+            preferred=handler.settings.get_settings_snapshot().local_fast_engine,
             native23=bool(installed.intersection(OFFERING_LOCAL_MODEL_IDS["ltx-2.3-fast"])),
             native25=bool(installed.intersection(OFFERING_LOCAL_MODEL_IDS["ltx-2.5-fast"])),
             comfy=comfy.status,

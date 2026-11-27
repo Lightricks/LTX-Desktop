@@ -1,5 +1,4 @@
-"""Validate and select an independent local AMD video workflow."""
-import os
+"""Validate and select an independent local ComfyUI video workflow."""
 from pathlib import Path
 from typing import Literal, TypeGuard
 
@@ -46,6 +45,7 @@ def external_engine(
     *,
     default: AmdVideoEngine,
     model_25: bool,
+    available: bool,
     complex_inputs: bool = False,
     has_start: bool = False,
     has_end: bool = False,
@@ -59,10 +59,10 @@ def external_engine(
         has_end = bool((req.lastImagePath or "").strip())
         reference_count = len(req.referenceImagePaths)
     h3 = is_h3_engine(choice)
-    if os.environ.get("LTX_REQUIRE_ROCM") != "1":
-        reason = "This engine requires LTX Desktop - AMD 395 MAX."
+    if not available:
+        reason = "This engine requires a supported local Windows CUDA or ROCm installation."
     elif not model_25:
-        reason = "Select a local Fast offering for this AMD engine."
+        reason = "Select a local LTX 2.5 Fast offering for this engine."
     elif complex_inputs or getattr(req, "loras", []) or req.cameraMotion != "none":
         reason = "Use Native for LoRAs, camera controls, timeline keyframes, audio input or recipe jobs."
     elif getattr(req, "passShape", "auto") == "parts":

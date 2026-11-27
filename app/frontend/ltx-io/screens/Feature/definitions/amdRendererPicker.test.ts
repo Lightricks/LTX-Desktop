@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { specFixture, specFixtureBothOfferings } from "./specFixture.ts";
 import { textToVideoDefinition as t2v } from "./textToVideo.ts";
 import { imageToVideoDefinition as i2v } from "./imageToVideo.ts";
-import type { AmdPickerContext } from "../../../lib/amdVideoPicker.ts";
+import { hasManagedVideoModels, type AmdPickerContext } from "../../../lib/amdVideoPicker.ts";
 
 function context() {
   const specs = specFixture();
@@ -186,21 +186,59 @@ test("Ref2VA sends the reference images in order and omits the draft's hidden en
   assert.deepEqual(i2v.fromGeneration(body, ctx)?.referenceImages, refs);
 });
 
-test("reopening a Radeon job on NVIDIA keeps its prompt and offers installed native models", () => {
-  const radeon = context();
-  const saved = t2v.toCreateBody(t2v.initialValues!(radeon), radeon);
-  const nvidia = { specs: specFixture() };
-  const restored = t2v.fromGeneration(saved, nvidia);
+test("a fresh NVIDIA native default stays selected while ComfyUI, Kandinsky and H3 offer setup", () => {
+  const ctx = h3Context();
+  ctx.amd.preferred = "native";
+  ctx.specs.downloaded_local_models = [];
+  ctx.amd.native = { "ltx-2.5-fast": "missing", "ltx-2.3-fast": "missing" };
+  ctx.amd.status = "missing";
+  ctx.amd.kandinskyReady = false;
+  ctx.amd.h3 = {};
+  const values = i2v.initialValues!(ctx);
+  assert.equal(values.model, "ltx-2.5-fast");
+  assert.equal(i2v.isReady!(values, ctx), false);
+  const field = i2v.form(values, ctx).fields.find(f => f.id === "model");
+  assert.ok(field?.kind === "options");
+  assert.deepEqual(field.options.map(option => option.setup?.kind),
+    ["comfy-int8", "ltx-2.5", "ltx-2.3", "kandinsky", "h3-fl2va", "h3-fl2va-distill", "h3-ref2va"]);
+  assert.ok(field.options.every(option => option.disabledReason));
+  ctx.amd.status = "ready";
+  const selected = i2v.applyChange!(values, { kind: "options", fieldId: "model", dataKey: "model", value: "comfy" }, ctx);
+  assert.equal(i2v.isReady!(selected, ctx), true);
+  const saved = i2v.toCreateBody(selected, ctx);
+  assert.equal(saved.params.amdFastEngine, "comfy");
+  assert.equal(i2v.fromGeneration(saved, ctx)?.model, "comfy");
+});
+
+test("a host advertising only H3 Turbo exposes that download without inventing other managed models", () => {
+  const ctx = h3Context();
+  const specs = specFixture();
+  assert.equal(hasManagedVideoModels(specs), false);
+  specs.h3_fl2va_distill_local_model = ctx.specs.h3_fl2va_distill_local_model;
+  assert.equal(hasManagedVideoModels(specs), true);
+  ctx.specs = specs;
+  const values = t2v.initialValues!(ctx);
+  assert.equal(values.model, "ltx-2.5-fast");
+  const field = t2v.form(values, ctx).fields.find(f => f.id === "model");
+  assert.ok(field?.kind === "options");
+  assert.deepEqual(field.options.map(option => option.value), ["ltx-2.5-fast", "ltx-2.3-fast", "h3-fl2va-distill"]);
+});
+
+test("reopening a managed job on a native-only host keeps its prompt and offers installed native models", () => {
+  const managed = context();
+  const saved = t2v.toCreateBody(t2v.initialValues!(managed), managed);
+  const nativeOnly = { specs: specFixture() };
+  const restored = t2v.fromGeneration(saved, nativeOnly);
   assert.ok(restored);
   assert.equal(restored.prompt, saved.params.prompt);
   assert.equal(restored.model, "comfy");
-  assert.equal(t2v.isReady!(restored, nvidia), false);
-  const field = t2v.form(restored, nvidia).fields.find(field => field.id === "model");
+  assert.equal(t2v.isReady!(restored, nativeOnly), false);
+  const field = t2v.form(restored, nativeOnly).fields.find(field => field.id === "model");
   assert.ok(field?.kind === "options");
   assert.ok(field.options.some(option => option.value === "ltx-2.5-fast" && !option.disabledReason));
   assert.ok(!field.options.some(option => option.value === "comfy"));
   const selected = t2v.applyChange!(restored,
-    { kind: "options", fieldId: "model", dataKey: "model", value: "ltx-2.5-fast" }, nvidia);
-  assert.equal(t2v.isReady!(selected, nvidia), true);
-  assert.equal(t2v.toCreateBody(selected, nvidia).params.amdFastEngine, undefined);
+    { kind: "options", fieldId: "model", dataKey: "model", value: "ltx-2.5-fast" }, nativeOnly);
+  assert.equal(t2v.isReady!(selected, nativeOnly), true);
+  assert.equal(t2v.toCreateBody(selected, nativeOnly).params.amdFastEngine, undefined);
 });

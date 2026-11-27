@@ -8,9 +8,10 @@ import styles from './ModelSetupPanel.module.scss'
 
 const models = Object.entries(modelSetupLabels) as [ModelSetupKind, string][]
 
-export function AmdRendererSection() {
+export function LocalRendererSection() {
   const { settings, isLoaded, saveAmdFastEngine, notifyModelsChanged } = useAppSettings()
-  const [model, setModel] = useState<ModelSetupKind>(() => settings.amdFastEngine === 'native' ? 'ltx-2.5' : 'comfy-int8')
+  const [selectedModel, setModel] = useState<ModelSetupKind>()
+  const model = selectedModel ?? (settings.amdFastEngine === 'native' ? 'ltx-2.5' : 'comfy-int8')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string>()
 
@@ -36,20 +37,20 @@ export function AmdRendererSection() {
     }
   }
 
-  return <SettingsSubsection showDivider title="Radeon video renderer" alert={error}
+  return <SettingsSubsection showDivider title="Local video renderer" alert={error}
     description="Choose the default LTX 2.5 Fast renderer or manage a local video model.">
     <SettingsStack>
       <SettingsFieldRow className={styles.rendererField}>
-        <label htmlFor="amd-default-renderer">Default renderer</label>
-        <SettingsSelect id="amd-default-renderer" value={settings.amdFastEngine} disabled={!isLoaded || saving}
+        <label htmlFor="local-default-renderer">Default renderer</label>
+        <SettingsSelect id="local-default-renderer" value={settings.amdFastEngine} disabled={!isLoaded || saving}
           onChange={(e) => void save(e.target.value === 'native' ? 'native' : 'comfy')}>
           <option value="comfy">ComfyUI INT8</option>
-          <option value="native">Native BF16</option>
+          <option value="native">Native LTX</option>
         </SettingsSelect>
       </SettingsFieldRow>
       <SettingsFieldRow className={styles.rendererField}>
-        <label htmlFor="amd-setup-model">Manage model</label>
-        <SettingsSelect id="amd-setup-model" value={model} onChange={(e) => setModel(e.target.value as ModelSetupKind)}>
+        <label htmlFor="local-setup-model">Manage model</label>
+        <SettingsSelect id="local-setup-model" value={model} onChange={(e) => setModel(e.target.value as ModelSetupKind)}>
           {models.map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}
         </SettingsSelect>
       </SettingsFieldRow>

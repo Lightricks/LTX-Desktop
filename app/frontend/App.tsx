@@ -41,11 +41,11 @@ function setDocumentWindowMode(mode: 'install' | 'app'): void {
 
 function AppContent() {
   const { connected, processStatus, isLoading: backendLoading } = useBackend()
-  const { amdRendererAvailable, forceApiGenerations, isLoaded, runtimePolicyLoaded, notifyModelsChanged } = useAppSettings()
+  const { managedRendererAvailable, forceApiGenerations, isLoaded, runtimePolicyLoaded, notifyModelsChanged } = useAppSettings()
   // Always mounted here (unlike GenSpace, which unmounts on every view/tab switch) so a
   // generation that finishes while its project isn't open still gets persisted.
   useGenerationRecoveryWatcher()
-  useManagedSetupRunner(ApiClient, connected && amdRendererAvailable)
+  useManagedSetupRunner(ApiClient, connected && managedRendererAvailable)
 
   const [pythonReady, setPythonReady] = useState<boolean | null>(null)
   const [backendStarted, setBackendStarted] = useState(false)
@@ -65,9 +65,9 @@ function AppContent() {
   }, [])
 
   // One phase drives one view (see ./lib/boot-phase.ts for the precedence).
-  // The Radeon build manages native and ComfyUI models independently. Open the
+  // Supported GPU profiles manage native and ComfyUI models independently. Open the
   // editor so a fresh installation can choose and download either renderer.
-  const skipNativeModelSetup = forceApiGenerations || amdRendererAvailable
+  const skipNativeModelSetup = forceApiGenerations || managedRendererAvailable
   const phase = resolveBootPhase({
     pythonReady,
     isBackendDead,

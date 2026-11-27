@@ -157,39 +157,50 @@ def route_model_delete(
     return StatusResponse(status="ok")
 
 
-@router.get("/comfy/models", response_model=ComfyModelsStatus)
+def require_managed_renderer(handler: AppHandler = Depends(get_state_service)) -> None:
+    if not handler.config.managed_video_available:
+        raise HTTPError(404, "LOCAL_VIDEO_RENDERER_UNAVAILABLE")
+
+
+managed_models = APIRouter(dependencies=[Depends(require_managed_renderer)])
+
+
+@managed_models.get("/comfy/models", response_model=ComfyModelsStatus)
 def route_comfy_models(handler: AppHandler = Depends(get_state_service), fresh: bool = False) -> ComfyModelsStatus:
     return handler.comfy_models.status(fresh=fresh)
 
 
-@router.post("/comfy/models/download", response_model=ComfyModelsStatus)
+@managed_models.post("/comfy/models/download", response_model=ComfyModelsStatus)
 def route_download_comfy_models(handler: AppHandler = Depends(get_state_service)) -> ComfyModelsStatus:
     return handler.comfy_models.start()
 
 
-@router.post("/comfy/models/kandinsky/download", response_model=ComfyModelsStatus)
+@managed_models.post("/comfy/models/kandinsky/download", response_model=ComfyModelsStatus)
 def route_download_kandinsky_models(handler: AppHandler = Depends(get_state_service)) -> ComfyModelsStatus:
     return handler.comfy_models.start(kandinsky=True)
 
 
-@router.get("/comfy/models/h3", response_model=H3ModelsStatus)
+@managed_models.get("/comfy/models/h3", response_model=H3ModelsStatus)
 def route_h3_models(
     handler: AppHandler = Depends(get_state_service), fresh: bool = False
 ) -> H3ModelsStatus:
     return handler.h3_models.status(fresh=fresh)
 
 
-@router.post("/comfy/models/h3/license", response_model=H3ModelsStatus)
+@managed_models.post("/comfy/models/h3/license", response_model=H3ModelsStatus)
 def route_acknowledge_h3_license(
     acceptedLicense: bool = False, handler: AppHandler = Depends(get_state_service)
 ) -> H3ModelsStatus:
     return handler.h3_models.acknowledge(acceptedLicense)
 
 
-@router.post("/comfy/models/h3/download", response_model=H3ModelsStatus)
+@managed_models.post("/comfy/models/h3/download", response_model=H3ModelsStatus)
 def route_download_h3_models(
     variant: H3Variant,
     acceptedLicense: bool = False,
     handler: AppHandler = Depends(get_state_service),
 ) -> H3ModelsStatus:
     return handler.h3_models.start(variant, accepted=acceptedLicense)
+
+
+router.include_router(managed_models)

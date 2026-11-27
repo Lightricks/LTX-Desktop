@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, cast
@@ -779,6 +778,7 @@ def build_generate_video_model_specs_response(
     duration_head_ready: bool = False,
     job_filter: LocalJobFilter,
     low_performance_machine: bool = False,
+    managed_video_available: bool = False,
 ) -> GenerateVideoModelsSpecsResponse:
     if local_model_id is None and job_filter.profile.model_id is not None:
         local_model_id = job_filter.profile.model_id
@@ -799,16 +799,15 @@ def build_generate_video_model_specs_response(
         local_models,
         job_filter=job_filter,
     )
-    amd = os.environ.get("LTX_REQUIRE_ROCM") == "1"
     return GenerateVideoModelsSpecsResponse(
         local_models=local_models,
         api_models=get_api_video_generation_model_specs(),
         downloaded_local_models=downloaded,
-        comfy_local_model=_comfy_video_spec("comfy") if amd else None,
-        kandinsky_local_model=_comfy_video_spec("kandinsky") if amd else None,
-        h3_fl2va_local_model=_comfy_video_spec("h3-fl2va") if amd else None,
-        h3_fl2va_distill_local_model=_comfy_video_spec("h3-fl2va-distill") if amd else None,
-        h3_ref2va_local_model=_comfy_video_spec("h3-ref2va") if amd else None,
+        comfy_local_model=_comfy_video_spec("comfy") if managed_video_available else None,
+        kandinsky_local_model=_comfy_video_spec("kandinsky") if managed_video_available else None,
+        h3_fl2va_local_model=_comfy_video_spec("h3-fl2va") if managed_video_available else None,
+        h3_fl2va_distill_local_model=_comfy_video_spec("h3-fl2va-distill") if managed_video_available else None,
+        h3_ref2va_local_model=_comfy_video_spec("h3-ref2va") if managed_video_available else None,
         active_offering=(
             offering_id_for_local_model_id(local_model_id)
             if local_model_id is not None

@@ -56,6 +56,7 @@ const AppShellLayoutContext = createContext<AppShellLayoutValue | null>(null)
 
 type SettingsModalState = {
   isOpen: boolean
+  requestId: number
   initialTab?: SettingsTabId
   initialScrollAnchor?: SettingsLegacyScrollAnchor
   initialReason?: SettingsInitialReason
@@ -120,12 +121,13 @@ export function AppShell() {
   )
   const sessionDismissedUpgradeIdRef = useRef<string | null>(null)
   const [apiGatewayRequest, setApiGatewayRequest] = useState<ApiGatewayRequest | null>(null)
-  const [settingsModal, setSettingsModal] = useState<SettingsModalState>({ isOpen: false })
+  const [settingsModal, setSettingsModal] = useState<SettingsModalState>({ isOpen: false, requestId: 0 })
   const { isEditorOpen: isShortcutsEditorOpen } = useKeyboardShortcuts()
 
   const openSettings = useCallback((detail?: SettingsOpenDetail) => {
-    setSettingsModal({
+    setSettingsModal(previous => ({
       isOpen: true,
+      requestId: previous.requestId + 1,
       initialTab:
         detail?.tab ??
         (detail?.reason === 'geminiKeyRequired' || detail?.reason === 'ltxKeyRequired'
@@ -133,8 +135,10 @@ export function AppShell() {
           : undefined),
       initialScrollAnchor: detail?.scrollAnchor,
       initialReason: detail?.reason,
-    })
+    }))
   }, [])
+
+  useEffect(() => window.electronAPI.onShowAbout(() => openSettings({ tab: 'about' })), [openSettings])
 
   const closeSettings = useCallback(() => {
     setSettingsModal((prev) => ({ ...prev, isOpen: false }))
@@ -378,6 +382,7 @@ export function AppShell() {
             isOpen={settingsModal.isOpen}
             onClose={closeSettings}
             initialTab={settingsModal.initialTab}
+            requestId={settingsModal.requestId}
             initialScrollAnchor={settingsModal.initialScrollAnchor}
             initialReason={settingsModal.initialReason}
             update={update}

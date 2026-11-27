@@ -2,23 +2,17 @@ import { H3_VARIANTS } from "../../lib/h3-models";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { VideoGenerationModelSpecsResponse } from "../../lib/video-generation-model-specs";
-import type { AmdPickerContext } from "../lib/amdVideoPicker";
+import { hasManagedVideoModels, type AmdPickerContext } from "../lib/amdVideoPicker";
 import { unwrapApiResult } from "../lib/unwrapApiResult";
 import { useExploreRuntime } from "../runtime/ExploreRuntime";
 
 export function useAmdVideoPicker(specs?: VideoGenerationModelSpecsResponse) {
-  const { api, host, pairedAmdModels } = useExploreRuntime();
-  const enabled = Boolean(specs?.comfy_local_model || specs?.kandinsky_local_model || specs?.h3_fl2va_local_model || specs?.h3_ref2va_local_model);
+  const { api, host, preferredLocalVideoRenderer, pairedAmdModels } = useExploreRuntime();
+  const enabled = hasManagedVideoModels(specs);
   const desktopEnabled = enabled && host === "desktop";
   const paired = useQuery({
     queryKey: ["paired-amd-models"], enabled: enabled && host === "remote" && !!pairedAmdModels,
     queryFn: pairedAmdModels, refetchInterval: enabled && host === "remote" ? 10000 : false, retry: false,
-  });
-  const preferences = useQuery({
-    queryKey: ["amd-video-renderer-settings"], enabled: desktopEnabled,
-    queryFn: async () => unwrapApiResult(await api.getSettings()).amdFastEngine,
-    staleTime: 0,
-    retry: false,
   });
   const versions = useQuery({
     queryKey: ["ltx-versions"], enabled: desktopEnabled,
@@ -53,7 +47,7 @@ export function useAmdVideoPicker(specs?: VideoGenerationModelSpecsResponse) {
   }, [enabled, versions.data, versions.isError, paired.isError]);
   const activeId = versions.data?.find(row => row.active)?.model_id;
   const amd = useMemo<AmdPickerContext | undefined>(() => enabled ? {
-    preferred: preferences.data === "native" ? "native" : "comfy",
+    preferred: preferredLocalVideoRenderer ?? "native",
     desktop: host === "desktop",
     native,
     activeNative: activeId == null ? undefined : activeId.startsWith("ltx-2.3-") ? "ltx-2.3-fast" : "ltx-2.5-fast",
@@ -64,7 +58,7 @@ export function useAmdVideoPicker(specs?: VideoGenerationModelSpecsResponse) {
       ? h3Models.data!.variants[id] : { status: "missing", message: "Review local model rights in setup." }])) : undefined,
     kandinskyReady: status.data?.kandinskyReady === true,
     kandinskyMessage: status.data?.kandinskyMessage ?? "",
-  } : undefined, [enabled, host, native, activeId, preferences.data, h3Models.data, status.data, status.isError, paired.isError]);
+  } : undefined, [enabled, host, native, activeId, preferredLocalVideoRenderer, h3Models.data, status.data, status.isError, paired.isError]);
   return { amd: host === "remote" ? paired.data ?? amd : amd,
-    ready: !enabled || (host === "remote" ? !paired.isPending : !preferences.isPending) };
+    ready: !enabled || (host === "remote" ? !paired.isPending : preferredLocalVideoRenderer != null) };
 }

@@ -106,7 +106,7 @@ def test_wrong_size_existing_file_is_preserved_and_auth_reports_gate(
     )
 
 
-def test_comfy_specs_exist_without_any_native_download(client, monkeypatch) -> None:
+def test_comfy_specs_exist_without_any_native_download(client, monkeypatch, windows_video_host) -> None:
     monkeypatch.setenv("LTX_REQUIRE_ROCM", "1")
     response = client.get("/api/generate/models-specs")
     assert response.status_code == 200
@@ -134,7 +134,7 @@ def test_comfy_specs_exist_without_any_native_download(client, monkeypatch) -> N
 
 
 def test_comfy_setup_routes_do_not_request_any_native_checkpoints(
-    client, test_state, tmp_path: Path
+    client, test_state, tmp_path: Path, windows_local_gpu
 ) -> None:
     model_dir = tmp_path / "models" / "vae"
     weight = _weight("audio.safetensors", fixture_weights())
@@ -174,7 +174,7 @@ def _comfy_dirs(tmp_path: Path) -> dict[str, list[str]]:
 
 
 def test_kandinsky_download_uses_public_pins_and_reuses_nested_encoder_before_node_install(
-    client, test_state, tmp_path
+    client, test_state, tmp_path, windows_local_gpu
 ):
     files = _test_kandinsky_weights()
     folders = _comfy_dirs(tmp_path)

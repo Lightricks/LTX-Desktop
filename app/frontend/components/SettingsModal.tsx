@@ -61,6 +61,7 @@ export type { SettingsInitialReason, SettingsTabId };
 
 interface SettingsScreenProps {
   isOpen?: boolean;
+  requestId: number;
   onClose?: () => void;
   initialTab?: TabId;
   initialScrollAnchor?: SettingsLegacyScrollAnchor;
@@ -189,6 +190,7 @@ function GeminiModelSelect({
 
 export function SettingsScreen({
   isOpen = true,
+  requestId,
   onClose,
   initialTab,
   initialScrollAnchor,
@@ -271,7 +273,7 @@ export function SettingsScreen({
     if (active && initialTab) {
       setActiveTab(initialTab);
     }
-  }, [active, initialTab]);
+  }, [active, initialTab, requestId]);
 
   useEffect(() => {
     if (!active) return;
@@ -879,6 +881,7 @@ export function SettingsScreen({
               title="About"
             >
               <AboutSettingsSection
+                key={requestId}
                 update={update}
                 onOpenUpdate={onOpenUpdate}
                 onCheckForUpdates={onCheckForUpdates}

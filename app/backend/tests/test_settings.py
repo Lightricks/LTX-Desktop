@@ -562,7 +562,8 @@ class TestSettingsPersistence:
 
 class TestSettingsSchemaDrift:
     def test_update_request_tracks_app_settings_fields(self):
-        assert set(AppSettings.model_fields) == set(UpdateSettingsRequest.model_fields)
+        # The wire uses amdFastEngine for both GPUs. Its CUDA backing field is disk-only.
+        assert set(AppSettings.model_fields) - {"cuda_fast_engine"} == set(UpdateSettingsRequest.model_fields)
 
 
 class TestResolvedUseConvVae:

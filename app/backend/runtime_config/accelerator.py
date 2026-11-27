@@ -12,6 +12,7 @@ https://github.com/Lightricks/LTX-Desktop/pull/160
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 import torch
@@ -44,8 +45,8 @@ def verify_rocm_execution(*, require_gfx1151: bool = False) -> str:
     device = torch.device("cuda", 0)  # PyTorch exposes HIP devices through the CUDA interface.
     name = torch.cuda.get_device_name(device)
     if require_gfx1151:
-        arch = getattr(torch.cuda.get_device_properties(device), "gcnArchName", "").split(":")[0]
-        if (arch and arch != "gfx1151") or (not arch and "8060s" not in name.lower()):
+        arch = (getattr(torch.cuda.get_device_properties(device), "gcnArchName", "") or "").split(":")[0]
+        if (arch and arch != "gfx1151") or (not arch and not re.search(r"\b(?:8040S|8050S|8060S)\b", name, re.I)):
             raise RuntimeError(f"The selected HIP adapter is {name} ({arch or 'unknown architecture'}). "
                                "Rerun the Windows installer to select the gfx1151 device.")
     try:

@@ -225,6 +225,7 @@ class VideoGenerationHandler(StateHandlerBase):
             duration_head_ready=self._duration_head_ready(),
             job_filter=job_filter,
             low_performance_machine=detect_low_performance_machine(self.config),
+            managed_video_available=self.config.managed_video_available,
         )
 
     def estimate_local_fast(self, req: EstimateVideoRequest) -> EstimateVideoResponse:
@@ -532,7 +533,7 @@ class VideoGenerationHandler(StateHandlerBase):
         self, req: GenerateVideoRequest, model_id: LTXLocalModelId | None, *, recipe: bool = False
     ) -> ExternalEngine | None:
         engine = external_engine(
-            req, default=self.state.app_settings.amd_fast_engine,
+            req, default=self.state.app_settings.local_fast_engine, available=self.config.managed_video_available,
             model_25=req.model == "fast" and model_id in (None, AMD_FAST_MODEL_ID),
             complex_inputs=bool(recipe or req.keyframes or normalize_optional_path(req.audioPath)),
         )

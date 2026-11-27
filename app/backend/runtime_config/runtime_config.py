@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import torch
 
 from runtime_config.assets_layout import in_flight_folder
+from runtime_config.community_runtime import local_video_renderer_available
 from runtime_config.runtime_policy import LocalGenerationMode
 
 if TYPE_CHECKING:
@@ -81,6 +82,10 @@ class RuntimeConfig:
     @property
     def in_flight_dir(self) -> Path:
         return in_flight_folder(self.app_data_dir, self.assets_dir)
+
+    @property
+    def managed_video_available(self) -> bool:
+        return not self.force_api_generations and local_video_renderer_available()
 
     @property
     def force_api_generations(self) -> bool:

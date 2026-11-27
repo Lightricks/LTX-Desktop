@@ -16,7 +16,7 @@ def request(**changes):
 
 
 @pytest.fixture
-def external_worker(monkeypatch):
+def external_worker(monkeypatch, windows_video_host):
     monkeypatch.setenv("LTX_REQUIRE_ROCM", "1")
     from services import amd_comfy_workflow
     calls = {}
@@ -151,3 +151,37 @@ def test_legacy_queued_job_and_recipe_keep_native_on_retry(test_state, external_
     recipe = ImageToVideoRecipeParams.model_validate(request(model="ltx-2.5-fast"))
     payload, _ = offering_payload_from_params(recipe)
     assert payload["amdFastEngine"] == "native"
+
+
+def test_cuda_preserves_native_default_and_routes_after_explicit_choice(
+    client, test_state, external_worker, monkeypatch,
+):
+    from state.app_settings import AppSettings
+
+    # An older install could have a persisted AMD default even on NVIDIA where it was hidden.
+    test_state.config.settings_file.write_text('{"amd_fast_engine":"comfy"}')
+    monkeypatch.setenv("LTX_GPU_RUNTIME", "cuda")
+    monkeypatch.setenv("LTX_REQUIRE_ROCM", "0")
+    test_state.settings.load_settings(AppSettings())
+    assert client.post("/api/settings", json={"cudaFastEngine": "comfy"}).status_code == 422
+    settings = client.get("/api/settings").json()
+    assert settings["amdFastEngine"] == "native" and "cudaFastEngine" not in settings
+    opts = client.get("/api/generate/models-specs").json()
+    assert opts["comfy_local_model"] and opts["kandinsky_local_model"]
+    default = client.post("/api/generate", json=request())
+    assert default.status_code == 409 and "NO_DOWNLOADED_LTX_MODEL" in default.text
+    assert "graph" not in external_worker
+    explicit = client.post("/api/generate", json=request(amdFastEngine="comfy"))
+    assert explicit.status_code == 200 and "graph" in external_worker
+    assert client.get("/api/settings").json()["amdFastEngine"] == "native"
+
+    # A user's choice is snapshotted on enqueue and survives process restart.
+    client.post("/api/settings", json={"amdFastEngine": "comfy"}).raise_for_status()
+    test_state.settings.load_settings(AppSettings())
+    assert client.get("/api/settings").json()["amdFastEngine"] == "comfy"
+    queued = client.post("/api/generations/text-to-video", json={"params": request(model="ltx-2.5-fast")})
+    queued.raise_for_status()
+    assert queued.json()["spec"]["params"]["amdFastEngine"] == "comfy"
+    client.post("/api/settings", json={"amdFastEngine": "native"}).raise_for_status()
+    monkeypatch.setenv("LTX_GPU_RUNTIME", "rocm")
+    assert client.get("/api/settings").json()["amdFastEngine"] == "comfy"

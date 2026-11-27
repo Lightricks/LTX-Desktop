@@ -24,5 +24,5 @@ class RuntimePolicyHandler:
         return RuntimePolicyResponse(
             force_api_generations=self._config.force_api_generations,
             local_viable=local_viable,
-            amd_renderer_available=os.environ.get("LTX_REQUIRE_ROCM") == "1",
+            amd_renderer_available=self._config.managed_video_available,
         )

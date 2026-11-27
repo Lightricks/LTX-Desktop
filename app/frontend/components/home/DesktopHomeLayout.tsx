@@ -58,6 +58,7 @@ function DesktopHomeLayoutBody({
   const {
     localViable,
     modelsVersion,
+    isLoaded,
     updateSettings,
     settings,
     selectAssistant,
@@ -122,6 +123,7 @@ function DesktopHomeLayoutBody({
           setSkip: (skip) => updateSettings({ skipBudgetRiskConfirm: skip }),
         },
       }),
+      preferredLocalVideoRenderer: isLoaded ? settings.amdFastEngine : undefined,
       askAssistant: (id: string) => {
         setAssistantAttachment({ id });
         setAssistantOpen(true);
@@ -148,6 +150,8 @@ function DesktopHomeLayoutBody({
     }),
     [
       modelsVersion,
+      isLoaded,
+      settings.amdFastEngine,
       settings.budgetMode,
       budgetModeSaving,
       settings.advancedControls,

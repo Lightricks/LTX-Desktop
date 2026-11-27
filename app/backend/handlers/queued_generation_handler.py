@@ -335,13 +335,15 @@ class QueuedGenerationHandler:
         analytics_requested_by: AnalyticsRequestedBy | None = None,
         generation_id: str | None = None,
     ) -> Generation:
+        managed_video_available = self._config is not None and self._config.managed_video_available
         engine = external_engine(
-            req.params, default=self._state.app_settings.amd_fast_engine if self._state else "native",
+            req.params, default=self._state.app_settings.local_fast_engine if self._state else "native",
+            available=managed_video_available,
             model_25=req.params.model == "ltx-2.5-fast",
         )
         require_h3_license(engine, self._config.app_data_dir if self._config else None)
         params = self._dump_fast_params(req.params)
-        if os.environ.get("LTX_REQUIRE_ROCM") == "1":
+        if managed_video_available:
             params["amdFastEngine"] = engine or "native"
         spec: dict[str, JsonValue] = {
             "params": params,
@@ -383,14 +385,16 @@ class QueuedGenerationHandler:
             self._require_image_asset(req.inputs.endFrame.assetId, slot="endFrame")
         for reference in req.inputs.referenceImages:
             self._require_image_asset(reference.assetId, slot="referenceImages")
+        managed_video_available = self._config is not None and self._config.managed_video_available
         engine = external_engine(
-            req.params, default=self._state.app_settings.amd_fast_engine if self._state else "native",
+            req.params, default=self._state.app_settings.local_fast_engine if self._state else "native",
+            available=managed_video_available,
             model_25=req.params.model == "ltx-2.5-fast", has_start=start_frame is not None,
             has_end=req.inputs.endFrame is not None, reference_count=len(req.inputs.referenceImages),
         )
         require_h3_license(engine, self._config.app_data_dir if self._config else None)
         params = self._dump_fast_params(req.params)
-        if os.environ.get("LTX_REQUIRE_ROCM") == "1":
+        if managed_video_available:
             params["amdFastEngine"] = engine or "native"
         spec: dict[str, JsonValue] = {
             "params": params,

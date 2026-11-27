@@ -126,6 +126,22 @@ def _reset_denoising_progress() -> None:
 
 
 @pytest.fixture
+def windows_video_host(monkeypatch):
+    from runtime_config import community_runtime
+
+    monkeypatch.setattr(community_runtime, "HOST_PLATFORM", "win32")
+    monkeypatch.delenv("LTX_GPU_RUNTIME", raising=False)
+    monkeypatch.delenv("LTX_REQUIRE_ROCM", raising=False)
+
+
+@pytest.fixture(params=["rocm", "cuda"])
+def windows_local_gpu(windows_video_host, monkeypatch, request):
+    monkeypatch.setenv("LTX_GPU_RUNTIME", request.param)
+    monkeypatch.setenv("LTX_REQUIRE_ROCM", "1" if request.param == "rocm" else "0")
+    return request.param
+
+
+@pytest.fixture
 def fake_services() -> FakeServices:
     return FakeServices()
 

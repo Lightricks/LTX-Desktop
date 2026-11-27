@@ -63,7 +63,7 @@ export interface AppSettings {
 export { DEFAULT_GEMINI_MODEL } from '../lib/gemini-model'
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
-  amdFastEngine: 'comfy',
+  amdFastEngine: 'native',
   useTorchCompile: false,
   diffusionStageCacheEnabled: false,
   mpsConv3DAsConv2DEnabled: false,
@@ -115,7 +115,7 @@ interface AppSettingsContextValue {
   localViable: boolean
   shouldVideoGenerateWithLtxApi: boolean
   shouldImageGenerateWithFalApi: boolean
-  amdRendererAvailable: boolean
+  managedRendererAvailable: boolean
   cudaAvailable: boolean
   // Bumped whenever installed models change (download / delete / activate a version). Generation
   // model specs are derived from the *active* local model, so anything reading them must refetch;
@@ -206,7 +206,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [runtimePolicyLoaded, setRuntimePolicyLoaded] = useState(false)
   const [forceApiGenerations, setForceApiGenerations] = useState(true)
   const [localViable, setLocalViable] = useState(false)
-  const [amdRendererAvailable, setAmdRendererAvailable] = useState(false)
+  const [managedRendererAvailable, setManagedRendererAvailable] = useState(false)
   const [cudaAvailable, setCudaAvailable] = useState(false)
   const [backendProcessStatus, setBackendProcessStatus] = useState<BackendProcessStatus | null>(null)
   const [modelsVersion, setModelsVersion] = useState(0)
@@ -227,7 +227,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         if (!cancelled) {
           // Fail closed until policy can be read. Do not send Explore to an LTX key.
           setForceApiGenerations(true)
-          setAmdRendererAvailable(false)
+          setManagedRendererAvailable(false)
           setLocalViable(false)
           setRuntimePolicyLoaded(true)
         }
@@ -244,7 +244,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       }
 
       if (!cancelled) {
-        setAmdRendererAvailable(payload.amd_renderer_available === true)
+        setManagedRendererAvailable(payload.amd_renderer_available === true)
         setLocalViable(
           typeof payload.local_viable === 'boolean'
             ? payload.local_viable
@@ -595,7 +595,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       localViable,
       shouldVideoGenerateWithLtxApi,
       shouldImageGenerateWithFalApi,
-      amdRendererAvailable,
+      managedRendererAvailable,
       cudaAvailable,
       modelsVersion,
       notifyModelsChanged,
@@ -608,7 +608,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       clearSettingsSyncError,
       saveGeminiModel,
     }),
-    [amdFastEngine, amdRendererAvailable, assistantSelectionPending, budgetModeSaving, clearSettingsSyncError, cudaAvailable, forceApiGenerations, isLoaded, localViable, modelsVersion, neverSplitSaving, notifyModelsChanged, refreshSettings, runtimePolicyLoaded, selectAssistant, clearFalApiKey, clearGeminiApiKey, clearLtxApiKey, saveFalApiKey, saveGeminiApiKey, saveGeminiModel, saveLtxApiKey, saveAmdFastEngine, setBudgetMode, setNeverSplitIntoParts, settings, settingsSyncError, shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi, updateSettings],
+    [amdFastEngine, managedRendererAvailable, assistantSelectionPending, budgetModeSaving, clearSettingsSyncError, cudaAvailable, forceApiGenerations, isLoaded, localViable, modelsVersion, neverSplitSaving, notifyModelsChanged, refreshSettings, runtimePolicyLoaded, selectAssistant, clearFalApiKey, clearGeminiApiKey, clearLtxApiKey, saveFalApiKey, saveGeminiApiKey, saveGeminiModel, saveLtxApiKey, saveAmdFastEngine, setBudgetMode, setNeverSplitIntoParts, settings, settingsSyncError, shouldVideoGenerateWithLtxApi, shouldImageGenerateWithFalApi, updateSettings],
   )
 
   return (

@@ -3,11 +3,17 @@ from __future__ import annotations
 
 import ctypes
 import json
+import logging
 import os
 from pathlib import Path
 import re
 import subprocess
 import uuid
+
+
+# Marketing-name fallback for drivers that omit the GCN architecture label.
+# AMD's pinned Windows wheel and SDK contain the gfx1151 target only.
+_GFX1151_NAME = re.compile(r"\b(?:8040S|8050S|8060S)\b", re.I)
 
 
 def _cuda_adapters():
@@ -72,7 +78,7 @@ def select_gpu(*, exclude_cuda=False):
         name = str(adapter.get("Name") or "")
         pnp = str(adapter.get("PNPDeviceID") or "").upper()
         if (re.search(r"PCI\\VEN_1002&DEV_1586(?:&|$)", pnp)
-                or ("VEN_1002" in pnp and re.search(r"\b8060S\b", name, re.I))):
+                or (pnp.startswith(r"PCI\VEN_1002&") and _GFX1151_NAME.search(name))):
             return {"version": 1, "backend": "rocm", "deviceName": name or "AMD gfx1151"}
     return {"version": 1, "backend": "api", "deviceName": "No supported local GPU"}
 
@@ -81,25 +87,67 @@ def bind_rocm_device(python, selection):
     """Map Windows' gfx1151 PnP match to the actual HIP ordinal in the newly staged interpreter."""
     if selection["backend"] != "rocm":
         return
-    script = """
+    backend_dir = python.parent.parent / "backend"
+    # Match the application's DLL search policy before loading torch in either probe.
+    bootstrap = """
+import sys
+sys.path.insert(0, sys.argv[1])
+from server_utils.win_dll_search import remove_cwd_from_dll_search_path
+remove_cwd_from_dll_search_path()
+"""
+    inventory = bootstrap + """
 import json, torch
 devices = []
 for index in range(torch.cuda.device_count()):
-    props = torch.cuda.get_device_properties(index)
-    devices.append([index, getattr(props, 'gcnArchName', '').split(':')[0], props.name])
+    try:
+        props = torch.cuda.get_device_properties(index)
+        arch = (getattr(props, 'gcnArchName', '') or '').split(':')[0]
+        devices.append([index, arch, props.name])
+    except RuntimeError as exc:
+        print(f"Could not enumerate HIP device {index}: {exc}", file=sys.stderr)
 print(json.dumps(devices))
 """
     env = {key: value for key, value in os.environ.items()
            if key.upper() not in {"HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES",
-                                  "GPU_DEVICE_ORDINAL"}}
-    proc = subprocess.run([str(python), "-c", script], env=env, check=True, capture_output=True,
-                          text=True, timeout=150)
-    devices = json.loads(proc.stdout.strip().splitlines()[-1])
+                                  "GPU_DEVICE_ORDINAL"} and not _rocm_arch_override(key)}
+
+    def run_probe(code, env):
+        return subprocess.run([str(python), "-I", "-c", code, str(backend_dir)], env=env, cwd=python.parent,
+                              capture_output=True, text=True, errors="replace", timeout=150)
+
+    inventory_result = run_probe(inventory, env)
+    if inventory_result.returncode:
+        raise RuntimeError(f"ROCm could not enumerate this PC's GPUs. Check your AMD driver. {inventory_result.stderr.strip()}")
+    devices = json.loads(inventory_result.stdout.strip().splitlines()[-1])
+    health = bootstrap + """
+import torch
+from runtime_config.accelerator import verify_rocm_execution
+if torch.cuda.device_count() != 1:
+    raise RuntimeError("HIP did not isolate the selected graphics adapter.")
+print(verify_rocm_execution(require_gfx1151=True))
+"""
     for index, arch, name in devices:
-        if arch == "gfx1151" or (not arch and re.search(r"\b8060S\b", name, re.I)):
-            selection.update(hipOrdinal=index, deviceName=name)
-            return
-    raise RuntimeError(f"Windows detected gfx1151 but ROCm could not use it. Check your AMD driver. Devices: {devices!r}")
+        if (arch and arch != "gfx1151") or (not arch and not _GFX1151_NAME.search(name)):
+            continue
+        candidate = dict(selection, hipOrdinal=index, deviceName=name)
+        try:
+            result = run_probe(health, child_environment(candidate, env))
+        except subprocess.TimeoutExpired:
+            logging.warning("The ROCm execution check timed out on HIP adapter %s (%s).", index, name)
+            continue
+        if result.returncode:
+            logging.warning("The ROCm execution check failed on HIP adapter %s (%s): %s",
+                            index, name, result.stderr.strip() or f"exit code {result.returncode}")
+            continue
+        selection.update(candidate)
+        logging.info("Verified BF16 matrix multiplication and attention on HIP adapter %s (%s).", index, name)
+        return
+    raise RuntimeError("Windows detected a gfx1151 Radeon but ROCm could not use it. "
+                       f"Check your AMD driver and the HIP adapter results in the setup log. Devices: {devices!r}")
+
+
+def _rocm_arch_override(key):
+    return bool(re.fullmatch(r"HSA_OVERRIDE_GFX_VERSION(?:_\d+)?", key, re.I))
 
 
 def runtime_environment(selection):
@@ -142,6 +190,7 @@ def child_environment(selection, environ=None):
     env = dict(os.environ if environ is None else environ)
     if selection["backend"] != "rocm" or "hipOrdinal" in selection:
         masks = {"HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL", "CUDA_VISIBLE_DEVICES"}
-        env = {k: v for k, v in env.items() if k.upper() not in masks}
+        env = {k: v for k, v in env.items() if k.upper() not in masks
+               and (selection["backend"] != "rocm" or not _rocm_arch_override(k))}
     env.update(runtime_environment(selection))
     return env

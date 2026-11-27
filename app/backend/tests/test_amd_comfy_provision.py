@@ -15,8 +15,8 @@ from services.amd_comfy_provision import (
 )
 
 
-def layout_with_payload(tmp_path: Path) -> ManagedComfyLayout:
-    layout = ManagedComfyLayout(tmp_path / "Desktop data", tmp_path / "Program Files" / "resources")
+def layout_with_payload(tmp_path: Path, backend="rocm") -> ManagedComfyLayout:
+    layout = ManagedComfyLayout(tmp_path / "Desktop data", tmp_path / "Program Files" / "resources", backend)
     layout.asset_dir.mkdir(parents=True)
     release_zip = Path(__file__).resolve().parents[3] / "vendor" / "ComfyUI" / ARCHIVE_NAME
     shutil.copyfile(release_zip, layout.asset_dir / ARCHIVE_NAME)
@@ -57,8 +57,11 @@ def test_corrupt_packaged_archive_cannot_replace_existing_core(tmp_path: Path):
     assert not list(layout.core_dir.parent.glob(".setup-*"))
 
 
-def test_isolated_launch_resolves_private_modules_and_propagates_comfy_arguments(tmp_path: Path):
-    layout = layout_with_payload(tmp_path)
+@pytest.mark.parametrize("backend", ["cuda", "rocm"])
+def test_isolated_launch_resolves_private_modules_and_propagates_comfy_arguments(tmp_path: Path, backend, monkeypatch):
+    layout = layout_with_payload(tmp_path, backend)
+    visible = "GPU-00112233-4455-6677-8899-aabbccddeeff" if backend == "cuda" else "1"
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
     provision_private_comfy(layout)
     layout.python_exe.parent.mkdir(parents=True)
     layout.python_exe.touch()
@@ -90,4 +93,9 @@ def test_isolated_launch_resolves_private_modules_and_propagates_comfy_arguments
     assert args[args.index("--listen") + 1] == "127.0.0.1"
     assert args[args.index("--base-directory") + 1] == str(layout.base_dir)
     assert args[args.index("--whitelist-custom-nodes") + 1] == "kandinsky6"
-    assert "--disable-dynamic-vram" in args and "--enable-manager" not in args
+    assert ("--disable-dynamic-vram" in args) == (backend == "rocm")
+    assert env["CUDA_VISIBLE_DEVICES"] == visible and "--enable-manager" not in args
+    if backend == "cuda":
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
+        with pytest.raises(RuntimeError, match="UUID"):
+            private_comfy_command(layout, 9087)

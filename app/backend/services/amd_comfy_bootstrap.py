@@ -1,4 +1,4 @@
-"""Entry point for ComfyUI under the LTX AMD embeddable Python interpreter."""
+"""Entry point for ComfyUI under the LTX Desktop embeddable Python interpreter."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 def main() -> None:
     core, packages = (Path(arg).resolve(strict=True) for arg in sys.argv[1:3])
     # The Windows embedded interpreter ignores PYTHONPATH. Its site initialization
-    # has already registered torch's gfx1151 DLL directories. Enable the private
+    # has already registered the installed torch runtime's DLL directories. Enable the private
     # wheels' .pth initialization and give Comfy its own PyAV before any imports.
     package_path = str(packages)
     sys.path[:0] = [str(core), package_path]

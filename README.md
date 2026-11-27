@@ -1,6 +1,8 @@
-# LTX Desktop - AMD 395 MAX 1.3.3-community.1
+# LTX Desktop - AMD 395 MAX 1.3.3-community.2
 
-Peter Beery created this community branch of Lightricks’ LTX Desktop on behalf of SpaceSpeak.com. The Windows x64 installer supports the original NVIDIA CUDA renderer and the Radeon 8060S (gfx1151) in the Ryzen AI Max+ 395. Existing AMD installations keep their app name, installation location and user data.
+Peter Beery created this community branch of Lightricks’ LTX Desktop on behalf of SpaceSpeak.com. The Windows x64 installer supports the original NVIDIA CUDA renderer and Radeon 8040S, 8050S and 8060S graphics in the Ryzen AI Max family. These three GPUs use the gfx1151 architecture. Existing AMD installations keep their app name, installation location and user data.
+
+On both supported GPUs, open **Settings → Models** to manage the native LTX models, the ComfyUI INT8 renderer, Kandinsky Lite, and MiniMax H3. You can also select and set up a model directly in **Image to Video** or **Text to Video**. H3 Ref2VA takes reference images and appears under **Image to Video**.
 
 Version 1.3.3 includes upstream Keyframes, a shorter context option for faster Extend and Retake, and Windows fixes for Gemma loading and Smart App Control. [Lightricks 1.3.3 release notes](https://github.com/Lightricks/LTX-Desktop/releases/tag/v1.3.3)
 
@@ -8,16 +10,20 @@ Version 1.3.3 includes upstream Keyframes, a shorter context option for faster E
 
 | Hardware detected at setup | Rendering path |
 | --- | --- |
-| Supported NVIDIA GPU | The upstream CUDA runtime and native LTX workflows. On systems with both supported targets, setup selects NVIDIA. |
-| Radeon 8060S without a qualifying NVIDIA GPU | The existing ROCm runtime with native LTX, the managed ComfyUI engine, in-app model setup, and optional Kandinsky and MiniMax H3 workflows. |
+| Supported NVIDIA GPU | Native LTX on CUDA by default, plus the managed ComfyUI renderer, model picker, and downloads. On systems with both supported targets, setup selects NVIDIA. |
+| Radeon 8040S, 8050S or 8060S without a qualifying NVIDIA GPU | The existing ROCm runtime with native LTX, the managed ComfyUI engine, in-app model setup, and optional Kandinsky and MiniMax H3 workflows. |
 | Neither local target is available | The upstream API-only mode. Remote generation requires the appropriate service credentials. |
 
-Install the GPU vendor's driver before running setup. The installer selects the runtime automatically. Rerun setup after switching graphics hardware. The NVIDIA runtime download is approximately 3.30 GB before model weights. In the Windows Start menu, open **LTX Desktop - AMD 395 MAX Diagnostics** to see the selected GPU and run a compute check. Its log is saved at `%LOCALAPPDATA%\LTXDesktopAMD\logs\gpu-diagnostic.txt`. On the Radeon path, the app can set up its own ComfyUI engine on a fresh PC. Model weights download when selected.
+The bundled Windows ROCm and PyTorch libraries target gfx1151. Setup checks the selected Radeon with a short GPU calculation before activating the installation. AMD lists the 8040S, 8050S and 8060S under this architecture. [AMD ROCm 7.13 hardware list](https://rocm.docs.amd.com/en/7.13.0-preview/about/release-notes.html)
+
+Install the GPU vendor's driver before running setup. The installer selects the runtime automatically. Rerun setup after switching graphics hardware. The NVIDIA runtime download is approximately 3.30 GB before model weights. In the Windows Start menu, open **LTX Desktop - AMD 395 MAX Diagnostics** to see the selected GPU and run a compute check. Its log is saved at `%LOCALAPPDATA%\LTXDesktopAMD\logs\gpu-diagnostic.txt`. On either local GPU path, the app can set up its own ComfyUI engine on a fresh PC. Model weights download when selected.
+
+The launch screen and Home identify this as the AMD GPU support branch. On Windows, choose **Help → About** for the app version, upstream project, and branch credits.
 
 ## Render from LTX Desktop - AMD 395 MAX
 
-1. Extract the installer artifact on the target PC and run **LTX-AMD-395-MAX-Compact-Setup.exe**. For an upgrade, close the existing LTX app first. Setup recognizes the earlier **LTX Desktop AMD** installation and keeps your projects, settings, and downloaded models.
-2. For NVIDIA, use the original native LTX model options. For Radeon, open **Image to Video** or **Text to Video**, then open **Model**. Select the local model you want. Choosing a model that needs setup preserves the current prompt and image.
+1. Run the Windows online installer. For an upgrade, close the existing LTX app first. If you built it using GitHub Actions, extract **LTX-AMD-395-MAX-Compact-Setup.exe** from the workflow artifact. Setup recognizes the earlier **LTX Desktop AMD** installation and keeps your projects, settings, and downloaded models.
+2. On NVIDIA or Radeon, open **Image to Video** or **Text to Video**, then open **Model**. Select the local model you want. Choosing a model that needs setup preserves the current prompt and image.
 3. For **LTX 2.5 Fast · ComfyUI INT8** or **Kandinsky 6 Lite Distill · ComfyUI** on a new computer, click **Install engine & model**. LTX prepares the bundled engine, starts it locally and downloads the model. For Kandinsky it also installs the bundled node pack and restarts its own engine once idle. The panel shows progress. If LTX asks for access to a gated model, follow the Hugging Face sign-in and terms links, then click **Retry model setup**.
 4. For **LTX 2.3 Fast · Native** or **LTX 2.5 Fast · Native**, click **Download & select**. To switch to an installed inactive native model, choose **Activate**, then **Use this model**.
 5. Select **Use this model** if needed, then **Generate**. The first generation loads the selected weights. A five-second clip at 24 fps is a convenient first test.
@@ -38,7 +44,7 @@ A fresh LTX INT8 model download is 39.71 GB. A fresh Kandinsky Lite model downlo
 
 FL2VA Base or Ref2VA needs **51.53 GB** from a fresh installation. After FL2VA Base, the Turbo adapter adds **1.96 GB** and Ref2VA adds **20.97 GB**. The three variants share the text encoder and both audio and video decoders. All three support 24 fps and offer 5-, 10-, or 15-second targets, at 480p or 768p. Start with the 5-second, 480p setting to evaluate render time on your hardware. Describe the picture and audio together in the prompt.
 
-**Optional existing ComfyUI installation.** LTX can use a compatible AMD ComfyUI server already running on this PC on port 8000 or 8188, with the models in that server's folders. You can also choose **Use LTX-managed engine** in the setup panel. External Kandinsky installations use their own ComfyUI Manager and need core 0.38.0 or newer. The included engine already meets this requirement. Each model component retains its upstream license. [Kandinsky model and node guide](https://github.com/kandinskylab/kandinsky-6/blob/73b892b730885e02ab58fbf7fc5cb10b78e1e3da/comfyui/README.md#manual-downloads)
+**Optional existing ComfyUI installation.** LTX can use a compatible ComfyUI server on the selected GPU already running on this PC on port 8000 or 8188, with the models in that server's folders. If LTX cannot identify that server’s GPU, choose **Use LTX-managed engine** to run on the adapter verified by setup. External Kandinsky installations use their own ComfyUI Manager and need core 0.38.0 or newer. The included engine already meets this requirement. Each model component retains its upstream license. [Kandinsky model and node guide](https://github.com/kandinskylab/kandinsky-6/blob/73b892b730885e02ab58fbf7fc5cb10b78e1e3da/comfyui/README.md#manual-downloads)
 
 ## Publish this repository
 
@@ -90,7 +96,7 @@ To verify an installed build on Windows and exercise the selected GPU, open Powe
 & "$env:LOCALAPPDATA\Programs\LTXDesktopAMD\application\resources\python\python.exe" .\checks\verify_install.py --gpu
 ```
 
-To check the managed engine on a recipient's Radeon, run the following from the repository in PowerShell. It uses a temporary profile, performs a GPU calculation, installs the bundled Kandinsky nodes, and encodes and decodes a short video with sound. It needs no model weights.
+To check the managed engine on a recipient’s NVIDIA or Radeon GPU, run the following from the repository in PowerShell. It uses a temporary profile, performs a GPU calculation, installs the bundled Kandinsky nodes, and encodes and decodes a short video with sound. It needs no model weights.
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\LTXDesktopAMD\application\resources\python\python.exe" .\checks\check_managed_comfy.py

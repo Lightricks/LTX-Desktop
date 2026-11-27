@@ -1,4 +1,4 @@
-"""Run a Desktop-owned prompt on an existing local ComfyUI ROCm server."""
+"""Run a Desktop-owned prompt on an local CUDA or ROCm ComfyUI server."""
 
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ import httpx
 from websockets.exceptions import WebSocketException
 from websockets.sync.client import ClientConnection, connect
 
+from runtime_config.community_runtime import LocalVideoBackend, local_video_backend
+
 logger = logging.getLogger(__name__)
 
 JSON = dict[str, Any]
@@ -27,7 +29,7 @@ _LOST_SECONDS = 30.0
 
 
 class ComfyError(RuntimeError):
-    """A local ROCm ComfyUI worker could not complete the requested operation."""
+    """A local ComfyUI worker could not complete the requested operation."""
 
 
 class ComfyCancelled(ComfyError):
@@ -61,19 +63,79 @@ def comfy_json(response: httpx.Response) -> JSON:
     return cast(JSON, value)
 
 
-def gpu_name_from_stats(stats: JSON) -> str:
+def _nvml_text(value: str | bytes) -> str:
+    return value.decode("utf-8") if isinstance(value, bytes) else value
+
+
+def _nvidia_inventory() -> list[tuple[str, str]]:
+    """NVML reports physical adapters even when this process is pinned to one CUDA UUID."""
+    try:
+        import pynvml  # type: ignore[reportMissingModuleSource]
+    except ImportError as exc:
+        raise ComfyError("Could not verify the external NVIDIA adapter identity.") from exc
+    try:
+        pynvml.nvmlInit()
+        try:
+            adapters: list[tuple[str, str]] = []
+            for index in range(pynvml.nvmlDeviceGetCount()):
+                handle = pynvml.nvmlDeviceGetHandleByIndex(index)
+                identity = _nvml_text(pynvml.nvmlDeviceGetUUID(handle))
+                model = _nvml_text(pynvml.nvmlDeviceGetName(handle))
+                adapters.append((identity, model))
+            return adapters
+        finally:
+            pynvml.nvmlShutdown()
+    except (OSError, pynvml.NVMLError) as exc:
+        raise ComfyError("Could not verify the external NVIDIA adapter identity.") from exc
+
+
+def _selected_radeon_name() -> str:
+    import torch
+
+    try:
+        return torch.cuda.get_device_name(0)
+    except (RuntimeError, AssertionError) as exc:
+        raise ComfyError("Could not verify the selected Radeon adapter.") from exc
+
+
+def _check_external_gpu(name: str, backend: LocalVideoBackend) -> None:
+    # ComfyUI's indices are process-local and /system_stats omits physical UUIDs.
+    # A unique model name in the driver's inventory lets us verify the selected GPU.
+    # Otherwise the managed worker is available with its UUID pinned at launch.
+    primary = re.sub(r"^cuda:\d+\s+", "", name, flags=re.I).partition(" :")[0].strip().casefold()
+    if backend == "rocm":
+        # Two different Radeon architectures can both be reported as "AMD Radeon Graphics".
+        # The private worker inherits the verified HIP ordinal even on those machines.
+        if not re.search(r"\b(?:8040s|8050s|8060s)\b", primary):
+            raise ComfyError(f"External ComfyUI's primary GPU ({name}) does not identify a supported Radeon model.")
+        if primary != _selected_radeon_name().casefold():
+            raise ComfyError(f"External ComfyUI's primary GPU ({name}) differs from the selected Radeon.")
+        return
+    selected = os.environ.get("CUDA_VISIBLE_DEVICES", "").casefold()
+    matching = [identity.casefold() for identity, model in _nvidia_inventory()
+                if model.casefold() == primary]
+    if not selected or matching != [selected]:
+        raise ComfyError(f"Could not match external ComfyUI's primary GPU ({name}) to the selected NVIDIA adapter.")
+
+
+def gpu_name_from_stats(stats: JSON, backend: LocalVideoBackend) -> str:
     system = _obj(stats.get("system"))
     devices = _items(stats.get("devices"))
     device = _obj(devices[0]) if devices else {}
     name = str(device.get("name", ""))
     version = str(system.get("pytorch_version", "")).lower()
-    if (
-        device.get("type") not in ("cuda", "hip")
-        or not re.search(r"amd|radeon|gfx1151", name, re.I)
-        or ("rocm" not in version and "hip" not in version)
-    ):
+    is_amd = bool(re.search(r"amd|radeon|gfx1151", name, re.I))
+    if backend == "rocm":
+        compatible = (device.get("type") in ("cuda", "hip") and is_amd
+                      and ("rocm" in version or "hip" in version))
+        required = "the Radeon with ROCm PyTorch"
+    else:
+        compatible = (device.get("type") == "cuda" and bool(name) and not is_amd
+                      and bool(re.search(r"\+cu\d+", version)))
+        required = "the selected NVIDIA GPU with CUDA PyTorch"
+    if not compatible:
         raise ComfyError(
-            f"ComfyUI must run on the Radeon with ROCm PyTorch. Reported {name or 'no GPU'}, torch {version or 'unknown'}."
+            f"ComfyUI must run on {required}. Reported {name or 'no GPU'}, torch {version or 'unknown'}."
         )
     # Older ComfyUI servers ignore prompt_id on /interrupt and stop another user's active job.
     match = re.match(r"(\d+)\.(\d+)", str(system.get("comfyui_version", "")))
@@ -84,7 +146,7 @@ def gpu_name_from_stats(stats: JSON) -> str:
     return name
 
 
-def _video_ref(record: JSON, output_node_id: str) -> dict[str, str]:
+def _video_ref(record: JSON, output_node_id: str, backend: LocalVideoBackend) -> dict[str, str]:
     status = _obj(record.get("status"))
     if status.get("status_str") != "success" or not status.get("completed"):
         for raw_event in reversed(_items(status.get("messages"))):
@@ -98,7 +160,7 @@ def _video_ref(record: JSON, output_node_id: str) -> dict[str, str]:
                     message = str(data.get("exception_message", "unknown error")).strip()
                     trace = " ".join(str(line) for line in _items(data.get("traceback")))
                     detail = f"{message} {trace}".casefold()
-                    if node == "LTXVLatentUpsampler" and (
+                    if backend == "rocm" and node == "LTXVLatentUpsampler" and (
                         "vbar_allocate" in detail or "access violation" in detail
                     ):
                         message += (
@@ -151,33 +213,44 @@ def _sampling_steps(workflow: Mapping[str, Any]) -> dict[str, int]:
 
 
 class AmdComfyClient:
-    def __init__(self, port: int):
+    def __init__(self, port: int, *, backend: LocalVideoBackend):
         if not 0 < port < 65536:
             raise ValueError("Invalid loopback port.")
         self.base_url = f"http://127.0.0.1:{port}"
+        self.backend = backend
         self.gpu_name = ""
         self.private = False
+
+    def check_primary_gpu(self, stats: JSON) -> None:
+        name = gpu_name_from_stats(stats, self.backend)
+        if not self.private:
+            _check_external_gpu(name, self.backend)
+        self.gpu_name = name
 
     def _http(self) -> httpx.Client:
         # No proxy, DNS or redirects; all image, prompt and result traffic remains on loopback.
         return httpx.Client(base_url=self.base_url, trust_env=False, follow_redirects=False, timeout=30.0)
 
     @classmethod
-    def discover(cls, ports: tuple[int, ...] | None = None, *, start_prepared: bool = False,
+    def discover(cls, ports: tuple[int, ...] | None = None, *, backend: LocalVideoBackend | None = None,
+                 start_prepared: bool = False,
                  cancelled: Callable[[], bool] | None = None) -> AmdComfyClient:
         if ports is None:
             from services.amd_comfy_engine import managed_comfy
             return managed_comfy().connect(start_prepared=start_prepared, cancelled=cancelled)
+        backend = backend or local_video_backend()
+        if backend is None:
+            raise ComfyError("Local ComfyUI requires a supported CUDA or ROCm installation on Windows.")
         errors: list[str] = []
         for port in ports:
-            client = cls(port)
+            client = cls(port, backend=backend)
             try:
                 with client._http() as http:
-                    client.gpu_name = gpu_name_from_stats(comfy_json(http.get("/system_stats", timeout=2.5)))
+                    client.check_primary_gpu(comfy_json(http.get("/system_stats", timeout=2.5)))
                 return client
             except (httpx.HTTPError, ComfyError) as exc:
                 errors.append(f"{port}: {exc}")
-        raise ComfyError("Open ComfyUI Desktop with the AMD ROCm backend. " + " | ".join(errors))
+        raise ComfyError("Open ComfyUI Desktop on the selected GPU. " + " | ".join(errors))
 
     def get_object_info(self) -> JSON:
         with self._http() as http:
@@ -234,7 +307,7 @@ class AmdComfyClient:
         events: ClientConnection | None = None
         with self._http() as http:
             # Re-read the primary device just before publishing, in case the worker was restarted.
-            self.gpu_name = gpu_name_from_stats(comfy_json(http.get("/system_stats")))
+            self.check_primary_gpu(comfy_json(http.get("/system_stats")))
             _check_cancelled(is_cancelled)
             if on_progress is not None:
                 try:
@@ -270,7 +343,7 @@ class AmdComfyClient:
                     _obj(source.get("inputs")).get("audio")
                 )
                 self._download(
-                    http, _video_ref(record, output_node_id), output_path, is_cancelled, expects_audio
+                    http, _video_ref(record, output_node_id, self.backend), output_path, is_cancelled, expects_audio
                 )
             except BaseException as failure:
                 if not finished:

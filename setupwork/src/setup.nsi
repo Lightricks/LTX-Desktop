@@ -19,23 +19,23 @@ OutFile "${OUT}"
 InstallDir "$LOCALAPPDATA\Programs\LTXDesktopAMD"
 !define MUI_ICON "${ICONFILE}"
 !define MUI_UNICON "${ICONFILE}"
-VIProductVersion "1.3.3.1"
+VIProductVersion "1.3.3.2"
 VIAddVersionKey "ProductName" "${APP}"
-VIAddVersionKey "ProductVersion" "1.3.3.1"
+VIAddVersionKey "ProductVersion" "1.3.3.2"
 VIAddVersionKey "FileDescription" "${APP} Setup"
-VIAddVersionKey "FileVersion" "1.3.3.1"
+VIAddVersionKey "FileVersion" "1.3.3.2"
 VIAddVersionKey "LegalCopyright" "LTX Desktop contributors and component authors"
 ShowInstDetails show
 ShowUninstDetails show
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "${APP}"
 !ifdef OFFLINE
-!define MUI_WELCOMEPAGE_TEXT "Install the Windows x64 edition for Radeon 8060S. Setup includes the application and native ROCm runtime. LTX downloads video model weights separately on first use.$\r$\n$\r$\nClose any running copy of ${APP} before starting."
+!define MUI_WELCOMEPAGE_TEXT "Install the Windows x64 edition for Radeon 8040S, 8050S or 8060S. Setup includes the application and native ROCm runtime. LTX downloads video model weights separately on first use.$\r$\n$\r$\nClose any running copy of ${APP} before starting."
 !else
 !ifdef COMPACT
-!define MUI_WELCOMEPAGE_TEXT "Setup detects a supported NVIDIA CUDA GPU or Radeon 8060S and downloads its matching runtime. Other PCs use API mode. Model weights are available later from the app.$\r$\n$\r$\nClose LTX Desktop before starting."
+!define MUI_WELCOMEPAGE_TEXT "Setup detects a supported NVIDIA CUDA GPU or Radeon 8040S, 8050S or 8060S and downloads its matching runtime. Other PCs use API mode. Model weights are available later from the app.$\r$\n$\r$\nClose LTX Desktop before starting."
 !else
-!define MUI_WELCOMEPAGE_TEXT "Install the Windows x64 edition with automatic NVIDIA CUDA and Radeon 8060S detection. Setup includes an app-managed ComfyUI renderer and downloads the matching runtime. LTX downloads video model weights separately on first use.$\r$\n$\r$\nClose any running copy of ${APP} before starting."
+!define MUI_WELCOMEPAGE_TEXT "Install the Windows x64 edition with automatic NVIDIA CUDA and Radeon 8040S, 8050S or 8060S detection. Setup includes an app-managed ComfyUI renderer and downloads the matching runtime. LTX downloads video model weights separately on first use.$\r$\n$\r$\nClose any running copy of ${APP} before starting."
 !endif
 !endif
 !insertmacro MUI_PAGE_WELCOME
@@ -134,7 +134,7 @@ Section "${APP}"
   CreateShortcut "$SMPROGRAMS\${APP}\${DIAGNOSTIC_LINK}.lnk" "$INSTDIR\application\AMD-Diagnostics.cmd" "" "$INSTDIR\application\${APP}.exe"
   CreateShortcut "$DESKTOP\${APP}.lnk" "$INSTDIR\application\${APP}.exe"
   WriteRegStr HKCU "${KEY}" "DisplayName" "${APP}"
-  WriteRegStr HKCU "${KEY}" "DisplayVersion" "1.3.3-community.1"
+  WriteRegStr HKCU "${KEY}" "DisplayVersion" "1.3.3-community.2"
   WriteRegStr HKCU "${KEY}" "DisplayIcon" "$INSTDIR\application\${APP}.exe"
   WriteRegStr HKCU "${KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
   WriteRegDWORD HKCU "${KEY}" "NoModify" 1

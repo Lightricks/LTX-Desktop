@@ -70,6 +70,16 @@ class WindowsGpuInstallerTests(unittest.TestCase):
             bind.assert_called_once()
             self.assertEqual(json.loads((resources / "gpu-runtime.json").read_bytes())["backend"], "rocm")
 
+    def test_unusable_amd_candidate_does_not_write_a_runtime_receipt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            candidate = dict(AMD, deviceName="AMD Radeon 8050S")
+            with patch.object(setup_engine, "install_rocm", return_value=[]), \
+                    patch.object(gpu_selection, "bind_rocm_device", side_effect=RuntimeError("GPU probe failed")):
+                with self.assertRaisesRegex(RuntimeError, "GPU probe failed"):
+                    setup_engine.install_runtime_for_hardware(root, root, root, root, candidate)
+            self.assertFalse((root / "gpu-runtime.json").exists())
+
     def test_failed_cuda_probe_uses_verified_radeon_alternative(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

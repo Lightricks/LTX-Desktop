@@ -248,8 +248,7 @@ def test_api_requires_bearer_and_exposes_queued_generation_routes(test_state) ->
     assert legacy_generate.status_code == 404
 
 
-def test_paired_amd_model_readiness_contains_no_paths_and_keeps_setup_on_desktop(test_state, monkeypatch) -> None:
-    monkeypatch.setenv("LTX_REQUIRE_ROCM", "1")
+def test_paired_model_readiness_contains_no_paths_and_keeps_setup_on_desktop(test_state, monkeypatch, windows_local_gpu) -> None:
     monkeypatch.setattr(test_state.models, "list_ltx_versions", lambda: SimpleNamespace(versions=[
         SimpleNamespace(model_id="ltx-2.3-22b-distilled", installed=True),
         SimpleNamespace(model_id="ltx-2.5-22b-distilled", installed=False),
@@ -265,7 +264,7 @@ def test_paired_amd_model_readiness_contains_no_paths_and_keeps_setup_on_desktop
         path = "/api/amd/model-availability"
         assert client.get(path).status_code == 401
         assert client.get(path, headers=AUTH).json() == {
-            "preferred": "comfy", "native23": True, "native25": False, "comfy": "missing", "kandinsky": "ready",
+            "preferred": "native" if windows_local_gpu == "cuda" else "comfy", "native23": True, "native25": False, "comfy": "missing", "kandinsky": "ready",
             "h3": dict.fromkeys(variants, "missing"), "h3LicenseAcknowledged": False,
         }
         h3.licenseAcknowledged = True

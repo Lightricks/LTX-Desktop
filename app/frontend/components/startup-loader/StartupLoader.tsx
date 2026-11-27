@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom'
 import { Button } from '@ds/Button/Button'
 import { Text } from '@ds/Text/Text'
 import { InstallProgressBody } from '../install/InstallProgress'
+import { BranchTitle } from '../BranchTitle'
 import type { DownloadProgressSnapshot } from '@/lib/download-progress'
 import { usePrefersReducedMotion } from '../home/usePrefersReducedMotion'
 import { useThemeColorScheme } from '@/ds/styles/themes/useTheme'
@@ -241,7 +242,7 @@ export function StartupLoader({
           theme so the lockup stays legible against glass that does the same. */}
       <div className={`ltx-io ${styles.themeScope}`} data-theme={colorScheme}>
         <div className={styles.dragRegion} aria-hidden />
-        <div className={lockupStyles.shell}>
+        <div className={`${lockupStyles.shell} ${styles.titleShell}`}>
           <div
             className={styles.lockup}
             role="status"
@@ -251,6 +252,7 @@ export function StartupLoader({
           >
             <EndpageLockup paused={!started} />
           </div>
+          <BranchTitle className={styles.branchTitle} />
           {/* Download mode: letters first, then the shared progress body in the
               slot position. The boot track/fill nodes above stay boot-only. */}
           {python != null && settled ? (
@@ -294,7 +296,7 @@ export function StartupLoader({
           )}
         </div>
         <Text as="p" variant="body" size="md" align="center" className={styles.copyright}>
-          LTX Desktop - AMD 395 MAX · Community branch · © 2026 Lightricks
+          © 2026 Lightricks
         </Text>
       </div>
     </div>

@@ -1,4 +1,4 @@
-r"""Smoke-test the installed private Radeon engine with a short, weight-free video.
+r"""Smoke-test the installed private CUDA or ROCm engine with a short, weight-free video.
 
 From the checkout, run in PowerShell:
     & "$env:LOCALAPPDATA\Programs\LTXDesktopAMD\application\resources\python\python.exe" .\checks\check_managed_comfy.py
@@ -19,25 +19,33 @@ from gpu_selection import child_environment, read_selection
 
 def check(resources: Path, data: Path) -> None:
     selection = read_selection(resources)
-    if selection["backend"] != "rocm":
-        raise SystemExit("This check exercises the private Radeon worker. Use verify_install.py --gpu for the installed backend.")
-    # Apply the same visibility filters as Electron before importing the HIP libraries.
+    backend = selection["backend"]
+    if backend not in {"cuda", "rocm"}:
+        raise SystemExit("The private worker requires a local CUDA or ROCm runtime. This installation uses API mode.")
+    # Apply the same adapter selection as Electron before importing torch.
     env = child_environment(selection)
     for key in os.environ.keys() - env.keys():
         del os.environ[key]
     os.environ.update(env, LTX_APP_DATA_DIR=str(data))
     sys.path.insert(0, str(resources / "backend"))
+    from server_utils.win_dll_search import remove_cwd_from_dll_search_path
+    remove_cwd_from_dll_search_path()
     import av
     import torch
+    from runtime_config.accelerator import accelerator_backend, verify_rocm_execution
     from services.amd_comfy_engine import managed_comfy
     from services.amd_comfy_workflow import mp4_save_inputs
     from services.amd_kandinsky_node import KandinskyNodeSetup, kandinsky_nodes_loaded
 
-    if not torch.version.hip or not torch.cuda.is_available():
-        raise RuntimeError("The installed PyTorch runtime could not open a ROCm GPU.")
-    if torch.tensor([2.0, 3.0], device="cuda").square().sum().item() != 13.0:
-        raise RuntimeError("The ROCm tensor calculation returned an unexpected result.")
-    print(f"ROCm {torch.version.hip} · {torch.cuda.get_device_name(0)}", flush=True)
+    active = accelerator_backend()
+    if active != backend:
+        raise RuntimeError(f"The installation selected {backend}, but PyTorch reports {active}.")
+    if backend == "rocm":
+        verify_rocm_execution(require_gfx1151=True)
+    elif torch.tensor([2.0, 3.0], device="cuda").square().sum().item() != 13.0:
+        raise RuntimeError("The CUDA tensor calculation returned an unexpected result.")
+    version = torch.version.hip if backend == "rocm" else torch.version.cuda
+    print(f"{backend.upper()} {version} · {torch.cuda.get_device_name(0)}", flush=True)
 
     engine = managed_comfy()
     setup = KandinskyNodeSetup()

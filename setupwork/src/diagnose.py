@@ -49,7 +49,9 @@ def probe(application):
                 raise RuntimeError("NVIDIA GPU matrix multiplication returned an incorrect result.")
     if selected != "api":
         props = torch.cuda.get_device_properties(0)
-        print(f"Active GPU: {props.name}, {props.total_memory / 2**30:.1f} GiB, PyTorch {torch.__version__}")
+        arch = getattr(props, "gcnArchName", "") if selected == "rocm" else ""
+        architecture = f", {arch}" if arch else ""
+        print(f"Active GPU: {props.name}{architecture}, {props.total_memory / 2**30:.1f} GiB, PyTorch {torch.__version__}")
     print(f"PASS: {selected} runtime, video pipeline imports and backend initialization.")
 
 

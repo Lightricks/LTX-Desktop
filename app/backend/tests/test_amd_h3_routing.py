@@ -20,8 +20,7 @@ def params(engine, **overrides):
 
 
 @pytest.fixture
-def worker(test_state, monkeypatch):
-    monkeypatch.setenv("LTX_REQUIRE_ROCM", "1")
+def worker(test_state, monkeypatch, windows_local_gpu):
     acknowledge_h3_license(test_state.config.app_data_dir)
     video = test_state.video_generation
     executors = test_state.executor_registry._executors
@@ -66,8 +65,7 @@ def completed(client, created):
     return job
 
 
-def test_actual_h3_available_shapes_independent_of_native_weights_and_license(client, monkeypatch):
-    monkeypatch.setenv("LTX_REQUIRE_ROCM", "1")
+def test_actual_h3_available_shapes_independent_of_native_weights_and_license(client, monkeypatch, windows_local_gpu):
     specs = client.get("/api/generate/models-specs").json()
     for key in ("h3_fl2va_local_model", "h3_fl2va_distill_local_model", "h3_ref2va_local_model"):
         row = specs[key]["spec"]
@@ -78,13 +76,12 @@ def test_actual_h3_available_shapes_independent_of_native_weights_and_license(cl
             "fps_to_durations": {"24": [5, 10, 15]}, "aspect_ratios": ["16:9", "9:16", "1:1"],
         }
     assert specs["downloaded_local_models"] == []
-    monkeypatch.delenv("LTX_REQUIRE_ROCM")
+    monkeypatch.setenv("LTX_GPU_RUNTIME", "api")
     assert client.get("/api/generate/models-specs").json()["h3_ref2va_local_model"] is None
 
 
 @pytest.mark.parametrize("engine", ["h3-fl2va", "h3-fl2va-distill", "h3-ref2va"])
-def test_unacknowledged_weights_never_render_or_enqueue(client, monkeypatch, engine, tmp_path):
-    monkeypatch.setenv("LTX_REQUIRE_ROCM", "1")
+def test_unacknowledged_weights_never_render_or_enqueue(client, engine, tmp_path, windows_local_gpu):
     image = engine == "h3-ref2va"
     req = params(engine, model="fast", **({"imagePath": "unused.png"} if image else {}))
     response = client.post("/api/generate", json=req)
@@ -136,10 +133,10 @@ def test_fl2va_queued_text_and_direct_render_stay_local_even_with_api_preference
     settings.ltx_api_key = "test"
     settings.user_prefers_ltx_api_video_generations = True
     req = params("h3-fl2va")
-    completed(client, client.post("/api/generations/text-to-video", json={"params": req}))
     response = client.post("/api/generate", json={**req, "model": "fast"})
     assert response.status_code == 200, response.text
     assert Path(response.json()["video_path"]).is_file()
+    completed(client, client.post("/api/generations/text-to-video", json={"params": req}))
     assert len(worker) == 2
     for graph in worker:
         assert graph["condition"]["inputs"]["length"] == 124

@@ -30,8 +30,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/system_stats':
             device = 'cpu' if (base / 'cpu').exists() else 'cuda'
-            data = {'system': {'argv': sys.argv, 'comfyui_version': '0.38.0', 'pytorch_version': '2.9.0+rocm'},
-                    'devices': [{'type':device,'name':'AMD Radeon 8060S'}]}
+            nvidia = os.environ.get('LTX_GPU_RUNTIME') == 'cuda'
+            torch_version = '2.10.0+cu128' if nvidia else '2.9.0+rocm'
+            name = 'NVIDIA GeForce RTX 4090' if nvidia else 'AMD Radeon(TM) Graphics'
+            data = {'system': {'argv': sys.argv, 'comfyui_version': '0.38.0', 'pytorch_version': torch_version},
+                    'devices': [{'type':device,'name':name}]}
         elif self.path == '/internal/folder_paths':
             data = {'vae': [str(base / 'models' / 'vae')]}
         else:
@@ -49,8 +52,9 @@ HTTPServer(('127.0.0.1', port), Handler).serve_forever()
 
 
 @pytest.fixture
-def worker(tmp_path, monkeypatch):
-    layout = provision.ManagedComfyLayout(tmp_path / "owned", tmp_path / "resources")
+def worker(tmp_path, monkeypatch, request):
+    backend = getattr(request, "param", "rocm")
+    layout = provision.ManagedComfyLayout(tmp_path / "owned", tmp_path / "resources", backend)
     layout.base_dir.mkdir(parents=True)
     receipt = layout.root / "ready"
     script = tmp_path / "worker.py"
@@ -74,7 +78,7 @@ def worker(tmp_path, monkeypatch):
                 "--base-directory",
                 str(layout.base_dir),
             ],
-            os.environ.copy(),
+            dict(os.environ, LTX_GPU_RUNTIME=layout.backend),
             layout.root,
         )
 
@@ -89,6 +93,7 @@ def worker(tmp_path, monkeypatch):
         engine.shutdown()
 
 
+@pytest.mark.parametrize("worker", ["cuda", "rocm"], indirect=True)
 def test_prepare_owns_worker_idle_restart_render_lease_and_shutdown(worker):
     engine, layout, installed = worker
     assert engine.status().status == "not_installed"
@@ -130,7 +135,7 @@ def test_start_avoids_other_listener_and_external_shutdown_never_touches_it(
         listener.bind(("127.0.0.1", 0))
         listener.listen()
         occupied = listener.getsockname()[1]
-        external = AmdComfyClient(occupied)
+        external = AmdComfyClient(occupied, backend=layout.backend)
         external.gpu_name = "external AMD"
         monkeypatch.setattr(engine, "_external", lambda: external)
         engine._port = occupied
@@ -211,6 +216,7 @@ os._exit(0)
     assert not psutil.pid_exists(pid)
 
 
+@pytest.mark.parametrize("worker", ["cuda", "rocm"], indirect=True)
 def test_native_switch_releases_only_previously_used_idle_private_worker(
     worker, monkeypatch
 ):
@@ -237,3 +243,30 @@ def test_native_switch_releases_only_previously_used_idle_private_worker(
         lambda: pytest.fail("Memory release attempted external discovery"),
     )
     engine.release_models_for_native()
+
+def test_unsupported_runtime_does_not_attach_external(monkeypatch):
+    engine = ManagedComfyEngine(None)
+    monkeypatch.setattr(engine, "_external", lambda: pytest.fail("contacted external ComfyUI"))
+    assert engine.status().status == "unsupported"
+    with pytest.raises(ComfyError, match="requires a supported"):
+        engine.connect(start_prepared=True)
+
+
+@pytest.mark.parametrize("backend", ["cuda", "rocm", "api"])
+def test_managed_worker_uses_installed_backend(tmp_path, monkeypatch, backend):
+    from runtime_config import community_runtime
+    from services.amd_comfy_engine import managed_comfy
+
+    monkeypatch.setattr(community_runtime, "HOST_PLATFORM", "win32")
+    monkeypatch.setenv("LTX_APP_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("LTX_GPU_RUNTIME", backend)
+    managed_comfy.cache_clear()
+    try:
+        engine = managed_comfy()
+        if backend == "api":
+            assert engine.layout is None
+        else:
+            assert engine.layout.backend == backend
+            assert engine.layout.root == tmp_path / "managed-comfy"
+    finally:
+        managed_comfy.cache_clear()

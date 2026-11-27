@@ -267,6 +267,8 @@ export type ExploreRuntime = {
   waveformUrlForAsset: (asset: ExploreMediaAsset) => Promise<string | null>;
   /** Which app runs this screen. Copy that names a place to fix a problem follows it. */
   host: "desktop" | "remote";
+  /** Desktop's confirmed renderer preference. Remote reads it from the paired PC. */
+  preferredLocalVideoRenderer?: AmdPickerContext["preferred"];
   pairedAmdModels?: () => Promise<AmdPickerContext>;
   revealInFolder: ((filePath: string) => void) | null;
   hoverPreview: boolean;

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router'
-import { Text } from '@/ds/Text/Text'
+import { BranchTitle } from '../../components/BranchTitle'
 // eslint-disable-next-line no-restricted-imports
 import { QuickSearchLaunchField } from '@/ltx-io/components/QuickSearch/QuickSearchLaunchField'
 // eslint-disable-next-line no-restricted-imports
@@ -14,15 +14,7 @@ export function Home() {
   return (
     <div className={styles.page}>
       <div className={styles.hero}>
-        <Text
-          as="h1"
-          variant="display"
-          size="sm"
-          align="center"
-          className={styles.headline}
-        >
-          Explore endless creative solutions
-        </Text>
+        <BranchTitle className={styles.headline} />
         <div className={styles.searchBarSlot}>
           <QuickSearchLaunchField
             hidden={isQuickSearchOpen}

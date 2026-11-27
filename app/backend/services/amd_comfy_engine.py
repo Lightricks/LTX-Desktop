@@ -1,4 +1,4 @@
-"""Process ownership and on-demand startup for the private Radeon ComfyUI worker."""
+"""Process ownership and on-demand startup for the private ComfyUI worker."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import contextlib
 import os
 import socket
 import subprocess
-import sys
 import threading
 import time
 from collections.abc import Callable, Generator
@@ -17,11 +16,11 @@ from typing import TYPE_CHECKING, Literal
 import httpx
 from pydantic import BaseModel
 
+from runtime_config.community_runtime import local_video_backend
 from services.amd_comfy_client import (
     AmdComfyClient,
     ComfyCancelled,
     ComfyError,
-    gpu_name_from_stats as _gpu_name,
     comfy_json,
 )
 
@@ -74,7 +73,7 @@ class _PortConflict(ComfyError):
 
 
 def _owned_client(layout: ManagedComfyLayout, port: int, pid: int) -> AmdComfyClient:
-    client = AmdComfyClient(port)
+    client = AmdComfyClient(port, backend=layout.backend)
     with httpx.Client(
         base_url=client.base_url, trust_env=False, follow_redirects=False, timeout=2
     ) as http:
@@ -106,7 +105,8 @@ def _owned_client(layout: ManagedComfyLayout, port: int, pid: int) -> AmdComfyCl
         raise _PortConflict(
             "Another process answered on the private engine port."
         ) from exc
-    client.gpu_name = _gpu_name(stats)
+    client.private = True
+    client.check_primary_gpu(stats)
     return client
 
 
@@ -141,7 +141,7 @@ class ManagedComfyEngine:
     def custom_nodes_dir(self) -> Path:
         if self.layout is None:
             raise ComfyError(
-                "The private Radeon engine is unavailable on this platform."
+                "The private video engine is unavailable on this platform."
             )
         return self.layout.custom_nodes_dir
 
@@ -161,7 +161,8 @@ class ManagedComfyEngine:
         if self._external_cache and now - self._external_cache[0] < 2:
             return self._external_cache[1]
         try:
-            client = AmdComfyClient.discover((8000, 8188))
+            assert self.layout is not None
+            client = AmdComfyClient.discover((8000, 8188), backend=self.layout.backend)
         except ComfyError:
             client = None
         self._external_cache = now, client
@@ -208,7 +209,7 @@ class ManagedComfyEngine:
             if self.layout is None:
                 return ComfyEngineStatus(
                     status="unsupported",
-                    message="The private engine requires LTX Desktop - AMD 395 MAX on Windows.",
+                    message="The private video engine requires a supported CUDA or ROCm installation on Windows.",
                 )
             if self._phase in ("ready", "installing", "starting"):
                 return ComfyEngineStatus(
@@ -234,12 +235,12 @@ class ManagedComfyEngine:
             if self._installed():
                 return ComfyEngineStatus(
                     status="stopped",
-                    message="The private Radeon video engine is installed and stopped.",
+                    message="The private video engine is installed and stopped.",
                     canStart=True,
                 )
             return ComfyEngineStatus(
                 status="not_installed",
-                message="Set up the bundled Radeon video engine to generate inside LTX Desktop - AMD 395 MAX.",
+                message="Set up the bundled video engine to generate inside LTX Desktop - AMD 395 MAX.",
                 canPrepare=True,
             )
 
@@ -305,7 +306,7 @@ class ManagedComfyEngine:
         self._generation += 1
         ticket = self._generation
         if installed:
-            self._set("starting", "Starting the private Radeon video engine.")
+            self._set("starting", "Starting the private video engine.")
         else:
             self._set("installing", "Preparing the bundled ComfyUI files.")
         threading.Thread(
@@ -344,7 +345,7 @@ class ManagedComfyEngine:
                         return
                     self._set(
                         "starting",
-                        "Loading the private engine and checking its Radeon device.",
+                        "Loading the private engine and checking its selected GPU.",
                     )
                     port = _allocate_port(self._port if attempt == 0 else None)
                     self._port = port
@@ -399,7 +400,6 @@ class ManagedComfyEngine:
                             return
                         if process.poll() is not None:
                             raise ComfyError(self._failed_worker(process.returncode))
-                        client.private = True
                         self._client = client
                         self._set(
                             "ready",
@@ -409,7 +409,7 @@ class ManagedComfyEngine:
                     return
                 else:
                     raise ComfyError(
-                        f"The private engine did not report its Radeon device within {_START_TIMEOUT} seconds. See {log}"
+                        f"The private engine did not report its selected GPU within {_START_TIMEOUT} seconds. See {log}"
                     )
         except Exception as exc:
             with self._lock:
@@ -477,6 +477,8 @@ class ManagedComfyEngine:
         cancelled: Callable[[], bool] | None = None,
     ) -> AmdComfyClient:
         with self._lock:
+            if self.layout is None:
+                raise ComfyError("The private video engine requires a supported CUDA or ROCm installation on Windows.")
             self._check_exit()
             if self._client:
                 return self._client
@@ -497,23 +499,19 @@ class ManagedComfyEngine:
             if self._phase in ("error", "installing", "starting"):
                 raise ComfyError(self._message)
             raise ComfyError(
-                "In LTX Desktop - AMD 395 MAX, open Settings → Models to set up the private video engine, or open ComfyUI Desktop with AMD ROCm."
+                "In LTX Desktop - AMD 395 MAX, open Settings → Models to set up the private video engine, or open ComfyUI Desktop on the selected GPU."
             )
 
 
 @cache
 def managed_comfy() -> ManagedComfyEngine:
     data = os.environ.get("LTX_APP_DATA_DIR", "")
-    if (
-        sys.platform != "win32"
-        or os.environ.get("LTX_REQUIRE_ROCM") != "1"
-        or not data
-        or not Path(data).is_absolute()
-    ):
+    backend = local_video_backend()
+    if backend is None or not data or not Path(data).is_absolute():
         return ManagedComfyEngine(None)
     from services.amd_comfy_provision import ManagedComfyLayout
 
     resources = Path(__file__).resolve().parents[2]
     return ManagedComfyEngine(
-        ManagedComfyLayout(Path(data) / "managed-comfy", resources)
+        ManagedComfyLayout(Path(data) / "managed-comfy", resources, backend)
     )

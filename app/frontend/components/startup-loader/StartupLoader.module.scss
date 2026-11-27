@@ -36,12 +36,26 @@
   -webkit-app-region: drag;
 }
 
-// The endpage artwork is its own full-bleed layer; the progress slot below
-// paints over it.
+.root .titleShell {
+  width: min(calc(100% - 32px), 1120px);
+}
+
 .lockup {
   position: absolute;
-  inset: 0;
+  left: 50%;
+  bottom: calc(50% + clamp(58px, 9vh, 78px));
+  width: clamp(135px, 19vw, 220px);
+  height: clamp(50px, 9vh, 82px);
+  transform: translateX(-50%);
   pointer-events: none;
+}
+
+.branchTitle {
+  position: absolute;
+  top: 50%;
+  width: 100%;
+  transform: translateY(-50%);
+  color: var(--window-fg, var(--semantic-fg-primary));
 }
 
 .progressSlot {
@@ -49,7 +63,7 @@
   top: 50%;
   left: 50%;
   width: calc(var(--spacing-4xl) * 5);
-  transform: translate(-50%, calc(var(--spacing-4xl) + var(--spacing-sm)));
+  transform: translate(-50%, clamp(72px, 12vh, 108px));
   opacity: 0;
   pointer-events: none;
   transition: opacity $duration-moderate $easing-entrance-productive;

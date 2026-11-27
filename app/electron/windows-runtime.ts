@@ -50,6 +50,9 @@ export function windowsRuntimeEnvironment(runtime: WindowsRuntime): NodeJS.Proce
   if (runtime.backend === 'cuda') env.CUDA_VISIBLE_DEVICES = runtime.cudaUuid
   if (runtime.backend === 'api') env.CUDA_VISIBLE_DEVICES = '-1'
   if (runtime.backend === 'rocm' && runtime.hipOrdinal !== undefined) {
+    for (const key of Object.keys(process.env)) {
+      if (/^HSA_OVERRIDE_GFX_VERSION(?:_\d+)?$/i.test(key)) env[key] = undefined
+    }
     env.HIP_VISIBLE_DEVICES = String(runtime.hipOrdinal)
     env.CUDA_VISIBLE_DEVICES = String(runtime.hipOrdinal)
   }

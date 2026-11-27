@@ -18,6 +18,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket
 
+from services import amd_comfy_client
 from services.amd_comfy_client import AmdComfyClient, ComfyCancelled, ComfyError
 
 K6_GRAPH = {
@@ -31,6 +32,11 @@ LTX_GRAPH = {
     "refine": {"class_type": "SamplerCustomAdvanced", "inputs": {"sigmas": ["b", 0]}},
     "90": {"class_type": "SaveVideo"},
 }
+
+
+@pytest.fixture(autouse=True)
+def selected_radeon(monkeypatch):
+    monkeypatch.setattr(amd_comfy_client, "_selected_radeon_name", lambda: "AMD Radeon 8060S Graphics")
 
 
 def _mp4():
@@ -191,7 +197,7 @@ def test_downloads_only_submitted_prompts_mp4_and_steps(tmp_path, graph, expecte
             worker.steps_seen.set()
 
     with _serve(worker) as port:
-        client = AmdComfyClient.discover((port,))
+        client = AmdComfyClient.discover((port,), backend="rocm")
         client.run(graph, tmp_path / "result.mp4", output_node_id="90", on_progress=progress)
     assert seen == expected
     assert (tmp_path / "result.mp4").read_bytes() == worker.result
@@ -202,7 +208,7 @@ def test_cancel_leaves_other_users_prompt_alone(tmp_path, pending):
     worker = Worker(pending=pending)
     with _serve(worker) as port:
         with pytest.raises(ComfyCancelled):
-            AmdComfyClient.discover((port,)).run(
+            AmdComfyClient.discover((port,), backend="rocm").run(
                 K6_GRAPH, tmp_path / "out.mp4", output_node_id="90", is_cancelled=lambda: bool(worker.own)
             )
     assert worker.queue == {"second-user"}
@@ -220,7 +226,7 @@ def test_cancel_leaves_other_users_prompt_alone(tmp_path, pending):
 def test_rejects_servers_whose_primary_device_is_not_rocm(device, name, version):
     worker = Worker(device=device, gpu_name=name, version=version)
     with _serve(worker) as port, pytest.raises(ComfyError, match="must run on the Radeon"):
-        AmdComfyClient.discover((port,))
+        AmdComfyClient.discover((port,), backend="rocm")
 
 
 def test_interrupted_result_download_never_replaces_existing_file(tmp_path):
@@ -230,7 +236,7 @@ def test_interrupted_result_download_never_replaces_existing_file(tmp_path):
     output = destination / "result.mp4"
     output.write_bytes(b"original")
     with _serve(worker) as port, pytest.raises(ComfyError, match="MP4"):
-        AmdComfyClient.discover((port,)).run(K6_GRAPH, output, output_node_id="90")
+        AmdComfyClient.discover((port,), backend="rocm").run(K6_GRAPH, output, output_node_id="90")
     assert output.read_bytes() == b"original"
     assert list(destination.iterdir()) == [output]
 
@@ -239,7 +245,7 @@ def test_two_different_reference_images_with_same_basename_have_separate_names(t
     worker = Worker()
     names = []
     with _serve(worker) as port:
-        client = AmdComfyClient.discover((port,))
+        client = AmdComfyClient.discover((port,), backend="rocm")
         for contents in (b"first image", b"second image", b"first image"):
             path = tmp_path / "source.png"
             path.write_bytes(contents)
@@ -254,7 +260,7 @@ def test_audio_workflow_rejects_silent_mp4(tmp_path):
     graph["75"] = {"class_type": "CreateVideo", "inputs": {"audio": ["71", 0]}}
     graph["90"] = {"class_type": "SaveVideo", "inputs": {"video": ["75", 0]}}
     with _serve(Worker()) as port, pytest.raises(ComfyError, match="missing the audio"):
-        AmdComfyClient.discover((port,)).run(graph, tmp_path / "silent.mp4", output_node_id="90")
+        AmdComfyClient.discover((port,), backend="rocm").run(graph, tmp_path / "silent.mp4", output_node_id="90")
     assert not (tmp_path / "silent.mp4").exists()
 
 
@@ -272,7 +278,64 @@ def test_only_upscaler_allocation_crash_suggests_comfy_launch_workaround(
 ):
     error = {"node_type": node, "exception_message": message, "traceback": trace}
     with _serve(Worker(execution_error=error)) as port, pytest.raises(ComfyError) as failure:
-        AmdComfyClient.discover((port,)).run(LTX_GRAPH, tmp_path / "video.mp4", output_node_id="90")
+        AmdComfyClient.discover((port,), backend="rocm").run(LTX_GRAPH, tmp_path / "video.mp4", output_node_id="90")
     text = str(failure.value)
     assert message in text
     assert ("--disable-dynamic-vram" in text) is show_hint
+
+
+def test_nvidia_discovery_and_render_recheck_match_the_selected_uuid(tmp_path, monkeypatch):
+    selected = "GPU-00112233-4455-6677-8899-aabbccddeeff"
+    other = "GPU-ffeeddcc-bbaa-9988-7766-554433221100"
+    model = "NVIDIA GeForce RTX 4090"
+    devices = [(other, "NVIDIA GeForce RTX 3080"), (selected, model)]
+    monkeypatch.setattr(amd_comfy_client, "_nvidia_inventory", lambda: devices)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", selected)
+    worker = Worker(version="2.10.0+cu128", gpu_name=f"cuda:1 {model} : cudaMallocAsync")
+    with _serve(worker) as port:
+        client = AmdComfyClient.discover((port,), backend="cuda")
+        assert client.gpu_name == worker.gpu_name
+        client.run(K6_GRAPH, tmp_path / "ok.mp4", output_node_id="90")
+        assert (tmp_path / "ok.mp4").read_bytes() == worker.result
+        worker.own = ""
+        worker.gpu_name = "cuda:0 NVIDIA GeForce RTX 3080 : native"
+        with pytest.raises(ComfyError, match="selected NVIDIA adapter"):
+            client.run(K6_GRAPH, tmp_path / "wrong.mp4", output_node_id="90")
+        assert not worker.own
+        # External /system_stats has no physical UUID and both cards now have the same name.
+        devices[:] = [(other, model), (selected, model)]
+        worker.gpu_name = f"cuda:0 {model} : native"
+        with pytest.raises(ComfyError, match="selected NVIDIA adapter"):
+            AmdComfyClient.discover((port,), backend="cuda")
+
+
+@pytest.mark.parametrize(("device", "name", "version"), [
+    ("cuda", "AMD Radeon 8060S Graphics", "2.10.0+rocm"),
+    ("cpu", "NVIDIA", "2.10.0+cu128"),
+    ("cuda", "NVIDIA", "2.10.0+cpu"),
+])
+def test_cuda_discovery_rejects_incompatible_workers(device, name, version):
+    worker = Worker(device=device, gpu_name=name, version=version)
+    with _serve(worker) as port, pytest.raises(ComfyError, match="NVIDIA GPU with CUDA"):
+        AmdComfyClient.discover((port,), backend="cuda")
+
+
+@pytest.mark.parametrize("reported", ["AMD Radeon RX 7900 XTX", "AMD Radeon(TM) Graphics"])
+def test_discovery_skips_a_different_or_unidentifiable_radeon(reported, monkeypatch):
+    # Generic identical strings in two processes may refer to different Radeon chips.
+    monkeypatch.setattr(amd_comfy_client, "_selected_radeon_name", lambda: "AMD Radeon(TM) Graphics")
+    worker = Worker(gpu_name=f"cuda:0 {reported} : native")
+    with _serve(worker) as port, pytest.raises(ComfyError, match="does not identify a supported Radeon"):
+        AmdComfyClient.discover((port,), backend="rocm")
+
+
+@pytest.mark.parametrize("model", ["8040S", "8050S", "8060S"])
+def test_discovery_checks_the_specific_radeon_sibling(model, monkeypatch):
+    actual = f"AMD Radeon(TM) {model} Graphics"
+    monkeypatch.setattr(amd_comfy_client, "_selected_radeon_name", lambda: actual)
+    worker = Worker(gpu_name=f"cuda:2 {actual} : native")
+    with _serve(worker) as port:
+        assert AmdComfyClient.discover((port,), backend="rocm").gpu_name == worker.gpu_name
+        worker.gpu_name = "cuda:1 AMD Radeon(TM) " + ("8050S" if model == "8040S" else "8040S") + " Graphics : native"
+        with pytest.raises(ComfyError, match="differs from the selected Radeon"):
+            AmdComfyClient.discover((port,), backend="rocm")

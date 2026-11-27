@@ -1,9 +1,10 @@
-"""Provision the pinned ComfyUI core for the private Radeon worker in LTX Desktop - AMD 395 MAX."""
+"""Provision the pinned ComfyUI core for the private Windows GPU worker."""
 
 from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import stat
 import tempfile
@@ -13,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from filelock import FileLock
+
+from runtime_config.community_runtime import LocalVideoBackend
 
 CORE_VERSION = "0.38.0"
 CORE_REVISION = "6b747c0428c343e1417219641db93a4fb7cb69ae"
@@ -26,6 +29,7 @@ _INSTALL_MARKER = ".ltx-core-sha256"
 class ManagedComfyLayout:
     root: Path
     resources_dir: Path
+    backend: LocalVideoBackend
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "root", self.root.resolve())
@@ -181,7 +185,7 @@ def private_comfy_command(layout: ManagedComfyLayout, port: int) -> tuple[list[s
     if needs_install(layout):
         raise RuntimeError("Set up the private ComfyUI engine before starting it.")
     if not layout.python_exe.is_file() or not (layout.extra_packages / "ltx-comfy-deps.json").is_file():
-        raise FileNotFoundError("The private AMD Python runtime or ComfyUI dependencies are missing. Reinstall LTX Desktop - AMD 395 MAX.")
+        raise FileNotFoundError("The private GPU Python runtime or ComfyUI dependencies are missing. Reinstall LTX Desktop - AMD 395 MAX.")
     wrapper = Path(__file__).resolve().with_name("amd_comfy_bootstrap.py")
     # --base-directory directs ComfyUI's models, custom_nodes, temp, input,
     # output, user database and preferences to the private data tree.
@@ -189,6 +193,12 @@ def private_comfy_command(layout: ManagedComfyLayout, port: int) -> tuple[list[s
         str(layout.python_exe), "-I", "-B", "-u", str(wrapper), str(layout.core_dir), str(layout.extra_packages),
         "--listen", "127.0.0.1", "--port", str(port), "--base-directory", str(layout.base_dir),
         "--user-directory", str(layout.user_dir), "--disable-auto-launch", "--disable-api-nodes",
-        "--disable-all-custom-nodes", "--whitelist-custom-nodes", "kandinsky6", "--disable-dynamic-vram",
+        "--disable-all-custom-nodes", "--whitelist-custom-nodes", "kandinsky6",
     ]
+    if layout.backend == "rocm":
+        # Avoid the Windows gfx1151 VBAR allocation crash during latent upsampling.
+        argv.append("--disable-dynamic-vram")
+    elif not re.fullmatch(r"GPU-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}",
+                          os.environ.get("CUDA_VISIBLE_DEVICES", ""), flags=re.I):
+        raise RuntimeError("The selected NVIDIA device UUID is missing. Rerun the Windows installer.")
     return argv, _worker_env(layout), layout.core_dir

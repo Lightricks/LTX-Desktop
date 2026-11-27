@@ -8,6 +8,7 @@ from typing import Annotated, Any, Literal, TypeGuard, TypeVar, cast, get_args
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints, create_model, field_validator
 
 from api_types import LTXLocalModelId, LocalAssistantModel
+from runtime_config.community_runtime import local_video_backend
 from runtime_config.reject_reasons import BudgetMode
 from inference.fast_video_pipeline.nag_config import DEFAULT_SCALE as DEFAULT_NAG_SCALE, MAX_SCALE as MAX_NAG_SCALE
 
@@ -108,7 +109,10 @@ class GenerationSeedUpdate(SettingsBaseModel):
 
 
 class AppSettings(SettingsBaseModel):
+    # Separate device preferences: previous releases persisted the Radeon default
+    # even on CUDA, before the CUDA user had a renderer choice.
     amd_fast_engine: AmdFastEngine = "comfy"
+    cuda_fast_engine: AmdFastEngine = "native"
     use_torch_compile: bool = False
     diffusion_stage_cache_enabled: bool = False
     # EXPERIMENTAL (Apple Silicon): decode the conv VAE with per-tap conv2d instead of MPS conv3d.
@@ -162,6 +166,10 @@ class AppSettings(SettingsBaseModel):
     # coerce to off.
     remote_exposure: RemoteExposureSetting = "off"
     activity_dashboard_selections: DashboardSelection = Field(default_factory=DashboardSelection)
+
+    @property
+    def local_fast_engine(self) -> AmdFastEngine:
+        return self.cuda_fast_engine if local_video_backend() == "cuda" else self.amd_fast_engine
 
     @field_validator("budget_mode", mode="before")
     @classmethod
@@ -222,6 +230,8 @@ def make_partial_model(model: type[SettingsModelT]) -> type[SettingsPatchModel]:
 
     fields: dict[str, tuple[Any, Any]] = {}
     for field_name, field_info in model.model_fields.items():
+        if model is AppSettings and field_name == "cuda_fast_engine":
+            continue  # The existing amdFastEngine API field addresses the active GPU.
         partial_annotation = _wrap_optional(_to_partial_annotation(field_info.annotation))
         fields[field_name] = (partial_annotation, Field(default=None))
 
@@ -292,6 +302,7 @@ def resolved_use_conv_vae(settings: AppSettings, *, system: str | None = None) -
 
 def to_settings_response(settings: AppSettings) -> SettingsResponse:
     data = settings.model_dump(by_alias=False)
+    data["amd_fast_engine"] = settings.local_fast_engine
     ltx_key = data.pop("ltx_api_key", "")
     fal_key = data.pop("fal_api_key", "")
     gemini_key = data.pop("gemini_api_key", "")

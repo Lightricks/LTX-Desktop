@@ -29,6 +29,24 @@ def build_fixture(path, files):
 
 
 class ReleaseVerifierTests(unittest.TestCase):
+    def test_strix_halo_receipts_use_verified_gfx1151_runtime(self):
+        with tempfile.TemporaryDirectory() as d:
+            resources = Path(d)
+            (resources / "python").mkdir()
+            canonical = (ROOT / "runtimework/runtime-manifest.json").read_bytes()
+            (resources / "runtime-manifest.json").write_bytes(canonical)
+            marker = {"target": "gfx1151", "manifest_sha256": hashlib.sha256(canonical).hexdigest()}
+            (resources / "python/ltx-amd-runtime.json").write_text(json.dumps(marker))
+            for model in ("8040S", "8050S", "8060S"):
+                with self.subTest(model=model):
+                    selection = {"version": 1, "backend": "rocm", "deviceName": f"AMD Radeon {model}", "hipOrdinal": 2}
+                    (resources / "gpu-runtime.json").write_text(json.dumps(selection))
+                    self.assertEqual(check_installed_runtime(resources, ROOT), selection)
+            marker["target"] = "gfx1100"
+            (resources / "python/ltx-amd-runtime.json").write_text(json.dumps(marker))
+            with self.assertRaisesRegex(ValueError, "runtime target"):
+                check_installed_runtime(resources, ROOT)
+
     def test_marker_and_installed_manifest_cannot_both_be_replaced(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)

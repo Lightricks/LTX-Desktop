@@ -37,7 +37,7 @@ def setup(tmp_path: Path, *, downloader=None, tasks=None, nodes=None):
 
 
 def test_read_only_catalog_does_not_acknowledge_or_schedule_a_download(
-    client, test_state, tmp_path
+    client, test_state, tmp_path, windows_local_gpu
 ):
     tasks = FakeTaskRunner()
     test_state.h3_models = setup(tmp_path, tasks=tasks)

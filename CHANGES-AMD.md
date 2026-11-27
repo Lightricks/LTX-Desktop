@@ -2,6 +2,12 @@
 
 Peter Beery created this community branch of Lightricks’ LTX Desktop on behalf of SpaceSpeak.com.
 
+## 1.3.3-community.2
+
+The extended local model picker, model downloads and app-managed ComfyUI worker are available on supported Windows NVIDIA CUDA and Radeon ROCm installations. Both can select LTX 2.5 INT8, Kandinsky 6 Lite and MiniMax H3 alongside native LTX. H3 keeps its setup and usage consent checks. NVIDIA starts with native LTX selected and can switch renderers from the same model picker.
+
+The Windows installer also recognizes the Radeon 8040S and 8050S alongside the 8060S and verifies GPU execution before enabling the Radeon runtime. The launch screen and Home identify the AMD GPU support branch. Windows users can open the branch credits through Help → About. The taskbar icon has a larger atom and thicker orbital lines.
+
 ## 1.3.3-community.1
 
 - Merged the published Lightricks Desktop v1.3.3 release, including Keyframes, the shorter Extend/Retake context and Windows generation fixes. The LTX-2 inference dependency remains at upstream v1.6.0.

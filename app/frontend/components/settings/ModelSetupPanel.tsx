@@ -13,8 +13,8 @@ import styles from './ModelSetupPanel.module.scss'
 export type ModelSetupKind = 'ltx-2.3' | 'ltx-2.5' | ManagedModelKind
 
 export const modelSetupLabels: Record<ModelSetupKind, string> = {
-  'ltx-2.3': 'LTX 2.3 Fast · Native BF16',
-  'ltx-2.5': 'LTX 2.5 Fast · Native BF16',
+  'ltx-2.3': 'LTX 2.3 Fast · Native',
+  'ltx-2.5': 'LTX 2.5 Fast · Native',
   'comfy-int8': 'LTX 2.5 Fast · ComfyUI INT8',
   kandinsky: 'Kandinsky 6 Video Lite Distill · ComfyUI',
   ...H3_NAMES,

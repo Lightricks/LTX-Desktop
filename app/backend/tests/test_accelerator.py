@@ -49,6 +49,29 @@ def test_universal_runtime_rejects_reordered_hip_adapter(monkeypatch) -> None:
         verify_rocm_execution(require_gfx1151=True)
 
 
+@pytest.mark.parametrize(("name", "arch", "expected"), [
+    ("AMD Radeon(TM) 8040S Graphics", "", "BF16 GPU execution check failed"),
+    ("AMD Radeon(TM) 8050S Graphics", None, "BF16 GPU execution check failed"),
+    ("AMD Radeon(TM) 8060S Graphics", "", "BF16 GPU execution check failed"),
+    ("AMD Radeon(TM) Graphics", "gfx1151:xnack-", "BF16 GPU execution check failed"),
+    ("AMD Radeon(TM) 8050S Graphics", "gfx1150", "Rerun the Windows installer"),
+    ("AMD Radeon(TM) 890M Graphics", "", "Rerun the Windows installer"),
+    ("AMD Radeon(TM) 18050S Graphics", "", "Rerun the Windows installer"),
+])
+def test_pinned_rocm_checks_gfx1151_architecture_and_known_name_fallback(monkeypatch, name, arch, expected):
+    monkeypatch.setattr(torch.version, "hip", "7.13.0", raising=False)
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "get_device_name", lambda device: name)
+    monkeypatch.setattr(torch.cuda, "get_device_properties", lambda device: SimpleNamespace(gcnArchName=arch))
+
+    def fail_compute(*args, **kwargs):
+        raise RuntimeError("driver rejected the BF16 operation")
+
+    monkeypatch.setattr(torch, "ones", fail_compute)
+    with pytest.raises(RuntimeError, match=expected):
+        verify_rocm_execution(require_gfx1151=True)
+
+
 def test_amd_startup_reports_failed_kernels_on_an_enumerated_gpu(monkeypatch) -> None:
     monkeypatch.setattr(torch.version, "hip", "10.0", raising=False)
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
