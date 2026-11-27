@@ -6,7 +6,7 @@ Peter Beery created this community branch of Lightricks’ LTX Desktop on behalf
 
 - Merged the published Lightricks Desktop v1.3.3 release, including Keyframes, the shorter Extend/Retake context and Windows generation fixes. The LTX-2 inference dependency remains at upstream v1.6.0.
 - Windows setup selects the upstream NVIDIA runtime or the Radeon gfx1151 runtime for the available hardware. Radeon installations retain the managed ComfyUI engine, model picker, downloads, license prompt, and ROCm compatibility changes.
-- The application, Windows shortcuts and installer use a teal icon with the original white LTX lettering and a gold star.
+- The application, Windows shortcuts and installer use a flat teal icon with a cyan atom and a gold lens-flare star in the upper right.
 - The title screen identifies the community branch. Settings → About and the native About dialog identify the original project and credit Peter Beery and SpaceSpeak.com.
 - Uses the existing Windows application identity, installation path and user data directories for upgrades from the AMD edition.
 
