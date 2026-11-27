@@ -1,6 +1,6 @@
-# LTX Desktop community edition 1.3.3-community.3
+# LTX Desktop community fork 1.3.3-community.4
 
-Peter Beery created this community branch of Lightricks’ LTX Desktop on behalf of SpaceSpeak.com. The Windows x64 installer supports the original NVIDIA CUDA renderer and Radeon 8040S, 8050S and 8060S graphics in the Ryzen AI Max family. These three GPUs use the gfx1151 architecture. Existing AMD installations keep their app name, installation location and user data.
+Original LTX Desktop by Lightricks. Community fork by Peter Beery / SpaceSpeak.com. The Windows x64 installer supports the original NVIDIA CUDA renderer and Radeon 8040S, 8050S and 8060S graphics in the Ryzen AI Max family. These three GPUs use the gfx1151 architecture. Existing AMD installations keep their app name, installation location and user data.
 
 On supported Windows GPUs, open **Settings → Models** to manage the native LTX models, the ComfyUI INT8 renderer, Kandinsky Lite, and MiniMax H3. You can also select and set up a model directly in **Image to Video** or **Text to Video**. H3 Ref2VA takes reference images and appears under **Image to Video**.
 
@@ -11,11 +11,21 @@ Version 1.3.3 includes upstream Keyframes, a shorter context option for faster E
 On an M5 Pro, run the Mac installer from Finder in macOS. The Windows installer recognizes the Parallels Display Adapter as an API-only device. Native macOS uses PyTorch Metal (MPS) and the Mac’s unified memory.
 
 1. Check **Apple menu → About This Mac** for the chip, memory and macOS version. Local generation needs macOS 26 or later and at least 24 GiB of unified memory. Lightricks recommends 32 GB or more. Allow at least 100 GB of free storage for local models. Macs with macOS 14 or 15, or less than 24 GiB of memory, can use the app in API mode. [Upstream Mac requirements](https://github.com/Lightricks/LTX-Desktop#system-requirements)
-2. Download **LTX-Desktop-1.3.3-community.3-Apple-Silicon-Online-Setup.zip** and double-click the ZIP to extract it. Open **LTX Desktop - SpaceSpeak Setup** and double-click **Install LTX Desktop.command**. Keep the extracted folder together during setup. The installer downloads and verifies the native runtime components. On a Mac eligible for local generation it checks Metal execution before installing.
+2. Download **LTX-Desktop-1.3.3-community.4-Apple-Silicon-Online-Setup.zip** and double-click the ZIP to extract it. Open **LTX Desktop - SpaceSpeak Setup** and double-click **Install LTX Desktop.command**. Keep the extracted folder together during setup. Setup verifies and reuses the official 836 MB Mac archive from an earlier attempt when available. It preserves the signed Electron frameworks and helpers, checks the finished bundle and tests Metal on an eligible Mac before activating the installation.
 3. Open **LTX Desktop - SpaceSpeak** in your home **Applications** folder. Open **Settings → Models** to download a native LTX model. The Mac build supports native LTX 2.5 Fast and 2.3 Fast. The managed ComfyUI, Kandinsky and MiniMax H3 integrations in this release run on supported Windows GPUs.
 4. For a first local test, pick **LTX 2.5 Fast**, a five-second clip and a low resolution. The app stores its community profile under `~/Library/Application Support/LTXDesktopSpaceSpeak`.
 
 The Mac installer assembles the community app from pinned components and signs it locally. This release has no Apple Developer ID notarization. If macOS requests approval for an identified item you trust, use the per-item control under **System Settings → Privacy & Security**. [Apple’s guide to opening apps](https://support.apple.com/en-us/102445)
+
+## Install on Ubuntu with NVIDIA CUDA
+
+On an x86-64 PC running Ubuntu 22.04 or later, install the NVIDIA driver and download the Linux online installer. From your Downloads folder, run it as your regular desktop user. The system asks for permission when it installs the Debian package.
+
+```bash
+python3 LTX-Desktop-1.3.3-community.4-Linux-amd64-Online-Setup.zip
+```
+
+Open **LTX Desktop - SpaceSpeak** from the applications menu. First launch downloads the pinned Linux runtime. Under **Settings → Models**, choose a native LTX model. The managed ComfyUI, Kandinsky and MiniMax integrations are available on supported Windows GPUs. [Upstream Linux requirements](https://github.com/Lightricks/LTX-Desktop#system-requirements)
 
 ## How Windows setup selects a GPU
 
@@ -23,13 +33,13 @@ The Mac installer assembles the community app from pinned components and signs i
 | --- | --- |
 | Supported NVIDIA GPU | Native LTX on CUDA by default, plus the managed ComfyUI renderer, model picker, and downloads. On systems with both supported targets, setup selects NVIDIA. |
 | Radeon 8040S, 8050S or 8060S without a qualifying NVIDIA GPU | The existing ROCm runtime with native LTX, the managed ComfyUI engine, in-app model setup, and optional Kandinsky and MiniMax H3 workflows. |
-| Neither local target is available | The upstream API-only mode. Remote generation requires the appropriate service credentials. |
+| Neither local target is available | API-only mode using a CPU runtime. This includes the Parallels Display Adapter. Remote generation requires the appropriate service credentials. |
 
 The bundled Windows ROCm and PyTorch libraries target gfx1151. Setup checks the selected Radeon with a short GPU calculation before activating the installation. AMD lists the 8040S, 8050S and 8060S under this architecture. [AMD ROCm 7.13 hardware list](https://rocm.docs.amd.com/en/7.13.0-preview/about/release-notes.html)
 
-Install the GPU vendor's driver before running setup. The installer selects the runtime automatically. Rerun setup after switching graphics hardware. The NVIDIA runtime download is approximately 3.30 GB before model weights. In the Windows Start menu, open **LTX Desktop - AMD 395 MAX Diagnostics** to see the selected GPU and run a compute check. Its log is saved at `%LOCALAPPDATA%\LTXDesktopAMD\logs\gpu-diagnostic.txt`. On either local GPU path, the app can set up its own ComfyUI engine on a fresh PC. Model weights download when selected.
+Install the GPU vendor's driver before running setup. The installer selects the runtime automatically. Rerun setup after switching graphics hardware. The NVIDIA runtime download is approximately 3.30 GB before model weights. API mode uses roughly 365 MB of CPU runtime wheels and checks that the API backend initializes. In the Windows Start menu, open **LTX Desktop - AMD 395 MAX Diagnostics** to see the selected GPU and run a compute check. Its log is saved at `%LOCALAPPDATA%\LTXDesktopAMD\logs\gpu-diagnostic.txt`. On either local GPU path, the app can set up its own ComfyUI engine on a fresh PC. Model weights download when selected.
 
-The launch screen and Home identify this as the AMD GPU support branch. On Windows, choose **Help → About** for the app version, upstream project, and branch credits.
+The launch screen and Home identify this as the community fork with AMD GPU support. On Windows, choose **Help → About** for the app version, upstream project, and fork credits.
 
 ## Render from LTX Desktop - AMD 395 MAX
 
@@ -57,15 +67,41 @@ FL2VA Base or Ref2VA needs **51.53 GB** from a fresh installation. After FL2VA B
 
 **Optional existing ComfyUI installation.** LTX can use a compatible ComfyUI server on the selected GPU already running on this PC on port 8000 or 8188, with the models in that server's folders. If LTX cannot identify that server’s GPU, choose **Use LTX-managed engine** to run on the adapter verified by setup. External Kandinsky installations use their own ComfyUI Manager and need core 0.38.0 or newer. The included engine already meets this requirement. Each model component retains its upstream license. [Kandinsky model and node guide](https://github.com/kandinskylab/kandinsky-6/blob/73b892b730885e02ab58fbf7fc5cb10b78e1e3da/comfyui/README.md#manual-downloads)
 
-## Publish this repository
+## Publish this code to your GitHub fork
 
-Extract the ZIP into a new folder. In GitHub Desktop, choose **File → Add local repository**, select the extracted `LTX-Desktop-AMD-395-MAX` folder, then choose **Publish repository**. In VS Code you can open the same folder and choose **Publish to GitHub**. The folder includes a Git repository on `main`. Keep its hidden `.git` directory when extracting. You can publish the code before downloading any build dependencies.
+1. Sign in to GitHub and select **Fork → Create fork** on [Lightricks/LTX-Desktop](https://github.com/Lightricks/LTX-Desktop). If you already have a fork, open it. Copy its HTTPS URL from **Code**.
+2. Extract the compact source ZIP into a new folder, including its hidden `.git` directory. Open a terminal inside the extracted repository. Confirm that `git status --short` is empty. The release tag names the exact tree used to build the installers.
+3. Run the following once in this extracted checkout. Replace `YOUR-ACCOUNT` with your GitHub username or organization. These commands connect the compact source history to its exact Lightricks base and place the work on a new branch in your fork.
 
-This source snapshot contains the Windows and native Apple silicon app, all three MiniMax H3 integrations, license notices and compact online installer builder. Large upstream previews and two unmodified dependency archives are restored from URLs pinned in [source-assets.json](source-assets.json). The rest of the source is present and editable immediately. Each restored file is checked against its original SHA-256. The H3 weights are a separate, optional download handled by the application.
+```bash
+git switch -c spacespeak-gpu v1.3.3-community.4
+git remote add origin https://github.com/YOUR-ACCOUNT/LTX-Desktop.git
+git remote add upstream https://github.com/Lightricks/LTX-Desktop.git
+git fetch --no-tags upstream refs/tags/v1.3.3
+git merge --allow-unrelated-histories -s ours -m "Connect SpaceSpeak fork to Lightricks v1.3.3" 2ab055b98f7590581c56f9e0b2ff55ac56d459b7
+git diff --exit-code v1.3.3-community.4 HEAD
+```
+
+4. An empty diff confirms that the history connection preserved the release files. Run `git push -u origin spacespeak-gpu` to publish your revision. On GitHub, open **Branches → spacespeak-gpu** in your fork. You can make this your fork's default branch in its settings.
+
+The repository includes the fork source, build scripts, platform installers' source, upstream notices and all three Windows MiniMax integrations. Build preparation restores large upstream media and two dependency archives from pinned URLs and verifies their SHA-256 digests. Model weights download when requested in the application. [Pinned source assets](source-assets.json)
 
 ## Build the native Mac online installer
 
 To build and test on GitHub, open **Actions → Build and check Apple silicon online installer** and run the workflow. It builds the app, assembles the compact installer, installs on a macOS arm64 runner and checks application startup. The runner verifies Metal execution when its OS, memory and GPU support local generation. The same on-device checks run in the installer on an eligible physical Mac. The Mac builder and end-user instructions are in [macwork](macwork/).
+
+## Build the Linux online installer
+
+On x86-64 Linux with the source assets restored, Node 24, pnpm from Corepack and the Debian packaging tools installed, build the application and its Debian package.
+
+```bash
+(cd app && corepack pnpm install --frozen-lockfile && corepack pnpm run build:frontend && corepack pnpm exec electron-builder --linux deb --x64 --config electron-builder.linux.cjs --publish never)
+curl -fL --retry 3 -o LTX-Desktop-amd64.deb https://github.com/Lightricks/LTX-Desktop/releases/download/v1.3.3/LTX-Desktop-amd64.deb
+python3 linuxwork/build_online.py --upstream-deb LTX-Desktop-amd64.deb --deb app/release/LTX-Desktop-SpaceSpeak-1.3.3-community.4-amd64.deb --output LTX-Desktop-1.3.3-community.4-Linux-amd64-Online-Setup.zip
+python3 -B linuxwork/test_online.py
+```
+
+The builder checks the pinned upstream digest. The end-user installer verifies the reconstructed Debian control and application archives before installing.
 
 ## Build the Windows online installer
 
@@ -95,6 +131,7 @@ The unsigned Windows x64 installer is written under `build/release/`. End users 
 | [runtimework/](runtimework/) | Python and ROCm dependency locks, acquisition and staging code, the three locally built wheels, and their rebuild instructions. |
 | [setupwork/](setupwork/) | Windows NSIS source, per-user installer engine and integrity checks. |
 | [macwork/](macwork/) | Native Apple silicon online installer, app assembly and upgrade tests. |
+| [linuxwork/](linuxwork/) | Ubuntu x86-64 online installer, compact package builder and reconstruction tests. |
 | [repair/](repair/) | Double-click offline repair for existing per-user AMD installations. |
 | [checks/](checks/) | Installed-tree and GPU verification, with a receipt for the originally distributed shell. |
 

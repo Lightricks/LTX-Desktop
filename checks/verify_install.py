@@ -91,13 +91,13 @@ def inspect_shell(path, original_release=False):
             read_entry("dist/" + module.removeprefix("./"))
 
 
-def check_manifest(runtime_manifest, marker_path, expected_manifest):
+def check_manifest(runtime_manifest, marker_path, expected_manifest, target="gfx1151"):
     marker = json.loads(marker_path.read_bytes())
-    if marker.get("target") != "gfx1151" or sha256(runtime_manifest) != marker.get("manifest_sha256"):
-        raise ValueError("AMD runtime target or manifest hash does not match")
-    payload = runtime_manifest.read_bytes()
-    if payload != expected_manifest.read_bytes():
-        raise ValueError("Installed runtime manifest differs from repository/runtimework/runtime-manifest.json")
+    if marker.get("target") != target or sha256(runtime_manifest) != marker.get("manifest_sha256"):
+        raise ValueError("The runtime target or manifest hash does not match")
+    payload = text_bytes(runtime_manifest)
+    if payload != text_bytes(expected_manifest):
+        raise ValueError(f"Installed runtime manifest differs from repository copy of {expected_manifest.name}")
     if json.loads(payload).get("target") != marker["target"]:
         raise ValueError("Target mismatch between runtime manifest and runtime marker")
 
@@ -107,7 +107,13 @@ def check_installed_runtime(resources, source):
     if selection["backend"] == "rocm":
         check_manifest(resources / "runtime-manifest.json", resources / "python/ltx-amd-runtime.json",
                        source / "runtimework/runtime-manifest.json")
+    elif selection["backend"] == "api" and (resources / "api-runtime.json").is_file():
+        check_manifest(resources / "api-runtime.json", resources / "python/ltx-api-runtime.json",
+                       source / "setupwork/src/api-runtime.json", target="cpu-api")
+        if (resources / "python/ltx-amd-runtime.json").exists() or (resources / "cuda-runtime.json").exists():
+            raise ValueError("API-only CPU install contains a conflicting GPU runtime marker")
     else:
+        # Through community.3, API-only installations shipped the upstream CUDA build.
         manifest = resources / "cuda-runtime.json"
         expected = source / "setupwork/src/cuda-runtime.json"
         # JSON equality tolerates a Git-for-Windows checkout with CRLF line endings.
@@ -115,6 +121,8 @@ def check_installed_runtime(resources, source):
             raise ValueError("NVIDIA runtime manifest differs from the pinned release")
         if (resources / "python/ltx-amd-runtime.json").exists():
             raise ValueError("The NVIDIA runtime contains a Radeon installation marker")
+        if (resources / "python/ltx-api-runtime.json").exists():
+            raise ValueError("The NVIDIA runtime contains a CPU-only installation marker")
     return selection
 
 

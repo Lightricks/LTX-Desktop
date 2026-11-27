@@ -6,6 +6,7 @@ import { forkProductName } from '../shared/fork-identity'
 const appFolders: Partial<Record<NodeJS.Platform, string>> = {
   win32: 'LTXDesktopAMD',
   darwin: 'LTXDesktopSpaceSpeak',
+  linux: 'LTXDesktopSpaceSpeak',
 }
 export const APP_FOLDER_NAME = appFolders[process.platform] ?? 'LTXDesktop'
 

@@ -37,8 +37,13 @@ jobs:
           curl --fail --location --retry 3 --output upstream-mac.zip \
             https://github.com/Lightricks/LTX-Desktop/releases/download/v1.3.3/LTX-Desktop-arm64.zip
           echo '90bad9cc1662e52f3d291ca2e44e2bee5651c5497e1720477317a6c616db7f51  upstream-mac.zip' | shasum -a 256 --check
+          curl --fail --location --retry 3 --output electron.zip \
+            https://github.com/electron/electron/releases/download/v41.0.2/electron-v41.0.2-darwin-arm64.zip
           cd "$GITHUB_WORKSPACE"
-          python3 macwork/build.py --upstream-zip "$RUNNER_TEMP/mac-cache/upstream-mac.zip" --output "$RUNNER_TEMP/LTX-Mac-Online-Setup.zip"
+          python3 macwork/build.py --upstream-zip "$RUNNER_TEMP/mac-cache/upstream-mac.zip" \
+            --electron-zip "$RUNNER_TEMP/mac-cache/electron.zip" --output "$RUNNER_TEMP/LTX-Mac-Online-Setup.zip"
+          # End users need only the official native LTX archive in the setup cache.
+          rm "$RUNNER_TEMP/mac-cache/electron.zip"
       - name: Install and launch the packaged Apple silicon app
         run: |
           mkdir -p "$RUNNER_TEMP/setup" "$RUNNER_TEMP/Applications"
@@ -46,6 +51,7 @@ jobs:
           "$RUNNER_TEMP/setup/LTX Desktop - SpaceSpeak Setup/Install LTX Desktop.command" \
             --no-launch --cache "$RUNNER_TEMP/mac-cache" --applications-dir "$RUNNER_TEMP/Applications"
           application="$RUNNER_TEMP/Applications/LTX Desktop - SpaceSpeak.app"
+          python3 checks/check_mac_frameworks.py "$application" "$RUNNER_TEMP/mac-cache/upstream-mac.zip"
           python_bundle="$application/Contents/Resources/python"
           PYTHONHOME="$python_bundle" "$python_bundle/bin/python3" -B checks/check_native_mps.py
           python3 checks/check_mac_app_launch.py "$application"

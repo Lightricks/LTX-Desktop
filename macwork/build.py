@@ -10,6 +10,7 @@ from zipfile import ZipFile, ZipInfo, ZIP_STORED, ZIP_DEFLATED
 HERE = Path(__file__).resolve().parent
 APP = HERE.parent / "app"
 DONOR_HASH = "90bad9cc1662e52f3d291ca2e44e2bee5651c5497e1720477317a6c616db7f51"
+ELECTRON_LICENSE_ARCHIVE_HASH = "8e18ef53da62bca6132508721c1f94e06b5773b48d366b95e593479892f0a2fe"
 DONOR_RES = "LTX Desktop.app/Contents/Resources/"
 PRODUCT = "LTX Desktop - SpaceSpeak"
 BLOCK_SIZE = 4 * 1024**2
@@ -41,10 +42,13 @@ def pack_header(header):
     return struct.pack("<4I", 4, 8 + padded, 4 + padded, len(body)) + body.ljust(padded, b"\0")
 
 
-def build(upstream_zip, output):
+def build(upstream_zip, electron_zip, output):
     with upstream_zip.open("rb") as file:
         if hashlib.file_digest(file, "sha256").hexdigest() != DONOR_HASH:
             raise ValueError("The upstream Mac ZIP does not match Lightricks v1.3.3.")
+    with electron_zip.open("rb") as file:
+        if hashlib.file_digest(file, "sha256").hexdigest() != ELECTRON_LICENSE_ARCHIVE_HASH:
+            raise ValueError("The Electron license archive does not match Electron 41.0.2 for macOS arm64.")
     for required in ("dist/index.html", "dist-electron/main.js", "dist-electron/preload.js", "dist-remote/index.html"):
         if not (APP / required).is_file():
             raise ValueError("Build the community frontend before packaging: " + required)
@@ -127,7 +131,7 @@ def build(upstream_zip, output):
             add_app_file(name, (APP / name).read_bytes())
         metadata = {key: manifest[key] for key in ("version", "type", "main", "license", "homepage")}
         metadata.update(name="ltx-desktop-spacespeak", productName=PRODUCT,
-                        description="SpaceSpeak community branch of Lightricks LTX Desktop")
+                        description="Community fork of Lightricks LTX Desktop by Peter Beery / SpaceSpeak.com")
         add_app_file("package.json", json.dumps(metadata, indent=2).encode())
 
         def add_resources(root, prefix, include):
@@ -145,6 +149,12 @@ def build(upstream_zip, output):
         add_resources(APP / "resources/licenses", "licenses/", lambda p: True)
         add_resources(APP / "resources/explore-assets", "explore-assets/", lambda p: True)
         loose.append(["icon.icns", record((APP / "resources/icon.icns").read_bytes())])
+        # Ship the complete notices from Electron/Chromium. The end user's Mac only
+        # needs the LTX archive, which contains the already-sealed native bundles.
+        with ZipFile(electron_zip) as licenses:
+            for name in ("LICENSE", "LICENSES.chromium.html"):
+                loose.append(["licenses/electron/" + name, record(licenses.read(name))])
+
 
         encoded_header = pack_header(header)
         parts.insert(0, record(encoded_header))
@@ -168,6 +178,7 @@ def build(upstream_zip, output):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--upstream-zip", required=True, type=Path)
+    parser.add_argument("--electron-zip", required=True, type=Path, help="Electron 41.0.2 darwin-arm64 ZIP (license notices only)")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-    build(args.upstream_zip, args.output)
+    build(args.upstream_zip, args.electron_zip, args.output)

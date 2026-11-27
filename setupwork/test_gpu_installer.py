@@ -7,6 +7,8 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+import zipfile
+import shutil
 from unittest.mock import Mock, patch
 
 from src import cuda_runtime, gpu_selection, setup_engine
@@ -38,26 +40,90 @@ def stage_release(root, members):
 
 
 class WindowsGpuInstallerTests(unittest.TestCase):
-    def test_cuda_and_api_use_exact_split_runtime_with_no_rocm_repair(self):
-        for selected in (CUDA, API):
-            with self.subTest(selected=selected), tempfile.TemporaryDirectory() as temp:
-                root = Path(temp)
-                resources = root / "resources"
-                resources.mkdir()
-                stage_release(root, {"python-embed/python.exe": b"official",
-                                     "python-embed/Lib/site-packages/torch/version.py": b"CUDA"})
-                with patch.object(cuda_runtime, "check_python") as probe, patch.object(setup_engine, "install_rocm") as rocm:
-                    downloads = setup_engine.install_runtime_for_hardware(root, resources, root, root / "cache", selected)
-                rocm.assert_not_called()
-                python_dir, selected_backend, env = probe.call_args.args
-                self.assertEqual(python_dir, resources / "python")
-                self.assertEqual(selected_backend["backend"], selected["backend"])
-                self.assertEqual(env["CUDA_VISIBLE_DEVICES"], selected.get("cudaUuid", "-1"))
-                self.assertEqual(len(downloads), 2)
-                self.assertEqual((python_dir / "python.exe").read_bytes(), b"official")
-                self.assertEqual((resources / "cuda-runtime.json").read_bytes(), (root / "cuda-runtime.json").read_bytes())
-                self.assertEqual(json.loads((resources / "gpu-runtime.json").read_text()), selected)
-                self.assertFalse((resources / "runtime-manifest.json").exists())
+    def test_cuda_uses_official_split_runtime_and_app_local_crt(self):
+        selected = CUDA
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            resources = root / "resources"
+            resources.mkdir()
+            stage_release(root, {"python-embed/python.exe": b"official",
+                                 "python-embed/Lib/site-packages/torch/version.py": b"CUDA"})
+            (root / "vcredist").mkdir()
+            (root / "vcredist" / "msvcp140.dll").write_bytes(b"CRT")
+            with patch.object(cuda_runtime, "check_python") as probe, patch.object(setup_engine, "install_rocm") as rocm:
+                downloads = setup_engine.install_runtime_for_hardware(root, resources, root, root / "cache", selected)
+            rocm.assert_not_called()
+            python_dir, selected_backend, env = probe.call_args.args
+            self.assertEqual(python_dir, resources / "python")
+            self.assertEqual(selected_backend["backend"], selected["backend"])
+            self.assertEqual(env["CUDA_VISIBLE_DEVICES"], selected["cudaUuid"])
+            self.assertEqual(len(downloads), 2)
+            self.assertEqual((python_dir / "python.exe").read_bytes(), b"official")
+            self.assertEqual((python_dir / "msvcp140.dll").read_bytes(), b"CRT")
+            self.assertEqual((resources / "cuda-runtime.json").read_bytes(), (root / "cuda-runtime.json").read_bytes())
+            self.assertEqual(json.loads((resources / "gpu-runtime.json").read_text()), selected)
+            self.assertFalse((resources / "runtime-manifest.json").exists())
+
+    def test_api_stages_cpu_wheels_and_validates_server_before_writing_receipt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            resources = root / "resources"
+            resources.mkdir()
+            runtime = root / "python"
+            runtime.mkdir()
+            (runtime / "python.exe").write_bytes(b"windows fixture")
+            crt = root / "vcredist"
+            crt.mkdir()
+            (crt / "msvcp140.dll").write_bytes(b"CRT")
+            repo = Path(__file__).resolve().parents[1]
+            shutil.copy(repo / "runtimework/install_runtime.py", root)
+            packages = root / "wheels"
+            packages.mkdir()
+            wheel = packages / "test_package-1.0-py3-none-any.whl"
+            with zipfile.ZipFile(wheel, "w") as archive:
+                archive.writestr("test_package/example.py", "value = 1")
+            manifest = {"python": "3.13.12", "target": "cpu-api", "wheels": [{
+                "filename": wheel.name, "sha256": setup_engine.digest(wheel),
+                "size": wheel.stat().st_size, "url": None}]}
+            (root / "api-runtime.json").write_text(json.dumps(manifest))
+            def verify(stage, env):
+                self.assertEqual(env["LTX_GPU_RUNTIME"], "api")
+                self.assertEqual(env["CUDA_VISIBLE_DEVICES"], "-1")
+                self.assertFalse((stage / "gpu-runtime.json").exists())
+                self.assertFalse((stage / "cuda-runtime.json").exists())
+                self.assertFalse((stage / "python/ltx-amd-runtime.json").exists())
+                self.assertFalse((stage / "python/Lib/site-packages/sitecustomize.py").exists())
+                self.assertEqual((stage / "python/msvcp140.dll").read_bytes(), b"CRT")
+                self.assertEqual(json.loads((stage / "python/ltx-api-runtime.json").read_bytes())["target"], "cpu-api")
+                self.assertTrue((stage / "python/Lib/site-packages/test_package/example.py").is_file())
+            with patch.object(setup_engine, "check_api_runtime", side_effect=verify) as check, patch.object(cuda_runtime, "install") as cuda:
+                setup_engine.install_runtime_for_hardware(root, resources, packages, root / "cache", dict(API))
+            check.assert_called_once()
+            cuda.assert_not_called()
+            self.assertEqual(json.loads((resources / "gpu-runtime.json").read_bytes()), API)
+            self.assertEqual(json.loads((resources / "api-runtime.json").read_bytes()), manifest)
+
+    def test_api_probe_failure_keeps_the_selection_unpublished(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with patch.object(setup_engine, "install_locked_wheels", return_value=[]), \
+                    patch.object(setup_engine, "check_api_runtime", side_effect=RuntimeError("CPU import failed")):
+                with self.assertRaisesRegex(RuntimeError, "CPU import failed"):
+                    setup_engine.install_runtime_for_hardware(root, root, root, root, dict(API))
+            self.assertFalse((root / "gpu-runtime.json").exists())
+
+    def test_api_lock_uses_common_app_wheels_and_only_cpu_torch(self):
+        repo = Path(__file__).resolve().parents[1]
+        def records(path):
+            return {w["filename"].split("-")[0]: w for w in json.loads(path.read_bytes())["wheels"]}
+        cpu = records(repo / "setupwork/src/api-runtime.json")
+        rocm = records(repo / "runtimework/runtime-manifest.json")
+        for name in ("rocm", "rocm_sdk_core", "rocm_sdk_libraries_gfx1151"):
+            del rocm[name]
+        for name in ("torch", "torchvision", "torchaudio"):
+            del rocm[name]
+            self.assertIn("+cpu-cp313-cp313-win_amd64.whl", cpu.pop(name)["filename"])
+        self.assertEqual(cpu, rocm)
 
     def test_rocm_does_not_fetch_cuda(self):
         with tempfile.TemporaryDirectory() as temp:

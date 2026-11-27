@@ -1,5 +1,5 @@
 #!/bin/bash
-# Per-user Apple Silicon installer. Both donor downloads have pinned release digests.
+# Per-user Apple silicon installer. The native Mac download is pinned to its release digest.
 set -euo pipefail
 umask 077
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin
@@ -75,26 +75,24 @@ fetch() {
 
 fetch upstream-mac.zip 'https://github.com/Lightricks/LTX-Desktop/releases/download/v1.3.3/LTX-Desktop-arm64.zip' \
   90bad9cc1662e52f3d291ca2e44e2bee5651c5497e1720477317a6c616db7f51
-fetch electron.zip 'https://github.com/electron/electron/releases/download/v41.0.2/electron-v41.0.2-darwin-arm64.zip' \
-  8e18ef53da62bca6132508721c1f94e06b5773b48d366b95e593479892f0a2fe
-
 echo "Preparing the native Mac runtime and desktop"
 ditto -x -k "$cache/upstream-mac.zip" "$stage/upstream"
-ditto -x -k "$cache/electron.zip" "$stage/electron"
 donor="$stage/upstream/LTX Desktop.app/Contents/Resources"
 bundle="$stage/$product.app"
 resources="$bundle/Contents/Resources"
-mv "$stage/electron/Electron.app" "$bundle"
+mkdir -p "$resources"
 "$donor/python/bin/python3" -I -B "$here/materialize.py" assemble "$here/community.zip" "$donor" "$bundle"
 mv "$donor/python" "$resources/python"
-# Retain the stock Electron distribution's licenses alongside the community app notices.
-mkdir -p "$resources/licenses/electron"
-for notice in "$stage/electron"/LICENSE*; do
-  if [[ -f "$notice" ]]; then cp "$notice" "$resources/licenses/electron/"; fi
+echo "Verifying the signed Electron frameworks and helper apps"
+for nested in "$bundle/Contents/Frameworks/"*.framework "$bundle/Contents/Frameworks/"*.app; do
+  if ! codesign --verify --deep --strict --verbose=1 "$nested"; then
+    echo "The signature of ${nested##*/} could not be verified in the staged Mac application." >&2
+    exit 1
+  fi
 done
 
 echo "Signing the community bundle locally and checking the installation"
-codesign --force --sign - --timestamp=none --entitlements "$here/entitlements.mac.plist" "$bundle"
+codesign --force --sign - --identifier com.spacespeak.ltx-desktop-community --timestamp=none --entitlements "$here/entitlements.mac.plist" "$bundle"
 codesign --verify --deep --strict "$bundle"
 "$resources/python/bin/python3" -I -B "$here/check_native_mps.py" --backend "$resources/backend"
 "$resources/python/bin/python3" -I -B "$here/materialize.py" activate "$bundle" "$apps"

@@ -248,7 +248,9 @@ function getArchiveBase(): string {
   if (isDev && process.env.LTX_PYTHON_URL) {
     return process.env.LTX_PYTHON_URL.replace(/^["']+|["']+$/g, '')
   }
-  const version = app.getVersion()
+  // The community release is independently versioned. Its Linux backend uses
+  // the CUDA Python runtime published with the matching upstream desktop.
+  const version = process.platform === 'linux' ? '1.3.3' : app.getVersion()
   return `https://github.com/Lightricks/ltx-desktop/releases/download/v${version}`
 }
 

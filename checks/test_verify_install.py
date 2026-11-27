@@ -76,6 +76,28 @@ class ReleaseVerifierTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "differs from the pinned release"):
                 check_installed_runtime(resources, ROOT)
 
+    def test_api_cpu_verifier_requires_the_pinned_manifest_and_matching_receipt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            resources = Path(temp)
+            (resources / "python").mkdir()
+            selection = {"version": 1, "backend": "api", "deviceName": "No supported local GPU"}
+            (resources / "gpu-runtime.json").write_text(json.dumps(selection))
+            canonical = (ROOT / "setupwork/src/api-runtime.json").read_bytes()
+            manifest = resources / "api-runtime.json"
+            manifest.write_bytes(canonical)
+            receipt = {"target": "cpu-api", "manifest_sha256": hashlib.sha256(canonical).hexdigest()}
+            marker = resources / "python/ltx-api-runtime.json"
+            marker.write_text(json.dumps(receipt))
+            self.assertEqual(check_installed_runtime(resources, ROOT), selection)
+            (resources / "cuda-runtime.json").touch()
+            with self.assertRaisesRegex(ValueError, "conflicting GPU"):
+                check_installed_runtime(resources, ROOT)
+            (resources / "cuda-runtime.json").unlink()
+            receipt["target"] = "gfx1151"
+            marker.write_text(json.dumps(receipt))
+            with self.assertRaisesRegex(ValueError, "runtime target"):
+                check_installed_runtime(resources, ROOT)
+
     def test_fresh_shell_passes_but_missing_or_damaged_renderer_fails(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "app.asar"

@@ -1,4 +1,4 @@
-"""Per-user installer for the Windows LTX Desktop community branch."""
+"""Per-user installer for the Windows LTX Desktop community fork."""
 from __future__ import annotations
 
 import argparse
@@ -13,6 +13,7 @@ import ssl
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -20,7 +21,7 @@ import urllib.request
 import zipfile
 
 MARKER = ".ltx-amd-managed-v1"
-RELEASE = "1.3.3-community.3"
+RELEASE = "1.3.3-community.4"
 
 def digest(path):
     with path.open("rb") as stream:
@@ -211,9 +212,46 @@ def require_free_space(root, required):
         raise RuntimeError(f"Free at least {(required + margin) / 1024**3:.1f} GiB on the application drive.")
 
 
+def install_locked_wheels(bundle, resources, cache, adjacent, manifest):
+    items = json.loads(manifest.read_bytes())["wheels"]
+    packages = wheelhouse(items, bundle, adjacent, cache)
+    require_free_space(resources, sum(unpack_size(packages / w["filename"]) for w in items))
+    python_dir = resources / "python"
+    shutil.copytree(bundle / "python", python_dir)
+    if (bundle / "vcredist").is_dir():
+        shutil.copytree(bundle / "vcredist", python_dir, dirs_exist_ok=True)
+    exec_logged([sys.executable, "-u", "-X", "utf8", str(bundle / "install_runtime.py"),
+                 "--python-dir", str(python_dir), "--wheelhouse", str(packages), "--manifest", str(manifest)])
+    return [cache / item["filename"] for item in items] if packages == cache else []
+
+
+def check_api_runtime(resources, env):
+    # Import the real packaged server under a disposable, offline profile. Its
+    # native media libraries and the CPU-only policy must work before activation.
+    probe = (
+        "import ctypes, sys; ctypes.windll.kernel32.SetDllDirectoryW('');"
+        "sys.path.insert(0, sys.argv[1]);"
+        "import torch, torchvision, torchaudio, uvicorn, ltx2_server;"
+        "assert not torch.version.cuda and not torch.version.hip, 'Expected CPU PyTorch';"
+        "assert torch.ones(1).sum().item() == 1, 'CPU tensor check failed';"
+        "assert callable(ltx2_server.app) and ltx2_server.LOCAL_GENERATIONS_MODE == 'unsupported',"
+        "'API-only backend did not initialize'"
+    )
+    with tempfile.TemporaryDirectory(prefix="ltx-api-check-") as profile:
+        env = dict(env, LTX_APP_DATA_DIR=profile, LTX_ASSETS_DIR="", LTX_PORT="0", LTX_REMOTE_PORT="0",
+                   LTX_DEV_MODE="0", HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1")
+        backend = resources / "backend"
+        result = subprocess.run([str(resources / "python/python.exe"), "-I", "-B", "-c", probe, str(backend)],
+                                cwd=backend, env=env, capture_output=True, text=True,
+                                errors="replace", timeout=300)
+    if result.returncode:
+        raise RuntimeError(f"Windows API-only CPU runtime failed to initialize (code {result.returncode}): "
+                           + (result.stderr.strip() or result.stdout.strip()))
+    logging.info("Verified CPU tensor execution and API-only backend initialization.")
+
+
 def install_rocm(bundle, resources, cache, adjacent):
     manifest = bundle / "runtime-manifest.json"
-    items = json.loads(manifest.read_text(encoding="utf-8"))["wheels"]
     python_dir = resources / "python"
     archive = bundle / "runtime.tar.xz"
     logging.info("Installing the native gfx1151 runtime. Large DLLs may take several minutes.")
@@ -224,17 +262,11 @@ def install_rocm(bundle, resources, cache, adjacent):
         with tarfile.open(archive, "r|xz") as payload:
             payload.extractall(python_dir, filter="data")
     else:
-        packages = wheelhouse(items, bundle, adjacent, cache)
-        require_free_space(resources, sum(unpack_size(packages / w["filename"]) for w in items))
-        shutil.copytree(bundle / "python", python_dir)
-        exec_logged([sys.executable, "-u", "-X", "utf8", str(bundle / "install_runtime.py"),
-                     "--python-dir", str(python_dir), "--wheelhouse", str(packages), "--manifest", str(manifest)])
-        if packages == cache:
-            downloads = [cache / item["filename"] for item in items]
+        downloads = install_locked_wheels(bundle, resources, cache, adjacent, manifest)
     exec_logged([sys.executable, "-u", "-X", "utf8", str(bundle / "repair_single_gpu.py"),
                  "--python-dir", str(python_dir)])
     shutil.copyfile(bundle / "sitecustomize.py", python_dir / "Lib/site-packages/sitecustomize.py")
-    if (bundle / "vcredist").is_dir():
+    if archive.is_file() and (bundle / "vcredist").is_dir():
         shutil.copytree(bundle / "vcredist", python_dir, dirs_exist_ok=True)
     if not (python_dir / "ltx-amd-runtime.json").is_file():
         raise RuntimeError("The Radeon runtime receipt is missing.")
@@ -252,7 +284,13 @@ def install_runtime_for_hardware(bundle, resources, adjacent, cache, selection):
 
     python_dir = resources / "python"
     downloads = []
-    if selection["backend"] in ("cuda", "api"):
+    if selection["backend"] == "api":
+        source = bundle / "api-runtime.json"
+        logging.info("Installing the CPU-only Windows runtime for API mode.")
+        downloads = install_locked_wheels(bundle, resources, cache, adjacent, source)
+        check_api_runtime(resources, gpu_selection.child_environment(selection))
+        shutil.copyfile(source, resources / source.name)
+    elif selection["backend"] == "cuda":
         source = bundle / "cuda-runtime.json"
         manifest = json.loads(source.read_text(encoding="utf-8"))
         part_cache = cache / ("cuda-" + manifest["release"])
@@ -267,11 +305,11 @@ def install_runtime_for_hardware(bundle, resources, adjacent, cache, selection):
                 remaining += max(0, item["size"] - saved)
         require_free_space(resources, manifest["unpackedBytes"] + remaining)
         downloads = cuda_runtime.install(manifest, part_cache, python_dir, fetch)
+        if (bundle / "vcredist").is_dir():
+            shutil.copytree(bundle / "vcredist", python_dir, dirs_exist_ok=True)
         try:
             cuda_runtime.check_python(python_dir, selection, gpu_selection.child_environment(selection))
         except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-            if selection["backend"] != "cuda":
-                raise
             fallback = gpu_selection.select_gpu(exclude_cuda=True)
             if fallback["backend"] != "rocm":
                 raise RuntimeError("The installed NVIDIA driver could not run the pinned CUDA runtime. "

@@ -147,7 +147,7 @@ if (!gotLock) {
       applicationVersion: app.getVersion(),
       copyright: 'Copyright © 2026 Lightricks',
       credits: forkCredit,
-      authors: ['Lightricks (original LTX Desktop)', 'Peter Beery on behalf of SpaceSpeak.com (community branch)'],
+      authors: ['Lightricks (original LTX Desktop)', 'Peter Beery / SpaceSpeak.com (community fork)'],
     })
     setupCSP()
     installRemoteKeepAwake({

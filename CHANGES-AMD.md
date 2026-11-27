@@ -1,10 +1,17 @@
 # Changes for LTX Desktop - AMD 395 MAX
 
-Peter Beery created this community branch of Lightricks’ LTX Desktop on behalf of SpaceSpeak.com.
+Original LTX Desktop by Lightricks. Community fork by Peter Beery / SpaceSpeak.com.
+
+## 1.3.3-community.4
+
+- Apple silicon setup now preserves the signed frameworks and helpers from the official arm64 app. Setup reuses the previous verified download, signs the fork locally, verifies the assembled bundle and tests Metal on eligible Macs before installation.
+- The Windows installer uses CPU-only PyTorch for the API profile selected in Parallels. Setup supplies the required Microsoft runtime libraries and exercises the API backend before activation. NVIDIA CUDA and Radeon ROCm keep their local renderers and shared model picker.
+- Added a compact Ubuntu x86-64 online installer for native NVIDIA CUDA. First launch fetches the published Lightricks runtime pinned to the upstream version used by this fork.
+- The launch screen identifies the community fork and platform GPU support. About credits Peter Beery / SpaceSpeak.com and names Lightricks as the original developer.
 
 ## 1.3.3-community.3
 
-- Adds a native Apple silicon online installer for the community branch. The app uses Metal for local LTX on eligible M-series Macs, including M5 Pro. It uses its own macOS profile and bundle identity. Rerun the community installer to upgrade it.
+- Adds a native Apple silicon online installer for the community fork. The app uses Metal for local LTX on eligible M-series Macs, including M5 Pro. It uses its own macOS profile and bundle identity. Rerun the community installer to upgrade it.
 - Windows setup retries missing-issuer certificate failures through Windows certificate verification and checks the expected size and SHA-256 before activating a downloaded component. Download errors now identify the cause in the installer details.
 - The taskbar and Dock icons use the larger white atom, thicker orbit lines and larger gold lens flare.
 
@@ -12,14 +19,14 @@ Peter Beery created this community branch of Lightricks’ LTX Desktop on behalf
 
 The extended local model picker, model downloads and app-managed ComfyUI worker are available on supported Windows NVIDIA CUDA and Radeon ROCm installations. Both can select LTX 2.5 INT8, Kandinsky 6 Lite and MiniMax H3 alongside native LTX. H3 keeps its setup and usage consent checks. NVIDIA starts with native LTX selected and can switch renderers from the same model picker.
 
-The Windows installer also recognizes the Radeon 8040S and 8050S alongside the 8060S and verifies GPU execution before enabling the Radeon runtime. The launch screen and Home identify the AMD GPU support branch. Windows users can open the branch credits through Help → About. The taskbar icon has a larger atom and thicker orbital lines.
+The Windows installer also recognizes the Radeon 8040S and 8050S alongside the 8060S and verifies GPU execution before enabling the Radeon runtime. The launch screen and Home identify the community fork with AMD GPU support. Windows users can open the fork credits through Help → About. The taskbar icon has a larger atom and thicker orbital lines.
 
 ## 1.3.3-community.1
 
 - Merged the published Lightricks Desktop v1.3.3 release, including Keyframes, the shorter Extend/Retake context and Windows generation fixes. The LTX-2 inference dependency remains at upstream v1.6.0.
 - Windows setup selects the upstream NVIDIA runtime or the Radeon gfx1151 runtime for the available hardware. Radeon installations retain the managed ComfyUI engine, model picker, downloads, license prompt, and ROCm compatibility changes.
 - The application, Windows shortcuts and installer use a flat teal icon with a cyan atom and a gold lens-flare star in the upper right.
-- The title screen identifies the community branch. Settings → About and the native About dialog identify the original project and credit Peter Beery and SpaceSpeak.com.
+- The title screen identifies the community fork. Settings → About and the native About dialog identify the original project and credit Peter Beery / SpaceSpeak.com.
 - Uses the existing Windows application identity, installation path and user data directories for upgrades from the AMD edition.
 
 ## 1.3.2-amd.8 local MiniMax H3 video

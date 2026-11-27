@@ -1,4 +1,4 @@
-"""Install the hash-locked LTX/Radeon wheel payload into an embedded Windows Python.
+"""Install a hash-locked Radeon or API-only wheel set into embedded Windows Python.
 
 Usage: python install_runtime.py --python-dir DIR --wheelhouse DIR --manifest FILE
 The caller supplies a *staging directory*, with stock python.exe extracted into it.
@@ -64,7 +64,10 @@ def install(python_dir: Path, wheelhouse: Path, manifest_path: Path) -> None:
         raise ValueError('The target directory needs the 3.13.12 Windows embeddable Python distribution.')
     site = python_dir / 'Lib' / 'site-packages'
     site.mkdir(parents=True, exist_ok=True)
-    marker = python_dir / 'ltx-amd-runtime.json'
+    target = manifest['target']
+    if target not in ('gfx1151', 'cpu-api'):
+        raise ValueError(f'Unknown Windows wheel target: {target}')
+    marker = python_dir / ('ltx-amd-runtime.json' if target == 'gfx1151' else 'ltx-api-runtime.json')
     marker.unlink(missing_ok=True)
     count = len(manifest['wheels'])
     for i, item in enumerate(manifest['wheels'], 1):
@@ -95,10 +98,11 @@ def install(python_dir: Path, wheelhouse: Path, manifest_path: Path) -> None:
     )
     # The embedded Windows interpreter uses isolated ._pth paths; when the
     # setup executable runs this script, its directory is not on sys.path.
-    import runpy
-    patch = runpy.run_path(str(Path(__file__).with_name('repair_single_gpu.py')))
-    patch['apply_to_site'](site)
-    configure_rocm_loader(site)
+    if target == 'gfx1151':
+        import runpy
+        patch = runpy.run_path(str(Path(__file__).with_name('repair_single_gpu.py')))
+        patch['apply_to_site'](site)
+        configure_rocm_loader(site)
     marker.write_text(json.dumps({
         'python': manifest['python'], 'target': manifest['target'], 'wheel_count': count,
         'manifest_sha256': hashlib.sha256(manifest_path.read_bytes()).hexdigest(),

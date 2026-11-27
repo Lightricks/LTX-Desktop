@@ -8,7 +8,6 @@ import json
 import os
 from pathlib import Path
 import plistlib
-import shutil
 from zipfile import ZipFile
 
 PRODUCT = "LTX Desktop - SpaceSpeak"
@@ -61,14 +60,22 @@ def assemble(payload, donor, bundle):
             with path.open("wb") as stream:
                 copy(key, stream)
 
-    # Stock Electron finds its original, unmodified signed helper executables in Frameworks.
-    (target / "default_app.asar").unlink()
-    (contents / "MacOS/Electron").rename(contents / "MacOS" / PRODUCT)
-    shutil.copytree(donor / "koffi", target / "koffi", symlinks=True)
-    shutil.copy2(donor / "python-deps-hash.txt", target / "python-deps-hash.txt")
-    info_path = contents / "Info.plist"
-    info = plistlib.loads(info_path.read_bytes())
-    info.update(CFBundleName=PRODUCT, CFBundleDisplayName=PRODUCT, CFBundleIdentifier=IDENTIFIER,
+    # Move the entire pre-signed framework tree on the staging volume. Its
+    # Versions/Current symlinks, nested signatures and CodeResources stay intact.
+    shell = donor.parent
+    (shell / "Frameworks").rename(contents / "Frameworks")
+    (shell / "PkgInfo").rename(contents / "PkgInfo")
+    (contents / "MacOS").mkdir()
+    info = plistlib.loads((shell / "Info.plist").read_bytes())
+    (shell / "MacOS" / info["CFBundleExecutable"]).rename(contents / "MacOS" / PRODUCT)
+    for path in donor.glob("*.lproj"):
+        path.rename(target / path.name)
+    for name in ("koffi", "python-deps-hash.txt"):
+        (donor / name).rename(target / name)
+
+    # Electron uses CFBundleName to find the signed "LTX Desktop Helper …" apps.
+    # CFBundleDisplayName, executable and bundle identifier identify our edition.
+    info.update(CFBundleDisplayName=PRODUCT, CFBundleIdentifier=IDENTIFIER,
                 CFBundleExecutable=PRODUCT, CFBundleIconFile="icon.icns",
                 CFBundleShortVersionString=plan["version"].split("-")[0],
                 CFBundleVersion=plan["version"].split("-")[0], SpaceSpeakCommunityVersion=plan["version"],
@@ -76,7 +83,7 @@ def assemble(payload, donor, bundle):
                 NSMicrophoneUsageDescription="LTX Desktop uses the microphone for Audio to Video.",
                 ElectronAsarIntegrity={"Resources/app.asar": {"algorithm": "SHA256", "hash": plan["headerHash"]}})
     info.pop("CFBundleURLTypes", None)
-    info_path.write_bytes(plistlib.dumps(info))
+    (contents / "Info.plist").write_bytes(plistlib.dumps(info))
 
 
 def activate(bundle, folder):

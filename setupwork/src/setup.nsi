@@ -19,11 +19,11 @@ OutFile "${OUT}"
 InstallDir "$LOCALAPPDATA\Programs\LTXDesktopAMD"
 !define MUI_ICON "${ICONFILE}"
 !define MUI_UNICON "${ICONFILE}"
-VIProductVersion "1.3.3.3"
+VIProductVersion "1.3.3.4"
 VIAddVersionKey "ProductName" "${APP}"
-VIAddVersionKey "ProductVersion" "1.3.3.3"
+VIAddVersionKey "ProductVersion" "1.3.3.4"
 VIAddVersionKey "FileDescription" "${APP} Setup"
-VIAddVersionKey "FileVersion" "1.3.3.3"
+VIAddVersionKey "FileVersion" "1.3.3.4"
 VIAddVersionKey "LegalCopyright" "LTX Desktop contributors and component authors"
 ShowInstDetails show
 ShowUninstDetails show
@@ -85,6 +85,7 @@ Section "${APP}"
   File "${SRC}/gpu_selection.py"
   File "${SRC}/cuda_runtime.py"
   File "${SRC}/cuda-runtime.json"
+  File "${SRC}/api-runtime.json"
   File "${SRC}/diagnose.py"
   File "${SRC}/AMD-Diagnostics.cmd"
   File "${BUNDLE}/runtime-manifest.json"
@@ -116,7 +117,7 @@ Section "${APP}"
   nsExec::ExecToLog '"$PLUGINSDIR\bundle\python\python.exe" -u -X utf8 "$PLUGINSDIR\bundle\setup_engine.py" "$PLUGINSDIR\bundle" "$EXEDIR" "$EXEPATH"'
   Pop $0
   ${If} $0 != 0
-    MessageBox MB_OK|MB_ICONSTOP "Setup stopped. See the installation details or open $LOCALAPPDATA\LTXDesktopAMD\setup\install.log."
+    MessageBox MB_OK|MB_ICONSTOP "Setup stopped. See the installation details or open $LOCALAPPDATA\LTXDesktopAMD\setup\install.log." /SD IDOK
     SetErrorLevel 1
     Abort
   ${EndIf}
@@ -134,7 +135,7 @@ Section "${APP}"
   CreateShortcut "$SMPROGRAMS\${APP}\${DIAGNOSTIC_LINK}.lnk" "$INSTDIR\application\AMD-Diagnostics.cmd" "" "$INSTDIR\application\${APP}.exe"
   CreateShortcut "$DESKTOP\${APP}.lnk" "$INSTDIR\application\${APP}.exe"
   WriteRegStr HKCU "${KEY}" "DisplayName" "${APP}"
-  WriteRegStr HKCU "${KEY}" "DisplayVersion" "1.3.3-community.3"
+  WriteRegStr HKCU "${KEY}" "DisplayVersion" "1.3.3-community.4"
   WriteRegStr HKCU "${KEY}" "DisplayIcon" "$INSTDIR\application\${APP}.exe"
   WriteRegStr HKCU "${KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
   WriteRegDWORD HKCU "${KEY}" "NoModify" 1

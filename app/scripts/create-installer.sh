@@ -79,7 +79,7 @@ BUILDER_ARGS=""
 case "$PLATFORM" in
   mac)   BUILDER_ARGS="--mac" ;;
   win)   BUILDER_ARGS="--win" ;;
-  linux) BUILDER_ARGS="--linux" ;;
+  linux) BUILDER_ARGS="--linux --config electron-builder.linux.cjs" ;;
 esac
 
 if [ "$UNPACK" = true ]; then
@@ -119,7 +119,7 @@ if [ "$UNPACK" = true ]; then
       echo "Unpacked app ready!"
       LINUX_UNPACKED="$RELEASE_DIR/linux-unpacked"
       [ -d "$RELEASE_DIR/linux-arm64-unpacked" ] && LINUX_UNPACKED="$RELEASE_DIR/linux-arm64-unpacked"
-      echo "Run: $LINUX_UNPACKED/ltx-desktop"
+      echo "Run: $LINUX_UNPACKED/ltx-desktop-spacespeak"
       ;;
   esac
 else

@@ -94,7 +94,9 @@ fi
 # ============================================================
 # Step 1: Prepare Python environment
 # ============================================================
-if [ "$SKIP_PYTHON" = false ]; then
+if [ "$PLATFORM" = linux ]; then
+  echo "[1/3] Linux downloads the pinned NVIDIA Python runtime on first launch."
+elif [ "$SKIP_PYTHON" = false ]; then
   echo "[1/3] Preparing Python environment..."
 
   if [ -d "$PYTHON_EMBED_DIR" ]; then
@@ -113,7 +115,7 @@ else
   echo "[1/3] Skipping Python preparation (using existing)..."
 fi
 
-if [ ! -d "$PYTHON_EMBED_DIR" ]; then
+if [ "$PLATFORM" != linux ] && [ ! -d "$PYTHON_EMBED_DIR" ]; then
   echo "ERROR: Python environment not found at $PYTHON_EMBED_DIR"
   echo "Run without --skip-python to create it."
   exit 1
