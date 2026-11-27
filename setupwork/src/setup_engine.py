@@ -9,15 +9,18 @@ import logging
 import os
 from pathlib import Path
 import shutil
+import ssl
 import subprocess
 import sys
 import tarfile
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 
 MARKER = ".ltx-amd-managed-v1"
-RELEASE = "1.3.3-community.2"
+RELEASE = "1.3.3-community.3"
 
 def digest(path):
     with path.open("rb") as stream:
@@ -33,6 +36,72 @@ def owned_remove(path):
             raise RuntimeError(f"An unmanaged directory already exists at {path}.")
         shutil.rmtree(path)
 
+def _issuer_error(err):
+    while isinstance(err, urllib.error.URLError):
+        err = err.reason
+    if not isinstance(err, ssl.SSLCertVerificationError):
+        return False
+    # OpenSSL X509 errors for missing/untrusted issuers and self-signed chains.
+    # Expired certificates and hostname mismatches should fail on the first path.
+    return getattr(err, "verify_code", None) in (2, 18, 19, 20, 21, 27)
+
+
+def _download_with_windows_trust(url, partial):
+    """Download with the inbox Schannel client, which builds chains using Windows trust."""
+    curl = Path(os.environ["SystemRoot"]) / "System32" / "curl.exe"
+    host = urllib.parse.urlsplit(url).hostname
+    filename = partial.with_suffix("").name
+    env = os.environ.copy()
+    # urllib also reads the user's static Windows proxy settings when there is
+    # no environment proxy. Keep credentials out of the command line and log.
+    proxy = urllib.request.getproxies().get("https")
+    if proxy:
+        env["HTTPS_PROXY"] = proxy
+        if urllib.request.proxy_bypass(host):
+            env["NO_PROXY"] = ",".join(filter(None, [env.get("NO_PROXY"), host]))
+
+    command = [str(curl), "--disable", "--silent", "--fail", "--location", "--globoff",
+               "--proto", "=https", "--proto-redir", "=https", "--connect-timeout", "30",
+               "--speed-limit", "1", "--speed-time", "120", "--write-out", "%{http_code}",
+               "--output", str(partial)]
+    resume = partial.is_file() and partial.stat().st_size > 0
+    while True:
+        args = command + (["--continue-at", "-"] if resume else []) + ["--url", url]
+        try:
+            result = subprocess.run(args, env=env, capture_output=True,
+                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except FileNotFoundError as err:
+            raise RuntimeError(f"Python could not verify the certificate for {host}, and Windows "
+                               "curl.exe is missing. Install Windows updates and retry setup.") from err
+        if result.returncode == 0:
+            return
+        if resume and (result.returncode == 33 or result.stdout.strip() == b"416"):
+            # Some mirrors ignore or reject Range requests. Start a clean transfer.
+            partial.unlink(missing_ok=True)
+            resume = False
+            continue
+        if result.returncode in (51, 60):
+            raise RuntimeError(f"Windows could not verify the HTTPS certificate while fetching {filename} from {host}. "
+                               "Check the Windows date and time and install Windows updates. "
+                               "If your network inspects HTTPS, ask its administrator to check the proxy's "
+                               "certificate chain and trusted root in Windows, then retry setup.")
+        if result.returncode == 35:
+            raise OSError(f"Windows could not establish a TLS connection to download {filename} from {host} "
+                          "(curl exit 35). Check Windows updates and your network's HTTPS proxy settings.")
+        raise OSError(f"Windows HTTPS download from {host} failed (curl exit {result.returncode}, "
+                      f"HTTP {result.stdout.strip().decode('ascii', errors='replace')}).")
+
+
+def _download_with_python(url, partial, start):
+    request = urllib.request.Request(url, headers={"Range": f"bytes={start}-"} if start else {})
+    with urllib.request.urlopen(request, timeout=120) as response:
+        append = start > 0 and response.status == 206
+        if response.status == 206 and not response.headers.get("Content-Range", "").startswith(f"bytes {start}-"):
+            raise OSError("Unexpected range in download response")
+        with partial.open("ab" if append else "wb") as output:
+            shutil.copyfileobj(response, output, 1024 * 1024)
+
+
 def fetch(item, path):
     if matches(path, item):
         return
@@ -40,6 +109,7 @@ def fetch(item, path):
     if not url or not url.startswith("https://"):
         raise RuntimeError(f"Missing bundled runtime component: {path.name}")
     partial = path.with_suffix(path.suffix + ".partial")
+    windows_trust = False
     for attempt in range(4):
         try:
             start = partial.stat().st_size if partial.is_file() else 0
@@ -49,13 +119,17 @@ def fetch(item, path):
                     return
                 partial.unlink()
                 start = 0
-            request = urllib.request.Request(url, headers={"Range": f"bytes={start}-"} if start else {})
-            with urllib.request.urlopen(request, timeout=120) as response:
-                append = start > 0 and response.status == 206
-                if response.status == 206 and not response.headers.get("Content-Range", "").startswith(f"bytes {start}-"):
-                    raise OSError("Unexpected range in download response")
-                with partial.open("ab" if append else "wb") as output:
-                    shutil.copyfileobj(response, output, 1024 * 1024)
+            if not windows_trust:
+                try:
+                    _download_with_python(url, partial, start)
+                except OSError as err:
+                    if sys.platform != "win32" or not _issuer_error(err):
+                        raise
+                    logging.info("Python could not build the certificate chain for %s. "
+                                 "Retrying with Windows certificate verification.", path.name)
+                    windows_trust = True
+            if windows_trust:
+                _download_with_windows_trust(url, partial)
             if not matches(partial, item):
                 if partial.stat().st_size >= item["size"]:
                     partial.unlink()
@@ -362,8 +436,8 @@ def main():
             else:
                 unpack_media(args.setup_exe, args.bundle)
             deploy(args.bundle, root, args.installer_dir / "runtime-packages", state / "downloads", compact)
-    except Exception:
-        logging.exception("Installation did not finish. Close LTX Desktop - AMD 395 MAX before retrying setup.")
+    except Exception as err:
+        logging.exception("Installation did not finish: %s", err)
         return 1
     return 0
 

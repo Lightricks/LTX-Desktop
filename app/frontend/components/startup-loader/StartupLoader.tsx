@@ -1,3 +1,4 @@
+import { desktopProductName } from '../../lib/desktop-product-name.ts'
 import { useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Button } from '@ds/Button/Button'
@@ -248,7 +249,7 @@ export function StartupLoader({
             role="status"
             aria-live="polite"
             aria-busy={!isReady && python?.error == null}
-            aria-label={python?.snapshot.statusLabel ?? 'LTX Desktop - AMD 395 MAX'}
+            aria-label={python?.snapshot.statusLabel ?? desktopProductName}
           >
             <EndpageLockup paused={!started} />
           </div>

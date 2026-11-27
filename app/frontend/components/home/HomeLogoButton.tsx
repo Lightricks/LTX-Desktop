@@ -1,3 +1,4 @@
+import { desktopProductName } from '../../lib/desktop-product-name.ts'
 import LtxLogo from "@/assets/home/icons/LTX-logo.svg?react";
 import { paths } from "../../paths";
 import type { HomeSidebarActions } from "./home-sidebar-items";
@@ -19,7 +20,7 @@ export function HomeLogoButton({
       aria-label="Home"
       onClick={() => actions.goTo(paths.home, { clearActiveProject: true })}
     >
-      <LtxLogo className={logoClassName} title="LTX Desktop - AMD 395 MAX" />
+      <LtxLogo className={logoClassName} title={desktopProductName} />
     </button>
   );
 }

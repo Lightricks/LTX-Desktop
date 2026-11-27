@@ -1,3 +1,4 @@
+import { desktopProductName } from '../../lib/desktop-product-name.ts'
 import { type MenuDefinition } from '../../components/MenuBar'
 import { TEXT_PRESETS } from '../../types/project'
 import type { TimelineClip } from '../../types/project-model'
@@ -242,7 +243,7 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
       label: 'Help',
       items: [
         { id: 'shortcuts', label: 'Keyboard Shortcuts...', action: () => p.setKbEditorOpen(true) },
-        { id: 'about', label: 'About LTX Desktop - AMD 395 MAX', action: () => window.dispatchEvent(new CustomEvent('open-settings', { detail: { tab: 'about' } })) },
+        { id: 'about', label: `About ${desktopProductName}`, action: () => window.dispatchEvent(new CustomEvent('open-settings', { detail: { tab: 'about' } })) },
       ],
     },
   ]), [

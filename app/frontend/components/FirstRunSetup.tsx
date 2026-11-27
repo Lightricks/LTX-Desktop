@@ -1,3 +1,4 @@
+import { desktopProductName } from '../lib/desktop-product-name.ts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@ds/Button/Button'
@@ -471,7 +472,7 @@ export function LaunchGate({ onComplete }: LaunchGateProps) {
             {currentStep === 'location' && (
               <div className={`${styles.step} ${styles.stepScroll}`}>
                 <Text as="h2" variant="heading" size="xl" className={`${styles.stepTitle} ${styles.stepTitleOnly}`}>
-                  Set up LTX Desktop - AMD 395 MAX
+                  Set up {desktopProductName}
                 </Text>
 
                 <div

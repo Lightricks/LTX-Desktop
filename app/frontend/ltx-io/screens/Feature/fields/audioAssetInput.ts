@@ -1,3 +1,4 @@
+import { desktopProductName } from '../../../../lib/desktop-product-name.ts'
 import {
   mediaErrorCode,
   mediaIngestErrorMessage,
@@ -41,7 +42,7 @@ export const COULD_NOT_ADD_AUDIO_MESSAGE = "Could not add this audio.";
 export const AUDIO_FILE_TOO_LARGE_MESSAGE = "This file is too large.";
 export const VIDEO_HAS_NO_AUDIO_MESSAGE = "This video has no audio track.";
 export const VIDEO_AUDIO_UNSUPPORTED_MESSAGE =
-  "Extracting audio from video is only available in LTX Desktop - AMD 395 MAX.";
+  `Extracting audio from video is only available in ${desktopProductName}.`;
 export const AUDIO_FILE_PATH_UNREADABLE_MESSAGE =
   "Could not read the dropped file path.";
 

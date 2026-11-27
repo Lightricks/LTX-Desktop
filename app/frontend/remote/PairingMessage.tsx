@@ -35,14 +35,14 @@ export function PairingStatus({
     return (
       <PairingMessage
         title="Missing pairing token"
-        body="Open this page from the QR code or link shown in LTX Desktop - AMD 395 MAX."
+        body="Open this page from the QR code or link shown in LTX Desktop."
       />
     );
   }
   return (
     <PairingMessage
       title="Could not pair"
-      body="Could not reach Desktop, or this link is no longer valid. Keep LTX Desktop - AMD 395 MAX open, stay on this Wi-Fi, and open the current QR code or link."
+      body="Could not reach Desktop, or this link is no longer valid. Keep LTX Desktop open, stay on this Wi-Fi, and open the current QR code or link."
     />
   );
 }

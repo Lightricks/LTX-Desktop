@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { productName } from "../../../package.json";
-import { forkCredit } from "../../../shared/fork-identity";
+import { forkCredit, forkProductName, usesCommunityInstaller } from "../../../shared/fork-identity";
 
 import { Button as DsButton } from "@/ds/Button/Button";
 import { Text } from "@/ds/Text/Text";
@@ -110,7 +109,8 @@ export function AboutSettingsSection({
   onCheckForUpdates: () => void;
 }) {
   const isMac = window.electronAPI.platform === "darwin";
-  const usesForkInstaller = window.electronAPI.platform === "win32";
+  const usesForkInstaller = usesCommunityInstaller(window.electronAPI.platform);
+  const productName = forkProductName(window.electronAPI.platform);
   const [appVersion, setAppVersion] = useState("");
   const [autoCheckUpdates, setAutoCheckUpdates] = useState(true);
   const [view, setView] = useState<AboutDocumentView>("main");

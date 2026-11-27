@@ -1,3 +1,4 @@
+import { desktopProductName } from '../lib/desktop-product-name.ts'
 import {
   Archive,
   Boxes,
@@ -610,7 +611,7 @@ export function SettingsScreen({
                 <SettingToggle
                   rowLayout="preference"
                   title="Anonymous analytics"
-                  description="Share anonymous usage data to help improve LTX Desktop - AMD 395 MAX. Only basic technical information is collected. Never personal data or generated content."
+                  description={`Share anonymous usage data to help improve ${desktopProductName}. Only basic technical information is collected. Never personal data or generated content.`}
                   enabled={analyticsEnabled}
                   onToggle={handleToggleAnalytics}
                 />

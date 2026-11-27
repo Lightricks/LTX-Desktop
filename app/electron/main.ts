@@ -28,7 +28,7 @@ import { createWindow, getMainWindow } from './window'
 import { sendAnalyticsEvent } from './analytics'
 import { shouldSendLaunched, type LaunchedTrigger } from './launched-event'
 import type { DeepLinkIntent } from '../shared/deep-link.ts'
-import { forkCredit } from '../shared/fork-identity'
+import { forkCredit, usesCommunityInstaller } from '../shared/fork-identity'
 
 function logAppVersion(): void {
   if (!app.isPackaged) {
@@ -73,8 +73,8 @@ if (!gotLock) {
   initSessionLog()
   logAppVersion()
 
-  // Leave the official Windows installation in control of ltxdesktop:// links.
-  if (process.platform !== 'win32') {
+  // Keep upstream's protocol registration separate from the community installers.
+  if (!usesCommunityInstaller(process.platform)) {
     registerDeepLinkProtocolClient(
       (scheme, execPath, args) => app.setAsDefaultProtocolClient(scheme, execPath, args),
       {

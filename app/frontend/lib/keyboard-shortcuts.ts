@@ -1,3 +1,4 @@
+import { desktopProductName } from './desktop-product-name.ts'
 // Keyboard Shortcuts system — action registry, keybinding types, preset layouts
 
 // ── Action IDs ──
@@ -363,7 +364,7 @@ export const BUILT_IN_PRESETS: KeyboardPreset[] = [
   {
     id: 'ltx-default',
     name: 'LTX Default',
-    description: 'Default keyboard layout for LTX Desktop - AMD 395 MAX',
+    description: `Default keyboard layout for ${desktopProductName}`,
     layout: LTX_DEFAULT_LAYOUT,
     builtIn: true,
   },

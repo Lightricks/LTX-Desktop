@@ -1,3 +1,4 @@
+import { desktopProductName } from '../lib/desktop-product-name.ts'
 import { Copy, ExternalLink } from 'lucide-react'
 import {
   useCallback,
@@ -329,10 +330,10 @@ export function RemotePairing() {
         <header className={styles.header}>
           <div className={styles.titleBlock}>
             <Text as="h1" variant="heading" size="xxl" align="center" className={styles.title}>
-              Remote control for LTX Desktop - AMD 395 MAX
+              Remote control for {desktopProductName}
             </Text>
             <Text as="p" variant="body" size="md" align="center" className={styles.lead}>
-              Use LTX Desktop - AMD 395 MAX from your phone or another browser on the same
+              Use {desktopProductName} from your phone or another browser on the same
               Wi‑Fi network as this computer.
             </Text>
           </div>

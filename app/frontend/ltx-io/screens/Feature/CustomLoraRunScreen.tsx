@@ -1,3 +1,4 @@
+import { desktopProductName } from '../../../lib/desktop-product-name.ts'
 import { Button } from "@ds/Button/Button";
 import { Text } from "@ds/Text/Text";
 import { useCallback, useMemo } from "react";
@@ -143,7 +144,7 @@ function WeightsNeededCard({ lora }: { lora: CustomLoraItem }) {
     return (
       <PreflightCard
         title="Weights needed"
-        description={`The weights of "${lora.name}" are not on the computer. Add them in LTX Desktop - AMD 395 MAX.`}
+        description={`The weights of "${lora.name}" are not on the computer. Add them in ${desktopProductName}.`}
       >
         <span />
       </PreflightCard>

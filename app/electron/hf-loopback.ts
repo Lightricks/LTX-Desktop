@@ -3,7 +3,7 @@ import { createServer, type Server } from 'node:http'
 const callbackPath = '/api/auth/huggingface/callback'
 let active: Server | undefined
 
-/** Bridge the registered OAuth port to the isolated AMD backend for this sign-in only. */
+/** Bridge the registered OAuth port to the isolated community backend for this sign-in only. */
 export async function listenForHuggingFaceCallback(
   redirectUri: string, backendUrl: string, state: string,
 ): Promise<() => void> {

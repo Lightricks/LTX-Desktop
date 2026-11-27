@@ -1,9 +1,13 @@
 import { app } from 'electron'
 import path from 'path'
 import os from 'os'
-import { productName } from '../package.json'
+import { forkProductName } from '../shared/fork-identity'
 
-export const APP_FOLDER_NAME = process.platform === 'win32' ? 'LTXDesktopAMD' : 'LTXDesktop'
+const appFolders: Partial<Record<NodeJS.Platform, string>> = {
+  win32: 'LTXDesktopAMD',
+  darwin: 'LTXDesktopSpaceSpeak',
+}
+export const APP_FOLDER_NAME = appFolders[process.platform] ?? 'LTXDesktop'
 
 function resolveUserDataPath(): string {
   if (process.platform === 'win32') {
@@ -23,7 +27,7 @@ function resolveUserDataPath(): string {
   return path.join(xdgData, APP_FOLDER_NAME)
 }
 
-app.setName(productName)
+app.setName(forkProductName(process.platform))
 app.setPath('userData', resolveUserDataPath())
 
 export function getAppDataDir(): string {

@@ -1,3 +1,4 @@
+import { desktopProductName } from '../../lib/desktop-product-name.ts'
 import { useMemo, type CSSProperties } from 'react'
 import Lottie, { type Options as LottieOptions } from 'react-lottie'
 
@@ -52,7 +53,7 @@ export function EndpageLockup({ still = false, paused = false, className, style 
         width="100%"
         isClickToPauseDisabled
         ariaRole="presentation"
-        ariaLabel="LTX Desktop - AMD 395 MAX"
+        ariaLabel={desktopProductName}
       />
     ),
     [still, paused],

@@ -63,6 +63,6 @@ export function useAssistantChoice(active: boolean): AssistantChoice {
     select: (provider, localModel) => remoteSelect.mutateAsync({ provider, localModel }),
     switching: remoteSelect.isPending,
     openSettings: null,
-    settingsName: "LTX Desktop - AMD 395 MAX Settings",
+    settingsName: "LTX Desktop Settings",
   };
 }

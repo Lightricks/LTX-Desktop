@@ -1,5 +1,6 @@
 import { autoUpdater, UpdateInfo, ProgressInfo } from 'electron-updater'
 import { app } from 'electron'
+import { usesCommunityInstaller } from '../shared/fork-identity'
 import { logger } from './logger'
 import { preDownloadPythonForUpdate } from './python-setup'
 import { getMainWindow } from './window'
@@ -107,7 +108,7 @@ function syncMacSilentUpdates(): void {
 }
 
 export function initAutoUpdater(channel: UpdateChannel = 'latest'): void {
-  if (process.platform === 'win32') return // The Radeon fork is distributed with its own runtime.
+  if (usesCommunityInstaller(process.platform)) return // Community builds have their own installers and runtime.
   if (channel !== 'latest') {
     autoUpdater.channel = channel
     autoUpdater.allowPrerelease = true
@@ -206,7 +207,7 @@ export function initAutoUpdater(channel: UpdateChannel = 'latest'): void {
 // Manual "Check for updates". Windows: allowed even if auto-check is off (modal still
 // gates download). Mac: the toggle is the opt-out, so a check with it off is a no-op.
 export async function checkForUpdatesNow(): Promise<void> {
-  if (process.platform === 'win32') return
+  if (usesCommunityInstaller(process.platform)) return
   if (isBusy()) return
   if (process.platform === 'darwin' && !getAutoCheckUpdates()) return
   setSkippedUpdateVersion(undefined) // an explicit check overrides a previous skip
@@ -251,7 +252,7 @@ export function skipUpdateVersion(version: string): void {
 
 // Persist the auto-check setting AND start/stop the timer immediately (no restart needed).
 export function setAutoCheckUpdatesEnabled(enabled: boolean): void {
-  if (process.platform === 'win32') return
+  if (usesCommunityInstaller(process.platform)) return
   setAutoCheckUpdates(enabled)
   armPeriodicCheck()
   syncMacSilentUpdates()

@@ -2,6 +2,12 @@
 
 Peter Beery created this community branch of Lightricks’ LTX Desktop on behalf of SpaceSpeak.com.
 
+## 1.3.3-community.3
+
+- Adds a native Apple silicon online installer for the community branch. The app uses Metal for local LTX on eligible M-series Macs, including M5 Pro. It uses its own macOS profile and bundle identity. Rerun the community installer to upgrade it.
+- Windows setup retries missing-issuer certificate failures through Windows certificate verification and checks the expected size and SHA-256 before activating a downloaded component. Download errors now identify the cause in the installer details.
+- The taskbar and Dock icons use the larger white atom, thicker orbit lines and larger gold lens flare.
+
 ## 1.3.3-community.2
 
 The extended local model picker, model downloads and app-managed ComfyUI worker are available on supported Windows NVIDIA CUDA and Radeon ROCm installations. Both can select LTX 2.5 INT8, Kandinsky 6 Lite and MiniMax H3 alongside native LTX. H3 keeps its setup and usage consent checks. NVIDIA starts with native LTX selected and can switch renderers from the same model picker.

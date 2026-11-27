@@ -1,10 +1,21 @@
-# LTX Desktop - AMD 395 MAX 1.3.3-community.2
+# LTX Desktop community edition 1.3.3-community.3
 
 Peter Beery created this community branch of Lightricks’ LTX Desktop on behalf of SpaceSpeak.com. The Windows x64 installer supports the original NVIDIA CUDA renderer and Radeon 8040S, 8050S and 8060S graphics in the Ryzen AI Max family. These three GPUs use the gfx1151 architecture. Existing AMD installations keep their app name, installation location and user data.
 
-On both supported GPUs, open **Settings → Models** to manage the native LTX models, the ComfyUI INT8 renderer, Kandinsky Lite, and MiniMax H3. You can also select and set up a model directly in **Image to Video** or **Text to Video**. H3 Ref2VA takes reference images and appears under **Image to Video**.
+On supported Windows GPUs, open **Settings → Models** to manage the native LTX models, the ComfyUI INT8 renderer, Kandinsky Lite, and MiniMax H3. You can also select and set up a model directly in **Image to Video** or **Text to Video**. H3 Ref2VA takes reference images and appears under **Image to Video**.
 
 Version 1.3.3 includes upstream Keyframes, a shorter context option for faster Extend and Retake, and Windows fixes for Gemma loading and Smart App Control. [Lightricks 1.3.3 release notes](https://github.com/Lightricks/LTX-Desktop/releases/tag/v1.3.3)
+
+## Install on an Apple silicon Mac
+
+On an M5 Pro, run the Mac installer from Finder in macOS. The Windows installer recognizes the Parallels Display Adapter as an API-only device. Native macOS uses PyTorch Metal (MPS) and the Mac’s unified memory.
+
+1. Check **Apple menu → About This Mac** for the chip, memory and macOS version. Local generation needs macOS 26 or later and at least 24 GiB of unified memory. Lightricks recommends 32 GB or more. Allow at least 100 GB of free storage for local models. Macs with macOS 14 or 15, or less than 24 GiB of memory, can use the app in API mode. [Upstream Mac requirements](https://github.com/Lightricks/LTX-Desktop#system-requirements)
+2. Download **LTX-Desktop-1.3.3-community.3-Apple-Silicon-Online-Setup.zip** and double-click the ZIP to extract it. Open **LTX Desktop - SpaceSpeak Setup** and double-click **Install LTX Desktop.command**. Keep the extracted folder together during setup. The installer downloads and verifies the native runtime components. On a Mac eligible for local generation it checks Metal execution before installing.
+3. Open **LTX Desktop - SpaceSpeak** in your home **Applications** folder. Open **Settings → Models** to download a native LTX model. The Mac build supports native LTX 2.5 Fast and 2.3 Fast. The managed ComfyUI, Kandinsky and MiniMax H3 integrations in this release run on supported Windows GPUs.
+4. For a first local test, pick **LTX 2.5 Fast**, a five-second clip and a low resolution. The app stores its community profile under `~/Library/Application Support/LTXDesktopSpaceSpeak`.
+
+The Mac installer assembles the community app from pinned components and signs it locally. This release has no Apple Developer ID notarization. If macOS requests approval for an identified item you trust, use the per-item control under **System Settings → Privacy & Security**. [Apple’s guide to opening apps](https://support.apple.com/en-us/102445)
 
 ## How Windows setup selects a GPU
 
@@ -50,9 +61,13 @@ FL2VA Base or Ref2VA needs **51.53 GB** from a fresh installation. After FL2VA B
 
 Extract the ZIP into a new folder. In GitHub Desktop, choose **File → Add local repository**, select the extracted `LTX-Desktop-AMD-395-MAX` folder, then choose **Publish repository**. In VS Code you can open the same folder and choose **Publish to GitHub**. The folder includes a Git repository on `main`. Keep its hidden `.git` directory when extracting. You can publish the code before downloading any build dependencies.
 
-This source snapshot contains the dual-GPU Windows app, all three MiniMax H3 integrations, license notices and compact online installer builder. Large upstream previews and two unmodified dependency archives are restored from URLs pinned in [source-assets.json](source-assets.json). The rest of the source is present and editable immediately. Each restored file is checked against its original SHA-256. The H3 weights are a separate, optional download handled by the application.
+This source snapshot contains the Windows and native Apple silicon app, all three MiniMax H3 integrations, license notices and compact online installer builder. Large upstream previews and two unmodified dependency archives are restored from URLs pinned in [source-assets.json](source-assets.json). The rest of the source is present and editable immediately. Each restored file is checked against its original SHA-256. The H3 weights are a separate, optional download handled by the application.
 
-## Build the compact online installer
+## Build the native Mac online installer
+
+To build and test on GitHub, open **Actions → Build and check Apple silicon online installer** and run the workflow. It builds the app, assembles the compact installer, installs on a macOS arm64 runner and checks application startup. The runner verifies Metal execution when its OS, memory and GPU support local generation. The same on-device checks run in the installer on an eligible physical Mac. The Mac builder and end-user instructions are in [macwork](macwork/).
+
+## Build the Windows online installer
 
 On GitHub, open **Actions → Build compact Windows GPU installer → Run workflow**. Download the workflow artifact when the run succeeds. It contains `LTX-AMD-395-MAX-Compact-Setup.exe` and its SHA-256 checksum.
 
@@ -78,7 +93,8 @@ The unsigned Windows x64 installer is written under `build/release/`. End users 
 | [vendor/ComfyUI/](vendor/ComfyUI/) | Pinned upstream ComfyUI source and the optional Kandinsky node pack that ship with the application. |
 | [shellwork/](shellwork/) | Locked JS build and Windows Electron shell assembly. |
 | [runtimework/](runtimework/) | Python and ROCm dependency locks, acquisition and staging code, the three locally built wheels, and their rebuild instructions. |
-| [setupwork/](setupwork/) | NSIS source, per-user installer engine, media builder and integrity checks. |
+| [setupwork/](setupwork/) | Windows NSIS source, per-user installer engine and integrity checks. |
+| [macwork/](macwork/) | Native Apple silicon online installer, app assembly and upgrade tests. |
 | [repair/](repair/) | Double-click offline repair for existing per-user AMD installations. |
 | [checks/](checks/) | Installed-tree and GPU verification, with a receipt for the originally distributed shell. |
 

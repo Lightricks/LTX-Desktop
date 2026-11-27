@@ -14,6 +14,7 @@ import { logger } from '../logger'
 import { getMainWindow } from '../window'
 import { getBackendUrl } from '../python-backend'
 import { listenForHuggingFaceCallback } from '../hf-loopback'
+import { forkProductName, usesCommunityInstaller } from '../../shared/fork-identity'
 import {
   validatePath,
   approvePath,
@@ -245,7 +246,7 @@ export function registerFileHandlers(): void {
     url.searchParams.set('code_challenge_method', params.codeChallengeMethod)
     let close: (() => void) | undefined
     try {
-      if (process.platform === 'win32') {
+      if (usesCommunityInstaller(process.platform)) {
         close = await listenForHuggingFaceCallback(params.redirectUri, getBackendUrl() ?? '', params.state)
       }
       await shell.openExternal(url.toString())
@@ -255,7 +256,7 @@ export function registerFileHandlers(): void {
       const occupied = (error as NodeJS.ErrnoException).code === 'EADDRINUSE'
       dialog.showErrorBox('Hugging Face sign-in', occupied
         ? 'Close the other application using port 41954, then click Sign in again. You can reopen it after sign-in.'
-        : 'The local sign-in window could not open. Restart LTX Desktop - AMD 395 MAX and try again.')
+        : `The local sign-in window could not open. Restart ${forkProductName(process.platform)} and try again.`)
       return false
     }
   })

@@ -30,7 +30,7 @@ function RemoteRouteError() {
   return (
     <PairingMessage
       title="Couldn't load this page"
-      body="Something went wrong. Keep LTX Desktop - AMD 395 MAX open, stay on this Wi-Fi, and return to Home or open the current QR code or link."
+      body="Something went wrong. Keep LTX Desktop open, stay on this Wi-Fi, and return to Home or open the current QR code or link."
     >
       <a className={styles.homeLink} href="/">
         Back to Home

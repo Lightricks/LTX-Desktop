@@ -5,6 +5,7 @@ import path from 'path'
 import { sendAnalyticsEvent } from './analytics'
 import { startAnalyticsSink, type AnalyticsSink } from './analytics-sink'
 import { getAppDataDir } from './app-paths'
+import { usesCommunityInstaller } from '../shared/fork-identity'
 import { getAssetsDir, isCustomAssetsDir } from './app-state'
 import { ensureAssetsDirReady } from './assets-startup'
 import { getCurrentDir, isDev } from './config'
@@ -438,8 +439,8 @@ export async function startPythonBackend({ askUser = true }: { askUser?: boolean
           // Honor an explicit parent value (matches setdefault in ltx2_server.py).
           MPS_SDPA_SKIP_CALIBRATION: process.env.MPS_SDPA_SKIP_CALIBRATION ?? '1',
         } : {}),
-        ...(process.platform === 'win32' ? {
-          ...(runtime ? windowsRuntimeEnvironment(runtime) : {}),
+        ...(runtime ? windowsRuntimeEnvironment(runtime) : {}),
+        ...(usesCommunityInstaller(process.platform) ? {
           LTX_HF_CALLBACK_PORT: '41954',
           LTX_PORT: process.env.LTX_PORT || '41956',
           LTX_REMOTE_PORT: process.env.LTX_REMOTE_PORT || '41957',
@@ -579,7 +580,7 @@ export async function startPythonBackend({ askUser = true }: { askUser?: boolean
           return
         }
 
-        if (sawPortConflict && process.env.LTX_PORT && process.platform !== 'win32') {
+        if (sawPortConflict && process.env.LTX_PORT && !usesCommunityInstaller(process.platform)) {
           const explicitUrl = `http://127.0.0.1:${process.env.LTX_PORT}`
           const healthyExistingBackend = await probeBackendHealth(1500, explicitUrl)
           if (healthyExistingBackend) {
