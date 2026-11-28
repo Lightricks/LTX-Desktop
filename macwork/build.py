@@ -148,6 +148,17 @@ def build(upstream_zip, electron_zip, output):
         add_resources(APP / "shared", "shared/", lambda p: p.suffix == ".json")
         add_resources(APP / "resources/licenses", "licenses/", lambda p: True)
         add_resources(APP / "resources/explore-assets", "explore-assets/", lambda p: True)
+        # H3 uses the same pinned ComfyUI core as the Windows worker. Keep the
+        # archive inside Resources; the worker unpacks it in the user's profile.
+        core_name = "comfyui-v0.38.0.zip"
+        relative_core = "vendor/ComfyUI/" + core_name
+        assets = json.loads((HERE.parent / "source-assets.json").read_bytes())["files"]
+        core_asset = next(entry for entry in assets if entry["path"] == relative_core)
+        core = (HERE.parent / relative_core).read_bytes()
+        if len(core) != core_asset["size"] or digest(core) != core_asset["sha256"]:
+            raise ValueError("Incorrect ComfyUI archive. Run restore_sources.py before building.")
+        loose.append(["comfy-engine/" + core_name, record(core)])
+        loose.append(["licenses/comfyui/LICENSE", record((HERE.parent / "vendor/ComfyUI/LICENSE").read_bytes())])
         loose.append(["icon.icns", record((APP / "resources/icon.icns").read_bytes())])
         # Ship the complete notices from Electron/Chromium. The end user's Mac only
         # needs the LTX archive, which contains the already-sealed native bundles.
@@ -170,6 +181,7 @@ def build(upstream_zip, electron_zip, output):
         for name in ("materialize.py", "Install LTX Desktop.command"):
             write_entry(installer, prefix + name, (HERE / name).read_bytes(), executable=name.endswith(".command"))
         write_entry(installer, prefix + "entitlements.mac.plist", (APP / "resources/entitlements.mac.plist").read_bytes())
+        write_entry(installer, prefix + "comfy-worker.mac.plist", (HERE / "comfy-worker.mac.plist").read_bytes())
         write_entry(installer, prefix + "check_native_mps.py", (HERE.parent / "checks/check_native_mps.py").read_bytes())
         write_entry(installer, prefix + "README.txt", (HERE / "README.txt").read_bytes())
     print(f"{output}: {output.stat().st_size:,} bytes, {len(parts)} ASAR spans and {len(loose)} resources")

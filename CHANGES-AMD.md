@@ -2,6 +2,12 @@
 
 Original LTX Desktop by Lightricks. Community fork by Peter Beery / SpaceSpeak.com.
 
+## 1.3.3-community.5
+
+- All desktop editions list FL2VA Base, FL2VA 8-step Turbo and Ref2VA. Apple silicon Metal and Ubuntu NVIDIA CUDA now offer the private engine, license prompt and model downloads. API-only hosts display the MiniMax catalog and hardware requirement.
+- The Apple H3 workflow uses an FP16 video decoder and a Metal-compatible VAE path. CUDA and Radeon retain the existing INT8 recipes.
+- The README lists model, runtime and hardware verification differences by deployment target.
+
 ## 1.3.3-community.4
 
 - Apple silicon setup now preserves the signed frameworks and helpers from the official arm64 app. Setup reuses the previous verified download, signs the fork locally, verifies the assembled bundle and tests Metal on eligible Macs before installation.

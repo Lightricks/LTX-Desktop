@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import torch
 
 from runtime_config.assets_layout import in_flight_folder
-from runtime_config.community_runtime import local_video_renderer_available
+from runtime_config.community_runtime import local_video_renderer_available, windows_video_renderer_available
 from runtime_config.runtime_policy import LocalGenerationMode
 
 if TYPE_CHECKING:
@@ -86,6 +86,10 @@ class RuntimeConfig:
     @property
     def managed_video_available(self) -> bool:
         return not self.force_api_generations and local_video_renderer_available()
+
+    @property
+    def windows_video_available(self) -> bool:
+        return not self.force_api_generations and windows_video_renderer_available()
 
     @property
     def force_api_generations(self) -> bool:

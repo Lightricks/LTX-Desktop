@@ -225,7 +225,8 @@ class VideoGenerationHandler(StateHandlerBase):
             duration_head_ready=self._duration_head_ready(),
             job_filter=job_filter,
             low_performance_machine=detect_low_performance_machine(self.config),
-            managed_video_available=self.config.managed_video_available,
+            managed_video_available=self.config.windows_video_available,
+            h3_available=self.config.managed_video_available,
         )
 
     def estimate_local_fast(self, req: EstimateVideoRequest) -> EstimateVideoResponse:
@@ -534,6 +535,7 @@ class VideoGenerationHandler(StateHandlerBase):
     ) -> ExternalEngine | None:
         engine = external_engine(
             req, default=self.state.app_settings.local_fast_engine, available=self.config.managed_video_available,
+            windows_video_available=self.config.windows_video_available,
             model_25=req.model == "fast" and model_id in (None, AMD_FAST_MODEL_ID),
             complex_inputs=bool(recipe or req.keyframes or normalize_optional_path(req.audioPath)),
         )
@@ -596,7 +598,7 @@ class VideoGenerationHandler(StateHandlerBase):
                     width=width, height=height, fps=req.fps, frames=frames, seed=seed,
                     first_image=None if engine == "h3-ref2va" else first,
                     last_image=upload(last_path) if last_path is not None else None,
-                    reference_images=refs, object_info=info,
+                    reference_images=refs, object_info=info, metal=client.backend == "mps",
                 )
             elif engine == "kandinsky":
                 from services.amd_kandinsky_workflow import build_kandinsky_workflow

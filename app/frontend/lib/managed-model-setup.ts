@@ -84,7 +84,7 @@ async function advance(api: ExploreApi, kind: ManagedModelKind, setup: Setup) {
 
     if (isH3Variant(kind)) {
       const catalog = accepted(await api.getH3Models({ fresh: true }))
-      if (!catalog.licenseAcknowledged) throw new Error('Confirm that you have rights to use the MiniMax H3 weights on this PC.')
+      if (!catalog.licenseAcknowledged) throw new Error('Confirm that you have rights to use the MiniMax H3 weights on this computer.')
       const model = catalog.variants[kind]
       if (model.status === 'ready') { update('ready', model.message); return }
       if (model.status === 'offline') { update('starting', engine.message); return }

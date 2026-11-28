@@ -17,6 +17,7 @@ H3_FL2VA_MODEL = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
 H3_REF2VA_MODEL = "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
 H3_TEXT_ENCODER = "qwen3vl_32b_minimax_h3_int8_convrot.safetensors"
 H3_VIDEO_VAE = "minimax_h3_video_vae_int8_convrot.safetensors"
+H3_MPS_VIDEO_VAE = "minimax_h3_video_vae_fp16.safetensors"
 H3_AUDIO_VAE = "minimax_h3_audio_vae_fp32.safetensors"
 H3_TURBO_LORA = "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
 
@@ -129,3 +130,21 @@ H3_MODELS: dict[H3Variant, tuple[ComfyWeight, ...]] = {
         *_SHARED,
     ),
 }
+
+
+# The FP16 video VAE uses portable convolution and attention. The pinned core
+# dequantizes INT8 ConvRot transformer/encoder weights on devices without int8 matmul.
+_METAL_VAE = ComfyWeight(
+    "vae", H3_MPS_VIDEO_VAE, 5207808496,
+    "7c1f131492e7eddacaac9069a61b81bdd39de5cc96561e677c5eab1cdce5e522",
+    repo=REPO, revision=REVISION,
+)
+
+
+def h3_model_recipes(*, metal: bool) -> dict[H3Variant, tuple[ComfyWeight, ...]]:
+    if not metal:
+        return H3_MODELS
+    return {
+        variant: tuple(_METAL_VAE if item.filename == H3_VIDEO_VAE else item for item in weights)
+        for variant, weights in H3_MODELS.items()
+    }

@@ -46,6 +46,7 @@ def external_engine(
     default: AmdVideoEngine,
     model_25: bool,
     available: bool,
+    windows_video_available: bool = True,
     complex_inputs: bool = False,
     has_start: bool = False,
     has_end: bool = False,
@@ -60,7 +61,9 @@ def external_engine(
         reference_count = len(req.referenceImagePaths)
     h3 = is_h3_engine(choice)
     if not available:
-        reason = "This engine requires a supported local Windows CUDA or ROCm installation."
+        reason = "This engine requires a supported local GPU runtime."
+    elif not h3 and not windows_video_available:
+        reason = "The LTX INT8 and Kandinsky renderers require the Windows GPU edition."
     elif not model_25:
         reason = "Select a local LTX 2.5 Fast offering for this engine."
     elif complex_inputs or getattr(req, "loras", []) or req.cameraMotion != "none":

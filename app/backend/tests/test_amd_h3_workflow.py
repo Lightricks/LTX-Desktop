@@ -2,7 +2,7 @@ import pytest
 
 from services.amd_h3_models import (
     H3_AUDIO_VAE, H3_FL2VA_MODEL, H3_REF2VA_MODEL,
-    H3_TEXT_ENCODER, H3_TURBO_LORA, H3_VIDEO_VAE,
+    H3_TEXT_ENCODER, H3_TURBO_LORA, H3_VIDEO_VAE, H3_MPS_VIDEO_VAE, h3_model_recipes,
 )
 from services.amd_h3_workflow import build_h3_workflow
 
@@ -17,7 +17,7 @@ def info():
         ("UNETLoader", "unet_name", [H3_FL2VA_MODEL, H3_REF2VA_MODEL]),
         ("LoraLoaderModelOnly", "lora_name", [H3_TURBO_LORA]),
         ("CLIPLoader", "clip_name", [H3_TEXT_ENCODER]),
-        ("VAELoader", "vae_name", [H3_VIDEO_VAE, H3_AUDIO_VAE]),
+        ("VAELoader", "vae_name", [H3_VIDEO_VAE, H3_MPS_VIDEO_VAE, H3_AUDIO_VAE]),
     ):
         result[kind] = {"input": {"required": {field: ["COMBO", {"options": ["minimax\\" + name for name in names]}]}}}
     return result
@@ -86,3 +86,13 @@ def test_missing_distillation_lora_cannot_silently_run_base_at_eight_steps():
     assert build("h3-fl2va", object_info=installed)
     with pytest.raises(ValueError, match="LoraLoaderModelOnly"):
         build("h3-fl2va-distill", object_info=installed)
+
+
+@pytest.mark.parametrize("engine", ["h3-fl2va", "h3-fl2va-distill", "h3-ref2va"])
+def test_metal_graph_and_download_recipe_use_the_same_weights(engine):
+    graph, _ = build(engine, metal=True, reference_images=["ref.png"] if engine == "h3-ref2va" else [])
+    weights = {w.filename for w in h3_model_recipes(metal=True)[engine]}
+    loaded = {path.split(chr(92))[-1] for node in graph.values() for field, path in node["inputs"].items()
+              if field in ("unet_name", "clip_name", "vae_name", "lora_name")}
+    assert loaded == weights
+    assert H3_MPS_VIDEO_VAE in loaded and H3_VIDEO_VAE not in loaded

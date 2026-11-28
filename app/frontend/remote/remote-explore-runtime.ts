@@ -114,7 +114,7 @@ type HostModelStatus = Exclude<AmdPickerContext["status"], "checking">;
 
 async function pairedAmdModels(): Promise<AmdPickerContext> {
   const response = await api("/api/amd/model-availability");
-  if (!response.ok) throw new Error("Could not check models on the host PC.");
+  if (!response.ok) throw new Error("Could not check models on the host computer.");
   const data: {
     preferred: AmdPickerContext["preferred"]; comfy: HostModelStatus; kandinsky: HostModelStatus;
     native23: boolean; native25: boolean; h3?: Partial<Record<H3Variant, HostModelStatus>>; h3LicenseAcknowledged?: boolean;
@@ -123,11 +123,11 @@ async function pairedAmdModels(): Promise<AmdPickerContext> {
     preferred: data.preferred, desktop: false, status: data.comfy,
     h3: data.h3 ? Object.fromEntries(H3_VARIANTS.map(id => [id, {
       status: data.h3LicenseAcknowledged ? (data.h3?.[id] ?? "missing") : "missing",
-      message: data.h3?.[id] === "downloading" ? "Downloading on the host PC." : "Open MiniMax H3 setup on the host PC.",
+      message: data.h3?.[id] === "downloading" ? "Downloading on the host computer." : "Open MiniMax H3 setup on the host computer.",
     }])) : undefined,
     native: { "ltx-2.3-fast": data.native23 ? "ready" : "missing", "ltx-2.5-fast": data.native25 ? "ready" : "missing" },
     message: "", kandinskyReady: data.kandinsky === "ready", kandinskyDownloading: data.kandinsky === "downloading",
-    kandinskyMessage: data.kandinsky === "downloading" ? "Downloading on the host PC." : "Check Kandinsky setup on the host PC.",
+    kandinskyMessage: data.kandinsky === "downloading" ? "Downloading on the host computer." : "Check Kandinsky setup on the host computer.",
   };
 }
 

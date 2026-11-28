@@ -16,6 +16,7 @@ from services.amd_comfy_workflow import Graph, mp4_save_inputs, resolve_model_na
 from services.amd_h3_models import (
     H3_AUDIO_VAE,
     H3_FL2VA_MODEL,
+    H3_MPS_VIDEO_VAE,
     H3_REF2VA_MODEL,
     H3_TEXT_ENCODER,
     H3_TURBO_LORA,
@@ -39,6 +40,7 @@ def build_h3_workflow(
     last_image: str | None = None,
     reference_images: Sequence[str] = (),
     object_info: dict[str, Any],
+    metal: bool = False,
 ) -> tuple[Graph, str]:
     """Build a local H3 prompt using uploaded image names and the worker's actual loader paths."""
     if engine not in ("h3-fl2va", "h3-fl2va-distill", "h3-ref2va"):
@@ -81,7 +83,7 @@ def build_h3_workflow(
     if turbo:
         model = loader("turbo", "LoraLoaderModelOnly", "lora_name", H3_TURBO_LORA, model=model, strength_model=1.0)
     encoder = loader("encoder", "CLIPLoader", "clip_name", H3_TEXT_ENCODER, type="minimax", device="default")
-    video_vae = loader("video_vae", "VAELoader", "vae_name", H3_VIDEO_VAE)
+    video_vae = loader("video_vae", "VAELoader", "vae_name", H3_MPS_VIDEO_VAE if metal else H3_VIDEO_VAE)
     audio_vae = loader("audio_vae", "VAELoader", "vae_name", H3_AUDIO_VAE)
 
     conditions: dict[str, Any] = dict(clip=encoder, vae=video_vae, prompt=prompt, width=width, height=height, length=frames)

@@ -162,20 +162,26 @@ def require_managed_renderer(handler: AppHandler = Depends(get_state_service)) -
         raise HTTPError(404, "LOCAL_VIDEO_RENDERER_UNAVAILABLE")
 
 
+def require_windows_renderer(handler: AppHandler = Depends(get_state_service)) -> None:
+    if not handler.config.windows_video_available:
+        raise HTTPError(404, "LOCAL_VIDEO_RENDERER_UNAVAILABLE")
+
+
+windows_models = APIRouter(dependencies=[Depends(require_windows_renderer)])
 managed_models = APIRouter(dependencies=[Depends(require_managed_renderer)])
 
 
-@managed_models.get("/comfy/models", response_model=ComfyModelsStatus)
+@windows_models.get("/comfy/models", response_model=ComfyModelsStatus)
 def route_comfy_models(handler: AppHandler = Depends(get_state_service), fresh: bool = False) -> ComfyModelsStatus:
     return handler.comfy_models.status(fresh=fresh)
 
 
-@managed_models.post("/comfy/models/download", response_model=ComfyModelsStatus)
+@windows_models.post("/comfy/models/download", response_model=ComfyModelsStatus)
 def route_download_comfy_models(handler: AppHandler = Depends(get_state_service)) -> ComfyModelsStatus:
     return handler.comfy_models.start()
 
 
-@managed_models.post("/comfy/models/kandinsky/download", response_model=ComfyModelsStatus)
+@windows_models.post("/comfy/models/kandinsky/download", response_model=ComfyModelsStatus)
 def route_download_kandinsky_models(handler: AppHandler = Depends(get_state_service)) -> ComfyModelsStatus:
     return handler.comfy_models.start(kandinsky=True)
 
@@ -203,4 +209,5 @@ def route_download_h3_models(
     return handler.h3_models.start(variant, accepted=acceptedLicense)
 
 
+router.include_router(windows_models)
 router.include_router(managed_models)

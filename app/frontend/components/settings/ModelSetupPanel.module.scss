@@ -71,3 +71,12 @@
 }
 
 .access { display: grid; gap: var(--spacing-sm); }
+
+.catalogList {
+  composes: setupCopy;
+  list-style: none;
+  margin: var(--spacing-md) 0;
+  padding: 0;
+
+  li + li { margin-top: var(--spacing-xs); }
+}

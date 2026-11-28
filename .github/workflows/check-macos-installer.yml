@@ -52,8 +52,21 @@ jobs:
             --no-launch --cache "$RUNNER_TEMP/mac-cache" --applications-dir "$RUNNER_TEMP/Applications"
           application="$RUNNER_TEMP/Applications/LTX Desktop - SpaceSpeak.app"
           python3 checks/check_mac_frameworks.py "$application" "$RUNNER_TEMP/mac-cache/upstream-mac.zip"
-          python_bundle="$application/Contents/Resources/python"
+          resources="$application/Contents/Resources"
+          cmp vendor/ComfyUI/comfyui-v0.38.0.zip "$resources/comfy-engine/comfyui-v0.38.0.zip"
+          cmp vendor/ComfyUI/LICENSE "$resources/licenses/comfyui/LICENSE"
+          cmp app/resources/licenses/minimax-h3/LICENSE.txt "$resources/licenses/minimax-h3/LICENSE.txt"
+          cmp app/resources/licenses/minimax-h3/NOTICE.txt "$resources/licenses/minimax-h3/NOTICE.txt"
+          cmp app/backend/services/comfy-wheels-macos-arm64.json "$resources/backend/services/comfy-wheels-macos-arm64.json"
+          cmp app/backend/services/amd_h3_mps.py "$resources/backend/services/amd_h3_mps.py"
+          python_bundle="$resources/python"
+          unzip -p "$RUNNER_TEMP/mac-cache/upstream-mac.zip" 'LTX Desktop.app/Contents/Resources/python/bin/python3.13' | cmp - "$python_bundle/bin/python3.13"
+          codesign --verify --strict "$python_bundle/bin/ltx-comfy-python"
+          "$python_bundle/bin/ltx-comfy-python" -I -B checks/check_mac_worker_import.py "$resources"
           PYTHONHOME="$python_bundle" "$python_bundle/bin/python3" -B checks/check_native_mps.py
+          if [[ "$(sw_vers -productVersion | cut -d. -f1)" -ge 26 && "$(sysctl -n hw.memsize)" -ge 25769803776 ]]; then
+            PYTHONHOME="$python_bundle" "$python_bundle/bin/python3" -B checks/check_managed_comfy.py --resources "$resources"
+          fi
           python3 checks/check_mac_app_launch.py "$application"
           codesign --verify --deep --strict "$application"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

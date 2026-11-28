@@ -55,7 +55,7 @@ export function defaultPickerModel(
   return defaultOfferingId(specs) ?? "ltx-2.5-fast";
 }
 
-function modelGrid(specs: VideoGenerationModelSpecsResponse, model: AmdExternalModel) {
+export function modelGrid(specs: VideoGenerationModelSpecsResponse, model: AmdExternalModel) {
   switch (model) {
     case "comfy": return specs.comfy_local_model;
     case "kandinsky": return specs.kandinsky_local_model;
@@ -84,10 +84,10 @@ function availability(model: AmdExternalModel, amd: AmdPickerContext): string | 
   if (isH3Variant(model)) {
     const variant = amd.h3?.[model];
     if (variant?.status === "ready") return undefined;
-    return variant?.message || "Check MiniMax H3 setup on the host PC.";
+    return variant?.message || "Check MiniMax H3 setup on the host computer.";
   }
   if (amd.status === "checking") return "Checking the local video engine…";
-  if (amd.status === "offline") return "Set up or start the local video engine in LTX Desktop - AMD 395 MAX.";
+  if (amd.status === "offline") return "Set up or start the local video engine in LTX Desktop.";
   if (model === "kandinsky") {
     return amd.kandinskyReady ? undefined : amd.kandinskyMessage || "Check the Kandinsky nodes and model files in model setup.";
   }
@@ -108,7 +108,7 @@ function nativeIssue(state: AmdPickerContext["native"], model: OfferingId): stri
 
 export function rendererIssue(model: VideoPickerModel, amd?: AmdPickerContext): ValidationIssue | null {
   const message = isExternalModel(model)
-    ? (amd ? availability(model, amd) : "This saved model requires a local ComfyUI renderer. Select a model available on this PC to generate again.")
+    ? (amd ? availability(model, amd) : "This saved model requires a local ComfyUI renderer. Select a model available on this computer to generate again.")
     : nativeIssue(amd?.native, model);
   return message ? { id: "renderer-unavailable", fieldId: "model", message, alwaysRevealed: true } : null;
 }
@@ -131,7 +131,7 @@ export function pickerOptions(
       caption: "Native LTX · Desktop PyTorch",
       disabledReason: fileIssue ?? (existing ? undefined : "This model has no compatible settings on this device."),
       ...(fileIssue && { setup: { kind: setupKind,
-        label: !amd.desktop ? "Set up on PC" : amd.native?.[model] === "checking" || amd.native?.[model] === "error" ? "Check setup" : "Download & use" } }),
+        label: !amd.desktop ? "Set up on host" : amd.native?.[model] === "checking" || amd.native?.[model] === "error" ? "Check setup" : "Download & use" } }),
       ...(needsActivation && { setup: { kind: setupKind, label: "Activate" } }),
     };
   });
@@ -140,7 +140,8 @@ export function pickerOptions(
     const disabledReason = availability(model, amd);
     const h3 = isH3Variant(model);
     const downloading = h3 ? amd.h3?.[model]?.status === "downloading" : isLtx ? amd.status === "downloading" : amd.kandinskyDownloading;
-    const label = !amd.desktop ? "Set up on PC" : downloading ? "View download" : amd.status === "offline" || amd.status === "checking"
+    const status = h3 ? amd.h3?.[model]?.status : amd.status;
+    const label = !amd.desktop ? "Set up on host" : downloading ? "View download" : status === "offline" || status === "checking"
       ? "Set up" : "Get model";
     return {
       value: model, label: AMD_MODEL_NAMES[model],

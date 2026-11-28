@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal, TypeGuard, TypeVar, cast, get_args
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints, create_model, field_validator
 
 from api_types import LTXLocalModelId, LocalAssistantModel
-from runtime_config.community_runtime import local_video_backend
+from runtime_config.community_runtime import local_video_backend, windows_video_renderer_available
 from runtime_config.reject_reasons import BudgetMode
 from inference.fast_video_pipeline.nag_config import DEFAULT_SCALE as DEFAULT_NAG_SCALE, MAX_SCALE as MAX_NAG_SCALE
 
@@ -169,7 +169,11 @@ class AppSettings(SettingsBaseModel):
 
     @property
     def local_fast_engine(self) -> AmdFastEngine:
-        return self.cuda_fast_engine if local_video_backend() == "cuda" else self.amd_fast_engine
+        if local_video_backend() == "rocm":
+            return self.amd_fast_engine
+        if local_video_backend() == "cuda" and windows_video_renderer_available():
+            return self.cuda_fast_engine
+        return "native"
 
     @field_validator("budget_mode", mode="before")
     @classmethod

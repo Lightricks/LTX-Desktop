@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from api_types import GeminiModelsResponsePayload, LTXLocalModelId
 from _routes._errors import HTTPError
-from runtime_config.community_runtime import local_video_backend
+from runtime_config.community_runtime import local_video_backend, windows_video_renderer_available
 from state.app_settings import AppSettings, UpdateSettingsRequest
 from handlers._settings_utils import (
     collect_changed_paths,
@@ -139,8 +139,11 @@ class SettingsHandler(StateHandlerBase):
     ) -> tuple[AppSettings, AppSettings, set[str]]:
         raw_patch = patch.model_dump(by_alias=False, exclude_unset=True)
         patch_payload = strip_none_values(ensure_json_object(raw_patch))
-        if "amd_fast_engine" in patch_payload and local_video_backend() == "cuda":
-            patch_payload["cuda_fast_engine"] = patch_payload.pop("amd_fast_engine")
+        if "amd_fast_engine" in patch_payload:
+            if windows_video_renderer_available() and local_video_backend() == "cuda":
+                patch_payload["cuda_fast_engine"] = patch_payload.pop("amd_fast_engine")
+            elif not windows_video_renderer_available():
+                patch_payload.pop("amd_fast_engine")
 
         for key_field in ("ltx_api_key", "gemini_api_key", "fal_api_key"):
             explicitly_set = key_field in patch.model_fields_set

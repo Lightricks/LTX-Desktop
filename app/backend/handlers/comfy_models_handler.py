@@ -275,11 +275,19 @@ def _reusable(path: Path, weight: ComfyWeight) -> bool:
             and _sample_digest(path, stat.st_size, stat.st_mtime_ns)
             == weight.sample_sha256
         )
+    if weight.repo == "Comfy-Org/MiniMax-H3":
+        # Files without a pinned sample digest require full verification on first sight.
+        return stat.st_size == weight.size and _h3_file_verified(path, stat.st_mtime_ns, weight)
     if stat.st_size == weight.size and (
         weight.filename != "bigvgan_vocoder/config.json" or _verified(path, weight)
     ):
         return True
     return _alternate_file(path, weight.filename, stat.st_size, stat.st_mtime_ns)
+
+
+@lru_cache(maxsize=32)
+def _h3_file_verified(path: Path, modified: int, weight: ComfyWeight) -> bool:
+    return _verified(path, weight)
 
 
 def _verified(path: Path, weight: ComfyWeight) -> bool:

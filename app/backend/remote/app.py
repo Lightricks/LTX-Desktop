@@ -250,14 +250,14 @@ def create_remote_app(
             raise HTTPError(404, "AMD_RENDERER_UNAVAILABLE")
         versions = handler.models.list_ltx_versions().versions
         installed = {row.model_id for row in versions if row.installed}
-        comfy = handler.comfy_models.status()
+        comfy = handler.comfy_models.status() if handler.config.windows_video_available else None
         h3 = handler.h3_models.status()
         return _RemoteAmdModels(
             preferred=handler.settings.get_settings_snapshot().local_fast_engine,
             native23=bool(installed.intersection(OFFERING_LOCAL_MODEL_IDS["ltx-2.3-fast"])),
             native25=bool(installed.intersection(OFFERING_LOCAL_MODEL_IDS["ltx-2.5-fast"])),
-            comfy=comfy.status,
-            kandinsky=comfy.kandinskyStatus,
+            comfy=comfy.status if comfy is not None else "offline",
+            kandinsky=comfy.kandinskyStatus if comfy is not None else "offline",
             h3={key: status.status if h3.licenseAcknowledged else "missing" for key, status in h3.variants.items()},
             h3LicenseAcknowledged=h3.licenseAcknowledged,
         )

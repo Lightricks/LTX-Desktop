@@ -2,32 +2,10 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import {
-  isSettingsTabAvailable,
   parseSettingsInitialReason,
   parseSettingsScrollAnchor,
   parseSettingsTabId,
 } from './settings-navigation.ts'
-
-describe('isSettingsTabAvailable', () => {
-  it('shows every tab when local generation is available', () => {
-    for (const tab of ['general', 'models', 'apiKeys', 'legacy', 'about'] as const) {
-      assert.equal(isSettingsTabAvailable(tab, { forceApiGenerations: false }), true)
-    }
-  })
-
-  it('hides only Models in force-API mode', () => {
-    assert.equal(isSettingsTabAvailable('models', { forceApiGenerations: true }), false)
-    for (const tab of ['general', 'apiKeys', 'legacy', 'about'] as const) {
-      assert.equal(isSettingsTabAvailable(tab, { forceApiGenerations: true }), true)
-    }
-  })
-
-  it('keeps Legacy reachable in force-API mode: it owns the assets path and the seed lock', () => {
-    // Regression: Legacy was listed in the tab strip but a separate guard bounced the
-    // selection back to General, so the tab could be seen and never opened.
-    assert.equal(isSettingsTabAvailable('legacy', { forceApiGenerations: true }), true)
-  })
-})
 
 describe('parseSettingsTabId', () => {
   it('accepts the real tab ids', () => {

@@ -19,11 +19,11 @@ OutFile "${OUT}"
 InstallDir "$LOCALAPPDATA\Programs\LTXDesktopAMD"
 !define MUI_ICON "${ICONFILE}"
 !define MUI_UNICON "${ICONFILE}"
-VIProductVersion "1.3.3.4"
+VIProductVersion "1.3.3.5"
 VIAddVersionKey "ProductName" "${APP}"
-VIAddVersionKey "ProductVersion" "1.3.3.4"
+VIAddVersionKey "ProductVersion" "1.3.3.5"
 VIAddVersionKey "FileDescription" "${APP} Setup"
-VIAddVersionKey "FileVersion" "1.3.3.4"
+VIAddVersionKey "FileVersion" "1.3.3.5"
 VIAddVersionKey "LegalCopyright" "LTX Desktop contributors and component authors"
 ShowInstDetails show
 ShowUninstDetails show
@@ -135,7 +135,7 @@ Section "${APP}"
   CreateShortcut "$SMPROGRAMS\${APP}\${DIAGNOSTIC_LINK}.lnk" "$INSTDIR\application\AMD-Diagnostics.cmd" "" "$INSTDIR\application\${APP}.exe"
   CreateShortcut "$DESKTOP\${APP}.lnk" "$INSTDIR\application\${APP}.exe"
   WriteRegStr HKCU "${KEY}" "DisplayName" "${APP}"
-  WriteRegStr HKCU "${KEY}" "DisplayVersion" "1.3.3-community.4"
+  WriteRegStr HKCU "${KEY}" "DisplayVersion" "1.3.3-community.5"
   WriteRegStr HKCU "${KEY}" "DisplayIcon" "$INSTDIR\application\${APP}.exe"
   WriteRegStr HKCU "${KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
   WriteRegDWORD HKCU "${KEY}" "NoModify" 1

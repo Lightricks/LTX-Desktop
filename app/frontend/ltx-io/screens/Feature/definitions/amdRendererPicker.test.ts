@@ -123,7 +123,7 @@ test("a downloaded inactive native family offers activation without a download",
   assert.ok(paired?.kind === "options");
   assert.equal(paired.options.find(row => row.value === "ltx-2.3-fast")?.setup, undefined);
   assert.deepEqual(paired.options.find(row => row.value === "comfy")?.setup,
-    { kind: "comfy-int8", label: "Set up on PC" });
+    { kind: "comfy-int8", label: "Set up on host" });
 });
 
 function h3Context() {

@@ -339,6 +339,7 @@ class QueuedGenerationHandler:
         engine = external_engine(
             req.params, default=self._state.app_settings.local_fast_engine if self._state else "native",
             available=managed_video_available,
+            windows_video_available=self._config is not None and self._config.windows_video_available,
             model_25=req.params.model == "ltx-2.5-fast",
         )
         require_h3_license(engine, self._config.app_data_dir if self._config else None)
@@ -389,6 +390,7 @@ class QueuedGenerationHandler:
         engine = external_engine(
             req.params, default=self._state.app_settings.local_fast_engine if self._state else "native",
             available=managed_video_available,
+            windows_video_available=self._config is not None and self._config.windows_video_available,
             model_25=req.params.model == "ltx-2.5-fast", has_start=start_frame is not None,
             has_end=req.inputs.endFrame is not None, reference_count=len(req.inputs.referenceImages),
         )

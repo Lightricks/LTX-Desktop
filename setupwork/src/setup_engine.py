@@ -21,7 +21,7 @@ import urllib.request
 import zipfile
 
 MARKER = ".ltx-amd-managed-v1"
-RELEASE = "1.3.3-community.4"
+RELEASE = "1.3.3-community.5"
 
 def digest(path):
     with path.open("rb") as stream:

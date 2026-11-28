@@ -779,6 +779,7 @@ def build_generate_video_model_specs_response(
     job_filter: LocalJobFilter,
     low_performance_machine: bool = False,
     managed_video_available: bool = False,
+    h3_available: bool | None = None,
 ) -> GenerateVideoModelsSpecsResponse:
     if local_model_id is None and job_filter.profile.model_id is not None:
         local_model_id = job_filter.profile.model_id
@@ -799,15 +800,17 @@ def build_generate_video_model_specs_response(
         local_models,
         job_filter=job_filter,
     )
+    if h3_available is None:
+        h3_available = managed_video_available
     return GenerateVideoModelsSpecsResponse(
         local_models=local_models,
         api_models=get_api_video_generation_model_specs(),
         downloaded_local_models=downloaded,
         comfy_local_model=_comfy_video_spec("comfy") if managed_video_available else None,
         kandinsky_local_model=_comfy_video_spec("kandinsky") if managed_video_available else None,
-        h3_fl2va_local_model=_comfy_video_spec("h3-fl2va") if managed_video_available else None,
-        h3_fl2va_distill_local_model=_comfy_video_spec("h3-fl2va-distill") if managed_video_available else None,
-        h3_ref2va_local_model=_comfy_video_spec("h3-ref2va") if managed_video_available else None,
+        h3_fl2va_local_model=_comfy_video_spec("h3-fl2va") if h3_available else None,
+        h3_fl2va_distill_local_model=_comfy_video_spec("h3-fl2va-distill") if h3_available else None,
+        h3_ref2va_local_model=_comfy_video_spec("h3-ref2va") if h3_available else None,
         active_offering=(
             offering_id_for_local_model_id(local_model_id)
             if local_model_id is not None

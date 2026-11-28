@@ -339,3 +339,33 @@ def test_discovery_checks_the_specific_radeon_sibling(model, monkeypatch):
         worker.gpu_name = "cuda:1 AMD Radeon(TM) " + ("8050S" if model == "8040S" else "8040S") + " Graphics : native"
         with pytest.raises(ComfyError, match="differs from the selected Radeon"):
             AmdComfyClient.discover((port,), backend="rocm")
+
+
+def test_only_owned_apple_metal_worker_is_accepted():
+    stats = {"system": {"comfyui_version": "0.38.0", "os": "darwin", "pytorch_version": "2.13.1"},
+             "devices": [{"name": "mps", "type": "mps"}]}
+    client = AmdComfyClient(8123, backend="mps")
+    with pytest.raises(ComfyError, match="app-managed Metal"):
+        client.check_primary_gpu(stats)
+    client.private = True
+    client.check_primary_gpu(stats)
+    assert client.gpu_name == "mps"
+    for wrong in ({"name": "cpu", "type": "cpu"}, {"name": "NVIDIA GPU", "type": "cuda"}):
+        with pytest.raises(ComfyError, match="Apple GPU"):
+            client.check_primary_gpu({**stats, "devices": [wrong]})
+
+
+def test_external_linux_cuda_requires_the_visible_devices_uuid(monkeypatch):
+    from types import SimpleNamespace
+    import torch
+
+    selected = "00112233-4455-6677-8899-aabbccddeeff"
+    name = "NVIDIA GeForce RTX 5090"
+    monkeypatch.setattr(amd_comfy_client.sys, "platform", "linux")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "2")
+    monkeypatch.setattr(torch.cuda, "get_device_properties", lambda ordinal: SimpleNamespace(uuid=selected))
+    monkeypatch.setattr(amd_comfy_client, "_nvidia_inventory", lambda: [("GPU-" + selected, name)])
+    amd_comfy_client._check_external_gpu("cuda:0 " + name + " : native", "cuda")
+    monkeypatch.setattr(torch.cuda, "get_device_properties", lambda ordinal: SimpleNamespace(uuid="different"))
+    with pytest.raises(ComfyError, match="selected NVIDIA"):
+        amd_comfy_client._check_external_gpu("cuda:0 " + name + " : native", "cuda")

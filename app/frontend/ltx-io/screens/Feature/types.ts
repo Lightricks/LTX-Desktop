@@ -1,4 +1,4 @@
-import type { ModelSetupKind } from "../../../components/settings/ModelSetupPanel";
+import type { ModelSetupKind } from "../../../lib/local-model-catalog";
 import type { BudgetReadout } from "@/lib/budget-figure";
 import type { MemoryFitsModel, MemoryMeterModel, OptionMemory } from "@/lib/memory-meter";
 import type { HomeFeatureId } from "../../../lib/home-features";

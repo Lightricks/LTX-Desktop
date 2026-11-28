@@ -1,12 +1,14 @@
-"""Provision the pinned ComfyUI core for the private Windows GPU worker."""
+"""Provision the pinned ComfyUI core for the private GPU worker."""
 
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shutil
 import stat
+import sys
 import tempfile
 import zipfile
 from collections.abc import Callable
@@ -30,6 +32,7 @@ class ManagedComfyLayout:
     root: Path
     resources_dir: Path
     backend: LocalVideoBackend
+    platform: str = "win32"
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "root", self.root.resolve())
@@ -41,10 +44,18 @@ class ManagedComfyLayout:
 
     @property
     def extra_packages(self) -> Path:
+        if self.platform in ("darwin", "linux"):
+            return self.core_dir / ".ltx-site"
         return self.asset_dir / "site-packages"
 
     @property
     def python_exe(self) -> Path:
+        if self.platform == "darwin":
+            # The installer signs this interpreter for loading private native
+            # wheels. Its home and libpython are shared with the main runtime.
+            return self.resources_dir / "python" / "bin" / "ltx-comfy-python"
+        if self.platform == "linux":
+            return Path(sys.executable)
         return self.resources_dir / "python" / "python.exe"
 
     @property
@@ -88,7 +99,13 @@ def needs_install(layout: ManagedComfyLayout) -> bool:
     """Cheap readiness probe. The marker is committed only with a complete extraction."""
     try:
         marker = (layout.core_dir / _INSTALL_MARKER).read_text(encoding="ascii")
-    except (FileNotFoundError, UnicodeError):
+        if layout.platform in ("darwin", "linux"):
+            from services.comfy_posix_wheels import manifest_file
+            receipt = json.loads((layout.extra_packages / "ltx-comfy-deps.json").read_bytes())
+            digest = hashlib.sha256(manifest_file(layout.platform).read_bytes()).hexdigest()
+            if receipt.get("manifest_sha256") != digest:
+                return True
+    except (FileNotFoundError, ValueError, AttributeError):
         return True
     return marker != ARCHIVE_SHA256 or not all(
         (layout.core_dir / entry).is_file() for entry in ("main.py", "server.py", "comfy/ops.py")
@@ -98,7 +115,7 @@ def needs_install(layout: ManagedComfyLayout) -> bool:
 def _extract_verified(archive: Path, stage: Path) -> None:
     with archive.open("rb") as source:
         if os.fstat(source.fileno()).st_size != ARCHIVE_BYTES or hashlib.file_digest(source, "sha256").hexdigest() != ARCHIVE_SHA256:
-            raise ValueError("The bundled ComfyUI archive failed verification. Reinstall LTX Desktop - AMD 395 MAX.")
+            raise ValueError("The bundled ComfyUI archive failed verification. Reinstall the SpaceSpeak edition of LTX Desktop.")
         source.seek(0)
         prefix = f"ComfyUI-{CORE_REVISION}"
         with zipfile.ZipFile(source) as bundle:
@@ -131,7 +148,7 @@ def provision_private_comfy(
             return layout
         archive = layout.asset_dir / ARCHIVE_NAME
         if not archive.is_file():
-            raise FileNotFoundError("The bundled ComfyUI archive is missing. Reinstall LTX Desktop - AMD 395 MAX.")
+            raise FileNotFoundError("The bundled ComfyUI archive is missing. Reinstall the SpaceSpeak edition of LTX Desktop.")
         if progress:
             progress(f"Verifying and unpacking ComfyUI {CORE_VERSION}")
         layout.core_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -139,6 +156,13 @@ def provision_private_comfy(
             stage = Path(temporary) / "new"
             stage.mkdir()
             _extract_verified(archive, stage)
+            if layout.platform in ("darwin", "linux"):
+                from services.comfy_posix_wheels import manifest_file, provision_wheels
+                if layout.backend == "mps":
+                    from services.amd_h3_mps import prepare_h3_mps_core
+                    prepare_h3_mps_core(stage)
+                provision_wheels(manifest_file(layout.platform), layout.root / "cache" / "wheels",
+                                 stage / ".ltx-site", progress)
             backup = Path(temporary) / "old"
             if layout.core_dir.exists():
                 layout.core_dir.rename(backup)
@@ -166,7 +190,15 @@ def _worker_env(layout: ManagedComfyLayout) -> dict[str, str]:
         system = Path(os.environ.get("SystemRoot", r"C:\Windows"))
         env["PATH"] = os.pathsep.join(map(str, (layout.python_exe.parent, system / "System32", system)))
     else:
-        env["PATH"] = os.defpath
+        env["PATH"] = os.pathsep.join((str(layout.python_exe.parent), os.defpath))
+    if layout.platform in ("darwin", "linux"):
+        env["LTX_COMFY_GPU_PROBE"] = layout.backend
+        env["LTX_COMFY_PARENT_PID"] = str(os.getpid())
+        # Use the same policy as the native LTX process on Metal. Keep caches
+        # and bytecode out of the app bundle during imports.
+        if layout.backend == "mps":
+            env["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
     cache = layout.root / "cache"
     env.update({
         "TEMP": str(cache / "tmp"), "TMP": str(cache / "tmp"), "TMPDIR": str(cache / "tmp"),
@@ -185,7 +217,7 @@ def private_comfy_command(layout: ManagedComfyLayout, port: int) -> tuple[list[s
     if needs_install(layout):
         raise RuntimeError("Set up the private ComfyUI engine before starting it.")
     if not layout.python_exe.is_file() or not (layout.extra_packages / "ltx-comfy-deps.json").is_file():
-        raise FileNotFoundError("The private GPU Python runtime or ComfyUI dependencies are missing. Reinstall LTX Desktop - AMD 395 MAX.")
+        raise FileNotFoundError("The private GPU Python runtime or ComfyUI dependencies are missing. Reinstall the SpaceSpeak edition of LTX Desktop.")
     wrapper = Path(__file__).resolve().with_name("amd_comfy_bootstrap.py")
     # --base-directory directs ComfyUI's models, custom_nodes, temp, input,
     # output, user database and preferences to the private data tree.
@@ -198,7 +230,7 @@ def private_comfy_command(layout: ManagedComfyLayout, port: int) -> tuple[list[s
     if layout.backend == "rocm":
         # Avoid the Windows gfx1151 VBAR allocation crash during latent upsampling.
         argv.append("--disable-dynamic-vram")
-    elif not re.fullmatch(r"GPU-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}",
+    elif layout.platform == "win32" and not re.fullmatch(r"GPU-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}",
                           os.environ.get("CUDA_VISIBLE_DEVICES", ""), flags=re.I):
         raise RuntimeError("The selected NVIDIA device UUID is missing. Rerun the Windows installer.")
     return argv, _worker_env(layout), layout.core_dir

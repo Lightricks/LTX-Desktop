@@ -1,4 +1,4 @@
-"""Run a Desktop-owned prompt on an local CUDA or ROCm ComfyUI server."""
+"""Run a Desktop-owned prompt on a local Metal, CUDA or ROCm ComfyUI server."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import logging
 import mimetypes
 import os
 import re
+import sys
 import tempfile
 import time
 import uuid
@@ -111,9 +112,25 @@ def _check_external_gpu(name: str, backend: LocalVideoBackend) -> None:
         if primary != _selected_radeon_name().casefold():
             raise ComfyError(f"External ComfyUI's primary GPU ({name}) differs from the selected Radeon.")
         return
+    if backend == "mps":
+        # The managed worker applies a required H3 VAE fix verified against the pinned source.
+        raise ComfyError("Use the app-managed Metal engine to render MiniMax H3 on Apple silicon.")
     selected = os.environ.get("CUDA_VISIBLE_DEVICES", "").casefold()
     matching = [identity.casefold() for identity, model in _nvidia_inventory()
                 if model.casefold() == primary]
+    if not selected.startswith("gpu-") and sys.platform == "linux":
+        import torch
+
+        # Linux setups may set ordinal visibility or leave it empty. PyTorch device 0
+        # already reflects that selection; match its physical UUID to the server.
+        try:
+            identity = getattr(torch.cuda.get_device_properties(0), "uuid", None)
+        except (RuntimeError, AssertionError, OSError) as exc:
+            raise ComfyError("Could not identify the visible Linux CUDA device.") from exc
+        if identity is not None:
+            selected = str(identity).casefold()
+            if not selected.startswith("gpu-"):
+                selected = "gpu-" + selected
     if not selected or matching != [selected]:
         raise ComfyError(f"Could not match external ComfyUI's primary GPU ({name}) to the selected NVIDIA adapter.")
 
@@ -125,7 +142,10 @@ def gpu_name_from_stats(stats: JSON, backend: LocalVideoBackend) -> str:
     name = str(device.get("name", ""))
     version = str(system.get("pytorch_version", "")).lower()
     is_amd = bool(re.search(r"amd|radeon|gfx1151", name, re.I))
-    if backend == "rocm":
+    if backend == "mps":
+        compatible = device.get("type") == "mps" and system.get("os") == "darwin" and bool(name)
+        required = "the Apple GPU with Metal (MPS) PyTorch"
+    elif backend == "rocm":
         compatible = (device.get("type") in ("cuda", "hip") and is_amd
                       and ("rocm" in version or "hip" in version))
         required = "the Radeon with ROCm PyTorch"
@@ -240,7 +260,7 @@ class AmdComfyClient:
             return managed_comfy().connect(start_prepared=start_prepared, cancelled=cancelled)
         backend = backend or local_video_backend()
         if backend is None:
-            raise ComfyError("Local ComfyUI requires a supported CUDA or ROCm installation on Windows.")
+            raise ComfyError("The managed video engine requires a supported Apple Metal, NVIDIA CUDA or Radeon ROCm GPU.")
         errors: list[str] = []
         for port in ports:
             client = cls(port, backend=backend)

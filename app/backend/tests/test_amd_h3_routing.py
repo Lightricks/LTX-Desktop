@@ -20,7 +20,7 @@ def params(engine, **overrides):
 
 
 @pytest.fixture
-def worker(test_state, monkeypatch, windows_local_gpu):
+def worker(test_state, monkeypatch, h3_gpu):
     acknowledge_h3_license(test_state.config.app_data_dir)
     video = test_state.video_generation
     executors = test_state.executor_registry._executors
@@ -29,7 +29,8 @@ def worker(test_state, monkeypatch, windows_local_gpu):
     calls = []
 
     class Worker:
-        gpu_name = "Test Radeon"
+        gpu_name = "Test GPU"
+        backend = h3_gpu
 
         def get_object_info(self):
             return info()
@@ -65,7 +66,7 @@ def completed(client, created):
     return job
 
 
-def test_actual_h3_available_shapes_independent_of_native_weights_and_license(client, monkeypatch, windows_local_gpu):
+def test_actual_h3_available_shapes_independent_of_native_weights_and_license(client, test_state, h3_gpu):
     specs = client.get("/api/generate/models-specs").json()
     for key in ("h3_fl2va_local_model", "h3_fl2va_distill_local_model", "h3_ref2va_local_model"):
         row = specs[key]["spec"]
@@ -76,12 +77,12 @@ def test_actual_h3_available_shapes_independent_of_native_weights_and_license(cl
             "fps_to_durations": {"24": [5, 10, 15]}, "aspect_ratios": ["16:9", "9:16", "1:1"],
         }
     assert specs["downloaded_local_models"] == []
-    monkeypatch.setenv("LTX_GPU_RUNTIME", "api")
+    test_state.config.local_generations_mode = "unsupported"
     assert client.get("/api/generate/models-specs").json()["h3_ref2va_local_model"] is None
 
 
 @pytest.mark.parametrize("engine", ["h3-fl2va", "h3-fl2va-distill", "h3-ref2va"])
-def test_unacknowledged_weights_never_render_or_enqueue(client, engine, tmp_path, windows_local_gpu):
+def test_unacknowledged_weights_never_render_or_enqueue(client, engine, tmp_path, h3_gpu):
     image = engine == "h3-ref2va"
     req = params(engine, model="fast", **({"imagePath": "unused.png"} if image else {}))
     response = client.post("/api/generate", json=req)

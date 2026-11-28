@@ -18,10 +18,11 @@ from handlers.comfy_models_handler import (
     ComfyInstalledFile,
     locate_comfy_weight,
 )
+from runtime_config.community_runtime import local_video_backend
 from services.amd_comfy_client import AmdComfyClient
 from services.amd_comfy_models import ComfyWeight
 from services.amd_h3_models import (
-    H3_MODELS,
+    h3_model_recipes,
     H3Variant,
     acknowledge_h3_license,
     h3_license_acknowledged,
@@ -67,12 +68,14 @@ class H3ModelsHandler:
         folders: Callable[
             [], tuple[dict[str, list[str]], set[str]]
         ] = running_h3_folders,
-        recipes: dict[H3Variant, tuple[ComfyWeight, ...]] = H3_MODELS,
+        recipes: dict[H3Variant, tuple[ComfyWeight, ...]] | None = None,
     ) -> None:
         self._data = app_data_dir
         self._folders = folders
         self._lock = Lock()
         self._cached: tuple[float, dict[H3Variant, ComfyBundleStatus]] | None = None
+        if recipes is None:
+            recipes = h3_model_recipes(metal=local_video_backend() == "mps")
         self._recipes: dict[H3Variant, ComfyBundleInstaller] = {
             key: ComfyBundleInstaller(
                 _LABELS[key],

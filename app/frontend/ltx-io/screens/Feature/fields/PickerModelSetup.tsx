@@ -1,7 +1,8 @@
 import { isH3Variant } from "@/lib/h3-models";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ModelSetupPanel, modelSetupLabels, type ModelSetupKind } from "@/components/settings/ModelSetupPanel";
+import { ModelSetupPanel } from "@/components/settings/ModelSetupPanel";
+import { modelSetupLabels, type ModelSetupKind } from "@/lib/local-model-catalog";
 import styles from "@/components/settings/ModelSetupPanel.module.scss";
 import { Button } from "@ds/Button/Button";
 import { generationQueryKeys } from "../../../hooks/generationQueryKeys";
@@ -50,8 +51,8 @@ export function PickerModelSetup<TValue extends string | number>({ kind, option,
   return (
     <div className={styles.setupCopy}>
       {host === "desktop" ? <ModelSetupPanel kind={kind} api={api} resumeSelection onReady={refresh} onClose={onClose} /> : (
-        <section aria-label={`Set up ${modelSetupLabels[kind]} on the host PC`}>
-          <p>On the host PC, open LTX Desktop - AMD 395 MAX → Settings → Models and set up {modelSetupLabels[kind]}. Then refresh here to use it for this video.</p>
+        <section aria-label={`Set up ${modelSetupLabels[kind]} on the host computer`}>
+          <p>On the host computer, open LTX Desktop → Settings → Models and set up {modelSetupLabels[kind]}. Then refresh here to use it for this video.</p>
           <Button size="sm" label="Refresh and use" onClick={refresh} />
           <Button appearance="neutral" hierarchy="plain" size="sm" label="Close" onClick={onClose} />
         </section>

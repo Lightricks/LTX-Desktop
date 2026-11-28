@@ -99,3 +99,47 @@ def test_isolated_launch_resolves_private_modules_and_propagates_comfy_arguments
         monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
         with pytest.raises(RuntimeError, match="UUID"):
             private_comfy_command(layout, 9087)
+
+
+@pytest.mark.parametrize(("host", "backend"), [("darwin", "mps"), ("linux", "cuda")])
+def test_posix_setup_selects_the_platform_worker_and_keeps_app_bundle_read_only(
+    tmp_path, monkeypatch, host, backend,
+):
+    import hashlib
+    import zipfile
+    from services import comfy_posix_wheels
+
+    original = layout_with_payload(tmp_path, backend)
+    layout = ManagedComfyLayout(original.root, original.resources_dir, backend, host)
+    cache = layout.root / "cache" / "wheels"
+    cache.mkdir(parents=True)
+    wheel = cache / "private_fixture-1.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("private_fixture.py", "VALUE = 42\n")
+    lock = tmp_path / "worker.json"
+    record = {"filename": wheel.name, "sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
+              "url": "https://files.pythonhosted.org/fixture.whl", "size": wheel.stat().st_size}
+    lock.write_text(json.dumps({"python": f"{sys.version_info.major}.{sys.version_info.minor}", "wheels": [record]}))
+    monkeypatch.setattr(comfy_posix_wheels, "manifest_file", lambda _: lock)
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    expected_python = Path(sys.executable)
+    if host == "darwin":
+        expected_python = layout.resources_dir / "python" / "bin" / "ltx-comfy-python"
+        expected_python.parent.mkdir(parents=True)
+        expected_python.touch()
+    provision_private_comfy(layout)
+    args, env, _ = private_comfy_command(layout, 49178)
+    assert Path(args[0]) == expected_python
+    assert "-B" in args and env["LTX_COMFY_GPU_PROBE"] == backend
+    assert layout.extra_packages.is_relative_to(layout.root) and (layout.extra_packages / "private_fixture.py").is_file()
+    assert list(layout.asset_dir.iterdir()) == [layout.asset_dir / ARCHIVE_NAME]
+    vae = (layout.core_dir / "comfy/ldm/minimax/vae.py").read_text(encoding="utf-8")
+    assert ("x = torch.cat((prefix, x), dim=2)" in vae) == (backend == "mps")
+
+    # A replacement lock may not activate partially installed or wrong-platform wheels.
+    record["filename"] = "private_fixture-2.0-cp313-cp313-win_amd64.whl"
+    lock.write_text(json.dumps({"python": f"{sys.version_info.major}.{sys.version_info.minor}", "wheels": [record]}))
+    assert needs_install(layout)
+    with pytest.raises(ValueError, match="Incompatible dependency"):
+        provision_private_comfy(layout)
+    assert (layout.extra_packages / "private_fixture.py").read_text() == "VALUE = 42\n"

@@ -1,8 +1,23 @@
-# LTX Desktop community fork 1.3.3-community.4
+# LTX Desktop community fork 1.3.3-community.5
 
-Original LTX Desktop by Lightricks. Community fork by Peter Beery / SpaceSpeak.com. The Windows x64 installer supports the original NVIDIA CUDA renderer and Radeon 8040S, 8050S and 8060S graphics in the Ryzen AI Max family. These three GPUs use the gfx1151 architecture. Existing AMD installations keep their app name, installation location and user data.
+Original LTX Desktop by Lightricks. Community fork by Peter Beery / SpaceSpeak.com. The fork ships online installers for native Apple silicon, Windows x64 and Ubuntu x86-64. Windows supports NVIDIA CUDA and the gfx1151 Radeon 8040S, 8050S and 8060S in the Ryzen AI Max family. Existing AMD installations keep their app name, installation location and user data.
 
-On supported Windows GPUs, open **Settings → Models** to manage the native LTX models, the ComfyUI INT8 renderer, Kandinsky Lite, and MiniMax H3. You can also select and set up a model directly in **Image to Video** or **Text to Video**. H3 Ref2VA takes reference images and appears under **Image to Video**.
+## Deployment differences in this release
+
+All three desktop installers list **MiniMax H3 FL2VA Base**, **FL2VA 8-step Turbo**, and **Ref2VA** in **Settings → Models**. Base and Turbo work from **Text to Video** or **Image to Video**. Ref2VA needs one to nine reference images and appears in **Image to Video**. Installation uses the app’s private ComfyUI engine, even on a machine that has never had ComfyUI installed.
+
+| Deployment target | Local native LTX 2.5 / 2.3 Fast | Local MiniMax H3 (all three variants) | LTX 2.5 Fast · ComfyUI INT8 | Kandinsky 6 Lite · ComfyUI |
+| --- | --- | --- | --- | --- |
+| Windows x64, supported NVIDIA CUDA | Yes | Yes, CUDA | Yes | Yes |
+| Windows x64, Radeon 8040S / 8050S / 8060S (gfx1151) | Yes | Yes, ROCm | Yes | Yes |
+| Native macOS, eligible Apple silicon including M5 Pro | Yes | Metal (MPS), experimental | Unavailable | Unavailable |
+| Ubuntu 22.04+ x86-64, supported NVIDIA CUDA | Yes | Yes, CUDA | Unavailable | Unavailable |
+| API-only installations, including the Parallels Display Adapter | Unavailable | Catalog only | Unavailable | Unavailable |
+
+- **Mac.** Local tools require macOS 26+ and at least 24 GiB unified memory to pass the app’s eligibility check. This is the native LTX app threshold. Peak memory for a full H3 render on M5 Pro has not been measured. The Mac profile uses an FP16 video decoder and a Metal-compatible padding operation. The Mac build uses the bundled private worker for H3. Windows and Linux may also use an existing compatible local ComfyUI server when LTX can verify its GPU identity. The Mac installer is arm64. Intel Macs have no installer in this release.
+- **Windows and Linux.** CUDA and Windows Radeon use the INT8 H3 video decoder. Linux ships an amd64 Ubuntu installer for NVIDIA. This release has no Linux Radeon, Linux arm64 or native Windows-on-Arm local-GPU installer. The Windows x64 app in Parallels can use the cloud interface.
+- **Cloud and local workflows.** Gen Space uses the configured LTX service on all three desktop editions. LTX Pro is a cloud model. MiniMax H3 uses the local worker and has no cloud fallback in this fork. Each qualifying user must confirm the MiniMax license before setting up H3. Downloads are optional. Windows provides the managed Kandinsky node installer and GPU diagnostics shortcut. A paired remote client uses its host’s installed models. Manage downloads and license consent on the desktop host. **Extend**, **Retake**, **Audio to Video** and custom LoRA workflows use their native LTX model options. H3 is offered for text- and image-guided video.
+- **Hardware limits.** Duration, resolution and advanced native LTX tools depend on GPU memory, system memory and storage. Availability in the table describes the implemented software paths. All three H3 graphs passed the pinned ComfyUI validator. A weight-free four-frame H.264 clip with AAC audio exercised the live Linux worker and output download on CPU. End-to-end generation with actual H3 weights on M5 Pro, Linux CUDA and either Windows GPU remains unverified for this release. [Upstream hardware guide](app/docs/hardware-compatibility.md)
 
 Version 1.3.3 includes upstream Keyframes, a shorter context option for faster Extend and Retake, and Windows fixes for Gemma loading and Smart App Control. [Lightricks 1.3.3 release notes](https://github.com/Lightricks/LTX-Desktop/releases/tag/v1.3.3)
 
@@ -11,8 +26,8 @@ Version 1.3.3 includes upstream Keyframes, a shorter context option for faster E
 On an M5 Pro, run the Mac installer from Finder in macOS. The Windows installer recognizes the Parallels Display Adapter as an API-only device. Native macOS uses PyTorch Metal (MPS) and the Mac’s unified memory.
 
 1. Check **Apple menu → About This Mac** for the chip, memory and macOS version. Local generation needs macOS 26 or later and at least 24 GiB of unified memory. Lightricks recommends 32 GB or more. Allow at least 100 GB of free storage for local models. Macs with macOS 14 or 15, or less than 24 GiB of memory, can use the app in API mode. [Upstream Mac requirements](https://github.com/Lightricks/LTX-Desktop#system-requirements)
-2. Download **LTX-Desktop-1.3.3-community.4-Apple-Silicon-Online-Setup.zip** and double-click the ZIP to extract it. Open **LTX Desktop - SpaceSpeak Setup** and double-click **Install LTX Desktop.command**. Keep the extracted folder together during setup. Setup verifies and reuses the official 836 MB Mac archive from an earlier attempt when available. It preserves the signed Electron frameworks and helpers, checks the finished bundle and tests Metal on an eligible Mac before activating the installation.
-3. Open **LTX Desktop - SpaceSpeak** in your home **Applications** folder. Open **Settings → Models** to download a native LTX model. The Mac build supports native LTX 2.5 Fast and 2.3 Fast. The managed ComfyUI, Kandinsky and MiniMax H3 integrations in this release run on supported Windows GPUs.
+2. Download **LTX-Desktop-1.3.3-community.5-Apple-Silicon-Online-Setup.zip** and double-click the ZIP to extract it. Open **LTX Desktop - SpaceSpeak Setup** and double-click **Install LTX Desktop.command**. Keep the extracted folder together during setup. Setup verifies and reuses the official 836 MB Mac archive from an earlier attempt when available. It preserves the signed Electron frameworks and helpers, checks the finished bundle and tests Metal on an eligible Mac before activating the installation.
+3. Open **LTX Desktop - SpaceSpeak** in your home **Applications** folder. Open **Settings → Models** to download a native LTX model. The Mac build supports native LTX 2.5 Fast and 2.3 Fast. For H3, select a MiniMax entry in **Settings → Models**, review the license, then use the setup button to prepare the worker and download the weights. See the deployment table above for the Windows-only renderers.
 4. For a first local test, pick **LTX 2.5 Fast**, a five-second clip and a low resolution. The app stores its community profile under `~/Library/Application Support/LTXDesktopSpaceSpeak`.
 
 The Mac installer assembles the community app from pinned components and signs it locally. This release has no Apple Developer ID notarization. If macOS requests approval for an identified item you trust, use the per-item control under **System Settings → Privacy & Security**. [Apple’s guide to opening apps](https://support.apple.com/en-us/102445)
@@ -22,10 +37,10 @@ The Mac installer assembles the community app from pinned components and signs i
 On an x86-64 PC running Ubuntu 22.04 or later, install the NVIDIA driver and download the Linux online installer. From your Downloads folder, run it as your regular desktop user. The system asks for permission when it installs the Debian package.
 
 ```bash
-python3 LTX-Desktop-1.3.3-community.4-Linux-amd64-Online-Setup.zip
+python3 LTX-Desktop-1.3.3-community.5-Linux-amd64-Online-Setup.zip
 ```
 
-Open **LTX Desktop - SpaceSpeak** from the applications menu. First launch downloads the pinned Linux runtime. Under **Settings → Models**, choose a native LTX model. The managed ComfyUI, Kandinsky and MiniMax integrations are available on supported Windows GPUs. [Upstream Linux requirements](https://github.com/Lightricks/LTX-Desktop#system-requirements)
+Open **LTX Desktop - SpaceSpeak** from the applications menu. First launch downloads the pinned Linux runtime. Under **Settings → Models**, choose a native LTX model. MiniMax H3 setup is also available in this panel. The Ubuntu package includes the private ComfyUI core and downloads the matching Linux worker dependencies on first setup. [Upstream Linux requirements](https://github.com/Lightricks/LTX-Desktop#system-requirements)
 
 ## How Windows setup selects a GPU
 
@@ -39,7 +54,7 @@ The bundled Windows ROCm and PyTorch libraries target gfx1151. Setup checks the 
 
 Install the GPU vendor's driver before running setup. The installer selects the runtime automatically. Rerun setup after switching graphics hardware. The NVIDIA runtime download is approximately 3.30 GB before model weights. API mode uses roughly 365 MB of CPU runtime wheels and checks that the API backend initializes. In the Windows Start menu, open **LTX Desktop - AMD 395 MAX Diagnostics** to see the selected GPU and run a compute check. Its log is saved at `%LOCALAPPDATA%\LTXDesktopAMD\logs\gpu-diagnostic.txt`. On either local GPU path, the app can set up its own ComfyUI engine on a fresh PC. Model weights download when selected.
 
-The launch screen and Home identify this as the community fork with AMD GPU support. On Windows, choose **Help → About** for the app version, upstream project, and fork credits.
+The launch screen and Home identify this as a community fork and name the platform’s GPU backend. On Windows, choose **Help → About** for the app version, upstream project, and fork credits.
 
 ## Render from LTX Desktop - AMD 395 MAX
 
@@ -59,13 +74,13 @@ The launch screen and Home identify this as the community fork with AMD GPU supp
 | MiniMax H3 · Ref2VA | In Image to Video, guide the appearance of subjects or scenes with one to nine ordered reference images. This is a separate 20-step model. |
 | Cloud Fast and Pro models in Gen Space | Opens the existing project and API generation interface. Paid generation requires your configured LTX account. |
 
-A fresh LTX INT8 model download is 39.71 GB. A fresh Kandinsky Lite model download is 25.42 GB. LTX keeps the managed engine's weights in `%LOCALAPPDATA%\LTXDesktopAMD\managed-comfy\base\models`. These files are separate from the program installation and survive upgrades. The engine's startup log is `%LOCALAPPDATA%\LTXDesktopAMD\managed-comfy\worker.log`.
+A fresh LTX INT8 model download is 39.71 GB. A fresh Kandinsky Lite model download is 25.42 GB. On Windows, LTX keeps the managed engine's weights in `%LOCALAPPDATA%\LTXDesktopAMD\managed-comfy\base\models`. These files are separate from the program installation and survive upgrades. The engine's startup log is `%LOCALAPPDATA%\LTXDesktopAMD\managed-comfy\worker.log`.
 
 **Using MiniMax H3.** Select an H3 model in the generation screen or under **Settings → Models**. Read the license and confirm that your use is covered before starting the download. MiniMax's community license excludes the United States, the United Kingdom, the European Union and South Korea. Users in these territories need separate authorization from MiniMax for local use. The installed app includes the integration and the license. Model weights download only when requested. [MiniMax H3 Community License](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE)
 
-FL2VA Base or Ref2VA needs **51.53 GB** from a fresh installation. After FL2VA Base, the Turbo adapter adds **1.96 GB** and Ref2VA adds **20.97 GB**. The three variants share the text encoder and both audio and video decoders. All three support 24 fps and offer 5-, 10-, or 15-second targets, at 480p or 768p. Start with the 5-second, 480p setting to evaluate render time on your hardware. Describe the picture and audio together in the prompt.
+A fresh FL2VA Base or Ref2VA download needs **51.53 GB** on Windows or Linux and **53.92 GB** on macOS. These are download sizes. Peak memory use during rendering varies. After FL2VA Base, the Turbo adapter adds **1.96 GB** and Ref2VA adds **20.97 GB**. The three variants share the text encoder and both audio and video decoders. All three support 24 fps and offer 5-, 10-, or 15-second targets, at 480p or 768p. Start with the 5-second, 480p setting to evaluate render time on your hardware. Describe the picture and audio together in the prompt.
 
-**Optional existing ComfyUI installation.** LTX can use a compatible ComfyUI server on the selected GPU already running on this PC on port 8000 or 8188, with the models in that server's folders. If LTX cannot identify that server’s GPU, choose **Use LTX-managed engine** to run on the adapter verified by setup. External Kandinsky installations use their own ComfyUI Manager and need core 0.38.0 or newer. The included engine already meets this requirement. Each model component retains its upstream license. [Kandinsky model and node guide](https://github.com/kandinskylab/kandinsky-6/blob/73b892b730885e02ab58fbf7fc5cb10b78e1e3da/comfyui/README.md#manual-downloads)
+**Optional existing ComfyUI installation on Windows or Linux.** LTX can use a compatible ComfyUI server on the selected GPU already running on this PC on port 8000 or 8188, with the models in that server's folders. If LTX cannot identify that server’s GPU, choose **Use LTX-managed engine** to run on the adapter verified by setup. External Kandinsky installations use their own ComfyUI Manager and need core 0.38.0 or newer. The included engine already meets this requirement. Each model component retains its upstream license. [Kandinsky model and node guide](https://github.com/kandinskylab/kandinsky-6/blob/73b892b730885e02ab58fbf7fc5cb10b78e1e3da/comfyui/README.md#manual-downloads)
 
 ## Publish this code to your GitHub fork
 
@@ -74,17 +89,17 @@ FL2VA Base or Ref2VA needs **51.53 GB** from a fresh installation. After FL2VA B
 3. Run the following once in this extracted checkout. Replace `YOUR-ACCOUNT` with your GitHub username or organization. These commands connect the compact source history to its exact Lightricks base and place the work on a new branch in your fork.
 
 ```bash
-git switch -c spacespeak-gpu v1.3.3-community.4
+git switch -c spacespeak-gpu v1.3.3-community.5
 git remote add origin https://github.com/YOUR-ACCOUNT/LTX-Desktop.git
 git remote add upstream https://github.com/Lightricks/LTX-Desktop.git
 git fetch --no-tags upstream refs/tags/v1.3.3
 git merge --allow-unrelated-histories -s ours -m "Connect SpaceSpeak fork to Lightricks v1.3.3" 2ab055b98f7590581c56f9e0b2ff55ac56d459b7
-git diff --exit-code v1.3.3-community.4 HEAD
+git diff --exit-code v1.3.3-community.5 HEAD
 ```
 
 4. An empty diff confirms that the history connection preserved the release files. Run `git push -u origin spacespeak-gpu` to publish your revision. On GitHub, open **Branches → spacespeak-gpu** in your fork. You can make this your fork's default branch in its settings.
 
-The repository includes the fork source, build scripts, platform installers' source, upstream notices and all three Windows MiniMax integrations. Build preparation restores large upstream media and two dependency archives from pinned URLs and verifies their SHA-256 digests. Model weights download when requested in the application. [Pinned source assets](source-assets.json)
+The repository includes the fork source, build scripts, platform installers' source, upstream notices and all three MiniMax integrations for eligible Windows, Linux and macOS GPUs. Build preparation restores large upstream media and two dependency archives from pinned URLs and verifies their SHA-256 digests. Model weights download when requested in the application. [Pinned source assets](source-assets.json)
 
 ## Build the native Mac online installer
 
@@ -97,7 +112,7 @@ On x86-64 Linux with the source assets restored, Node 24, pnpm from Corepack and
 ```bash
 (cd app && corepack pnpm install --frozen-lockfile && corepack pnpm run build:frontend && corepack pnpm exec electron-builder --linux deb --x64 --config electron-builder.linux.cjs --publish never)
 curl -fL --retry 3 -o LTX-Desktop-amd64.deb https://github.com/Lightricks/LTX-Desktop/releases/download/v1.3.3/LTX-Desktop-amd64.deb
-python3 linuxwork/build_online.py --upstream-deb LTX-Desktop-amd64.deb --deb app/release/LTX-Desktop-SpaceSpeak-1.3.3-community.4-amd64.deb --output LTX-Desktop-1.3.3-community.4-Linux-amd64-Online-Setup.zip
+python3 linuxwork/build_online.py --upstream-deb LTX-Desktop-amd64.deb --deb app/release/LTX-Desktop-SpaceSpeak-1.3.3-community.5-amd64.deb --output LTX-Desktop-1.3.3-community.5-Linux-amd64-Online-Setup.zip
 python3 -B linuxwork/test_online.py
 ```
 
@@ -149,10 +164,17 @@ To verify an installed build on Windows and exercise the selected GPU, open Powe
 & "$env:LOCALAPPDATA\Programs\LTXDesktopAMD\application\resources\python\python.exe" .\checks\verify_install.py --gpu
 ```
 
-To check the managed engine on a recipient’s NVIDIA or Radeon GPU, run the following from the repository in PowerShell. It uses a temporary profile, performs a GPU calculation, installs the bundled Kandinsky nodes, and encodes and decodes a short video with sound. It needs no model weights.
+To check the managed engine on a Windows NVIDIA or Radeon GPU, run the following from the repository in PowerShell. It uses a temporary profile, performs a GPU calculation, installs the bundled Kandinsky nodes, and encodes and decodes a short video with sound. It needs no model weights.
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\LTXDesktopAMD\application\resources\python\python.exe" .\checks\check_managed_comfy.py
+```
+
+On macOS or Linux the same script accepts `--resources` and uses the installed desktop Python. It checks H3 node registration and exercises video/audio output without fetching model weights. On macOS the following command uses the app in your home Applications folder.
+
+```bash
+resources="$HOME/Applications/LTX Desktop - SpaceSpeak.app/Contents/Resources"
+"$resources/python/bin/python3" -B checks/check_managed_comfy.py --resources "$resources"
 ```
 
 The on-device [backend startup check](checks/check_backend_startup.py) launches the installed server in a temporary profile and verifies its authenticated health endpoint. A separate [Gemma check](checks/check_gemma_loading.py) loads and evaluates a tiny local checkpoint.

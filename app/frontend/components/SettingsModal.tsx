@@ -51,7 +51,6 @@ import {
 } from "./settings/SettingsContent";
 // eslint-disable-next-line no-restricted-imports
 import { MAX_NAG_SCALE } from "@/ltx-io/screens/Feature/definitions/negativePrompt";
-import { isSettingsTabAvailable } from "../lib/settings-navigation";
 import type {
   SettingsInitialReason,
   SettingsLegacyScrollAnchor,
@@ -211,7 +210,6 @@ export function SettingsScreen({
     clearFalApiKey,
     clearGeminiApiKey,
     refreshSettings,
-    forceApiGenerations,
     cudaAvailable,
     saveGeminiModel,
   } = useAppSettings();
@@ -309,14 +307,6 @@ export function SettingsScreen({
     })();
   };
 
-  // Don't let the selection sit on a tab this runtime doesn't show (from initialTab, a deep
-  // link, or a stale value). Same availability rule the tab strip uses.
-  useEffect(() => {
-    if (!isSettingsTabAvailable(activeTab, { forceApiGenerations })) {
-      setActiveTab("general");
-    }
-  }, [forceApiGenerations, activeTab]);
-
   // Fetch analytics state when the settings surface opens
   useEffect(() => {
     if (!active) return;
@@ -379,7 +369,7 @@ export function SettingsScreen({
     { id: "apiKeys" as TabId, label: "API Keys", icon: KeyRound },
     { id: "legacy" as TabId, label: "Legacy", icon: Archive },
     { id: "about" as TabId, label: "About", icon: Info },
-  ].filter((tab) => isSettingsTabAvailable(tab.id, { forceApiGenerations }));
+  ];
 
   const panelClassName = pageLayoutStyles.modalPanel;
   const tabBodyClassName = pageLayoutStyles.modalMainPane;
@@ -620,7 +610,7 @@ export function SettingsScreen({
             </SettingsAnchorSection>
           )}
 
-          {showSection("models") && !forceApiGenerations && (
+          {showSection("models") && (
             <ModelsSettingsSection sectionActive={active} />
           )}
 

@@ -23,7 +23,7 @@ from api_types import (
     ModelCheckpointID,
 )
 from inference.layout import LTX_2_5_FAMILY_DIR, get_checkpoint_layout
-from runtime_config.community_runtime import local_video_renderer_available
+from runtime_config.community_runtime import windows_video_renderer_available
 from runtime_config.ltx_api_text_encoder_ids import (
     LTX_2_5_API_PROMPT_EMBEDDING_MODEL,
     LtxApiPromptEmbeddingModel,
@@ -720,7 +720,7 @@ def _gemma3_snapshot_ready(path: Path) -> bool:
 
 def _cp_on_disk(path: Path, spec: ModelCheckpointSpec) -> bool:
     try:
-        verify_weights = local_video_renderer_available()
+        verify_weights = windows_video_renderer_available()
         if spec.is_folder:
             if not path.is_dir():
                 return False

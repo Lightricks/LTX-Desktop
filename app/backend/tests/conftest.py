@@ -141,6 +141,18 @@ def windows_local_gpu(windows_video_host, monkeypatch, request):
     return request.param
 
 
+
+@pytest.fixture(params=[("win32", "rocm"), ("win32", "cuda"), ("darwin", "mps"), ("linux", "cuda")])
+def h3_gpu(monkeypatch, request):
+    from runtime_config import community_runtime
+
+    host, backend = request.param
+    monkeypatch.setattr(community_runtime, "HOST_PLATFORM", host)
+    monkeypatch.setattr(community_runtime, "_native_backend", lambda platform: backend if platform == host else None)
+    if host == "win32":
+        monkeypatch.setenv("LTX_GPU_RUNTIME", backend)
+    return backend
+
 @pytest.fixture
 def fake_services() -> FakeServices:
     return FakeServices()

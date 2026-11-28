@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/ds/Button/Button'
-import { H3_NAMES, isH3Variant } from '@/lib/h3-models'
+import { isH3Variant } from '@/lib/h3-models'
+import { modelSetupLabels, type ModelSetupKind } from '@/lib/local-model-catalog'
 import { useHfAuth } from '@/hooks/use-hf-auth'
 import type { ExploreApi } from '@/ltx-io/runtime/ExploreRuntime'
 import type { ApiSuccessOf } from '@/lib/api-client'
@@ -9,16 +10,6 @@ import { beginManagedModelSetup, useManagedModelSetup, type ManagedModelKind } f
 
 import { SettingsFieldRow, SettingsHint, SettingsStack } from './SettingsContent'
 import styles from './ModelSetupPanel.module.scss'
-
-export type ModelSetupKind = 'ltx-2.3' | 'ltx-2.5' | ManagedModelKind
-
-export const modelSetupLabels: Record<ModelSetupKind, string> = {
-  'ltx-2.3': 'LTX 2.3 Fast · Native',
-  'ltx-2.5': 'LTX 2.5 Fast · Native',
-  'comfy-int8': 'LTX 2.5 Fast · ComfyUI INT8',
-  kandinsky: 'Kandinsky 6 Video Lite Distill · ComfyUI',
-  ...H3_NAMES,
-}
 
 type Props = {
   kind: ModelSetupKind
@@ -313,7 +304,7 @@ function ComfySetup({ kind, api, onReady, resumeSelection }: Props & { kind: Man
       <SettingsHint>MiniMax’s standard H3 license excludes the United States, European Union, United Kingdom and South Korea. Local use in these territories requires separate permission.</SettingsHint>
       <a href="https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE" target="_blank" rel="noreferrer"
         onClick={e => { if (desktop) { e.preventDefault(); void window.electronAPI.openExternalUrl({ url: e.currentTarget.href }) } }}>Read the MiniMax H3 license</a>
-      <label><input type="checkbox" checked={confirmedRights} onChange={e => setConfirmedRights(e.target.checked)} /> I have the rights to use MiniMax H3 on this PC.</label>
+      <label><input type="checkbox" checked={confirmedRights} onChange={e => setConfirmedRights(e.target.checked)} /> I have the rights to use MiniMax H3 on this computer.</label>
       <SettingsFieldRow className={styles.actions}><Button size="sm" label="Confirm model rights" disabled={busy || !confirmedRights}
         onClick={() => void act(async () => { unwrap(await api.acceptH3License()) })} /></SettingsFieldRow>
     </div>}
@@ -331,8 +322,8 @@ function ComfySetup({ kind, api, onReady, resumeSelection }: Props & { kind: Man
     {!!missing && status !== 'downloading' && <SettingsHint>Missing weights · {gb(missing)} GB</SettingsHint>}
     {kind === 'comfy-int8' && /license|\b401\b|\b403\b|hugging face|huggingface/i.test([error, message, setup?.message].join(' ')) &&
       <HfAccess api={api} repos={['Lightricks/LTX-2.5']} />}
-    {!online && data && <SettingsHint>
-      LTX Desktop - AMD 395 MAX can install its own video engine on this PC. A complete model download is up to{' '}
+    {!online && data && engine?.status !== 'unsupported' && <SettingsHint>
+      LTX Desktop can install its own video engine on this computer. A complete model download is up to{' '}
       {gb(data.bundle.totalBytes)} GB, plus engine files.
     </SettingsHint>}
     <SettingsFieldRow className={styles.actions}>
@@ -362,7 +353,7 @@ function ComfySetup({ kind, api, onReady, resumeSelection }: Props & { kind: Man
           if (result.status === 'error') throw new Error(result.message)
         })} />
     </details>}
-    {desktop && engine && !online && !working && <details className={styles.files}>
+    {desktop && window.electronAPI.platform === 'win32' && engine && engine.status !== 'unsupported' && !online && !working && <details className={styles.files}>
       <summary>Use an existing ComfyUI installation</summary>
       <Button appearance="neutral" hierarchy="secondary" size="sm" label="Open existing ComfyUI Desktop"
         onClick={() => void act(async () => { await window.electronAPI.openComfyDesktop() })} />

@@ -19,10 +19,11 @@ export function useAmdVideoPicker(specs?: VideoGenerationModelSpecsResponse) {
     queryFn: async () => unwrapApiResult(await api.getLtxVersions()).versions,
     retry: false,
   });
+  const needsComfyModels = desktopEnabled && !!(specs?.comfy_local_model || specs?.kandinsky_local_model);
   const status = useQuery({
-    queryKey: ["comfy-models"], enabled: desktopEnabled,
+    queryKey: ["comfy-models"], enabled: needsComfyModels,
     queryFn: async () => unwrapApiResult(await api.getComfyModels()),
-    refetchInterval: desktopEnabled ? 5000 : false,
+    refetchInterval: needsComfyModels ? 5000 : false,
     retry: false,
   });
   const h3Supported = !!specs?.h3_fl2va_local_model || !!specs?.h3_fl2va_distill_local_model || !!specs?.h3_ref2va_local_model;

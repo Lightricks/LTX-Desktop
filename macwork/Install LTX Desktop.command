@@ -83,6 +83,15 @@ resources="$bundle/Contents/Resources"
 mkdir -p "$resources"
 "$donor/python/bin/python3" -I -B "$here/materialize.py" assemble "$here/community.zip" "$donor" "$bundle"
 mv "$donor/python" "$resources/python"
+# The signed upstream Python restricts native imports to its own signing team.
+# Give only the separate ComfyUI worker the plug-in entitlement for verified wheels.
+worker="$resources/python/bin/ltx-comfy-python"
+cp -L "$resources/python/bin/python3" "$worker"
+codesign --force --sign - --options runtime --timestamp=none \
+  --identifier com.spacespeak.ltx-desktop-community.comfy-python \
+  --entitlements "$here/comfy-worker.mac.plist" "$worker"
+codesign --verify --strict "$worker"
+"$worker" -I -B -c 'import _ssl, pathlib, sys; assert pathlib.Path(sys.base_prefix).resolve() == pathlib.Path(sys.argv[1]).resolve(), sys.base_prefix' "$resources/python"
 echo "Verifying the signed Electron frameworks and helper apps"
 for nested in "$bundle/Contents/Frameworks/"*.framework "$bundle/Contents/Frameworks/"*.app; do
   if ! codesign --verify --deep --strict --verbose=1 "$nested"; then

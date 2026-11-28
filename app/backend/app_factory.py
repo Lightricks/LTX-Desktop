@@ -28,7 +28,7 @@ from _routes.custom_lora import router as custom_lora_router
 from _routes.image_gen import router as image_gen_router
 from _routes.image_gen import status_router as image_status_router
 from _routes.prompt_enhancement import router as prompt_enhancement_router
-from _routes.models import require_managed_renderer, router as models_router
+from _routes.models import require_windows_renderer, router as models_router
 from _routes.suggest_gap_prompt import router as suggest_gap_prompt_router
 from _routes.assistant import router as assistant_router
 from _routes.retake import router as retake_router
@@ -152,7 +152,7 @@ def create_app(
     app.state.managed_comfy = managed_comfy() if handler.config.managed_video_available else ManagedComfyEngine(None)
     app.include_router(comfy_engine_router)
     app.state.kandinsky_node_setup = KandinskyNodeSetup()
-    app.include_router(kandinsky_node_router, dependencies=[Depends(require_managed_renderer)])
+    app.include_router(kandinsky_node_router, dependencies=[Depends(require_windows_renderer)])
     app.include_router(health_router)
     app.include_router(generation_router)
     app.include_router(generate_specs_router)

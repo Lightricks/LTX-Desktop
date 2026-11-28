@@ -15,6 +15,15 @@ config.linux.executableName = name
 config.linux.artifactName = 'LTX-Desktop-SpaceSpeak-${version}-${arch}.${ext}'
 config.deb.packageName = name
 config.deb.maintainer = 'SpaceSpeak.com community contributors'
+const coreName = 'comfyui-v0.38.0.zip'
+const corePath = path.resolve(__dirname, '../vendor/ComfyUI', coreName)
+if (!fs.existsSync(corePath)) {
+  throw new Error('Run python3 restore_sources.py from the repository root before packaging the managed video engine.')
+}
+config.extraResources.push(
+  { from: corePath, to: `comfy-engine/${coreName}` },
+  { from: path.join(path.dirname(corePath), 'LICENSE'), to: 'licenses/comfyui/LICENSE' },
+)
 for (const resource of config.extraResources) {
   if (resource.from === 'python-deps-hash.txt') {
     resource.from = 'resources/linux/runtime-deps-sha256.txt'

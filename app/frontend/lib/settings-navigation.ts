@@ -26,24 +26,6 @@ const LEGACY_HASH_TO_TAB: Record<string, SettingsTabId> = {
   textEncoding: "general",
 };
 
-/**
- * Which tabs exist for this runtime. One source of truth on purpose: the answer is needed
- * both to build the tab strip and to bounce a selection that can no longer be shown (from a
- * deep link or a stale value), and keeping those two in separate conditions is how Legacy
- * ended up listed but unreachable.
- *
- * Models is the only tab force-API mode removes — it exists purely to manage local weights.
- * Legacy stays: it owns the project assets path and the seed lock, which apply to every
- * generation, and its local-only rows gate themselves.
- */
-export function isSettingsTabAvailable(
-  tab: SettingsTabId,
-  { forceApiGenerations }: { forceApiGenerations: boolean },
-): boolean {
-  if (tab === "models") return !forceApiGenerations;
-  return true;
-}
-
 export function parseSettingsTabId(
   value: string | null,
 ): SettingsTabId | undefined {

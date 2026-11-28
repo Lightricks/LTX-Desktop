@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Literal
 import httpx
 from pydantic import BaseModel
 
-from runtime_config.community_runtime import local_video_backend
+from runtime_config import community_runtime
 from services.amd_comfy_client import (
     AmdComfyClient,
     ComfyCancelled,
@@ -157,6 +157,9 @@ class ManagedComfyEngine:
         return not needs_install(self.layout)
 
     def _external(self) -> AmdComfyClient | None:
+        # Metal H3 requires the pinned VAE correction in our managed core.
+        if self.layout is None or self.layout.backend == "mps":
+            return None
         now = time.monotonic()
         if self._external_cache and now - self._external_cache[0] < 2:
             return self._external_cache[1]
@@ -209,7 +212,7 @@ class ManagedComfyEngine:
             if self.layout is None:
                 return ComfyEngineStatus(
                     status="unsupported",
-                    message="The private video engine requires a supported CUDA or ROCm installation on Windows.",
+                    message="The private video engine requires a supported Metal, CUDA or ROCm desktop runtime.",
                 )
             if self._phase in ("ready", "installing", "starting"):
                 return ComfyEngineStatus(
@@ -240,7 +243,7 @@ class ManagedComfyEngine:
                 )
             return ComfyEngineStatus(
                 status="not_installed",
-                message="Set up the bundled video engine to generate inside LTX Desktop - AMD 395 MAX.",
+                message="Set up the private video engine to generate inside LTX Desktop.",
                 canPrepare=True,
             )
 
@@ -478,7 +481,7 @@ class ManagedComfyEngine:
     ) -> AmdComfyClient:
         with self._lock:
             if self.layout is None:
-                raise ComfyError("The private video engine requires a supported CUDA or ROCm installation on Windows.")
+                raise ComfyError("The private video engine requires a supported Metal, CUDA or ROCm desktop runtime.")
             self._check_exit()
             if self._client:
                 return self._client
@@ -499,19 +502,19 @@ class ManagedComfyEngine:
             if self._phase in ("error", "installing", "starting"):
                 raise ComfyError(self._message)
             raise ComfyError(
-                "In LTX Desktop - AMD 395 MAX, open Settings → Models to set up the private video engine, or open ComfyUI Desktop on the selected GPU."
+                "In LTX Desktop, open Settings → Models to set up the private video engine, or open ComfyUI Desktop on the selected GPU."
             )
 
 
 @cache
 def managed_comfy() -> ManagedComfyEngine:
     data = os.environ.get("LTX_APP_DATA_DIR", "")
-    backend = local_video_backend()
+    backend = community_runtime.local_video_backend()
     if backend is None or not data or not Path(data).is_absolute():
         return ManagedComfyEngine(None)
     from services.amd_comfy_provision import ManagedComfyLayout
 
     resources = Path(__file__).resolve().parents[2]
     return ManagedComfyEngine(
-        ManagedComfyLayout(Path(data) / "managed-comfy", resources, backend)
+        ManagedComfyLayout(Path(data) / "managed-comfy", resources, backend, community_runtime.HOST_PLATFORM)
     )
