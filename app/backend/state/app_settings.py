@@ -1,0 +1,331 @@
+"""Canonical app settings schema and patch models."""
+
+from __future__ import annotations
+
+import sys
+from typing import Annotated, Any, Literal, TypeGuard, TypeVar, cast, get_args
+
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints, create_model, field_validator
+
+from api_types import LTXLocalModelId, LocalAssistantModel
+from runtime_config.community_runtime import local_video_backend, windows_video_renderer_available
+from runtime_config.reject_reasons import BudgetMode
+from inference.fast_video_pipeline.nag_config import DEFAULT_SCALE as DEFAULT_NAG_SCALE, MAX_SCALE as MAX_NAG_SCALE
+
+RemoteExposure = Literal["off", "lan"]
+DashboardRange = Literal["7d", "30d", "all"]
+MAX_GENERATION_SEED = 2_147_483_647
+AmdFastEngine = Literal["comfy", "native"]
+AssistantProviderName = Literal["gemini", "local"]
+
+
+def _parse_remote_exposure(value: object) -> RemoteExposure:
+    return "lan" if value == "lan" else "off"
+
+
+RemoteExposureSetting = Annotated[RemoteExposure, BeforeValidator(_parse_remote_exposure)]
+
+
+def _parse_budget_mode(value: object) -> object:
+    """None passes through, so a settings patch without a mode leaves the saved
+    one alone. Legacy spellings ("standard", "reckless") and junk map to Brave."""
+    if value is None:
+        return None
+    return "cautious" if value == "cautious" else "brave"
+
+
+BudgetModeSetting = Annotated[BudgetMode, BeforeValidator(_parse_budget_mode)]
+
+
+def _parse_dashboard_range(value: object) -> DashboardRange:
+    if value == "30d":
+        return "30d"
+    if value == "all":
+        return "all"
+    return "7d"
+
+
+def _to_camel_case(field_name: str) -> str:
+    head, *tail = field_name.split("_")
+    return head + "".join(part.title() for part in tail)
+
+
+def _clamp_int(value: Any, minimum: int, maximum: int, default: int) -> int:
+    if value is None:
+        return default
+
+    parsed = int(value)
+    return max(minimum, min(maximum, parsed))
+
+
+class SettingsBaseModel(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=_to_camel_case,
+        populate_by_name=True,
+        validate_assignment=True,
+        extra="ignore",
+    )
+
+
+class SettingsPatchModel(SettingsBaseModel):
+    model_config = ConfigDict(
+        alias_generator=_to_camel_case,
+        populate_by_name=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    @field_validator("budget_mode", mode="before", check_fields=False)
+    @classmethod
+    def _fold_legacy_budget_mode(cls, value: object) -> object:
+        return _parse_budget_mode(value)
+
+
+SelectionValues = list[Annotated[str, StringConstraints(max_length=64)]]
+
+
+class DashboardSelection(SettingsBaseModel):
+    """Activity Dashboard view. An empty list means Any."""
+
+    range: DashboardRange = "7d"
+    models: SelectionValues = Field(default_factory=list, max_length=32)
+    resolutions: SelectionValues = Field(default_factory=list, max_length=32)
+    aspect_ratios: SelectionValues = Field(default_factory=list, max_length=32)
+    fps: SelectionValues = Field(default_factory=list, max_length=32)
+
+
+class GenerationSeed(SettingsBaseModel):
+    """The seed every generate surface shares. `seed` is the next seed to use."""
+
+    seed: int = Field(ge=0, le=MAX_GENERATION_SEED)
+    locked: bool
+
+
+class GenerationSeedUpdate(SettingsBaseModel):
+    """Partial update: a client can flip the lock without touching the seed."""
+
+    seed: int | None = Field(default=None, ge=0, le=MAX_GENERATION_SEED)
+    locked: bool | None = None
+
+
+class AppSettings(SettingsBaseModel):
+    # Separate device preferences: previous releases persisted the Radeon default
+    # even on CUDA, before the CUDA user had a renderer choice.
+    amd_fast_engine: AmdFastEngine = "comfy"
+    cuda_fast_engine: AmdFastEngine = "native"
+    use_torch_compile: bool = False
+    diffusion_stage_cache_enabled: bool = False
+    # EXPERIMENTAL (Apple Silicon): decode the conv VAE with per-tap conv2d instead of MPS conv3d.
+    mps_conv3d_as_conv2d_enabled: bool = False
+    budget_mode: BudgetModeSetting = "brave"
+    # Brave's generate-time risk confirm. Turning "Ask before risky generate"
+    # back on in Settings is the reset.
+    skip_budget_risk_confirm: bool = False
+    # Fast clips run in one pass, never in windows (parts), unless a request asks for parts.
+    never_split_into_parts: bool = False
+    ltx_api_key: str = ""
+    user_prefers_ltx_api_video_generations: bool = False
+    fal_api_key: str = ""
+    user_prefers_fal_api_image_generations: bool = False
+    use_local_text_encoder: bool = False
+    prompt_cache_size: int = 100
+    # API enhance_prompt gate. One switch for every conditioning (text, image, keyframes,
+    # audio) — Settings presents it as one control, so the state behind it is one flag too.
+    prompt_enhancer_enabled: bool = True
+    # Home / Remote Explore: automatic prompt rewrite before Generate. Gen Space is unchanged.
+    explore_auto_enhance_prompts: bool = True
+    # Shows the Advanced section of Refine Details. Other features ignore it for now.
+    advanced_controls: bool = False
+    # The user's explicit choice, persisted so it survives restarts. None means no active choice
+    # has been made yet — the UI defaults to whichever provider is available, preferring local,
+    # without writing that default back here. Only an explicit user pick (not an automatic
+    # fallback when the preferred provider is temporarily unavailable) ever sets this.
+    prompt_enhancer_provider_preference: Literal["local", "api"] | None = None
+    gemini_api_key: str = ""
+    # Empty string means "use DEFAULT_GEMINI_MODEL at generate time" — unlike API keys, an
+    # empty patch is persisted so the user can reset to the default without a tombstone value.
+    gemini_model: str = ""
+    assistant_provider: AssistantProviderName = "gemini"
+    assistant_local_model: LocalAssistantModel = "qwen3.5:9b"
+    # Gemini only: a written reply ends the run without waiting for its jobs, so the next
+    # message starts at once. Off by default; no closing message when the jobs finish.
+    assistant_parallel_gemini: bool = False
+    seed_locked: bool = False
+    locked_seed: int = 42
+    models_dir: str = ""
+    active_ltx_model_id: LTXLocalModelId | None = None
+    # None = platform default (Mac on, CUDA/Linux off). An explicit bool is a user override.
+    use_conv_vae: bool | None = None
+    nag_scale: float = DEFAULT_NAG_SCALE
+    # Show the "Negative prompt strength" row (presets and raw NAG scale, alpha, tau) under
+    # the negative prompt on Home features. Off by default. Remote follows it through the
+    # prompt enhancer status, so the phone shows the row only when the Desktop does.
+    show_nag_strength_controls: bool = False
+    # Remote client HTTP server. Serving only when this is not off. Default off so a leftover
+    # settings.json cannot expose the engine after an upgrade. Unknown values (PoC tunnel modes)
+    # coerce to off.
+    remote_exposure: RemoteExposureSetting = "off"
+    activity_dashboard_selections: DashboardSelection = Field(default_factory=DashboardSelection)
+
+    @property
+    def local_fast_engine(self) -> AmdFastEngine:
+        if local_video_backend() == "rocm":
+            return self.amd_fast_engine
+        if local_video_backend() == "cuda" and windows_video_renderer_available():
+            return self.cuda_fast_engine
+        return "native"
+
+    @field_validator("budget_mode", mode="before")
+    @classmethod
+    def _stored_null_budget_mode_is_brave(cls, value: object) -> object:
+        """A stored null must not fail the whole settings load."""
+        return "brave" if value is None else value
+
+    @field_validator("prompt_cache_size", mode="before")
+    @classmethod
+    def _clamp_prompt_cache_size(cls, value: Any) -> int:
+        return _clamp_int(value, minimum=0, maximum=1000, default=100)
+
+    @field_validator("locked_seed", mode="before")
+    @classmethod
+    def _clamp_locked_seed(cls, value: Any) -> int:
+        return _clamp_int(value, minimum=0, maximum=MAX_GENERATION_SEED, default=42)
+
+    @field_validator("nag_scale", mode="before")
+    @classmethod
+    def _clamp_nag_scale(cls, value: Any) -> float:
+        if value is None:
+            return DEFAULT_NAG_SCALE
+        parsed = float(value)
+        return max(0.0, min(MAX_NAG_SCALE, parsed))
+
+    @field_validator("activity_dashboard_selections", mode="before")
+    @classmethod
+    def _tolerate_unknown_dashboard_range(cls, value: object) -> object:
+        """Only a stored file is forgiven an unknown range. The API rejects it."""
+        if not isinstance(value, dict):
+            return value
+        stored = cast(dict[str, object], value)
+        if "range" not in stored:
+            return stored
+        return {**stored, "range": _parse_dashboard_range(stored["range"])}
+
+
+SettingsModelT = TypeVar("SettingsModelT", bound=SettingsBaseModel)
+_PARTIAL_MODEL_CACHE: dict[type[SettingsBaseModel], type[SettingsPatchModel]] = {}
+
+
+def _wrap_optional(annotation: Any) -> Any:
+    if type(None) in get_args(annotation):
+        return annotation
+    return annotation | None
+
+
+def _to_partial_annotation(annotation: Any) -> Any:
+    if _is_settings_model_annotation(annotation):
+        return make_partial_model(annotation)
+    return annotation
+
+
+def make_partial_model(model: type[SettingsModelT]) -> type[SettingsPatchModel]:
+    cached = _PARTIAL_MODEL_CACHE.get(model)
+    if cached is not None:
+        return cached
+
+    fields: dict[str, tuple[Any, Any]] = {}
+    for field_name, field_info in model.model_fields.items():
+        if model is AppSettings and field_name == "cuda_fast_engine":
+            continue  # The existing amdFastEngine API field addresses the active GPU.
+        partial_annotation = _wrap_optional(_to_partial_annotation(field_info.annotation))
+        fields[field_name] = (partial_annotation, Field(default=None))
+
+    partial_model = create_model(
+        f"{model.__name__}Patch",
+        __base__=SettingsPatchModel,
+        **cast(Any, fields),
+    )
+
+    _PARTIAL_MODEL_CACHE[model] = partial_model
+    return partial_model
+
+
+def _is_settings_model_annotation(annotation: object) -> TypeGuard[type[SettingsBaseModel]]:
+    return isinstance(annotation, type) and issubclass(annotation, SettingsBaseModel)
+
+
+AppSettingsPatch = make_partial_model(AppSettings)
+UpdateSettingsRequest = AppSettingsPatch
+
+
+class SettingsResponse(SettingsBaseModel):
+    amd_fast_engine: AmdFastEngine = "comfy"
+    use_torch_compile: bool = False
+    diffusion_stage_cache_enabled: bool = False
+    mps_conv3d_as_conv2d_enabled: bool = False
+    budget_mode: BudgetMode = "brave"
+    skip_budget_risk_confirm: bool = False
+    never_split_into_parts: bool = False
+    has_ltx_api_key: bool = False
+    user_prefers_ltx_api_video_generations: bool = False
+    has_fal_api_key: bool = False
+    user_prefers_fal_api_image_generations: bool = False
+    use_local_text_encoder: bool = False
+    prompt_cache_size: int = 100
+    prompt_enhancer_enabled: bool = True
+    explore_auto_enhance_prompts: bool = True
+    advanced_controls: bool = False
+    prompt_enhancer_provider_preference: Literal["local", "api"] | None = None
+    has_gemini_api_key: bool = False
+    gemini_model: str = ""
+    assistant_provider: AssistantProviderName = "gemini"
+    assistant_local_model: LocalAssistantModel = "qwen3.5:9b"
+    assistant_parallel_gemini: bool = False
+    seed_locked: bool = False
+    locked_seed: int = 42
+    models_dir: str = ""
+    active_ltx_model_id: LTXLocalModelId | None = None
+    use_conv_vae: bool = False
+    nag_scale: float = DEFAULT_NAG_SCALE
+    show_nag_strength_controls: bool = False
+    remote_exposure: RemoteExposureSetting = "off"
+    activity_dashboard_selections: DashboardSelection = Field(default_factory=DashboardSelection)
+
+
+def remote_is_on(exposure: RemoteExposure) -> bool:
+    return exposure != "off"
+
+
+def resolved_use_conv_vae(settings: AppSettings, *, system: str | None = None) -> bool:
+    """Effective Fast decode setting: user override, else Mac on / CUDA off."""
+    if settings.use_conv_vae is not None:
+        return settings.use_conv_vae
+    if system is not None:
+        return system == "Darwin"
+    return sys.platform == "darwin"
+
+
+def to_settings_response(settings: AppSettings) -> SettingsResponse:
+    data = settings.model_dump(by_alias=False)
+    data["amd_fast_engine"] = settings.local_fast_engine
+    ltx_key = data.pop("ltx_api_key", "")
+    fal_key = data.pop("fal_api_key", "")
+    gemini_key = data.pop("gemini_api_key", "")
+    data["has_ltx_api_key"] = bool(ltx_key)
+    data["has_fal_api_key"] = bool(fal_key)
+    data["has_gemini_api_key"] = bool(gemini_key)
+    data["use_conv_vae"] = resolved_use_conv_vae(settings)
+    return SettingsResponse.model_validate(data)
+
+
+def should_video_generate_with_ltx_api(*, force_api_generations: bool, settings: AppSettings) -> bool:
+    has_ltx_api_key = bool(settings.ltx_api_key.strip())
+    return force_api_generations or (
+        settings.user_prefers_ltx_api_video_generations and has_ltx_api_key
+    )
+
+
+def should_image_generate_with_fal_api(*, force_api_generations: bool, settings: AppSettings) -> bool:
+    has_fal_api_key = bool(settings.fal_api_key.strip())
+    return force_api_generations or (
+        settings.user_prefers_fal_api_image_generations and has_fal_api_key
+    )

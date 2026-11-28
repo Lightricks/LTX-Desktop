@@ -1,0 +1,220 @@
+"""Settings state mutations and persistence."""
+
+from __future__ import annotations
+
+import json
+import logging
+import tempfile
+from pathlib import Path
+from threading import RLock
+from typing import TYPE_CHECKING
+
+from api_types import GeminiModelsResponsePayload, LTXLocalModelId
+from _routes._errors import HTTPError
+from runtime_config.community_runtime import local_video_backend, windows_video_renderer_available
+from state.app_settings import AppSettings, UpdateSettingsRequest
+from handlers._settings_utils import (
+    collect_changed_paths,
+    deep_merge_dicts,
+    ensure_json_object,
+    migrate_legacy_settings,
+    strip_none_values,
+)
+from handlers.base import StateHandlerBase, with_state_lock
+from services.gemini_text_client import (
+    is_text_to_text_gemini_model,
+    list_gemini_generate_content_models,
+    normalize_gemini_model_id,
+    resolve_gemini_model,
+)
+from services.storage_info.storage_info_impl import StorageInfoImpl
+from services.api_key_validation import validate_fal_api_key, validate_gemini_api_key
+from services.interfaces import HTTPClient
+from state.app_state_types import AppState
+
+if TYPE_CHECKING:
+    from runtime_config.runtime_config import RuntimeConfig
+    from services.storage_info.storage_info import DriveType
+
+logger = logging.getLogger(__name__)
+
+
+class SettingsHandler(StateHandlerBase):
+    def __init__(self, state: AppState, lock: RLock, config: RuntimeConfig, http: HTTPClient) -> None:
+        super().__init__(state, lock, config)
+        self._http = http
+        # Startup probe of the app-data tree, before settings load. The default
+        # models dir lives on that tree, so it never needs re-probing.
+        self._startup_drive_type: DriveType | None = config.checkpoint_drive_type
+
+    @with_state_lock
+    def load_settings(self, default_settings: AppSettings) -> AppSettings:
+        settings_file = self.config.settings_file
+        if settings_file.exists():
+            try:
+                with open(settings_file, "r", encoding="utf-8") as f:
+                    payload = json.load(f)
+                migrated = migrate_legacy_settings(ensure_json_object(payload))
+                merged = deep_merge_dicts(
+                    ensure_json_object(default_settings.model_dump(by_alias=False)),
+                    migrated,
+                )
+                loaded = AppSettings.model_validate(merged)
+                logger.info("Settings loaded from %s", settings_file)
+                self.state.app_settings = loaded
+                return loaded
+            except Exception as exc:
+                logger.warning("Could not load settings: %s", exc, exc_info=True)
+
+        self.state.app_settings = default_settings.model_copy(deep=True)
+        return self.state.app_settings
+
+    def refresh_checkpoint_drive_type(self) -> DriveType | None:
+        """Re-probe the checkpoint volume class for the effective models dir.
+
+        The startup probe covers the default tree; only a custom models dir
+        (possibly another drive class) pays for a fresh probe. Restores the
+        startup value when custom is cleared. Call after settings load and
+        whenever models_dir changes. Returns the value for callers that
+        snapshot it (queue telemetry). Lock-free: plain assignment, read
+        under handler locks or best-effort.
+        """
+        if not self.state.app_settings.models_dir:
+            self.config.checkpoint_drive_type = self._startup_drive_type
+            return self._startup_drive_type
+        drive_type = StorageInfoImpl(self.models_dir).get_drive_type()
+        self.config.checkpoint_drive_type = drive_type
+        return drive_type
+
+    def _write_settings(self, settings: AppSettings) -> None:
+        path = self.config.settings_file
+        temporary = tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
+        )
+        temp_path = Path(temporary.name)
+        try:
+            with temporary:
+                temporary.write(settings.model_dump_json(by_alias=False, indent=2))
+            temp_path.replace(path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+    @with_state_lock
+    def save_settings(self) -> None:
+        try:
+            self._write_settings(self.state.app_settings)
+        except Exception as exc:
+            logger.warning("Could not save settings: %s", exc, exc_info=True)
+
+    @with_state_lock
+    def get_settings_snapshot(self) -> AppSettings:
+        return self.state.app_settings.model_copy(deep=True)
+
+    @with_state_lock
+    def set_active_ltx_model_id(self, model_id: LTXLocalModelId) -> None:
+        updated = self.state.app_settings.model_copy(update={"active_ltx_model_id": model_id})
+        try:
+            self._write_settings(updated)
+        except OSError as exc:
+            raise HTTPError(500, "Could not save the selected model. Check available disk space and permissions.") from exc
+        self.state.app_settings.active_ltx_model_id = model_id
+
+    def update_settings(self, patch: UpdateSettingsRequest) -> tuple[AppSettings, AppSettings, set[str]]:
+        # Probe Fal and Gemini outside the lock — these are network calls.
+        # LTX is stored without a probe: no LTX route checks a key without a side effect.
+        self._validate_incoming_api_keys(patch)
+        return self._apply_settings_patch(patch)
+
+    def _validate_incoming_api_keys(self, patch: UpdateSettingsRequest) -> None:
+        gemini_key = _nonempty_key(patch, "gemini_api_key")
+        fal_key = _nonempty_key(patch, "fal_api_key")
+        if gemini_key is not None:
+            validate_gemini_api_key(self._http, api_key=gemini_key)
+        if fal_key is not None:
+            validate_fal_api_key(self._http, api_key=fal_key)
+
+    @with_state_lock
+    def _apply_settings_patch(
+        self, patch: UpdateSettingsRequest
+    ) -> tuple[AppSettings, AppSettings, set[str]]:
+        raw_patch = patch.model_dump(by_alias=False, exclude_unset=True)
+        patch_payload = strip_none_values(ensure_json_object(raw_patch))
+        if "amd_fast_engine" in patch_payload:
+            if windows_video_renderer_available() and local_video_backend() == "cuda":
+                patch_payload["cuda_fast_engine"] = patch_payload.pop("amd_fast_engine")
+            elif not windows_video_renderer_available():
+                patch_payload.pop("amd_fast_engine")
+
+        for key_field in ("ltx_api_key", "gemini_api_key", "fal_api_key"):
+            explicitly_set = key_field in patch.model_fields_set
+            if not explicitly_set:
+                continue
+            value = getattr(patch, key_field)
+            # null or blank = user removed the key. (Omitted fields stay unchanged.)
+            # Non-empty keys are stored trimmed, matching the value Fal/Gemini were probed with.
+            if isinstance(value, str) and value.strip():
+                patch_payload[key_field] = value.strip()
+            else:
+                patch_payload[key_field] = ""
+        # Empty gemini_model is kept: it means "use DEFAULT_GEMINI_MODEL", not "leave unchanged".
+        # Image/audio/video generators cannot enhance a prompt — persist them as "use default"
+        # so a leftover Nano Banana setting cannot round-trip back into the picker.
+        if "gemini_model" in patch_payload:
+            model_id = normalize_gemini_model_id(str(patch_payload["gemini_model"]))
+            if model_id and not is_text_to_text_gemini_model(model_id):
+                patch_payload["gemini_model"] = ""
+
+        # active_ltx_model_id is patchable here only because the patch model is auto-derived
+        # from every AppSettings field — but it must go through set_active_ltx_model, which
+        # checks the full required bundle. Drop it so the generic PATCH can't persist an
+        # unrunnable active model (base present, companions missing).
+        patch_payload.pop("active_ltx_model_id", None)
+
+        before = self.state.app_settings.model_copy(deep=True)
+        before_payload = ensure_json_object(before.model_dump(by_alias=False))
+
+        if patch_payload:
+            merged_payload = deep_merge_dicts(before_payload, patch_payload)
+            self.state.app_settings = AppSettings.model_validate(merged_payload)
+
+        after = self.state.app_settings.model_copy(deep=True)
+        after_payload = ensure_json_object(after.model_dump(by_alias=False))
+
+        if "prompt_cache_size" in patch_payload and self.state.text_encoder is not None:
+            self._trim_prompt_cache()
+
+        changed_paths = collect_changed_paths(before_payload, after_payload)
+        self.save_settings()
+        return before, after, changed_paths
+
+    def list_gemini_models(self) -> GeminiModelsResponsePayload:
+        settings = self.get_settings_snapshot()
+        if not settings.gemini_api_key:
+            raise HTTPError(400, "GEMINI_API_KEY_MISSING")
+        resolved_model = resolve_gemini_model(settings.gemini_model)
+        models = list_gemini_generate_content_models(
+            self._http,
+            api_key=settings.gemini_api_key,
+            include_id=resolved_model,
+        )
+        return GeminiModelsResponsePayload(models=models, resolvedModel=resolved_model)
+
+    def _trim_prompt_cache(self) -> None:
+        te = self.state.text_encoder
+        if te is None:
+            return
+
+        max_size = self.state.app_settings.prompt_cache_size
+        while len(te.prompt_cache) > max_size:
+            oldest = next(iter(te.prompt_cache))
+            del te.prompt_cache[oldest]
+
+
+def _nonempty_key(patch: UpdateSettingsRequest, field: str) -> str | None:
+    if field not in patch.model_fields_set:
+        return None
+    value = getattr(patch, field)
+    if not isinstance(value, str):
+        return None
+    trimmed = value.strip()
+    return trimmed or None

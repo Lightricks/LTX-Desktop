@@ -1,0 +1,157 @@
+[tool.uv.sources]
+ltx-core = { workspace = true }
+ltx-pipelines = { workspace = true }
+ltx-kernels = { path = "packages/ltx-kernels", editable = true }
+
+[tool.uv]
+no-build-isolation-package = ["ltx-kernels"]
+# torch 2.13+cu132 pins nvidia-cudnn-cu13==9.20.0.48, which omits
+# libcudnn_engines_tensor_ir; the system/apt cuDNN then resolves that soname from
+# /usr/lib, causing CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH. A wheel *older* than the
+# cuDNN torch was built against additionally aborts the process -- not an exception --
+# with `Cannot load symbol cublasLtGetVersion` the first time torch selects its cuDNN
+# SDPA backend. 9.24.0.43 ships tensor_ir and matches torch 2.13 / cuDNN 9.24;
+# 9.25.0.15 is yanked. Linux-only: the wheel is CUDA and has no darwin build.
+override-dependencies = ["nvidia-cudnn-cu13==9.24.0.43; sys_platform == 'linux'"]
+
+# Videoseal declares `decord` (no aarch64 wheels) and `opencv-python` (needs libGL).
+# PixelSeal embed/detect does not use decord (try/except in videoseal). Replace OpenCV
+# with the headless wheel so GPU CI / this host can import cv2.
+[[tool.uv.dependency-metadata]]
+name = "videoseal"
+version = "1.0"
+requires-dist = [
+    "PyWavelets",
+    "av",
+    "calflops",
+    "einops",
+    "lpips",
+    "omegaconf",
+    "opencv-python-headless",
+    "pandas",
+    "pycocotools",
+    "pytorch_msssim",
+    "safetensors",
+    "scikit-image",
+    "scipy",
+    "setuptools",
+    "tensorboard",
+    "timm==0.9.16",
+    "torch>=2.3.1",
+    "tqdm",
+    "transformers",
+]
+
+[tool.uv.workspace]
+members = ["packages/*"]
+# ltx-kernels compiles CUDA extensions; keep it out of the workspace so a plain
+# `uv sync` never forces a CUDA toolchain. Opt in via the `kernels` group below.
+exclude = ["packages/ltx-kernels"]
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+
+[dependency-groups]
+dev = [
+    "google-cloud-storage>=2.0",
+    "matplotlib>=3.7",
+    "pre-commit>=4.3.0",
+    "ruff>=0.14.3",
+    "pytest~=9.0",
+    "pytest-xdist~=3.8",
+    # Match torch's cu132 index (see packages/ltx-core pyproject): kernel builds must use
+    # the venv nvcc, not a mismatched system toolkit (CI runners often ship CUDA 12.8).
+    # `cccl` provides <nv/target> (pulled by cuda_fp16.h); `nvcc` alone is not enough.
+    "cuda-toolkit[nvcc,cccl]==13.2.*; sys_platform == 'linux'",
+    "nvidia-cuda-nvcc==13.2.*; sys_platform == 'linux'",
+    "nvidia-cuda-cccl==13.2.*; sys_platform == 'linux'",
+]
+# Opt-in compiled CUDA kernels (blockwise FP8/FP6 GEMM + multi-GPU all2all), built
+# editable from packages/ltx-kernels without build isolation (torch must already be
+# installed), CUDA host required. Install with `uv sync --group kernels`.
+kernels = ["ltx-kernels"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+exclude = [
+    # Vendored kernel sources / hardware glue, excluded from our lint/format rules.
+    "packages/ltx-kernels/src/ltx_kernels/blockwise/linear.py",
+    "packages/ltx-kernels/src/ltx_kernels/blockwise/ops/gemm.py",
+]
+
+[tool.ruff.lint]
+select = [
+    "E", # pycodestyle
+    "F", # pyflakes
+    "W", # pycodestyle (warnings)
+    "I", # isort
+    "N", # pep8-naming
+    "ANN", # flake8-annotations
+    "B", # flake8-bugbear
+    "A", # flake8-builtins
+    "COM", # flake8-commas
+    "C4", # flake8-comprehensions
+    "DTZ", # flake8-datetimez
+    "EXE", # flake8-executable
+    "PIE", # flake8-pie
+    "T20", # flake8-print
+    "PT", # flake8-pytest
+    "SIM", # flake8-simplify
+    "ARG", # flake8-unused-arguments
+    "PTH", # flake8--use-pathlib
+    "ERA", # flake8-eradicate
+    "RUF", # ruff specific rules
+    "PL", # pylint
+]
+ignore = [
+    "ANN002", # Missing type annotation for *args
+    "ANN003", # Missing type annotation for **kwargs
+    "ANN204", # Missing type annotation for special method
+    "COM812", # Missing trailing comma
+    "PTH123", # `open()` should be replaced by `Path.open()`
+    "PLR2004", # Magic value used in comparison, consider replacing with a constant variable
+    "N812", # Lowercase  imported as non-lowercase
+]
+
+[tool.ruff.lint.per-file-ignores]
+# CI gates: stand-alone CLIs whose whole job is printing a report / GitHub annotations.
+".github/actions/golden-pairing-gate/check_golden_pairing.py" = ["T201"]
+# setup.py must set CUDA_HOME before importing torch.utils.cpp_extension.
+"packages/ltx-kernels/setup.py" = ["E402"]
+# Tests for the CuTe DSL kernels. ltx-kernels is an optional, CUDA-host-only install,
+# so importing it at module level would turn "skipped" into a collection error wherever
+# it is absent -- which is most of CI.
+"packages/ltx-kernels/tests/ltx_kernels/test_vae_*.py" = ["PLC0415"]
+"packages/ltx-core/tests/**/test_dsl_kernels.py" = ["PLC0415"]
+# NVFP4 tests ``importorskip("ltx_kernels")`` before importing convert/linear/fuse
+# (which import the extension at module top level).
+"packages/ltx-core/tests/ltx_core/quantization/nvfp4/test_*.py" = ["E402"]
+# PixelSeal / AudioSeal tests ``importorskip`` extras before importing seal classes
+# (which import videoseal / audioseal at module top level).
+"packages/ltx-pipelines/tests/ltx_pipelines/test_videoseal.py" = ["E402"]
+"packages/ltx-pipelines/tests/ltx_pipelines/test_audioseal.py" = ["E402"]
+# CuTe DSL kernels. Device-side code written in CUTLASS's own idiom: tensor-algebra
+# names are conventionally uppercase (M, T, H, W, NH, TILER_N128), a `@cute.kernel`
+# entry point takes one parameter per compile-time constant, and its arguments are
+# DSL handles with no meaningful Python annotation. Formatting and everything else
+# is still enforced.
+"packages/ltx-kernels/src/ltx_kernels/vae/*.py" = [
+    "ANN001", # Missing type annotation for function argument
+    "ANN201", # Missing return type annotation for public function
+    "ANN202", # Missing return type annotation for private function
+    "N803",   # Argument name should be lowercase
+    "N806",   # Variable in function should be lowercase
+    "PLR0402", # `import cutlass.cute as cute` -- the conventional CuTe spelling
+    "PLR0912", # Too many branches
+    "PLR0913", # Too many arguments
+    "PLR0915", # Too many statements
+    "PLR1730", # `if a > b: a = b` -- a device-value clamp, not a Python min()
+]
+
+[tool.ruff.lint.pylint]
+max-args = 10
+
+[tool.ruff.lint.isort]
+known-first-party = ["ltx_core", "ltx_pipelines", "ltx_trainer"]

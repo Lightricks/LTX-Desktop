@@ -1,0 +1,22 @@
+LTX Desktop - SpaceSpeak
+Apple Silicon online installation
+
+Run this installer on the macOS side of your Mac. Local video generation uses Metal through PyTorch MPS. The application starts on macOS 14 or later. The native local renderer requires macOS 26 or later and at least 24 GiB unified memory. Older supported systems open in API mode.
+
+1. Use Finder to expand the installer ZIP. Keep all the files together in the “LTX Desktop - SpaceSpeak Setup” folder.
+2. Double-click “Install LTX Desktop.command”. A Terminal window shows the downloads and GPU check. If Finder declines to open the downloaded script, open Terminal, type /bin/bash followed by a space, drag “Install LTX Desktop.command” into the Terminal window, and press Return.
+3. Wait for “Installed”. The installer opens LTX Desktop - SpaceSpeak from your home Applications folder. Open Settings → Models and select a model in the managed model picker. For MiniMax H3, choose FL2VA Base, FL2VA Turbo or Ref2VA, review the MiniMax terms and confirm that your use is authorized. Start setup to prepare the private ComfyUI engine and download that model’s weights. No separate ComfyUI installation is needed.
+4. Select your installed H3 model in Image to Video. The FL2VA variants are also available in Text to Video. Ref2VA needs at least one reference image. For native LTX, choose LTX 2.5 or 2.3.
+5. To open the app again, choose Go > Home in Finder, then open Applications and “LTX Desktop - SpaceSpeak”. To upgrade, quit the existing SpaceSpeak app and run the new installer.
+
+Setup downloads the official LTX v1.3.3 Apple silicon archive (836 MB) or reuses the verified copy from a previous attempt. It preserves the signed Electron frameworks and helper apps from this archive. Local rendering on your Mac uses its Apple GPU through Metal (MPS). A Mac Developer ID notarization is not included. This installer assembles and signs its own app locally, then verifies the bundle. No system-wide security settings or administrator password are needed. The installation uses the current user's ~/Applications folder. Keeping the downloaded archive in ~/Library/Caches/com.spacespeak.ltx-desktop-community/setup/1.3.3 makes a retry quicker.
+
+Community.6 adds M5-native INT8 multiplication for supported MiniMax H3 denoiser layers. Quit the old app before upgrading. Previously downloaded models are reused. After a fresh H3 generation, open ~/Library/Application Support/LTXDesktopSpaceSpeak/managed-comfy/worker.log and search for “Native INT8 active” to confirm the render used the kernel. “Standard MPS” gives the fallback reason. Other eligible Macs continue using standard Metal. The Mac installer supplies the kernel and runtime.
+
+To compare the kernel with standard Metal on your M5, prepare the private engine in Settings and open Terminal in this extracted setup folder. Run:
+
+"$HOME/Applications/LTX Desktop - SpaceSpeak.app/Contents/Resources/python/bin/ltx-comfy-python" -I -B check_h3_m5_kernel.py --benchmark
+
+This optional test uses synthetic weights and reports timings for one H3 layer.
+
+Original LTX Desktop by Lightricks. Community fork by Peter Beery / SpaceSpeak.com.

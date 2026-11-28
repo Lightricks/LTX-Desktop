@@ -1,0 +1,18 @@
+.title {
+  margin: 0;
+  font-family: inherit;
+  font-size: clamp(30px, 4.8vw, 58px);
+  line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.subtitle {
+  display: block;
+  margin-top: 0.4em;
+  font-size: clamp(17px, 2.2vw, 27px);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}

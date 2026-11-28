@@ -1,1 +1,6 @@
-frontend/generated/** linguist-generated=true
+# Keep Windows publisher checkouts usable when building inside Linux or WSL.
+*.sh text eol=lf
+*.py text eol=lf
+*.nsi text eol=lf
+*.whl binary
+*.tar.gz binary

@@ -1,0 +1,83 @@
+name: Build and check Apple silicon online installer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-install:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Restore source and compile the desktop
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: |
+          test "$(uname -m)" = arm64
+          python3 -B macwork/test_materialize.py
+          python3 restore_sources.py
+          cd app
+          corepack enable
+          corepack pnpm install --frozen-lockfile
+          corepack pnpm run build:frontend
+      - name: Build the online installer
+        run: |
+          mkdir -p "$RUNNER_TEMP/mac-cache"
+          cd "$RUNNER_TEMP/mac-cache"
+          curl --fail --location --retry 3 --output upstream-mac.zip \
+            https://github.com/Lightricks/LTX-Desktop/releases/download/v1.3.3/LTX-Desktop-arm64.zip
+          echo '90bad9cc1662e52f3d291ca2e44e2bee5651c5497e1720477317a6c616db7f51  upstream-mac.zip' | shasum -a 256 --check
+          curl --fail --location --retry 3 --output electron.zip \
+            https://github.com/electron/electron/releases/download/v41.0.2/electron-v41.0.2-darwin-arm64.zip
+          cd "$GITHUB_WORKSPACE"
+          python3 macwork/build.py --upstream-zip "$RUNNER_TEMP/mac-cache/upstream-mac.zip" \
+            --electron-zip "$RUNNER_TEMP/mac-cache/electron.zip" --output "$RUNNER_TEMP/LTX-Mac-Online-Setup.zip"
+          # End users need only the official native LTX archive in the setup cache.
+          rm "$RUNNER_TEMP/mac-cache/electron.zip"
+      - name: Install and launch the packaged Apple silicon app
+        run: |
+          mkdir -p "$RUNNER_TEMP/setup" "$RUNNER_TEMP/Applications"
+          ditto -x -k "$RUNNER_TEMP/LTX-Mac-Online-Setup.zip" "$RUNNER_TEMP/setup"
+          cmp checks/check_h3_m5_kernel.py "$RUNNER_TEMP/setup/LTX Desktop - SpaceSpeak Setup/check_h3_m5_kernel.py"
+          "$RUNNER_TEMP/setup/LTX Desktop - SpaceSpeak Setup/Install LTX Desktop.command" \
+            --no-launch --cache "$RUNNER_TEMP/mac-cache" --applications-dir "$RUNNER_TEMP/Applications"
+          application="$RUNNER_TEMP/Applications/LTX Desktop - SpaceSpeak.app"
+          python3 checks/check_mac_frameworks.py "$application" "$RUNNER_TEMP/mac-cache/upstream-mac.zip"
+          resources="$application/Contents/Resources"
+          cmp vendor/ComfyUI/comfyui-v0.38.0.zip "$resources/comfy-engine/comfyui-v0.38.0.zip"
+          cmp vendor/ComfyUI/LICENSE "$resources/licenses/comfyui/LICENSE"
+          cmp app/resources/licenses/minimax-h3/LICENSE.txt "$resources/licenses/minimax-h3/LICENSE.txt"
+          cmp app/resources/licenses/minimax-h3/NOTICE.txt "$resources/licenses/minimax-h3/NOTICE.txt"
+          cmp app/resources/licenses/h3-m5-int8/LICENSE.txt "$resources/licenses/h3-m5-int8/LICENSE.txt"
+          cmp app/backend/services/comfy-wheels-macos-arm64.json "$resources/backend/services/comfy-wheels-macos-arm64.json"
+          cmp app/backend/services/amd_comfy_bootstrap.py "$resources/backend/services/amd_comfy_bootstrap.py"
+          cmp app/backend/services/amd_comfy_provision.py "$resources/backend/services/amd_comfy_provision.py"
+          cmp app/backend/services/amd_h3_mps.py "$resources/backend/services/amd_h3_mps.py"
+          cmp app/backend/services/h3_metal/__init__.py "$resources/backend/services/h3_metal/__init__.py"
+          cmp app/backend/services/h3_metal/int8_gemm.metal "$resources/backend/services/h3_metal/int8_gemm.metal"
+          python_bundle="$resources/python"
+          unzip -p "$RUNNER_TEMP/mac-cache/upstream-mac.zip" 'LTX Desktop.app/Contents/Resources/python/bin/python3.13' | cmp - "$python_bundle/bin/python3.13"
+          codesign --verify --strict "$python_bundle/bin/ltx-comfy-python"
+          "$python_bundle/bin/ltx-comfy-python" -I -B checks/check_mac_worker_import.py "$resources"
+          PYTHONHOME="$python_bundle" "$python_bundle/bin/python3" -B checks/check_native_mps.py
+          if [[ "$(sw_vers -productVersion | cut -d. -f1)" -ge 26 && "$(sysctl -n hw.memsize)" -ge 25769803776 ]]; then
+            PYTHONHOME="$python_bundle" "$python_bundle/bin/python3" -B checks/check_managed_comfy.py --resources "$resources"
+          fi
+          python3 checks/check_mac_app_launch.py "$application"
+          codesign --verify --deep --strict "$application"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: LTX-Desktop-Apple-Silicon-Online-Setup
+          path: ${{ runner.temp }}/LTX-Mac-Online-Setup.zip
+          if-no-files-found: error
+          compression-level: 0

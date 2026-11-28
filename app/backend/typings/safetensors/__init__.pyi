@@ -1,0 +1,26 @@
+from __future__ import annotations
+
+from types import TracebackType
+
+
+class SafetensorError(Exception): ...
+
+
+class _SafeSlice:
+    def get_shape(self) -> list[int]: ...
+
+
+class _SafeOpenReader:
+    def __enter__(self) -> _SafeOpenReader: ...
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None: ...
+    def keys(self) -> list[str]: ...
+    def get_slice(self, name: str) -> _SafeSlice: ...
+    def metadata(self) -> dict[str, str] | None: ...
+
+
+def safe_open(filename: str, framework: str, device: str = ...) -> _SafeOpenReader: ...

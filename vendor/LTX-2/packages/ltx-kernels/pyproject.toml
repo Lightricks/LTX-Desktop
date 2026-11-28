@@ -1,0 +1,30 @@
+[build-system]
+requires = [
+  "setuptools>=77",
+  "wheel",
+  "torch",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ltx-kernels"
+version = "1.6.0"
+license = "Apache-2.0"
+dependencies = [
+    "torch",
+    "triton>=3.0",
+    "nvidia-cutlass-dsl>=4.6.0.dev0,<5; sys_platform == 'linux'",
+]
+
+[project.entry-points."torch_dynamo_backends"]
+ltx_kernels_eager = "ltx_kernels.compile.backend:ltx_kernels_eager_backend"
+ltx_kernels_inductor = "ltx_kernels.compile.backend:ltx_kernels_inductor_backend"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"ltx_kernels.vae" = ["_aot/sm100a/*.o"]

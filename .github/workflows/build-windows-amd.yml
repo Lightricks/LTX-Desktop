@@ -1,0 +1,102 @@
+name: Build compact Windows GPU installer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - name: Restore pinned source files
+        run: python3 restore_sources.py --cache-dir build/.cache/source-archives
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends 7zip xz-utils
+          corepack --version
+      - name: Run repository checks
+        run: |
+          python3 -B -m unittest discover -s checks
+          node --experimental-strip-types --test app/electron/windows-runtime.test.ts
+          python3 -B setupwork/test_gpu_installer.py
+          python3 -B setupwork/test_media.py
+          python3 -B repair/test_repair.py
+          python3 -B runtimework/test_comfy_deps.py
+      - name: Build the Windows desktop and stage the online bootstrap
+        run: |
+          bash shellwork/build-shell.sh
+          python3 runtimework/prepare_runtime.py --mode web --out build/runtime
+      - name: Build the compact online installer
+        run: |
+          python3 setupwork/compact/build.py \
+            --source build/.cache/source-archives/ltx-desktop-upstream-2ab055b98f7590581c56f9e0b2ff55ac56d459b7.zip
+      - name: Check installer contents and generate checksum
+        working-directory: build/release
+        run: |
+          installer=LTX-AMD-395-MAX-Compact-Setup.exe
+          sevenzip="$(command -v 7zz || command -v 7z)"
+          "$sevenzip" l -tNsis -slt "$installer" > "$RUNNER_TEMP/ltx-compact-installer.txt"
+          for name in asset-payload.zip vendor-lock.json shell-inventory.json compact_setup.py api-runtime.json; do
+            grep -F -- "$name" "$RUNNER_TEMP/ltx-compact-installer.txt" > /dev/null
+          done
+          sha256sum "$installer" > "$installer.sha256"
+      - name: Save compact installer and checksum
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: LTX-AMD-395-MAX-Compact-Windows-x64
+          path: |
+            build/release/LTX-AMD-395-MAX-Compact-Setup.exe
+            build/release/LTX-AMD-395-MAX-Compact-Setup.exe.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  test-api-installer:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2025, windows-11-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: LTX-AMD-395-MAX-Compact-Windows-x64
+          path: ${{ runner.temp }}/ltx-setup
+      - name: Install the released x64 executable on Windows
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'ltx-setup/LTX-AMD-395-MAX-Compact-Setup.exe'
+          $expected = ((Get-Content "$installer.sha256").Trim() -split '\s+')[0]
+          if ((Get-FileHash -Algorithm SHA256 $installer).Hash -ne $expected) {
+            throw 'Installer checksum mismatch'
+          }
+          $process = Start-Process -FilePath $installer -ArgumentList '/S' -PassThru -Wait
+          $log = Join-Path $env:LOCALAPPDATA 'LTXDesktopAMD/setup/install.log'
+          if (Test-Path $log) { Get-Content $log -Tail 60 }
+          if ($process.ExitCode -ne 0) { throw "Installer returned $($process.ExitCode)" }
+      - name: Verify the selected x64 CPU runtime and start the installed backend
+        shell: pwsh
+        run: |
+          $resources = Join-Path $env:LOCALAPPDATA 'Programs/LTXDesktopAMD/application/resources'
+          $target = Get-Content (Join-Path $resources 'gpu-runtime.json') -Raw | ConvertFrom-Json
+          if ($target.backend -ne 'api') { throw "Expected API-only graphics, found $($target.backend)" }
+          $python = Join-Path $resources 'python/python.exe'
+          & $python -I -c "import sysconfig, torch; assert sysconfig.get_platform() == 'win-amd64'; assert torch.version.cuda is None and torch.version.hip is None; print(torch.__version__)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $python -I .\checks\check_backend_startup.py --timeout 300

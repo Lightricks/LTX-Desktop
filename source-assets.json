@@ -1,0 +1,930 @@
+{
+  "version": 1,
+  "desktop": {
+    "filename": "ltx-desktop-upstream-2ab055b98f7590581c56f9e0b2ff55ac56d459b7.zip",
+    "size": 198280031,
+    "sha256": "d3c56288c3db59d8dd4202c377e27473364c82dcc61a7805ca1190e84e42349b",
+    "url": "https://codeload.github.com/Lightricks/LTX-Desktop/zip/2ab055b98f7590581c56f9e0b2ff55ac56d459b7",
+    "prefix": "LTX-Desktop-2ab055b98f7590581c56f9e0b2ff55ac56d459b7/"
+  },
+  "files": [
+    {
+      "path": "app/backend/performance_runner/test_assets/reference_audio.wav",
+      "member": "backend/performance_runner/test_assets/reference_audio.wav",
+      "size": 956874,
+      "sha256": "61cdaaa8a7c910153ed6c70d5680d78df936af727fa8ac651e64f912bd014ee1"
+    },
+    {
+      "path": "app/backend/performance_runner/test_assets/reference_video.mp4",
+      "member": "backend/performance_runner/test_assets/reference_video.mp4",
+      "size": 165413,
+      "sha256": "a07d5ac49447c8306377683f3b939ddce0a98859b7a0e5c9a23e8aefd73d58fd"
+    },
+    {
+      "path": "app/backend/performance_runner/test_assets/reference_video_2s.mp4",
+      "member": "backend/performance_runner/test_assets/reference_video_2s.mp4",
+      "size": 161594,
+      "sha256": "c191ddf79ef313eb03fd6ba2413f0f51247a9c23cb4cee818c425a17bcb0e6dc"
+    },
+    {
+      "path": "app/backend/performance_runner/test_assets/reference_video_silent.mp4",
+      "member": "backend/performance_runner/test_assets/reference_video_silent.mp4",
+      "size": 122358,
+      "sha256": "b8c0bcae35331379e682546c1c7869672b7ebbeceaed267eb95c52e615ca1b2a"
+    },
+    {
+      "path": "app/frontend/assets/home/alpha-gen/discover-preview.mp4",
+      "member": "frontend/assets/home/alpha-gen/discover-preview.mp4",
+      "size": 1167003,
+      "sha256": "cf253baf2f5817d840c0aeef45b1eeface00e187a61e5849e1016e554ec14be5"
+    },
+    {
+      "path": "app/frontend/assets/home/audio-to-video/discover-preview.mp4",
+      "member": "frontend/assets/home/audio-to-video/discover-preview.mp4",
+      "size": 811754,
+      "sha256": "7505802953c39574949516f408db9b61a5f7380c93a1cda5c5c9e4a92713dede"
+    },
+    {
+      "path": "app/frontend/assets/home/cinemagraph/discover-poster.webp",
+      "member": "frontend/assets/home/cinemagraph/discover-poster.webp",
+      "size": 279876,
+      "sha256": "9f4ef269ae07cf5ca9c1371dbf3b6c5ce2537ad6f31b25a303e15c2a2809eb73"
+    },
+    {
+      "path": "app/frontend/assets/home/cinemagraph/discover-preview.mp4",
+      "member": "frontend/assets/home/cinemagraph/discover-preview.mp4",
+      "size": 553600,
+      "sha256": "f75db6c53675d961868d6099aa59deea3a0918fb6073ef602ecf2436e111fc89"
+    },
+    {
+      "path": "app/frontend/assets/home/claymation/preview.webm",
+      "member": "frontend/assets/home/claymation/preview.webm",
+      "size": 328333,
+      "sha256": "9a173d2cb25c4da6059081d374e604b6c46ea29ec6d05255a89006d317d6181b"
+    },
+    {
+      "path": "app/frontend/assets/home/clean-plate/discover-poster.webp",
+      "member": "frontend/assets/home/clean-plate/discover-poster.webp",
+      "size": 391988,
+      "sha256": "83e6853f77b60d25e6b21ffdceb85c3065a2406cd129ff8ffeac3c518374b859"
+    },
+    {
+      "path": "app/frontend/assets/home/clean-plate/discover-preview.webm",
+      "member": "frontend/assets/home/clean-plate/discover-preview.webm",
+      "size": 665086,
+      "sha256": "3635c25729d0c1f91985f0f5358c7b4b9f9de9b464481eec79b829d2445c70c1"
+    },
+    {
+      "path": "app/frontend/assets/home/colorization/discover-poster.webp",
+      "member": "frontend/assets/home/colorization/discover-poster.webp",
+      "size": 257116,
+      "sha256": "d6c89163d740cca8ab883cd4eab48bfbeae3bf4c092208f3ccc7193f8571862b"
+    },
+    {
+      "path": "app/frontend/assets/home/colorization/discover-preview.webm",
+      "member": "frontend/assets/home/colorization/discover-preview.webm",
+      "size": 2575671,
+      "sha256": "4ebb67f5073d653b346fced188e124279974ef8a2186a480e00852f1540c2c23"
+    },
+    {
+      "path": "app/frontend/assets/home/cozy-felt/discover-poster.webp",
+      "member": "frontend/assets/home/cozy-felt/discover-poster.webp",
+      "size": 308088,
+      "sha256": "88afc3b02e1845085ea0d39c72551a7a7065b783630f395d855817b94ea29575"
+    },
+    {
+      "path": "app/frontend/assets/home/cozy-felt/discover-preview.mp4",
+      "member": "frontend/assets/home/cozy-felt/discover-preview.mp4",
+      "size": 677572,
+      "sha256": "33262ef8796944b291bd9af422e926679669be0d07a0cfd47fc754fa47ce3c6d"
+    },
+    {
+      "path": "app/frontend/assets/home/day-to-night/discover-poster.webp",
+      "member": "frontend/assets/home/day-to-night/discover-poster.webp",
+      "size": 87106,
+      "sha256": "f02f37e17a4f91277b351f68b966b34fcc02b992a3c2c149e12934b992821d39"
+    },
+    {
+      "path": "app/frontend/assets/home/day-to-night/discover-preview.mp4",
+      "member": "frontend/assets/home/day-to-night/discover-preview.mp4",
+      "size": 438101,
+      "sha256": "316b59fd951db50df52ac4fc7669c8d55d2876e5cced7318fde15e0fd6e245e2"
+    },
+    {
+      "path": "app/frontend/assets/home/deblur/discover-preview.mp4",
+      "member": "frontend/assets/home/deblur/discover-preview.mp4",
+      "size": 622190,
+      "sha256": "2c108665e33e9ced26479b393f685f4df92262fb73224949d9571208606eca40"
+    },
+    {
+      "path": "app/frontend/assets/home/decompression/discover-poster.webp",
+      "member": "frontend/assets/home/decompression/discover-poster.webp",
+      "size": 98888,
+      "sha256": "e26a7a2da45624eeb006afdd241bfbd682492456968a2fd2396c8c8ed6454de7"
+    },
+    {
+      "path": "app/frontend/assets/home/decompression/discover-preview.mp4",
+      "member": "frontend/assets/home/decompression/discover-preview.mp4",
+      "size": 1795602,
+      "sha256": "f2f12db60c8b0d8abdbbcbe93e84b2bb493f7c6361d87fe817c79971a7012418"
+    },
+    {
+      "path": "app/frontend/assets/home/dolly-in/poster.webp",
+      "member": "frontend/assets/home/dolly-in/poster.webp",
+      "size": 90860,
+      "sha256": "33f2bf2e37e683934b8afc71e25ec1d7d65b1d2d3e71ae8b38f73dbea976ee5a"
+    },
+    {
+      "path": "app/frontend/assets/home/dolly-in/preview.webm",
+      "member": "frontend/assets/home/dolly-in/preview.webm",
+      "size": 373694,
+      "sha256": "88fd12d4fc6593c51aa8650918ad66efd4ab14579f91b1b1098dabc91ebe600e"
+    },
+    {
+      "path": "app/frontend/assets/home/dolly-out/preview.webm",
+      "member": "frontend/assets/home/dolly-out/preview.webm",
+      "size": 689606,
+      "sha256": "796453f62396104b6446a3cdde107375e7d1b1c998bf5df9e36684361e5944db"
+    },
+    {
+      "path": "app/frontend/assets/home/extend/discover-poster.webp",
+      "member": "frontend/assets/home/extend/discover-poster.webp",
+      "size": 78630,
+      "sha256": "3db2895a489a23d6faaf63ee6496f86da3a338476bd3d2f4eb69551bfa7d7eb3"
+    },
+    {
+      "path": "app/frontend/assets/home/extend/discover-preview.mp4",
+      "member": "frontend/assets/home/extend/discover-preview.mp4",
+      "size": 609054,
+      "sha256": "7a3efdce41a689cd5012759128c0030e9e830a617e7891748b3b349595cf1e9b"
+    },
+    {
+      "path": "app/frontend/assets/home/fantasy-painterly/preview.webm",
+      "member": "frontend/assets/home/fantasy-painterly/preview.webm",
+      "size": 717222,
+      "sha256": "42aa964276c2fa8d14d545b00eecb3bee2628fa67023a8d67a2833ecd135dede"
+    },
+    {
+      "path": "app/frontend/assets/home/fpv-motion/discover-poster.webp",
+      "member": "frontend/assets/home/fpv-motion/discover-poster.webp",
+      "size": 348458,
+      "sha256": "591528ed8b8bc0080e206264db57f7d8653b790099ed6014540a3cd62a17cfd5"
+    },
+    {
+      "path": "app/frontend/assets/home/fpv-motion/discover-preview.mp4",
+      "member": "frontend/assets/home/fpv-motion/discover-preview.mp4",
+      "size": 1622080,
+      "sha256": "44ae5673a617e6b9ac3cb817a511532ffd0eca9f00557e4f0e4fce1ae6399cb0"
+    },
+    {
+      "path": "app/frontend/assets/home/image-to-video/discover-poster.webp",
+      "member": "frontend/assets/home/image-to-video/discover-poster.webp",
+      "size": 111564,
+      "sha256": "67903138c407fd3c072fca7faed05c84387ebf3eefa1e8e641b3e5e798283840"
+    },
+    {
+      "path": "app/frontend/assets/home/image-to-video/discover-preview.mp4",
+      "member": "frontend/assets/home/image-to-video/discover-preview.mp4",
+      "size": 998175,
+      "sha256": "8b81e1d90c6e3d74557667960b1720313849da8629ef373e78460120cd535d4e"
+    },
+    {
+      "path": "app/frontend/assets/home/ingredients/discover-poster.webp",
+      "member": "frontend/assets/home/ingredients/discover-poster.webp",
+      "size": 110702,
+      "sha256": "4c28373f066959cb9b390704d8afe5900bb5de6187ca60443c1d30367309c105"
+    },
+    {
+      "path": "app/frontend/assets/home/ingredients/discover-preview.mp4",
+      "member": "frontend/assets/home/ingredients/discover-preview.mp4",
+      "size": 1250180,
+      "sha256": "8126c93aa68c3f2474a51d23162c9e55a29d5c5c309380fa3bd602e201de7856"
+    },
+    {
+      "path": "app/frontend/assets/home/jib-down/poster.webp",
+      "member": "frontend/assets/home/jib-down/poster.webp",
+      "size": 83366,
+      "sha256": "575621d9f5915b0418a1c87a00c117b43db0c6d0f42aa9f92372a7d5627f0b27"
+    },
+    {
+      "path": "app/frontend/assets/home/jib-down/preview.webm",
+      "member": "frontend/assets/home/jib-down/preview.webm",
+      "size": 951781,
+      "sha256": "c534403545164088191978b3a42bf9694889497abaa4324f8e2916388ae5504c"
+    },
+    {
+      "path": "app/frontend/assets/home/jib-up/poster.webp",
+      "member": "frontend/assets/home/jib-up/poster.webp",
+      "size": 84258,
+      "sha256": "57729e1a323afe080e3415789aa0fae4de01266cfa4261c6fe977d7951425448"
+    },
+    {
+      "path": "app/frontend/assets/home/jib-up/preview.webm",
+      "member": "frontend/assets/home/jib-up/preview.webm",
+      "size": 1467960,
+      "sha256": "78fb0e6647d5d8735e8f90a57f367114fbd7afc497d0666df92e122f292ead2d"
+    },
+    {
+      "path": "app/frontend/assets/home/keyframes/discover-poster.webp",
+      "member": "frontend/assets/home/keyframes/discover-poster.webp",
+      "size": 314924,
+      "sha256": "3bcac562e974d28639c53807f0399a3e02a344bada362dc00784c841e64f0be1"
+    },
+    {
+      "path": "app/frontend/assets/home/keyframes/discover-preview.mp4",
+      "member": "frontend/assets/home/keyframes/discover-preview.mp4",
+      "size": 4976971,
+      "sha256": "fa6ed06c7fca758e1e77aa7695c773deed63ab7be84bc99a6139b0f8ec657609"
+    },
+    {
+      "path": "app/frontend/assets/home/layout-to-render/example.mp4",
+      "member": "frontend/assets/home/layout-to-render/example.mp4",
+      "size": 1517840,
+      "sha256": "f65bbe594d03c1c30d50ce63771734f97a9b35c4d23012e43189de2ca9c22105"
+    },
+    {
+      "path": "app/frontend/assets/home/ltx-2.5/ltx-2.5-3d-avatar-reaction.mp4",
+      "member": "frontend/assets/home/ltx-2.5/ltx-2.5-3d-avatar-reaction.mp4",
+      "size": 1127560,
+      "sha256": "d113520c57d0582c5dc4221881ce92492781a6a7d0c502bc6eb7cf0e9eb8d5cf"
+    },
+    {
+      "path": "app/frontend/assets/home/ltx-2.5/ltx-2.5-multishot-red-cube.mp4",
+      "member": "frontend/assets/home/ltx-2.5/ltx-2.5-multishot-red-cube.mp4",
+      "size": 818098,
+      "sha256": "35de6a4616b0b427510a7369b424338e0079f06ff92cc3c0b90538ab5441306f"
+    },
+    {
+      "path": "app/frontend/assets/home/ltx-2.5/ltx-2.5-northern-glow.mp4",
+      "member": "frontend/assets/home/ltx-2.5/ltx-2.5-northern-glow.mp4",
+      "size": 1071012,
+      "sha256": "e9af6aa02489b37092c80538f85ccf554b92136fff0256a2d963f0e915e4d6b5"
+    },
+    {
+      "path": "app/frontend/assets/home/ltx-2.5/ltx-2.5-showreel.mp4",
+      "member": "frontend/assets/home/ltx-2.5/ltx-2.5-showreel.mp4",
+      "size": 551567,
+      "sha256": "896f6ff183eb1f93e5838af3e4d071f9a6c9c447bb68b40709ced7e814ba36e1"
+    },
+    {
+      "path": "app/frontend/assets/home/motion-track/discover-poster.webp",
+      "member": "frontend/assets/home/motion-track/discover-poster.webp",
+      "size": 173830,
+      "sha256": "957becb734bcde3fa020206eedf725e4c8fbef3cbd4b907f8fc3e3544d26136b"
+    },
+    {
+      "path": "app/frontend/assets/home/motion-track/discover-preview.mp4",
+      "member": "frontend/assets/home/motion-track/discover-preview.mp4",
+      "size": 572768,
+      "sha256": "17e2f33f97b2167c361fdd77b1efe6cecc46f54eebd6bce38eb39e197e4f4eb6"
+    },
+    {
+      "path": "app/frontend/assets/home/openwheel-t-cam/preview.webm",
+      "member": "frontend/assets/home/openwheel-t-cam/preview.webm",
+      "size": 1225577,
+      "sha256": "6cf953f10ac6f3dca814c763d92c86340f14d39884807ab12ca292988a60388d"
+    },
+    {
+      "path": "app/frontend/assets/home/paper-cut-out-style/preview.webm",
+      "member": "frontend/assets/home/paper-cut-out-style/preview.webm",
+      "size": 605419,
+      "sha256": "5a74257e0451dfdeb5e40ea1c7f54e656dda0bf5b41235a2e9e56d1278753d9b"
+    },
+    {
+      "path": "app/frontend/assets/home/refine-details/discover-poster.webp",
+      "member": "frontend/assets/home/refine-details/discover-poster.webp",
+      "size": 221352,
+      "sha256": "81d2b5766fd360c01189916dc5e1f8ca974e162571e25c87d8f38cbd2c6ca056"
+    },
+    {
+      "path": "app/frontend/assets/home/refine-details/discover-preview.mp4",
+      "member": "frontend/assets/home/refine-details/discover-preview.mp4",
+      "size": 4636999,
+      "sha256": "9f9b2364e011ad2810e6b93ba529421cd726a334c1ec6b5f8d9d63f0a6a41577"
+    },
+    {
+      "path": "app/frontend/assets/home/restore/discover-preview.mp4",
+      "member": "frontend/assets/home/restore/discover-preview.mp4",
+      "size": 2127437,
+      "sha256": "ea086094031cfe1d2e89be30524af23725fb1b0da89aa18b4199e08140b8f4fd"
+    },
+    {
+      "path": "app/frontend/assets/home/retake/discover-preview.mp4",
+      "member": "frontend/assets/home/retake/discover-preview.mp4",
+      "size": 1668600,
+      "sha256": "48c48f5d284bd3ac38c99a4fb41a223f22308c596030951cbbd80e28b0f0c950"
+    },
+    {
+      "path": "app/frontend/assets/home/text-to-video/discover-preview.webm",
+      "member": "frontend/assets/home/text-to-video/discover-preview.webm",
+      "size": 657097,
+      "sha256": "d0528e98348d89fbba0edce7350d59de16f51993c3400df5cd616164f9567ed1"
+    },
+    {
+      "path": "app/frontend/assets/home/transition/discover-poster.webp",
+      "member": "frontend/assets/home/transition/discover-poster.webp",
+      "size": 325528,
+      "sha256": "ecb4dea4399c5ad27bc4be9131cf8cda923fa5cce4c93a0ac573e90eb50061a1"
+    },
+    {
+      "path": "app/frontend/assets/home/transition/discover-preview.webm",
+      "member": "frontend/assets/home/transition/discover-preview.webm",
+      "size": 2021541,
+      "sha256": "c48b76bc2f533e7f6b5cddeadb62be4fc07cb85bb91969cf1b36fbe0abf33bdd"
+    },
+    {
+      "path": "app/frontend/assets/home/vbvr/discover-poster.webp",
+      "member": "frontend/assets/home/vbvr/discover-poster.webp",
+      "size": 242508,
+      "sha256": "362181fcf75c3f243ee4c8a469bbd85216a049acc846eed59a34f0d831a822ab"
+    },
+    {
+      "path": "app/frontend/assets/home/vbvr/discover-preview.webm",
+      "member": "frontend/assets/home/vbvr/discover-preview.webm",
+      "size": 861930,
+      "sha256": "8920910fdb6efeac48b91d02b121b799f66c375fe0917435ad0ddabb0be1652e"
+    },
+    {
+      "path": "app/frontend/assets/home/video-guide/discover-poster.webp",
+      "member": "frontend/assets/home/video-guide/discover-poster.webp",
+      "size": 104670,
+      "sha256": "59d27dfe3caab5828a927d8e50b096ea68c09ea938cea05b8532681e86138471"
+    },
+    {
+      "path": "app/frontend/assets/home/video-guide/discover-preview.mp4",
+      "member": "frontend/assets/home/video-guide/discover-preview.mp4",
+      "size": 2428168,
+      "sha256": "7df6728b67170850bfc4805638fc7dece3424a56cd2d39c23d441f7c6fc2b1ce"
+    },
+    {
+      "path": "app/frontend/assets/home/water-simulation/discover-poster.webp",
+      "member": "frontend/assets/home/water-simulation/discover-poster.webp",
+      "size": 76106,
+      "sha256": "b9e598b7ce3c2599e95d1e25ee0a078f4d0dddb45e36a2b7447c4a9f17d31a1d"
+    },
+    {
+      "path": "app/frontend/assets/home/water-simulation/discover-preview.mp4",
+      "member": "frontend/assets/home/water-simulation/discover-preview.mp4",
+      "size": 1237872,
+      "sha256": "9b117517158a16802b40e03fb3229e05fe06effbccc8fd12aa702c529586475d"
+    },
+    {
+      "path": "app/frontend/components/startup-loader/ltx-endpage.m4a",
+      "member": "frontend/components/startup-loader/ltx-endpage.m4a",
+      "size": 239941,
+      "sha256": "21fffb105e0013b2bd5187bc701deab561b22ccc0b08251163fb46d394a298c8"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/alpha-gen/example.mp4",
+      "member": "frontend/ltx-io/assets/alpha-gen/example.mp4",
+      "size": 1041592,
+      "sha256": "066497e2f09fe4c975e2e30ccb4de5e102ce3f17ffc79b07112f6987727205dd"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/audio-to-video/example.webm",
+      "member": "frontend/ltx-io/assets/audio-to-video/example.webm",
+      "size": 900725,
+      "sha256": "1a6cee6174aa4727858ba410a4dc64d90ccffeba6b62cf7de3cfb7aadd718af8"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/cinemagraph/example-poster.webp",
+      "member": "frontend/ltx-io/assets/cinemagraph/example-poster.webp",
+      "size": 279876,
+      "sha256": "9f4ef269ae07cf5ca9c1371dbf3b6c5ce2537ad6f31b25a303e15c2a2809eb73"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/cinemagraph/example.mp4",
+      "member": "frontend/ltx-io/assets/cinemagraph/example.mp4",
+      "size": 1686037,
+      "sha256": "5e3db31cad071012f00d9c7c4ab7a43d5b03792c9a5e91329206ed1b4371f601"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/claymation/example.webm",
+      "member": "frontend/ltx-io/assets/claymation/example.webm",
+      "size": 665773,
+      "sha256": "c5e3e846eb80e8ba73917c8ccbe2fe53fb9691c5a38044463e778e9e9d6f0baa"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/clean-plate/example-poster.webp",
+      "member": "frontend/ltx-io/assets/clean-plate/example-poster.webp",
+      "size": 139224,
+      "sha256": "4a60a94d880766c2ae49dbda817a230e7bdc3f6f499aa959913263103bcd082e"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/clean-plate/example.mp4",
+      "member": "frontend/ltx-io/assets/clean-plate/example.mp4",
+      "size": 763056,
+      "sha256": "907b98b5b7d336152df9205e99e6fbccfe2d4913b23a0d46d86c42da89fccc84"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/colorization/example-poster.webp",
+      "member": "frontend/ltx-io/assets/colorization/example-poster.webp",
+      "size": 119998,
+      "sha256": "66053bb95b61e9523361af3ac28c89b24b0ddbf42af27917b17751d502a32aae"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/colorization/example.mp4",
+      "member": "frontend/ltx-io/assets/colorization/example.mp4",
+      "size": 1752673,
+      "sha256": "e7de38e070a739b5cdca11c962b9f19415f1e1a386a51eb66e6de14b00f3813e"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/cozy-felt/example-poster.webp",
+      "member": "frontend/ltx-io/assets/cozy-felt/example-poster.webp",
+      "size": 99342,
+      "sha256": "c78d3cfa0ffc1eb7ad0d2c9879b8f50785c0cadc8a0efe3d4c39793d98c8804c"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/cozy-felt/example.webm",
+      "member": "frontend/ltx-io/assets/cozy-felt/example.webm",
+      "size": 1378468,
+      "sha256": "ea3ecd15c4d2679f5c825ab51f0b361057d71f30684004013ebd5af7a1863e9e"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/day-to-night/example-poster.webp",
+      "member": "frontend/ltx-io/assets/day-to-night/example-poster.webp",
+      "size": 85618,
+      "sha256": "2a121410cc8b5b42625b64385e86212067f8c877803a0fa6bfc1f7c444c624af"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/day-to-night/example.mp4",
+      "member": "frontend/ltx-io/assets/day-to-night/example.mp4",
+      "size": 2699233,
+      "sha256": "5036c830b639337e88b6ca64f5c25f2cfa824b5da752b4b733f6acc4319e3dc6"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/deblur/example.mp4",
+      "member": "frontend/ltx-io/assets/deblur/example.mp4",
+      "size": 1461581,
+      "sha256": "f518fb36e5631e2f3ebd453df03accc8b5eb9edbe9083e005e8d4050d7b02347"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/decompression/example-poster.webp",
+      "member": "frontend/ltx-io/assets/decompression/example-poster.webp",
+      "size": 151100,
+      "sha256": "de2642e0839c8205e48f6de738cc2242898fc2b00a9513b9fcb111536c569402"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/decompression/example.mp4",
+      "member": "frontend/ltx-io/assets/decompression/example.mp4",
+      "size": 3185909,
+      "sha256": "2e126e47e119ea3e29a8aead40e8a89fb4143d1ba42feccb25745679071d5f4a"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/dolly-in/example-poster.webp",
+      "member": "frontend/ltx-io/assets/dolly-in/example-poster.webp",
+      "size": 90860,
+      "sha256": "33f2bf2e37e683934b8afc71e25ec1d7d65b1d2d3e71ae8b38f73dbea976ee5a"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/dolly-in/example.webm",
+      "member": "frontend/ltx-io/assets/dolly-in/example.webm",
+      "size": 373694,
+      "sha256": "88fd12d4fc6593c51aa8650918ad66efd4ab14579f91b1b1098dabc91ebe600e"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/dolly-out/example.webm",
+      "member": "frontend/ltx-io/assets/dolly-out/example.webm",
+      "size": 1203086,
+      "sha256": "3044e8d973910f5d8a3c51cf6c8d5e6d6a8093dc7f87f9b4c41530e0ca2a07e4"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/extend/example.webm",
+      "member": "frontend/ltx-io/assets/extend/example.webm",
+      "size": 1434019,
+      "sha256": "c395ea0b7941f384a01ac1677cf194b6ae7b520e7dceb64d7d51cdb7eed96477"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/fantasy-painterly/example.webm",
+      "member": "frontend/ltx-io/assets/fantasy-painterly/example.webm",
+      "size": 1589484,
+      "sha256": "5e48b1df2dcff949622e3bc3ab581bb7b1de73c2a56219151e1ae76a63ac5209"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/fpv-motion/example-poster.webp",
+      "member": "frontend/ltx-io/assets/fpv-motion/example-poster.webp",
+      "size": 348458,
+      "sha256": "591528ed8b8bc0080e206264db57f7d8653b790099ed6014540a3cd62a17cfd5"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/fpv-motion/example.webm",
+      "member": "frontend/ltx-io/assets/fpv-motion/example.webm",
+      "size": 886609,
+      "sha256": "629086987d974ed0f14e861245957b9c6d7c37192799876035125cf6406f357c"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/image-to-video/example.webm",
+      "member": "frontend/ltx-io/assets/image-to-video/example.webm",
+      "size": 1145448,
+      "sha256": "219a43d01b8995229d0fdc613ea13a6f9b212ae4fe3813153083cce6fdf77da3"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/ingredients/example-poster.webp",
+      "member": "frontend/ltx-io/assets/ingredients/example-poster.webp",
+      "size": 95826,
+      "sha256": "cbd3e658791dfb5415d5f6d231078b7e24572ce286a9ee4acad8242d7756a706"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/ingredients/example.mp4",
+      "member": "frontend/ltx-io/assets/ingredients/example.mp4",
+      "size": 1283942,
+      "sha256": "615009cc78b13d67878ab70360351ffdac07af9a7394c0167887bfa817cc988a"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/jib-down/example-poster.webp",
+      "member": "frontend/ltx-io/assets/jib-down/example-poster.webp",
+      "size": 83366,
+      "sha256": "575621d9f5915b0418a1c87a00c117b43db0c6d0f42aa9f92372a7d5627f0b27"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/jib-down/example.webm",
+      "member": "frontend/ltx-io/assets/jib-down/example.webm",
+      "size": 1796919,
+      "sha256": "652c1609820323a881d6f5ecc763dab1b3af786f9aa9ccebaac360398d667e99"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/jib-up/example-poster.webp",
+      "member": "frontend/ltx-io/assets/jib-up/example-poster.webp",
+      "size": 84258,
+      "sha256": "57729e1a323afe080e3415789aa0fae4de01266cfa4261c6fe977d7951425448"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/jib-up/example.webm",
+      "member": "frontend/ltx-io/assets/jib-up/example.webm",
+      "size": 2113214,
+      "sha256": "a6433fa0971bbb214b84ac21eea3564bb6a6a6d1833c456d06e8473b1eba38fd"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/keyframes/example-poster.webp",
+      "member": "frontend/ltx-io/assets/keyframes/example-poster.webp",
+      "size": 327928,
+      "sha256": "c27945655b4147b5b86165b5612af6da827d2a3f27df540afd53fc27f5598653"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/keyframes/example.webm",
+      "member": "frontend/ltx-io/assets/keyframes/example.webm",
+      "size": 4971285,
+      "sha256": "55bcc3dc45aa966597cbb3d1cd6aca422dab86d73c3474f1e6eeb4326a70b41a"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/layout-to-render/example-poster.webp",
+      "member": "frontend/ltx-io/assets/layout-to-render/example-poster.webp",
+      "size": 196848,
+      "sha256": "24bda3605cab13d90f6bbe835626668cec36439a2b63b79e82b755b4fb7b4ca6"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/layout-to-render/example.mp4",
+      "member": "frontend/ltx-io/assets/layout-to-render/example.mp4",
+      "size": 2171265,
+      "sha256": "f3d26236a2323aed3a4c2fd0c89aea7ff0759671500b7ba454a45c024b188cc6"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/motion-track/example-input.webm",
+      "member": "frontend/ltx-io/assets/motion-track/example-input.webm",
+      "size": 114346,
+      "sha256": "c3b3d02e11a9b3d4089afe65ea272eef348e82356233c3f149f44d73bdf986ee"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/motion-track/example.webm",
+      "member": "frontend/ltx-io/assets/motion-track/example.webm",
+      "size": 405777,
+      "sha256": "2af8ec0afb6858b6a14b66f2fc67cee2181f5ad8baa0a3ccfb9a83e11709296d"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/openwheel-t-cam/example.webm",
+      "member": "frontend/ltx-io/assets/openwheel-t-cam/example.webm",
+      "size": 1225577,
+      "sha256": "6cf953f10ac6f3dca814c763d92c86340f14d39884807ab12ca292988a60388d"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/paper-cut-out-style/example-poster.webp",
+      "member": "frontend/ltx-io/assets/paper-cut-out-style/example-poster.webp",
+      "size": 72462,
+      "sha256": "5f4120a6377d7839e5e7d7e5df33d05d564e101ddd867adaca8dc69caa130ef7"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/paper-cut-out-style/example.webm",
+      "member": "frontend/ltx-io/assets/paper-cut-out-style/example.webm",
+      "size": 1454204,
+      "sha256": "1886b513f09c27f362464bcb53478a96e4d259427c65a7523e94c170cf7dc0aa"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/refine-details/example-poster.webp",
+      "member": "frontend/ltx-io/assets/refine-details/example-poster.webp",
+      "size": 262284,
+      "sha256": "e05513aa9b2ee6f92efae20af59237461cc1e68ba856a91a2478cd1274567121"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/refine-details/example.mp4",
+      "member": "frontend/ltx-io/assets/refine-details/example.mp4",
+      "size": 4983110,
+      "sha256": "1e58694a34ab7348b380e549379452c7a47cb686160b5c1723d7cf3bfa45a7aa"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/restore/example-poster.webp",
+      "member": "frontend/ltx-io/assets/restore/example-poster.webp",
+      "size": 95004,
+      "sha256": "d69afe42edfa2909fefca7138d5c41700b9bd9569953b872ce9e724f911a032a"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/restore/example.mp4",
+      "member": "frontend/ltx-io/assets/restore/example.mp4",
+      "size": 2313545,
+      "sha256": "c66f3cac26fc069e6bbceb9e9be836e748ba946ab3937feb7a8816de62a2d93e"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/retake/example.webm",
+      "member": "frontend/ltx-io/assets/retake/example.webm",
+      "size": 1670045,
+      "sha256": "0b47a447472d3f6129ff0b950fddcc0e2df890cb4ebb804659339db7bcde739c"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/text-to-video/example.webm",
+      "member": "frontend/ltx-io/assets/text-to-video/example.webm",
+      "size": 657097,
+      "sha256": "d0528e98348d89fbba0edce7350d59de16f51993c3400df5cd616164f9567ed1"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/transition/example-poster.webp",
+      "member": "frontend/ltx-io/assets/transition/example-poster.webp",
+      "size": 325528,
+      "sha256": "ecb4dea4399c5ad27bc4be9131cf8cda923fa5cce4c93a0ac573e90eb50061a1"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/transition/example.webm",
+      "member": "frontend/ltx-io/assets/transition/example.webm",
+      "size": 4787591,
+      "sha256": "6fc121e82d26939c3f66172ad54768045b3686f85ff45ae04fd77be54894317f"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/vbvr/example-poster.webp",
+      "member": "frontend/ltx-io/assets/vbvr/example-poster.webp",
+      "size": 242508,
+      "sha256": "362181fcf75c3f243ee4c8a469bbd85216a049acc846eed59a34f0d831a822ab"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/vbvr/example.mp4",
+      "member": "frontend/ltx-io/assets/vbvr/example.mp4",
+      "size": 3143807,
+      "sha256": "2b2f344ead869129511a52c13895e40924d1597cd9eb87e98ccb74e8bfaaae40"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/video-guide/example.mp4",
+      "member": "frontend/ltx-io/assets/video-guide/example.mp4",
+      "size": 981434,
+      "sha256": "30eb6b591bb48175053a4bbfe091da9d321e276675547ba8e11998be49a6eab6"
+    },
+    {
+      "path": "app/frontend/ltx-io/assets/water-simulation/example.mp4",
+      "member": "frontend/ltx-io/assets/water-simulation/example.mp4",
+      "size": 2843774,
+      "sha256": "20d57e0913d713feea2cc8355860a7fccae68084c41b832d4cf8adbdbaef6e1a"
+    },
+    {
+      "path": "app/images/home-dark.webp",
+      "member": "images/home-dark.webp",
+      "size": 121320,
+      "sha256": "b87556377bf8a89b18ba8c93393632ddcc79c3d972da89746cddacde3605195b"
+    },
+    {
+      "path": "app/images/home-light.webp",
+      "member": "images/home-light.webp",
+      "size": 119674,
+      "sha256": "2c79d8729da079a19c646a88d79b49405fce6ea65d321c51c6615ceaf614e3e4"
+    },
+    {
+      "path": "app/images/ic-lora-day-to-night.webp",
+      "member": "images/ic-lora-day-to-night.webp",
+      "size": 87496,
+      "sha256": "077d531fe6b74c1adb9d51260762771c2c0c1cebbb8fd7ff7b912c29118a298e"
+    },
+    {
+      "path": "app/images/retake.webp",
+      "member": "images/retake.webp",
+      "size": 89780,
+      "sha256": "1276703f9d63ed4c3ddeac185e34235c5fc85082f9b316f7b03ebe9e79584368"
+    },
+    {
+      "path": "app/images/text-to-video.webp",
+      "member": "images/text-to-video.webp",
+      "size": 90132,
+      "sha256": "d24ed46397b8daf3de4ba639d2fa56cfda26fafd83e88d633fd423a38fe0c404"
+    },
+    {
+      "path": "app/images/video-editor.webp",
+      "member": "images/video-editor.webp",
+      "size": 65804,
+      "sha256": "dab52e0cb2f36c6cea7d64c86f4421b6da3d53a6baeac9fe6f663729361ecf57"
+    },
+    {
+      "path": "app/public/hero-video.mp4",
+      "member": "public/hero-video.mp4",
+      "size": 26896241,
+      "sha256": "fce72e81f4912afa1424c1e8907eeefe7b6af8a56e0cffe8976ddebf82f31b19"
+    },
+    {
+      "path": "app/public/splash/splash.mp4",
+      "member": "public/splash/splash.mp4",
+      "size": 6703167,
+      "sha256": "0da78b05b6cf8168b6914cfead0737567eff73c86eea52fffe26ff8fd379f2f9"
+    },
+    {
+      "path": "app/resources/explore-assets/alpha-gen-reference.mp4",
+      "member": "resources/explore-assets/alpha-gen-reference.mp4",
+      "size": 3445756,
+      "sha256": "c5bab94633f6c7a7210f7d28a84f4357271f87f199a9087bfefc72d8b6ac563c"
+    },
+    {
+      "path": "app/resources/explore-assets/audio-to-video-input-v2.mp3",
+      "member": "resources/explore-assets/audio-to-video-input-v2.mp3",
+      "size": 104771,
+      "sha256": "22a43fa6c6df1fd8da7663a8765b7792ccb29513d4305eb18b657d95b2c0a030"
+    },
+    {
+      "path": "app/resources/explore-assets/cinemagraph-start-frame.jpg",
+      "member": "resources/explore-assets/cinemagraph-start-frame.jpg",
+      "size": 226370,
+      "sha256": "95fae9e7172778acce8ccf8007562dfb3b9d7bd4ad963fe63d3b9d6e432c42ab"
+    },
+    {
+      "path": "app/resources/explore-assets/clean-plate-reference.mp4",
+      "member": "resources/explore-assets/clean-plate-reference.mp4",
+      "size": 3403929,
+      "sha256": "04125c9a8639b2656000093f147a8f2b44af2a5fab47dea7d5e5f320df887b86"
+    },
+    {
+      "path": "app/resources/explore-assets/colorization-reference.mp4",
+      "member": "resources/explore-assets/colorization-reference.mp4",
+      "size": 4121668,
+      "sha256": "5a860a3901e865007ca3ded8a25ecea2b3ff91b972e3cc3bea066a188d2d3e3c"
+    },
+    {
+      "path": "app/resources/explore-assets/day-to-night-reference.mp4",
+      "member": "resources/explore-assets/day-to-night-reference.mp4",
+      "size": 3484234,
+      "sha256": "02b223ed5c4a6ee892b906bb2954c769f535e076934e4fb1ebb9abff916afa4e"
+    },
+    {
+      "path": "app/resources/explore-assets/deblur-reference.mp4",
+      "member": "resources/explore-assets/deblur-reference.mp4",
+      "size": 2572281,
+      "sha256": "8b45024f09956fa999e033d10fa1ea95736a82c562d56d877b19df3e5ae4f3ab"
+    },
+    {
+      "path": "app/resources/explore-assets/decompression-reference.mp4",
+      "member": "resources/explore-assets/decompression-reference.mp4",
+      "size": 2401809,
+      "sha256": "3586955d1188cd57d47cc92039679da29a6d9b2bce1ac28aeca2d4c44ca78968"
+    },
+    {
+      "path": "app/resources/explore-assets/dolly-in-start-frame.jpg",
+      "member": "resources/explore-assets/dolly-in-start-frame.jpg",
+      "size": 125632,
+      "sha256": "fb43d70bb3ac1c4594c2b9301b22bc7a0a2d08adad4d8b8e35422bd96c240c1e"
+    },
+    {
+      "path": "app/resources/explore-assets/dolly-out-start-frame.jpg",
+      "member": "resources/explore-assets/dolly-out-start-frame.jpg",
+      "size": 126217,
+      "sha256": "d59eeaf306d6e6c5ed00dfd1681ed276a001040f90ea38366c30a2e62a578a9e"
+    },
+    {
+      "path": "app/resources/explore-assets/extend-input-v3.mp4",
+      "member": "resources/explore-assets/extend-input-v3.mp4",
+      "size": 2908814,
+      "sha256": "0b2eaae661bf5294f0163aab649a60f3f654eb403cec552d270dc2edbc5aaae3"
+    },
+    {
+      "path": "app/resources/explore-assets/ingredients-sheet.jpg",
+      "member": "resources/explore-assets/ingredients-sheet.jpg",
+      "size": 455425,
+      "sha256": "7237c43aa58d31c564b2b5868bffb3c349c915305cbb1603aadef5d593d89564"
+    },
+    {
+      "path": "app/resources/explore-assets/jib-down-start-frame.jpg",
+      "member": "resources/explore-assets/jib-down-start-frame.jpg",
+      "size": 197165,
+      "sha256": "87958d7e935ec2ab8f966d6b2c2bd8dac80e25b0e8444ebcac291c4599ec22cd"
+    },
+    {
+      "path": "app/resources/explore-assets/jib-up-start-frame.jpg",
+      "member": "resources/explore-assets/jib-up-start-frame.jpg",
+      "size": 202155,
+      "sha256": "9365e215ccd9206a8b93e914a53bf398d404dc22ee1f1d59e4c0921ad6095548"
+    },
+    {
+      "path": "app/resources/explore-assets/keyframes-autumn.jpg",
+      "member": "resources/explore-assets/keyframes-autumn.jpg",
+      "size": 234117,
+      "sha256": "9e9ec9a0f7856aa9521a0c645e0d5f3c0aa5f046e2d21597df55889e70b65e56"
+    },
+    {
+      "path": "app/resources/explore-assets/keyframes-spring.jpg",
+      "member": "resources/explore-assets/keyframes-spring.jpg",
+      "size": 260054,
+      "sha256": "6ec5f6112ceb76973605a17d58ae08c16141ce1ba8631ad7f19785267c9efb1e"
+    },
+    {
+      "path": "app/resources/explore-assets/keyframes-summer.jpg",
+      "member": "resources/explore-assets/keyframes-summer.jpg",
+      "size": 298848,
+      "sha256": "6ba4ebbedf68e4424d98e6f5c240ae8c978eef98f76502e58c4a0098aed039dc"
+    },
+    {
+      "path": "app/resources/explore-assets/keyframes-winter.jpg",
+      "member": "resources/explore-assets/keyframes-winter.jpg",
+      "size": 252749,
+      "sha256": "858adc3c9dad888e01eae3a4945f09d21001b66982e2a3ac4ecd7417ef1b62f8"
+    },
+    {
+      "path": "app/resources/explore-assets/layout-to-render-first-frame.jpg",
+      "member": "resources/explore-assets/layout-to-render-first-frame.jpg",
+      "size": 243608,
+      "sha256": "6dd5c0c4175f88e2cdf84afdaf4e0d4ebb2d466c4b1755825ad6f1492196aa87"
+    },
+    {
+      "path": "app/resources/explore-assets/layout-to-render-reference.mp4",
+      "member": "resources/explore-assets/layout-to-render-reference.mp4",
+      "size": 2962341,
+      "sha256": "c9a7f60004ffc52d3b2e8221a7ea684d1511c4bf2cb4c6104b610f3045819996"
+    },
+    {
+      "path": "app/resources/explore-assets/motion-track-input.jpg",
+      "member": "resources/explore-assets/motion-track-input.jpg",
+      "size": 454365,
+      "sha256": "6221f52683983332ca3988755a024ef3bb38460c43f6f11c9c3d9233542ff85d"
+    },
+    {
+      "path": "app/resources/explore-assets/refine-details-reference.mp4",
+      "member": "resources/explore-assets/refine-details-reference.mp4",
+      "size": 4541561,
+      "sha256": "151756a14f47a540f35658a26796a3409144ee3cd96852f4d0fce6c8e35ceb6b"
+    },
+    {
+      "path": "app/resources/explore-assets/restore-first-frame.jpg",
+      "member": "resources/explore-assets/restore-first-frame.jpg",
+      "size": 186322,
+      "sha256": "476b96d5a3e661c365288c3b8c27c9cbd227ae450adaecee24c443260a9e6d38"
+    },
+    {
+      "path": "app/resources/explore-assets/restore-reference.mp4",
+      "member": "resources/explore-assets/restore-reference.mp4",
+      "size": 2985948,
+      "sha256": "793586c24d04fb0d9243d5d852f20972bfcd1397aa454bd5c95088b2bf75c11e"
+    },
+    {
+      "path": "app/resources/explore-assets/retake-input.mp4",
+      "member": "resources/explore-assets/retake-input.mp4",
+      "size": 3508396,
+      "sha256": "6a1f686a9a8aa3c0a264e96479b1dbc4427bb34fdb9aeb6aa1285c2e78ecde38"
+    },
+    {
+      "path": "app/resources/explore-assets/transition-end-frame.jpg",
+      "member": "resources/explore-assets/transition-end-frame.jpg",
+      "size": 90627,
+      "sha256": "32004a87ea8e65b8bdd7ef8b9b982870eb714a31a5ad05e9516c1bb1435667d4"
+    },
+    {
+      "path": "app/resources/explore-assets/transition-start-frame.jpg",
+      "member": "resources/explore-assets/transition-start-frame.jpg",
+      "size": 109553,
+      "sha256": "a5f89f251da179535e75435ab9cca86c0a5bddfdb654ec0ed0de10574ba943ac"
+    },
+    {
+      "path": "app/resources/explore-assets/vbvr-start-frame.jpg",
+      "member": "resources/explore-assets/vbvr-start-frame.jpg",
+      "size": 82444,
+      "sha256": "04826ff32810dbb9b723f4f124898f142f93b598603fe8e207648ed05e17477e"
+    },
+    {
+      "path": "app/resources/explore-assets/video-guide-reference.mp4",
+      "member": "resources/explore-assets/video-guide-reference.mp4",
+      "size": 3225948,
+      "sha256": "20493ccec7bd115ff789e3a57cdf92ced6386eb5c46a40a3fbe252742bc6111c"
+    },
+    {
+      "path": "app/resources/explore-assets/video-guide-start-frame.jpg",
+      "member": "resources/explore-assets/video-guide-start-frame.jpg",
+      "size": 209578,
+      "sha256": "b7c855dc3e99d9fd79d3134ff1f5ba3ba52fc526899c46c190af122f5fc01d29"
+    },
+    {
+      "path": "app/resources/explore-assets/water-simulation-reference.mp4",
+      "member": "resources/explore-assets/water-simulation-reference.mp4",
+      "size": 2678558,
+      "sha256": "3f756ac6a1fc8f447ef220fb4a3172d056651f3ae4aa0b63e9b1dd3b5e34319e"
+    },
+    {
+      "path": "vendor/ComfyUI/comfyui-v0.38.0.zip",
+      "url": "https://codeload.github.com/Comfy-Org/ComfyUI/zip/6b747c0428c343e1417219641db93a4fb7cb69ae",
+      "size": 13285248,
+      "sha256": "4a144a553c77397c81f6067f3f8c8ab9dffd42889af48fb35fec2c64a71c75b2"
+    },
+    {
+      "path": "vendor/ComfyUI/kandinsky6-1.0.2.zip",
+      "url": "https://cdn.comfy.org/kandinskylab/kandinsky6/1.0.2/node.zip",
+      "size": 2204011,
+      "sha256": "5ddf0bef14d0e571f8760403d270f2b1d6f9b6b10e56b8b707743c15751b7f80"
+    }
+  ]
+}
