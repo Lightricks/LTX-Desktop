@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { forkCredit, forkProductName, usesCommunityInstaller } from "../../../shared/fork-identity";
+import { forkCredit, forkGitHubUrl, forkProductName, forkUpdateGuidance, usesCommunityInstaller } from "../../../shared/fork-identity";
 
 import { Button as DsButton } from "@/ds/Button/Button";
 import { Text } from "@/ds/Text/Text";
@@ -212,8 +212,12 @@ export function AboutSettingsSection({
         <SettingsSubsection
           showDivider
           title="Updates"
-          description={`Install a new version of ${productName} to update this edition.`}
-        />
+          description={forkUpdateGuidance}
+        >
+          <a className={contentStyles.linkButton} href={forkGitHubUrl} target="_blank" rel="noopener noreferrer">
+            Open SpaceSpeak on GitHub
+          </a>
+        </SettingsSubsection>
       ) : <SettingsSubsection
         showDivider
         title="Updates"

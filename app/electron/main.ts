@@ -28,7 +28,7 @@ import { createWindow, getMainWindow } from './window'
 import { sendAnalyticsEvent } from './analytics'
 import { shouldSendLaunched, type LaunchedTrigger } from './launched-event'
 import type { DeepLinkIntent } from '../shared/deep-link.ts'
-import { forkCredit, usesCommunityInstaller } from '../shared/fork-identity'
+import { forkCredit, forkGitHubUrl, forkUpdateGuidance, usesCommunityInstaller } from '../shared/fork-identity'
 
 function logAppVersion(): void {
   if (!app.isPackaged) {
@@ -146,7 +146,8 @@ if (!gotLock) {
       applicationName: app.getName(),
       applicationVersion: app.getVersion(),
       copyright: 'Copyright © 2026 Lightricks',
-      credits: forkCredit,
+      credits: `${forkCredit}\n\n${forkUpdateGuidance}\n${forkGitHubUrl}`,
+      website: forkGitHubUrl,
       authors: ['Lightricks (original LTX Desktop)', 'Peter Beery / SpaceSpeak.com (community fork)'],
     })
     setupCSP()
