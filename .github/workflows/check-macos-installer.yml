@@ -48,6 +48,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/setup" "$RUNNER_TEMP/Applications"
           ditto -x -k "$RUNNER_TEMP/LTX-Mac-Online-Setup.zip" "$RUNNER_TEMP/setup"
+          cmp checks/check_h3_m5_kernel.py "$RUNNER_TEMP/setup/LTX Desktop - SpaceSpeak Setup/check_h3_m5_kernel.py"
           "$RUNNER_TEMP/setup/LTX Desktop - SpaceSpeak Setup/Install LTX Desktop.command" \
             --no-launch --cache "$RUNNER_TEMP/mac-cache" --applications-dir "$RUNNER_TEMP/Applications"
           application="$RUNNER_TEMP/Applications/LTX Desktop - SpaceSpeak.app"
@@ -57,8 +58,13 @@ jobs:
           cmp vendor/ComfyUI/LICENSE "$resources/licenses/comfyui/LICENSE"
           cmp app/resources/licenses/minimax-h3/LICENSE.txt "$resources/licenses/minimax-h3/LICENSE.txt"
           cmp app/resources/licenses/minimax-h3/NOTICE.txt "$resources/licenses/minimax-h3/NOTICE.txt"
+          cmp app/resources/licenses/h3-m5-int8/LICENSE.txt "$resources/licenses/h3-m5-int8/LICENSE.txt"
           cmp app/backend/services/comfy-wheels-macos-arm64.json "$resources/backend/services/comfy-wheels-macos-arm64.json"
+          cmp app/backend/services/amd_comfy_bootstrap.py "$resources/backend/services/amd_comfy_bootstrap.py"
+          cmp app/backend/services/amd_comfy_provision.py "$resources/backend/services/amd_comfy_provision.py"
           cmp app/backend/services/amd_h3_mps.py "$resources/backend/services/amd_h3_mps.py"
+          cmp app/backend/services/h3_metal/__init__.py "$resources/backend/services/h3_metal/__init__.py"
+          cmp app/backend/services/h3_metal/int8_gemm.metal "$resources/backend/services/h3_metal/int8_gemm.metal"
           python_bundle="$resources/python"
           unzip -p "$RUNNER_TEMP/mac-cache/upstream-mac.zip" 'LTX Desktop.app/Contents/Resources/python/bin/python3.13' | cmp - "$python_bundle/bin/python3.13"
           codesign --verify --strict "$python_bundle/bin/ltx-comfy-python"

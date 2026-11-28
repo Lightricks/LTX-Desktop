@@ -18,6 +18,7 @@ from pathlib import Path, PurePosixPath
 from filelock import FileLock
 
 from runtime_config.community_runtime import LocalVideoBackend
+from services.amd_h3_mps import prepare_h3_mps_core, register_h3_metal_node
 
 CORE_VERSION = "0.38.0"
 CORE_REVISION = "6b747c0428c343e1417219641db93a4fb7cb69ae"
@@ -141,10 +142,13 @@ def provision_private_comfy(
     for directory in (layout.models_dir, layout.custom_nodes_dir, layout.input_dir, layout.output_dir,
                       layout.user_dir, layout.temp_dir, layout.root / "cache" / "tmp"):
         directory.mkdir(parents=True, exist_ok=True)
-    if not needs_install(layout):
+    metal = layout.platform == "darwin" and layout.backend == "mps"
+    if not metal and not needs_install(layout):
         return layout
     with FileLock(str(layout.root / "provision.lock"), timeout=120):
-        if not needs_install(layout):
+        # The preceding release has the same core and wheel receipt. Add our
+        # Mac registration atomically before the next start, reusing that installation.
+        if not needs_install(layout) and (not metal or register_h3_metal_node(layout.core_dir)):
             return layout
         archive = layout.asset_dir / ARCHIVE_NAME
         if not archive.is_file():
@@ -158,9 +162,10 @@ def provision_private_comfy(
             _extract_verified(archive, stage)
             if layout.platform in ("darwin", "linux"):
                 from services.comfy_posix_wheels import manifest_file, provision_wheels
-                if layout.backend == "mps":
-                    from services.amd_h3_mps import prepare_h3_mps_core
+                if metal:
                     prepare_h3_mps_core(stage)
+                    if not register_h3_metal_node(stage):
+                        raise ValueError("Unexpected built-in node loader in the bundled ComfyUI archive.")
                 provision_wheels(manifest_file(layout.platform), layout.root / "cache" / "wheels",
                                  stage / ".ltx-site", progress)
             backup = Path(temporary) / "old"
@@ -198,6 +203,10 @@ def _worker_env(layout: ManagedComfyLayout) -> dict[str, str]:
         # and bytecode out of the app bundle during imports.
         if layout.backend == "mps":
             env["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+            if layout.platform == "darwin":
+                env["LTX_COMFY_H3_METAL_NODE"] = str(Path(__file__).resolve().with_name("h3_metal"))
+                if os.environ.get("LTX_H3_M5_INT8") == "0":
+                    env["LTX_H3_M5_INT8"] = "0"
         env["PYTHONDONTWRITEBYTECODE"] = "1"
     cache = layout.root / "cache"
     env.update({

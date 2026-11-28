@@ -11,6 +11,10 @@ used by LTX Desktop - AMD 395 MAX.
 - The optional Kandinsky 6 ComfyUI node pack 1.0.2 is included in `resources/comfy-engine/kandinsky6-1.0.2.zip` with its upstream notices. The model weights are downloaded separately. [Kandinsky 6 source](https://github.com/kandinskylab/kandinsky-6)
 - The renderer’s Python dependencies and their packaged distribution notices are under `resources/comfy-engine/site-packages`.
 
+## Apple M5 MiniMax H3 renderer
+
+The Mac worker includes an adaptation of the Cider INT8 matrix multiplication kernel from ComfyUI-AppleSilicon-FP8. The MIT license and copyright notices ship in `resources/licenses/h3-m5-int8/LICENSE.txt`. [ComfyUI-AppleSilicon-FP8 source](https://github.com/pawel-mazurkiewicz/ComfyUI-AppleSilicon-FP8/blob/cfb04c305ee52225a75014df79b2c2c5e2ee4a8d/_patches/int8_ext/int8_gemm.mm) · [Cider source](https://github.com/Mininglamp-AI/cider)
+
 ## Models
 
 - **MiniMax H3**. MiniMax H3 is licensed under the MiniMax H3 Community License Agreement, Copyright © 2026 MiniMax. All Rights Reserved. Local model weights are optional downloads. The full agreement, acceptable use policy and notice are included in `resources/licenses/minimax-h3/`. [MiniMax H3 license](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/1cc7549f2cf0af8ff2f09b24f3c57303c8aa6317/LICENSE)

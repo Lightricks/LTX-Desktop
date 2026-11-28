@@ -62,6 +62,7 @@ def test_isolated_launch_resolves_private_modules_and_propagates_comfy_arguments
     layout = layout_with_payload(tmp_path, backend)
     visible = "GPU-00112233-4455-6677-8899-aabbccddeeff" if backend == "cuda" else "1"
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
+    monkeypatch.setenv("LTX_H3_M5_INT8", "0")
     provision_private_comfy(layout)
     layout.python_exe.parent.mkdir(parents=True)
     layout.python_exe.touch()
@@ -95,6 +96,7 @@ def test_isolated_launch_resolves_private_modules_and_propagates_comfy_arguments
     assert args[args.index("--whitelist-custom-nodes") + 1] == "kandinsky6"
     assert ("--disable-dynamic-vram" in args) == (backend == "rocm")
     assert env["CUDA_VISIBLE_DEVICES"] == visible and "--enable-manager" not in args
+    assert "LTX_H3_M5_INT8" not in env and "LTX_COMFY_H3_METAL_NODE" not in env
     if backend == "cuda":
         monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
         with pytest.raises(RuntimeError, match="UUID"):
@@ -122,6 +124,8 @@ def test_posix_setup_selects_the_platform_worker_and_keeps_app_bundle_read_only(
     lock.write_text(json.dumps({"python": f"{sys.version_info.major}.{sys.version_info.minor}", "wheels": [record]}))
     monkeypatch.setattr(comfy_posix_wheels, "manifest_file", lambda _: lock)
     monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    monkeypatch.setenv("LTX_COMFY_H3_METAL_NODE", str(tmp_path / "unauthorized node"))
+    monkeypatch.setenv("LTX_H3_M5_INT8", "0")
     expected_python = Path(sys.executable)
     if host == "darwin":
         expected_python = layout.resources_dir / "python" / "bin" / "ltx-comfy-python"
@@ -135,6 +139,11 @@ def test_posix_setup_selects_the_platform_worker_and_keeps_app_bundle_read_only(
     assert list(layout.asset_dir.iterdir()) == [layout.asset_dir / ARCHIVE_NAME]
     vae = (layout.core_dir / "comfy/ldm/minimax/vae.py").read_text(encoding="utf-8")
     assert ("x = torch.cat((prefix, x), dim=2)" in vae) == (backend == "mps")
+    if backend == "mps":
+        node = Path(__file__).resolve().parents[1] / "services" / "h3_metal"
+        assert env["LTX_COMFY_H3_METAL_NODE"] == str(node) and env["LTX_H3_M5_INT8"] == "0"
+    else:
+        assert "LTX_H3_M5_INT8" not in env and "LTX_COMFY_H3_METAL_NODE" not in env
 
     # A replacement lock may not activate partially installed or wrong-platform wheels.
     record["filename"] = "private_fixture-2.0-cp313-cp313-win_amd64.whl"
@@ -143,3 +152,49 @@ def test_posix_setup_selects_the_platform_worker_and_keeps_app_bundle_read_only(
     with pytest.raises(ValueError, match="Incompatible dependency"):
         provision_private_comfy(layout)
     assert (layout.extra_packages / "private_fixture.py").read_text() == "VALUE = 42\n"
+
+
+def test_prepared_metal_worker_upgrades_only_its_private_node_loader(tmp_path, monkeypatch):
+    import ast
+    import asyncio
+    import hashlib
+    from services import amd_comfy_provision, comfy_posix_wheels
+    from services.amd_h3_mps import prepare_h3_mps_core
+
+    original = layout_with_payload(tmp_path, "mps")
+    layout = ManagedComfyLayout(original.root, original.resources_dir, "mps", "darwin")
+    # Reproduce the preceding release's source tree and valid receipts.
+    layout.core_dir.mkdir(parents=True)
+    amd_comfy_provision._extract_verified(layout.asset_dir / ARCHIVE_NAME, layout.core_dir)
+    prepare_h3_mps_core(layout.core_dir)
+    layout.extra_packages.mkdir()
+    digest = hashlib.sha256(comfy_posix_wheels.manifest_file("darwin").read_bytes()).hexdigest()
+    (layout.extra_packages / "ltx-comfy-deps.json").write_text(json.dumps({"manifest_sha256": digest}))
+    layout.models_dir.mkdir(parents=True)
+    model = layout.models_dir / "existing.safetensors"
+    model.write_bytes(b"keep existing model")
+    monkeypatch.setattr(amd_comfy_provision, "_extract_verified", lambda *args: pytest.fail("unnecessary core reinstall"))
+    monkeypatch.setattr(comfy_posix_wheels, "provision_wheels", lambda *args: pytest.fail("unnecessary wheel install"))
+    assert not needs_install(layout)
+    provision_private_comfy(layout)
+    loader = layout.core_dir / "nodes.py"
+
+    # Run the pinned upstream loader with a recording load_custom_node.
+    paths = []
+    async def record(path, module_parent):
+        paths.append(Path(path))
+        return True
+
+    env = amd_comfy_provision._worker_env(layout)
+    monkeypatch.setenv("LTX_COMFY_H3_METAL_NODE", env["LTX_COMFY_H3_METAL_NODE"])
+    namespace = {"load_custom_node": record, "__file__": str(loader), "os": os}
+    init = next(n for n in ast.parse(loader.read_bytes()).body
+                if isinstance(n, ast.AsyncFunctionDef) and n.name == "init_builtin_extra_nodes")
+    exec(compile(ast.Module(body=[init], type_ignores=[]), str(loader), "exec"), namespace)
+    assert asyncio.run(namespace["init_builtin_extra_nodes"]()) == []
+    node = Path(__file__).resolve().parents[1] / "services" / "h3_metal"
+    assert paths[-1] == node and paths.count(node) == 1
+    assert all(p.is_relative_to(layout.core_dir / "comfy_extras") for p in paths[:-1])
+    identity = loader.stat().st_ino
+    provision_private_comfy(layout)
+    assert loader.stat().st_ino == identity and model.read_bytes() == b"keep existing model"

@@ -2,6 +2,11 @@
 
 Original LTX Desktop by Lightricks. Community fork by Peter Beery / SpaceSpeak.com.
 
+## 1.3.3-community.6 (macOS)
+
+- The bundled Mac worker now attempts native Metal 4 INT8 multiplication for supported MiniMax H3 denoiser layers on the M5 family. It checks numerical correctness on the device before using the kernel and logs actual use during generation.
+- Existing profiles reuse their H3 model files, shared encoders/decoders and license acknowledgement. Other eligible Apple GPUs run H3 through standard MPS. Windows uses CUDA or ROCm and Ubuntu uses CUDA. These installers remain on community.5.
+
 ## 1.3.3-community.5
 
 - All desktop editions list FL2VA Base, FL2VA 8-step Turbo and Ref2VA. Apple silicon Metal and Ubuntu NVIDIA CUDA now offer the private engine, license prompt and model downloads. API-only hosts display the MiniMax catalog and hardware requirement.

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -110,6 +111,12 @@ def check(resources: Path, data: Path) -> None:
         print("PASS · private worker, H3 node registration, Comfy queue, MP4 video and audio decoding", flush=True)
     finally:
         engine.shutdown()
+    if backend == "mps":
+        assert engine.layout is not None
+        subprocess.run([
+            str(engine.layout.python_exe), "-I", "-B", str(Path(__file__).with_name("check_h3_m5_kernel.py")),
+            "--engine-root", str(engine.layout.root), "--skip-other-macs",
+        ], check=True)
 
 
 if __name__ == "__main__":

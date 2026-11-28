@@ -13,6 +13,7 @@ DONOR_HASH = "90bad9cc1662e52f3d291ca2e44e2bee5651c5497e1720477317a6c616db7f51"
 ELECTRON_LICENSE_ARCHIVE_HASH = "8e18ef53da62bca6132508721c1f94e06b5773b48d366b95e593479892f0a2fe"
 DONOR_RES = "LTX Desktop.app/Contents/Resources/"
 PRODUCT = "LTX Desktop - SpaceSpeak"
+MAC_VERSION = "1.3.3-community.6"
 BLOCK_SIZE = 4 * 1024**2
 
 
@@ -52,6 +53,9 @@ def build(upstream_zip, electron_zip, output):
     for required in ("dist/index.html", "dist-electron/main.js", "dist-electron/preload.js", "dist-remote/index.html"):
         if not (APP / required).is_file():
             raise ValueError("Build the community frontend before packaging: " + required)
+    h3_shader = APP / "backend/services/h3_metal/int8_gemm.metal"
+    if not h3_shader.is_file():
+        raise FileNotFoundError(h3_shader)
     manifest = json.loads((APP / "package.json").read_text())
     # Electron's packaged module tree in the official distribution is for macOS arm64.
     # Preserve its metadata and ordinals while replacing every application entry point.
@@ -129,8 +133,8 @@ def build(upstream_zip, electron_zip, output):
                     add_app_file(name, path.read_bytes(), name.startswith("dist/splash/"))
         for name in ("LICENSE.txt", "NOTICES.md"):
             add_app_file(name, (APP / name).read_bytes())
-        metadata = {key: manifest[key] for key in ("version", "type", "main", "license", "homepage")}
-        metadata.update(name="ltx-desktop-spacespeak", productName=PRODUCT,
+        metadata = {key: manifest[key] for key in ("type", "main", "license", "homepage")}
+        metadata.update(version=MAC_VERSION, name="ltx-desktop-spacespeak", productName=PRODUCT,
                         description="Community fork of Lightricks LTX Desktop by Peter Beery / SpaceSpeak.com")
         add_app_file("package.json", json.dumps(metadata, indent=2).encode())
 
@@ -141,7 +145,8 @@ def build(upstream_zip, electron_zip, output):
 
         def backend_file(path):
             return (not set(path.relative_to(APP / "backend").parts).intersection({"tests", ".venv", "__pycache__"})
-                    and (path.suffix in (".py", ".json", ".sql") or path.name == "pyproject.toml"))
+                    and (path.suffix in (".py", ".json", ".sql") or path.name == "pyproject.toml"
+                         or path == h3_shader))
 
         add_resources(APP / "backend", "backend/", backend_file)
         add_resources(APP / "dist-remote", "dist-remote/", lambda p: p.suffix != ".map")
@@ -170,7 +175,7 @@ def build(upstream_zip, electron_zip, output):
         encoded_header = pack_header(header)
         parts.insert(0, record(encoded_header))
         raw_length = struct.unpack_from("<I", encoded_header, 12)[0]
-        plan = {"version": manifest["version"], "parts": parts, "files": loose, "blobs": blobs,
+        plan = {"version": MAC_VERSION, "parts": parts, "files": loose, "blobs": blobs,
                 "headerHash": digest(encoded_header[16:16 + raw_length])}
         write_entry(payload, "plan.json", json.dumps(plan, separators=(",", ":")).encode())
 
@@ -182,7 +187,8 @@ def build(upstream_zip, electron_zip, output):
             write_entry(installer, prefix + name, (HERE / name).read_bytes(), executable=name.endswith(".command"))
         write_entry(installer, prefix + "entitlements.mac.plist", (APP / "resources/entitlements.mac.plist").read_bytes())
         write_entry(installer, prefix + "comfy-worker.mac.plist", (HERE / "comfy-worker.mac.plist").read_bytes())
-        write_entry(installer, prefix + "check_native_mps.py", (HERE.parent / "checks/check_native_mps.py").read_bytes())
+        for check in ("check_native_mps.py", "check_h3_m5_kernel.py"):
+            write_entry(installer, prefix + check, (HERE.parent / "checks" / check).read_bytes())
         write_entry(installer, prefix + "README.txt", (HERE / "README.txt").read_bytes())
     print(f"{output}: {output.stat().st_size:,} bytes, {len(parts)} ASAR spans and {len(loose)} resources")
 

@@ -1,6 +1,8 @@
-# LTX Desktop community fork 1.3.3-community.5
+# LTX Desktop community fork
 
 Original LTX Desktop by Lightricks. Community fork by Peter Beery / SpaceSpeak.com. The fork ships online installers for native Apple silicon, Windows x64 and Ubuntu x86-64. Windows supports NVIDIA CUDA and the gfx1151 Radeon 8040S, 8050S and 8060S in the Ryzen AI Max family. Existing AMD installations keep their app name, installation location and user data.
+
+The Mac online installer is **1.3.3-community.6**. The Windows and Ubuntu online installers are **1.3.3-community.5**.
 
 ## Deployment differences in this release
 
@@ -10,7 +12,8 @@ All three desktop installers list **MiniMax H3 FL2VA Base**, **FL2VA 8-step Turb
 | --- | --- | --- | --- | --- |
 | Windows x64, supported NVIDIA CUDA | Yes | Yes, CUDA | Yes | Yes |
 | Windows x64, Radeon 8040S / 8050S / 8060S (gfx1151) | Yes | Yes, ROCm | Yes | Yes |
-| Native macOS, eligible Apple silicon including M5 Pro | Yes | Metal (MPS), experimental | Unavailable | Unavailable |
+| Native macOS, eligible M5 family including M5 Pro | Yes | Metal with native INT8 for supported H3 denoiser layers after an on-device check | Unavailable | Unavailable |
+| Native macOS, other eligible Apple silicon | Yes | Standard PyTorch Metal (MPS) | Unavailable | Unavailable |
 | Ubuntu 22.04+ x86-64, supported NVIDIA CUDA | Yes | Yes, CUDA | Unavailable | Unavailable |
 | API-only installations, including the Parallels Display Adapter | Unavailable | Catalog only | Unavailable | Unavailable |
 
@@ -26,11 +29,29 @@ Version 1.3.3 includes upstream Keyframes, a shorter context option for faster E
 On an M5 Pro, run the Mac installer from Finder in macOS. The Windows installer recognizes the Parallels Display Adapter as an API-only device. Native macOS uses PyTorch Metal (MPS) and the Mac’s unified memory.
 
 1. Check **Apple menu → About This Mac** for the chip, memory and macOS version. Local generation needs macOS 26 or later and at least 24 GiB of unified memory. Lightricks recommends 32 GB or more. Allow at least 100 GB of free storage for local models. Macs with macOS 14 or 15, or less than 24 GiB of memory, can use the app in API mode. [Upstream Mac requirements](https://github.com/Lightricks/LTX-Desktop#system-requirements)
-2. Download **LTX-Desktop-1.3.3-community.5-Apple-Silicon-Online-Setup.zip** and double-click the ZIP to extract it. Open **LTX Desktop - SpaceSpeak Setup** and double-click **Install LTX Desktop.command**. Keep the extracted folder together during setup. Setup verifies and reuses the official 836 MB Mac archive from an earlier attempt when available. It preserves the signed Electron frameworks and helpers, checks the finished bundle and tests Metal on an eligible Mac before activating the installation.
+2. Quit the SpaceSpeak app if it is running. Download **LTX-Desktop-1.3.3-community.6-Apple-Silicon-Online-Setup.zip** and double-click the ZIP to extract it. Open **LTX Desktop - SpaceSpeak Setup** and double-click **Install LTX Desktop.command**. Keep the extracted folder together during setup. Setup verifies and reuses the official 836 MB Mac archive from an earlier attempt when available. It preserves the signed Electron frameworks and helpers, checks the finished bundle and tests Metal on an eligible Mac before activating the installation.
 3. Open **LTX Desktop - SpaceSpeak** in your home **Applications** folder. Open **Settings → Models** to download a native LTX model. The Mac build supports native LTX 2.5 Fast and 2.3 Fast. For H3, select a MiniMax entry in **Settings → Models**, review the license, then use the setup button to prepare the worker and download the weights. See the deployment table above for the Windows-only renderers.
 4. For a first local test, pick **LTX 2.5 Fast**, a five-second clip and a low resolution. The app stores its community profile under `~/Library/Application Support/LTXDesktopSpaceSpeak`.
 
 The Mac installer assembles the community app from pinned components and signs it locally. This release has no Apple Developer ID notarization. If macOS requests approval for an identified item you trust, use the per-item control under **System Settings → Privacy & Security**. [Apple’s guide to opening apps](https://support.apple.com/en-us/102445)
+
+### MiniMax H3 on the M5 family
+
+The Mac worker tests the bundled Metal 4 kernel on the device. Once it passes, eligible INT8 ConvRot linear layers in the H3 denoiser use the M5 GPU’s integer matrix multiplication for FL2VA Base, FL2VA 8-step Turbo and Ref2VA. The worker uses standard MPS for unsupported operations and if the on-device check fails. Prompt encoding, audio/video decoding and native LTX have their own execution paths. Installing this upgrade reuses the existing model downloads and license acknowledgement. The bundled PyTorch runtime compiles the shader on the Mac. The installer includes everything this kernel needs.
+
+To check a render, run the same prompt with a new seed to avoid an output-cache hit. Open `~/Library/Application Support/LTXDesktopSpaceSpeak/managed-comfy/worker.log` before restarting the app. Search for `[SpaceSpeak H3 Metal]`. **Native INT8 active** records a real denoiser layer using the kernel. **Self-test passed** confirms only the synthetic check. **Standard MPS** explains why the worker used its normal path. For a timing comparison, record the resolution, duration, sampling time and total time. W8A8 also quantizes activations, so small output differences are possible even with a fixed seed. A full-weight M5 Pro benchmark for this fork is pending.
+
+To compare against standard MPS, quit the app and launch it once from Terminal with the optimization disabled. Normal Finder launches use automatic selection.
+
+```bash
+LTX_H3_M5_INT8=0 "$HOME/Applications/LTX Desktop - SpaceSpeak.app/Contents/MacOS/LTX Desktop"
+```
+
+The extracted installer also includes `check_h3_m5_kernel.py`. Once the app’s private engine is set up, open Terminal in the installer folder and run the following command. It checks a synthetic projection and compares the median time for a representative H3 layer using stock MPS and native INT8. The timings cover that layer only.
+
+```bash
+"$HOME/Applications/LTX Desktop - SpaceSpeak.app/Contents/Resources/python/bin/ltx-comfy-python" -I -B check_h3_m5_kernel.py --benchmark
+```
 
 ## Install on Ubuntu with NVIDIA CUDA
 
@@ -85,7 +106,7 @@ A fresh FL2VA Base or Ref2VA download needs **51.53 GB** on Windows or Linux and
 ## Publish this code to your GitHub fork
 
 1. Sign in to GitHub and select **Fork → Create fork** on [Lightricks/LTX-Desktop](https://github.com/Lightricks/LTX-Desktop). If you already have a fork, open it. Copy its HTTPS URL from **Code**.
-2. Extract the compact source ZIP into a new folder, including its hidden `.git` directory. Open a terminal inside the extracted repository. Confirm that `git status --short` is empty. The release tag names the exact tree used to build the installers.
+2. For the original `v1.3.3-community.5` compact source distribution, extract the compact source ZIP into a new folder, including its hidden `.git` directory. Open a terminal inside the extracted repository. Confirm that `git status --short` is empty. The release tag names the exact tree used to build the installers.
 3. Run the following once in this extracted checkout. Replace `YOUR-ACCOUNT` with your GitHub username or organization. These commands connect the compact source history to its exact Lightricks base and place the work on a new branch in your fork.
 
 ```bash
